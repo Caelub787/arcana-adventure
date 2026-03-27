@@ -2483,7 +2483,7 @@ interface TraitFormDialogProps {
   isLoading?: boolean;
 }
 
-const DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound'];
+const DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison'];
 
 function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TraitFormDialogProps) {
   const [formData, setFormData] = useState<{
@@ -2728,7 +2728,7 @@ interface TokenEffectsViewProps {
   onDeleteEffect: (id: string) => void;
 }
 
-const TOKEN_EFFECT_DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Poison'];
+const TOKEN_EFFECT_DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison'];
 
 function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onAddEffect, onEditEffect, onDeleteEffect }: TokenEffectsViewProps) {
   return (
@@ -7524,6 +7524,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                         <SelectItem value="Light">Light</SelectItem>
                         <SelectItem value="Dark">Dark</SelectItem>
                         <SelectItem value="Sound">Sound</SelectItem>
+                        <SelectItem value="Mind">Mind</SelectItem>
+                        <SelectItem value="Poison">Poison</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -16064,7 +16064,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     saveSuccessEffect: '',
   });
   
-  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
+  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison', 'Health', 'Energy'];
   const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
   
   const normalizeCastingTime = (ct: string | undefined | null): string => {
@@ -23073,6 +23073,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
                       <SelectItem value="Light">Light</SelectItem>
                       <SelectItem value="Dark">Dark</SelectItem>
                       <SelectItem value="Sound">Sound</SelectItem>
+                      <SelectItem value="Mind">Mind</SelectItem>
+                      <SelectItem value="Poison">Poison</SelectItem>
                       <SelectItem value="Health">Health</SelectItem>
                     </SelectContent>
                   </Select>
@@ -23329,6 +23331,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
                         <SelectItem value="Light">Light</SelectItem>
                         <SelectItem value="Dark">Dark</SelectItem>
                         <SelectItem value="Sound">Sound</SelectItem>
+                        <SelectItem value="Mind">Mind</SelectItem>
+                        <SelectItem value="Poison">Poison</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -24679,6 +24683,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                           <SelectItem value="Light">Light</SelectItem>
                           <SelectItem value="Dark">Dark</SelectItem>
                           <SelectItem value="Sound">Sound</SelectItem>
+                          <SelectItem value="Mind">Mind</SelectItem>
+                          <SelectItem value="Poison">Poison</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (

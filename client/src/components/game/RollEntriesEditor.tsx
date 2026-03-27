@@ -80,7 +80,7 @@ const ROLL_TYPE_COLORS: Record<string, string> = {
 };
 
 const DAMAGE_TYPES = [
-  "Sharp", "Blunt", "Piercing", "Flame", "Frost", "Storm",
+  "Sharp", "Blunt", "Piercing", "Flame", "Frost", "Storm", "Mind", "Poison",
   "Tide", "Stone", "Flux", "Light", "Dark", "Sound",
 ];
 
