@@ -7121,7 +7121,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           saveNote = ' (Failed save)';
         }
 
-        const isAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
+        const isAdding = rollEntry.statDirection ? rollEntry.statDirection === 'add' : (isHealing || rollEntry.gainEnergy || false);
         if (damageToApply > 0 && saveApplyStat !== 'none') {
           if (saveApplyStat === 'energy') {
             gameWs.sendCombatEnergy(
@@ -7186,7 +7186,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       if (tokensInAoe.length > 0) {
         const affectedNames: string[] = [];
         const aoeApplyStat = rollEntry.applyToStat || 'none';
-        const aoeIsAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
+        const aoeIsAdding = rollEntry.statDirection ? rollEntry.statDirection === 'add' : (isHealing || rollEntry.gainEnergy || false);
 
         for (const token of tokensInAoe) {
           const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
@@ -7243,7 +7243,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     const applyStat = rollEntry.applyToStat || 'none';
-    const singleIsAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
+    const singleIsAdding = rollEntry.statDirection ? rollEntry.statDirection === 'add' : (isHealing || rollEntry.gainEnergy || false);
     if (targetedTokenId) {
       const targetData = getTargetData();
       if (targetData) {
