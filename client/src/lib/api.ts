@@ -270,6 +270,7 @@ export interface Spell {
   mod?: number;
   attribute?: string;
   energyCost?: number;
+  manaCost?: number;
   isEquipped: boolean;
 }
 
@@ -409,6 +410,7 @@ export interface SystemSpell {
   mod?: number;
   attribute?: string;
   energyCost: number;
+  manaCost?: number;
   concentration: boolean;
   ritual: boolean;
   targetType: string;
@@ -467,6 +469,8 @@ export interface RollEntry {
   damageType?: string;
   attribute?: string;
   applyToStat?: string;
+  requiresMana?: boolean;
+  manaCost?: number;
   sortOrder: number;
 }
 
