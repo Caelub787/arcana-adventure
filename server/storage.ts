@@ -65,7 +65,12 @@ import {
   type CampaignMapPin, type InsertCampaignMapPin,
   type ShopItem, type InsertShopItem,
   type ShopHaggleRoll, type InsertShopHaggleRoll,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls
+  type GameClass, type InsertClass,
+  type ClassSkillNode, type InsertClassSkillNode,
+  type ClassSkillConnection, type InsertClassSkillConnection,
+  type CharacterClass, type InsertCharacterClass,
+  type CharacterClassSkill, type InsertCharacterClassSkill,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -602,6 +607,36 @@ export interface IStorage {
   getShopHaggleRoll(pinId: string, characterId: string): Promise<ShopHaggleRoll | undefined>;
   upsertShopHaggleRoll(data: InsertShopHaggleRoll): Promise<ShopHaggleRoll>;
   deleteShopHaggleRoll(pinId: string, characterId: string): Promise<void>;
+
+  // Class operations (AA V2)
+  getClasses(systemName: string): Promise<GameClass[]>;
+  getClass(id: string): Promise<GameClass | undefined>;
+  createClass(data: InsertClass): Promise<GameClass>;
+  updateClass(id: string, data: Partial<InsertClass>): Promise<GameClass | undefined>;
+  deleteClass(id: string): Promise<void>;
+
+  // Class skill node operations
+  getClassSkillNodes(classId: string): Promise<ClassSkillNode[]>;
+  getClassSkillNode(id: string): Promise<ClassSkillNode | undefined>;
+  createClassSkillNode(data: InsertClassSkillNode): Promise<ClassSkillNode>;
+  updateClassSkillNode(id: string, data: Partial<InsertClassSkillNode>): Promise<ClassSkillNode | undefined>;
+  deleteClassSkillNode(id: string): Promise<void>;
+
+  // Class skill connection operations
+  getClassSkillConnections(classId: string): Promise<ClassSkillConnection[]>;
+  createClassSkillConnection(data: InsertClassSkillConnection): Promise<ClassSkillConnection>;
+  deleteClassSkillConnection(id: string): Promise<void>;
+
+  // Character class operations
+  getCharacterClasses(characterId: string): Promise<CharacterClass[]>;
+  createCharacterClass(data: InsertCharacterClass): Promise<CharacterClass>;
+  updateCharacterClass(id: string, data: Partial<InsertCharacterClass>): Promise<CharacterClass | undefined>;
+  deleteCharacterClass(id: string): Promise<void>;
+
+  // Character class skill operations
+  getCharacterClassSkills(characterId: string, classId: string): Promise<CharacterClassSkill[]>;
+  createCharacterClassSkill(data: InsertCharacterClassSkill): Promise<CharacterClassSkill>;
+  deleteCharacterClassSkill(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4195,6 +4230,98 @@ export class DatabaseStorage implements IStorage {
   async deleteShopHaggleRoll(pinId: string, characterId: string): Promise<void> {
     await db.delete(shopHaggleRolls)
       .where(and(eq(shopHaggleRolls.pinId, pinId), eq(shopHaggleRolls.characterId, characterId)));
+  }
+
+  async getClasses(systemName: string): Promise<GameClass[]> {
+    return db.select().from(classes).where(eq(classes.systemName, systemName));
+  }
+
+  async getClass(id: string): Promise<GameClass | undefined> {
+    const [result] = await db.select().from(classes).where(eq(classes.id, id));
+    return result;
+  }
+
+  async createClass(data: InsertClass): Promise<GameClass> {
+    const [result] = await db.insert(classes).values(data).returning();
+    return result;
+  }
+
+  async updateClass(id: string, data: Partial<InsertClass>): Promise<GameClass | undefined> {
+    const [result] = await db.update(classes).set(data).where(eq(classes.id, id)).returning();
+    return result;
+  }
+
+  async deleteClass(id: string): Promise<void> {
+    await db.delete(classes).where(eq(classes.id, id));
+  }
+
+  async getClassSkillNodes(classId: string): Promise<ClassSkillNode[]> {
+    return db.select().from(classSkillNodes).where(eq(classSkillNodes.classId, classId));
+  }
+
+  async getClassSkillNode(id: string): Promise<ClassSkillNode | undefined> {
+    const [result] = await db.select().from(classSkillNodes).where(eq(classSkillNodes.id, id));
+    return result;
+  }
+
+  async createClassSkillNode(data: InsertClassSkillNode): Promise<ClassSkillNode> {
+    const [result] = await db.insert(classSkillNodes).values(data).returning();
+    return result;
+  }
+
+  async updateClassSkillNode(id: string, data: Partial<InsertClassSkillNode>): Promise<ClassSkillNode | undefined> {
+    const [result] = await db.update(classSkillNodes).set(data).where(eq(classSkillNodes.id, id)).returning();
+    return result;
+  }
+
+  async deleteClassSkillNode(id: string): Promise<void> {
+    await db.delete(classSkillNodes).where(eq(classSkillNodes.id, id));
+  }
+
+  async getClassSkillConnections(classId: string): Promise<ClassSkillConnection[]> {
+    return db.select().from(classSkillConnections).where(eq(classSkillConnections.classId, classId));
+  }
+
+  async createClassSkillConnection(data: InsertClassSkillConnection): Promise<ClassSkillConnection> {
+    const [result] = await db.insert(classSkillConnections).values(data).returning();
+    return result;
+  }
+
+  async deleteClassSkillConnection(id: string): Promise<void> {
+    await db.delete(classSkillConnections).where(eq(classSkillConnections.id, id));
+  }
+
+  async getCharacterClasses(characterId: string): Promise<CharacterClass[]> {
+    return db.select().from(characterClasses).where(eq(characterClasses.characterId, characterId));
+  }
+
+  async createCharacterClass(data: InsertCharacterClass): Promise<CharacterClass> {
+    const [result] = await db.insert(characterClasses).values(data).returning();
+    return result;
+  }
+
+  async updateCharacterClass(id: string, data: Partial<InsertCharacterClass>): Promise<CharacterClass | undefined> {
+    const [result] = await db.update(characterClasses).set(data).where(eq(characterClasses.id, id)).returning();
+    return result;
+  }
+
+  async deleteCharacterClass(id: string): Promise<void> {
+    await db.delete(characterClasses).where(eq(characterClasses.id, id));
+  }
+
+  async getCharacterClassSkills(characterId: string, classId: string): Promise<CharacterClassSkill[]> {
+    return db.select().from(characterClassSkills).where(
+      and(eq(characterClassSkills.characterId, characterId), eq(characterClassSkills.classId, classId))
+    );
+  }
+
+  async createCharacterClassSkill(data: InsertCharacterClassSkill): Promise<CharacterClassSkill> {
+    const [result] = await db.insert(characterClassSkills).values(data).returning();
+    return result;
+  }
+
+  async deleteCharacterClassSkill(id: string): Promise<void> {
+    await db.delete(characterClassSkills).where(eq(characterClassSkills.id, id));
   }
 }
 

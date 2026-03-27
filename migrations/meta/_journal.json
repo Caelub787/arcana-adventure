@@ -50,6 +50,20 @@
       "when": 1770591148002,
       "tag": "0006_last_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774598400000,
+      "tag": "0007_roll_entries_overhaul",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774684800000,
+      "tag": "0008_aa_v2_foundation",
+      "breakpoints": true
     }
   ]
 }
