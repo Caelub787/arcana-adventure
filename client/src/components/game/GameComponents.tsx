@@ -17984,17 +17984,16 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 )}
 
-                {/* Feat Tree Section - Bottom of overview (hidden for AA V2 which uses Classes) */}
-                {featTreeId && !isAAV2 && (
+                {featTreeId && (
                   <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
                     <div className="flex justify-between items-center mb-2">
                       <Label className="text-sm text-purple-300 flex items-center gap-2">
                         <GitBranch className="h-4 w-4 text-purple-400" />
-                        Feat Tree
+                        {isAAV2 ? 'Species Feat Tree' : 'Feat Tree'}
                       </Label>
                       {(() => {
                         const level = liveCharacter.level || 1;
-                        const totalPoints = 2 + level + (2 * Math.floor(level / 3));
+                        const totalPoints = isAAV2 ? level : (2 + level + (2 * Math.floor(level / 3)));
                         const spentPoints = characterFeats.reduce((sum, cf) => {
                           const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
                           return sum + (feat?.cost || 0);
@@ -18016,7 +18015,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       data-testid="button-view-feat-tree"
                     >
                       <GitBranch className="h-4 w-4 mr-2" />
-                      View {featTreeData?.tree?.name || 'Feat Tree'}
+                      View {featTreeData?.tree?.name || (isAAV2 ? 'Species Feat Tree' : 'Feat Tree')}
                     </Button>
                   </div>
                 )}
@@ -21426,6 +21425,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 characterId={liveCharacter.id}
                 canEdit={canEditSheet}
                 characterLevel={liveCharacter.level}
+                isAAV2={isAAV2}
               />
             )}
           </div>
@@ -21441,13 +21441,15 @@ function FeatTreeViewerGrid({
   characterFeats, 
   characterId,
   canEdit,
-  characterLevel = 1
+  characterLevel = 1,
+  isAAV2 = false
 }: { 
   treeData: FeatTreeWithData;
   characterFeats: CharacterFeat[];
   characterId: string;
   canEdit: boolean;
   characterLevel?: number;
+  isAAV2?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
@@ -21501,8 +21503,7 @@ function FeatTreeViewerGrid({
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
   const { feats, connections, tree } = treeData;
   
-  // Calculate feat points: 2 base + level + (2 × floor(level/3)) = 3 points at level 1
-  const totalFeatPoints = 2 + characterLevel + (2 * Math.floor(characterLevel / 3));
+  const totalFeatPoints = isAAV2 ? characterLevel : (2 + characterLevel + (2 * Math.floor(characterLevel / 3)));
   const spentPoints = feats
     .filter((f: Feat) => unlockedFeatIds.has(f.id))
     .reduce((sum: number, f: Feat) => sum + (f.cost ?? 0), 0);

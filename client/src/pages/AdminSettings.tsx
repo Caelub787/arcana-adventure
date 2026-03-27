@@ -1443,23 +1443,23 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
         </CardHeader>
       </Card>
 
-      {systemSlug === 'arcana-adventure' && (
-        <Card 
-          className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-          onClick={() => onNavigate('feat-trees')}
-          data-testid="card-feat-trees"
-        >
-          <CardHeader>
-            <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
-              <GitBranch className="h-6 w-6 text-purple-500" />
-            </div>
-            <CardTitle className="text-purple-500">Feat Trees</CardTitle>
-            <CardDescription className="text-stone-400">
-              Create and manage feat progression trees for characters
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('feat-trees')}
+        data-testid="card-feat-trees"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
+            <GitBranch className="h-6 w-6 text-purple-500" />
+          </div>
+          <CardTitle className="text-purple-500">{systemSlug === 'aa-v2' ? 'Species Feat Trees' : 'Feat Trees'}</CardTitle>
+          <CardDescription className="text-stone-400">
+            {systemSlug === 'aa-v2' 
+              ? 'Create and manage species-specific feat progression trees'
+              : 'Create and manage feat progression trees for characters'}
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       {systemSlug === 'aa-v2' && (
         <Card 
@@ -8043,12 +8043,11 @@ function ClassesView() {
           </DialogContent>
         </Dialog>
 
-        {showClassImageBrowser && (
-          <ImageBrowser
-            onSelect={(url: string) => { setClassImage(url); setShowClassImageBrowser(false); }}
-            onClose={() => setShowClassImageBrowser(false)}
-          />
-        )}
+        <ImageBrowser
+          open={showClassImageBrowser}
+          onOpenChange={setShowClassImageBrowser}
+          onSelect={(url: string) => { setClassImage(url); setShowClassImageBrowser(false); }}
+        />
       </div>
     );
   }

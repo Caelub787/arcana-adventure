@@ -5664,10 +5664,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Validate feat points: 2 base + level + (2 × floor(level/3)) = 3 points at level 1
-      // Every level: +1 point. Every level divisible by 3: +2 additional points.
       const level = character.level || 1;
-      const totalFeatPoints = 2 + level + (2 * Math.floor(level / 3));
+      let isAAV2System = false;
+      if (character.campaignId) {
+        const campaign = await storage.getCampaign(character.campaignId);
+        if (campaign?.system === 'aa-v2') isAAV2System = true;
+      }
+      const totalFeatPoints = isAAV2System ? level : (2 + level + (2 * Math.floor(level / 3)));
       
       // Get feat details for each to sum up spent points
       let spentPoints = 0;
