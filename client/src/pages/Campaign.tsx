@@ -8967,6 +8967,11 @@ export default function Campaign() {
           queryClientRef.current.invalidateQueries({ queryKey: ['character-traits', updatedChar.id] });
           queryClientRef.current.invalidateQueries({ queryKey: ['character-custom-skills', updatedChar.id] });
         }
+        if (data.type === 'character_class_updated' && data.characterId) {
+          queryClientRef.current.invalidateQueries({ queryKey: ['character-classes', data.characterId] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['character', data.characterId] });
+        }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
           // Force immediate refetch for permission changes and character list

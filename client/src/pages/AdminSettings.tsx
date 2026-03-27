@@ -22,7 +22,7 @@ import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -662,7 +662,8 @@ export default function AdminSettings() {
                currentView === 'token-effects' ? 'Token Effects' : 
                currentView === 'notifications' ? 'Push Notifications' :
                currentView === 'archived-items' ? 'Archived Items' :
-               currentView === 'archived-spells' ? 'Archived Spells' : 'Feat Trees'}
+               currentView === 'archived-spells' ? 'Archived Spells' : 
+               currentView === 'classes' ? 'Classes (A.A. V2)' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -839,6 +840,10 @@ export default function AdminSettings() {
 
         {currentView === 'feat-trees' && (
           <FeatTreesView />
+        )}
+
+        {currentView === 'classes' && (
+          <ClassesView />
         )}
 
         {currentView === 'notifications' && (
@@ -1408,6 +1413,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-purple-500">Feat Trees</CardTitle>
           <CardDescription className="text-stone-400">
             Create and manage feat progression trees for characters
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-fuchsia-600 transition-colors"
+        onClick={() => onNavigate('classes')}
+        data-testid="card-classes"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-fuchsia-700/20 flex items-center justify-center mb-2">
+            <Layers className="h-6 w-6 text-fuchsia-500" />
+          </div>
+          <CardTitle className="text-fuchsia-500">Classes (A.A. V2)</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create and manage character classes with skill trees for the A.A. V2 system
           </CardDescription>
         </CardHeader>
       </Card>
@@ -7592,5 +7613,625 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       title="Select Item Image"
     />
     </>
+  );
+}
+
+const CLASS_CELL_SIZE = 100;
+const CLASS_NODE_WIDTH = 160;
+const CLASS_NODE_HEIGHT = 100;
+const CLASS_WORLD_SIZE = 20000;
+const CLASS_WORLD_OFFSET = 10000;
+
+const classTierStyles: Record<number, { border: string; bg: string; glow: string }> = {
+  1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]' },
+  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
+  3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
+};
+
+function ClassesView() {
+  const queryClient = useQueryClient();
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [showAddClass, setShowAddClass] = useState(false);
+  const [editingClass, setEditingClass] = useState<any | null>(null);
+  const [className, setClassName] = useState('');
+  const [classDesc, setClassDesc] = useState('');
+  const [showNodeEditor, setShowNodeEditor] = useState(false);
+  const [editingNode, setEditingNode] = useState<any | null>(null);
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+  const [actionMenuNode, setActionMenuNode] = useState<any | null>(null);
+  const [actionMenuPos, setActionMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const pendingDragUpdates = useRef(new Map<string, { gridX: number; gridY: number }>());
+
+  const { data: classes = [], isLoading } = useQuery({
+    queryKey: ['admin-classes'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/classes?system=aa-v2', { credentials: 'include' });
+      return res.json();
+    },
+  });
+
+  const { data: nodes = [] } = useQuery({
+    queryKey: ['class-nodes', selectedClassId],
+    queryFn: async () => {
+      if (!selectedClassId) return [];
+      const res = await fetch(`/api/admin/classes/${selectedClassId}/nodes`, { credentials: 'include' });
+      return res.json();
+    },
+    enabled: !!selectedClassId,
+  });
+
+  const { data: connections = [] } = useQuery({
+    queryKey: ['class-connections', selectedClassId],
+    queryFn: async () => {
+      if (!selectedClassId) return [];
+      const res = await fetch(`/api/admin/classes/${selectedClassId}/connections`, { credentials: 'include' });
+      return res.json();
+    },
+    enabled: !!selectedClassId,
+  });
+
+  const createClassMutation = useMutation({
+    mutationFn: async (data: { name: string; description: string }) => {
+      const res = await fetch('/api/admin/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...data, system: 'aa-v2' }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-classes'] });
+      setShowAddClass(false);
+      setClassName('');
+      setClassDesc('');
+      toast({ title: "Class created" });
+    },
+  });
+
+  const updateClassMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await fetch(`/api/admin/classes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-classes'] });
+      setEditingClass(null);
+      toast({ title: "Class updated" });
+    },
+  });
+
+  const deleteClassMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await fetch(`/api/admin/classes/${id}`, { method: 'DELETE', credentials: 'include' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-classes'] });
+      if (selectedClassId) setSelectedClassId(null);
+      toast({ title: "Class deleted" });
+    },
+  });
+
+  const createNodeMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch(`/api/admin/classes/${selectedClassId}/nodes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
+    },
+  });
+
+  const updateNodeMutation = useMutation({
+    mutationFn: async ({ nodeId, data }: { nodeId: string; data: any }) => {
+      const res = await fetch(`/api/admin/classes/${selectedClassId}/nodes/${nodeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
+    },
+  });
+
+  const deleteNodeMutation = useMutation({
+    mutationFn: async (nodeId: string) => {
+      await fetch(`/api/admin/classes/${selectedClassId}/nodes/${nodeId}`, { method: 'DELETE', credentials: 'include' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
+      queryClient.invalidateQueries({ queryKey: ['class-connections', selectedClassId] });
+    },
+  });
+
+  const createConnectionMutation = useMutation({
+    mutationFn: async (data: { fromNodeId: string; toNodeId: string }) => {
+      const res = await fetch(`/api/admin/classes/${selectedClassId}/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-connections', selectedClassId] });
+      setConnectingFrom(null);
+    },
+  });
+
+  const deleteConnectionMutation = useMutation({
+    mutationFn: async (connId: string) => {
+      await fetch(`/api/admin/classes/${selectedClassId}/connections/${connId}`, { method: 'DELETE', credentials: 'include' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-connections', selectedClassId] });
+    },
+  });
+
+  const handleAddNode = () => {
+    if (!selectedClassId || !scrollRef.current) return;
+    const container = scrollRef.current;
+    const centerX = (container.scrollLeft + container.clientWidth / 2) / zoom;
+    const centerY = (container.scrollTop + container.clientHeight / 2) / zoom;
+    const gridX = Math.round((centerX - CLASS_WORLD_OFFSET) / CLASS_CELL_SIZE);
+    const gridY = Math.round((centerY - CLASS_WORLD_OFFSET) / CLASS_CELL_SIZE);
+    createNodeMutation.mutate({ name: 'New Skill', gridX, gridY, tier: 1, cost: 1, effects: [] });
+  };
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(prev => Math.max(0.3, Math.min(2, prev + delta)));
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) {
+      el.addEventListener('wheel', handleWheel, { passive: false });
+      return () => el.removeEventListener('wheel', handleWheel);
+    }
+  }, [handleWheel, selectedClassId]);
+
+  useEffect(() => {
+    if (selectedClassId && scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollLeft = CLASS_WORLD_OFFSET - el.clientWidth / 2;
+      el.scrollTop = CLASS_WORLD_OFFSET - el.clientHeight / 2;
+    }
+  }, [selectedClassId]);
+
+  if (!selectedClassId) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-medium text-stone-300">Classes</h3>
+          <Button onClick={() => setShowAddClass(true)} className="bg-fuchsia-700 hover:bg-fuchsia-600" data-testid="button-add-class">
+            <Plus className="h-4 w-4 mr-1" /> Add Class
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <p className="text-stone-400">Loading...</p>
+        ) : classes.length === 0 ? (
+          <p className="text-stone-500">No classes created yet. Add one to get started.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {classes.map((cls: any) => (
+              <Card key={cls.id} className="bg-stone-900 border-stone-700 hover:border-fuchsia-600 transition-colors cursor-pointer" onClick={() => setSelectedClassId(cls.id)} data-testid={`card-class-${cls.id}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="text-fuchsia-400">{cls.name}</CardTitle>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); }} data-testid={`button-edit-class-${cls.id}`}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-red-400" onClick={(e) => { e.stopPropagation(); deleteClassMutation.mutate(cls.id); }} data-testid={`button-delete-class-${cls.id}`}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <CardDescription className="text-stone-400">{cls.description || 'No description'}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); } }}>
+          <DialogContent className="bg-stone-900 border-stone-700">
+            <DialogHeader>
+              <DialogTitle className="text-fuchsia-400">{editingClass ? 'Edit Class' : 'New Class'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-stone-300">Name</Label>
+                <Input value={className} onChange={(e) => setClassName(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-class-name" />
+              </div>
+              <div>
+                <Label className="text-stone-300">Description</Label>
+                <Textarea value={classDesc} onChange={(e) => setClassDesc(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-class-description" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowAddClass(false); setEditingClass(null); }}>Cancel</Button>
+              <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => {
+                if (editingClass) {
+                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc } });
+                } else {
+                  createClassMutation.mutate({ name: className, description: classDesc });
+                }
+              }} data-testid="button-save-class">
+                {editingClass ? 'Update' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  const selectedClass = classes.find((c: any) => c.id === selectedClassId);
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-200px)]">
+      <div className="flex items-center justify-between mb-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setSelectedClassId(null)} data-testid="button-back-classes">
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} — Skill Tree</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-1">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} data-testid="button-zoom-out-class">
+              <ZoomOut className="h-3 w-3" />
+            </Button>
+            <span className="text-xs text-stone-400 w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setZoom(z => Math.min(2, z + 0.1))} data-testid="button-zoom-in-class">
+              <ZoomIn className="h-3 w-3" />
+            </Button>
+          </div>
+          {connectingFrom && (
+            <Badge className="bg-green-700 text-white">
+              Click target node to connect
+              <Button variant="ghost" size="sm" className="h-4 w-4 p-0 ml-1" onClick={() => setConnectingFrom(null)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
+          )}
+          <Button size="sm" onClick={handleAddNode} className="bg-fuchsia-700 hover:bg-fuchsia-600" data-testid="button-add-node">
+            <Plus className="h-4 w-4 mr-1" /> Add Skill
+          </Button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-stone-950 rounded-lg border border-stone-700 relative" data-testid="class-skill-tree-canvas">
+        <div
+          ref={containerRef}
+          style={{
+            width: CLASS_WORLD_SIZE,
+            height: CLASS_WORLD_SIZE,
+            transform: `scale(${zoom})`,
+            transformOrigin: '0 0',
+            position: 'relative',
+          }}
+        >
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+            {connections.map((conn: any) => {
+              const fromNode = nodes.find((n: any) => n.id === conn.fromNodeId);
+              const toNode = nodes.find((n: any) => n.id === conn.toNodeId);
+              if (!fromNode || !toNode) return null;
+              const fromDrag = pendingDragUpdates.current.get(fromNode.id);
+              const toDrag = pendingDragUpdates.current.get(toNode.id);
+              const fx = ((fromDrag?.gridX ?? fromNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
+              const fy = ((fromDrag?.gridY ?? fromNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_HEIGHT / 2;
+              const tx = ((toDrag?.gridX ?? toNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
+              const ty = ((toDrag?.gridY ?? toNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_HEIGHT / 2;
+              const mx = (fx + tx) / 2;
+              const my = (fy + ty) / 2;
+              return (
+                <g key={conn.id}>
+                  <line x1={fx} y1={fy} x2={tx} y2={ty} stroke="#a855f7" strokeWidth="2" markerEnd="url(#arrowhead-class)" />
+                  <foreignObject x={mx - 10} y={my - 10} width={20} height={20} style={{ overflow: 'visible' }}>
+                    <button
+                      className="w-5 h-5 rounded-full bg-red-900 border border-red-600 flex items-center justify-center text-red-400 hover:bg-red-700 pointer-events-auto"
+                      onClick={() => deleteConnectionMutation.mutate(conn.id)}
+                      data-testid={`button-delete-connection-${conn.id}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </foreignObject>
+                </g>
+              );
+            })}
+            <defs>
+              <marker id="arrowhead-class" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
+              </marker>
+            </defs>
+          </svg>
+
+          <div className="absolute w-3 h-3 rounded-full bg-fuchsia-500/60" style={{ left: CLASS_WORLD_OFFSET - 6, top: CLASS_WORLD_OFFSET - 6, zIndex: 2 }} />
+
+          {nodes.map((node: any) => {
+            const dragPos = pendingDragUpdates.current.get(node.id);
+            const gx = dragPos?.gridX ?? node.gridX;
+            const gy = dragPos?.gridY ?? node.gridY;
+            const px = gx * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
+            const py = gy * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
+            const style = classTierStyles[node.tier] || classTierStyles[1];
+
+            return (
+              <div
+                key={node.id}
+                className={`absolute rounded-lg border-2 ${style.border} ${style.bg} ${style.glow} p-2 cursor-grab select-none`}
+                style={{
+                  left: px,
+                  top: py,
+                  width: CLASS_NODE_WIDTH,
+                  height: CLASS_NODE_HEIGHT,
+                  zIndex: 10,
+                }}
+                onPointerDown={(e) => {
+                  if (connectingFrom) {
+                    if (connectingFrom !== node.id) {
+                      createConnectionMutation.mutate({ fromNodeId: connectingFrom, toNodeId: node.id });
+                    }
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  const startGridX = gx;
+                  const startGridY = gy;
+
+                  const handleMove = (me: PointerEvent) => {
+                    const dx = (me.clientX - startX) / zoom;
+                    const dy = (me.clientY - startY) / zoom;
+                    const newGridX = startGridX + Math.round(dx / CLASS_CELL_SIZE);
+                    const newGridY = startGridY + Math.round(dy / CLASS_CELL_SIZE);
+                    pendingDragUpdates.current.set(node.id, { gridX: newGridX, gridY: newGridY });
+                    queryClient.setQueryData(['class-nodes', selectedClassId], (old: any[]) =>
+                      old?.map(n => n.id === node.id ? { ...n, gridX: newGridX, gridY: newGridY } : n)
+                    );
+                  };
+
+                  const handleUp = () => {
+                    const finalPos = pendingDragUpdates.current.get(node.id);
+                    if (finalPos && (finalPos.gridX !== startGridX || finalPos.gridY !== startGridY)) {
+                      updateNodeMutation.mutate({ nodeId: node.id, data: { gridX: finalPos.gridX, gridY: finalPos.gridY } });
+                    }
+                    pendingDragUpdates.current.delete(node.id);
+                    document.removeEventListener('pointermove', handleMove);
+                    document.removeEventListener('pointerup', handleUp);
+                  };
+
+                  document.addEventListener('pointermove', handleMove);
+                  document.addEventListener('pointerup', handleUp);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  const rect = scrollRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setActionMenuNode(node);
+                    setActionMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const rect = scrollRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setActionMenuNode(node);
+                    setActionMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
+                }}
+                data-testid={`class-node-${node.id}`}
+              >
+                <div className="flex flex-col h-full">
+                  <p className="text-xs font-bold text-white truncate">{node.name}</p>
+                  <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
+                  <div className="flex justify-between items-center mt-auto">
+                    <Badge variant="outline" className="text-[9px] h-4 px-1 border-stone-600">T{node.tier}</Badge>
+                    <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {actionMenuNode && actionMenuPos && (
+          <div
+            className="absolute bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-1 z-50"
+            style={{ left: actionMenuPos.x, top: actionMenuPos.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2"
+              onClick={() => { setEditingNode(actionMenuNode); setShowNodeEditor(true); setActionMenuNode(null); }}
+              data-testid="button-edit-node"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2"
+              onClick={() => { setConnectingFrom(actionMenuNode.id); setActionMenuNode(null); }}
+              data-testid="button-connect-node"
+            >
+              <Link className="h-3 w-3" /> Connect
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-stone-700 rounded flex items-center gap-2"
+              onClick={() => { deleteNodeMutation.mutate(actionMenuNode.id); setActionMenuNode(null); }}
+              data-testid="button-delete-node"
+            >
+              <Trash2 className="h-3 w-3" /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+
+      <ClassNodeEditorDialog
+        open={showNodeEditor}
+        onOpenChange={(open) => { setShowNodeEditor(open); if (!open) setEditingNode(null); }}
+        node={editingNode}
+        onSave={(data) => {
+          if (editingNode) {
+            updateNodeMutation.mutate({ nodeId: editingNode.id, data });
+          }
+          setShowNodeEditor(false);
+          setEditingNode(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  node: any;
+  onSave: (data: any) => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [tier, setTier] = useState(1);
+  const [cost, setCost] = useState(1);
+  const [effects, setEffects] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (node) {
+      setName(node.name || '');
+      setDescription(node.description || '');
+      setTier(node.tier || 1);
+      setCost(node.cost || 1);
+      setEffects(Array.isArray(node.effects) ? [...node.effects] : []);
+    }
+  }, [node]);
+
+  const addEffect = (type: string) => {
+    setEffects([...effects, { type, value: 0, attribute: type === 'attribute_bonus' ? 'might' : undefined }]);
+  };
+
+  const removeEffect = (idx: number) => {
+    setEffects(effects.filter((_, i) => i !== idx));
+  };
+
+  const updateEffect = (idx: number, field: string, value: any) => {
+    const copy = [...effects];
+    copy[idx] = { ...copy[idx], [field]: value };
+    setEffects(copy);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-fuchsia-400">Edit Skill Node</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-stone-300">Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-node-name" />
+          </div>
+          <div>
+            <Label className="text-stone-300">Description</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-node-description" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-stone-300">Tier</Label>
+              <Select value={tier.toString()} onValueChange={(v) => setTier(Number(v))}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-node-tier">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Tier 1</SelectItem>
+                  <SelectItem value="2">Tier 2</SelectItem>
+                  <SelectItem value="3">Tier 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-stone-300">Cost (points)</Label>
+              <Input type="number" min={1} value={cost} onChange={(e) => setCost(Number(e.target.value) || 1)} className="bg-stone-800 border-stone-700" data-testid="input-node-cost" />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-stone-300 mb-2 block">Effects</Label>
+            <div className="space-y-2">
+              {effects.map((effect, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded border border-stone-700">
+                  <span className="text-xs text-stone-400 capitalize w-24 truncate">{effect.type.replace(/_/g, ' ')}</span>
+                  {effect.type === 'attribute_bonus' && (
+                    <Select value={effect.attribute || 'might'} onValueChange={(v) => updateEffect(idx, 'attribute', v)}>
+                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['might', 'finesse', 'wit', 'presence', 'will', 'craft'].map(a => (
+                          <SelectItem key={a} value={a}>{a}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Input
+                    type="number"
+                    value={effect.value || 0}
+                    onChange={(e) => updateEffect(idx, 'value', Number(e.target.value))}
+                    className="bg-stone-900 border-stone-600 h-7 text-xs w-16"
+                  />
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-400" onClick={() => removeEffect(idx)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-2">
+              {[
+                { type: 'hp_bonus', label: 'HP', icon: '❤️' },
+                { type: 'energy_increase', label: 'Energy', icon: '⚡' },
+                { type: 'mana_increase', label: 'Mana', icon: '💜' },
+                { type: 'attribute_bonus', label: 'Attribute', icon: '✨' },
+                { type: 'skill_bonus', label: 'Skill', icon: '⭐' },
+              ].map(({ type, label, icon }) => (
+                <Button key={type} variant="outline" size="sm" className="h-6 text-[10px] px-2 border-stone-600" onClick={() => addEffect(type)}>
+                  {icon} +{label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => onSave({ name, description, tier, cost, effects })} data-testid="button-save-node">
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

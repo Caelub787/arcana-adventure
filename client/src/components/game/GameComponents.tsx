@@ -16158,6 +16158,74 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   
   // Feat tree viewer state
   const [showFeatTreeViewer, setShowFeatTreeViewer] = useState(false);
+
+  // AA V2 Classes state
+  const [showClassSkillTree, setShowClassSkillTree] = useState<string | null>(null);
+  const [showAddClassDialog, setShowAddClassDialog] = useState(false);
+
+  const { data: availableClasses = [] } = useQuery({
+    queryKey: ['classes'],
+    queryFn: async () => {
+      const res = await fetch('/api/classes?system=aa-v2', { credentials: 'include' });
+      return res.json();
+    },
+    enabled: isAAV2,
+  });
+
+  const { data: characterClasses = [], refetch: refetchCharacterClasses } = useQuery({
+    queryKey: ['character-classes', character?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/characters/${character!.id}/classes`, { credentials: 'include' });
+      return res.json();
+    },
+    enabled: isAAV2 && !!character?.id,
+  });
+
+  const addCharacterClassMutation = useMutation({
+    mutationFn: async (classId: string) => {
+      const res = await fetch(`/api/characters/${character!.id}/classes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ classId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
+      setShowAddClassDialog(false);
+      toast({ title: "Class added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const removeCharacterClassMutation = useMutation({
+    mutationFn: async (charClassId: string) => {
+      await fetch(`/api/characters/${character!.id}/classes/${charClassId}`, { method: 'DELETE', credentials: 'include' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
+      toast({ title: "Class removed" });
+    },
+  });
+
+  const levelUpClassMutation = useMutation({
+    mutationFn: async (charClassId: string) => {
+      const res = await fetch(`/api/characters/${character!.id}/classes/${charClassId}/level-up`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/characters', character?.id] });
+      toast({ title: "Class leveled up!" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
   
   // Calculate if character can level up HP (level > lastLevelUpRolled)
   const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
@@ -17127,6 +17195,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
     { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
     { value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
+    ...(isAAV2 ? [{ value: 'classes', icon: Layers, color: 'fuchsia', label: 'Classes' }] : []),
     { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
     { value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
   ];
@@ -17160,6 +17229,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       cyan: { 
         base: 'text-cyan-400/70 hover:text-cyan-300 hover:bg-cyan-900/30',
         active: 'data-[state=active]:bg-cyan-900/80 data-[state=active]:text-cyan-200 data-[state=active]:border-cyan-500'
+      },
+      fuchsia: { 
+        base: 'text-fuchsia-400/70 hover:text-fuchsia-300 hover:bg-fuchsia-900/30',
+        active: 'data-[state=active]:bg-fuchsia-900/80 data-[state=active]:text-fuchsia-200 data-[state=active]:border-fuchsia-500'
       },
     };
     return `${colors[color]?.base || ''} ${colors[color]?.active || ''}`;
@@ -17232,7 +17305,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       )}
       <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className="grid grid-cols-7 w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV2 ? 'grid-cols-8' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -17909,8 +17982,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 )}
 
-                {/* Feat Tree Section - Bottom of overview */}
-                {featTreeId && (
+                {/* Feat Tree Section - Bottom of overview (hidden for AA V2 which uses Classes tab) */}
+                {featTreeId && !isAAV2 && (
                   <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
                     <div className="flex justify-between items-center mb-2">
                       <Label className="text-sm text-purple-300 flex items-center gap-2">
@@ -20281,6 +20354,111 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             </AlertDialog>
           </TabsContent>
 
+          {/* CLASSES TAB (AA V2 only) */}
+          {isAAV2 && (
+          <TabsContent value="classes" className="space-y-4 mt-0" data-testid="content-classes">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardContent className="pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <Label className="text-sm text-fuchsia-300 flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-fuchsia-400" />
+                    Character Classes
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    {liveCharacter.classSkillPoints !== undefined && liveCharacter.classSkillPoints > 0 && (
+                      <Badge className="bg-fuchsia-700/50 text-fuchsia-200 text-xs">
+                        {liveCharacter.classSkillPoints} global pts
+                      </Badge>
+                    )}
+                    {canEditSheet && (
+                      <Button size="sm" variant="outline" className="text-fuchsia-400 border-fuchsia-600 hover:bg-fuchsia-900/30 h-7 text-xs" onClick={() => setShowAddClassDialog(true)} data-testid="button-add-character-class">
+                        <Plus className="h-3 w-3 mr-1" /> Add Class
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {characterClasses.length === 0 ? (
+                  <p className="text-stone-500 text-sm text-center py-4">No classes assigned yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {characterClasses.map((cc: any) => {
+                      const classInfo = availableClasses.find((c: any) => c.id === cc.classId);
+                      const classLevel = cc.classLevel || 1;
+                      const totalPoints = 2 + classLevel + (2 * Math.floor(classLevel / 3));
+                      const spentPoints = cc.spentPoints || 0;
+                      const availablePoints = totalPoints - spentPoints;
+
+                      return (
+                        <div key={cc.id} className="bg-gradient-to-r from-fuchsia-900/30 to-stone-900/50 rounded-lg p-3 border border-fuchsia-700/50" data-testid={`character-class-${cc.classId}`}>
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-bold text-fuchsia-300">{classInfo?.name || 'Unknown'}</span>
+                                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-fuchsia-600 text-fuchsia-300">
+                                  Lv.{classLevel}
+                                </Badge>
+                              </div>
+                              {classInfo?.description && (
+                                <p className="text-[11px] text-stone-400 mb-2">{classInfo.description}</p>
+                              )}
+                              <div className="flex items-center gap-3 text-xs">
+                                <span className={`${availablePoints > 0 ? 'text-green-400' : 'text-stone-400'}`}>
+                                  {availablePoints} / {totalPoints} skill pts
+                                </span>
+                                {(cc.unlockedNodes?.length || 0) > 0 && (
+                                  <span className="text-stone-500">{cc.unlockedNodes.length} skills unlocked</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              {canEditSheet && (
+                                <Button size="sm" variant="outline" className="text-green-400 border-green-600 hover:bg-green-900/30 h-6 text-[10px] px-2" onClick={() => levelUpClassMutation.mutate(cc.id)} data-testid={`button-levelup-class-${cc.classId}`}>
+                                  Level Up
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" className="text-fuchsia-400 border-fuchsia-600 hover:bg-fuchsia-900/30 h-6 text-[10px] px-2" onClick={() => setShowClassSkillTree(cc.classId)} data-testid={`button-view-class-tree-${cc.classId}`}>
+                                Skill Tree
+                              </Button>
+                              {canEditSheet && (
+                                <Button size="sm" variant="ghost" className="text-red-400 hover:bg-red-900/30 h-6 text-[10px] px-2" onClick={() => removeCharacterClassMutation.mutate(cc.id)} data-testid={`button-remove-class-${cc.classId}`}>
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Dialog open={showAddClassDialog} onOpenChange={setShowAddClassDialog}>
+              <DialogContent className="bg-stone-900 border-stone-700">
+                <DialogHeader>
+                  <DialogTitle className="text-fuchsia-400">Add Class</DialogTitle>
+                  <DialogDescription className="text-stone-400">Choose a class to add to this character.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {availableClasses
+                    .filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id))
+                    .map((cls: any) => (
+                      <button key={cls.id} className="w-full text-left p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-fuchsia-600 transition-colors" onClick={() => addCharacterClassMutation.mutate(cls.id)} data-testid={`button-select-class-${cls.id}`}>
+                        <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                        {cls.description && <p className="text-xs text-stone-400 mt-0.5">{cls.description}</p>}
+                      </button>
+                    ))}
+                  {availableClasses.filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id)).length === 0 && (
+                    <p className="text-stone-500 text-sm text-center py-4">All available classes are already assigned.</p>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+          )}
+
           {/* HOTBARS TAB */}
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
             <HotbarsTabContent character={character} isGM={isGM} isOwner={isOwner} />
@@ -21092,6 +21270,38 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         </DialogContent>
       </Dialog>
 
+      {/* Class Skill Tree Viewer Floating Panel (AA V2) */}
+      {showClassSkillTree && (
+        <FloatingPanel
+          open={!!showClassSkillTree}
+          onClose={() => setShowClassSkillTree(null)}
+          title={
+            <span className="text-fuchsia-400 flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              {availableClasses.find((c: any) => c.id === showClassSkillTree)?.name || 'Class'} — Skill Tree
+            </span>
+          }
+          defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
+          minWidth={350}
+          minHeight={300}
+          zIndex={floatingZIndices?.['class-skill-tree'] || 10150}
+          onBringToFront={() => bringToFront?.('class-skill-tree')}
+        >
+          <div className="flex-1 min-h-0 overflow-hidden h-full">
+            <ClassSkillTreeViewer
+              classId={showClassSkillTree}
+              characterId={liveCharacter.id}
+              characterClass={characterClasses.find((cc: any) => cc.classId === showClassSkillTree)}
+              canEdit={canEditSheet}
+              onNodeUnlocked={() => {
+                queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
+                queryClient.invalidateQueries({ queryKey: ['/api/characters', character?.id] });
+              }}
+            />
+          </div>
+        </FloatingPanel>
+      )}
+
       {/* Feat Tree Viewer Floating Panel */}
       {showFeatTreeViewer && (
         <FloatingPanel
@@ -21749,6 +21959,229 @@ export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: 
       ) : (
         <TypeIcon className={`h-5 w-5 ${iconColor}`} />
       )}
+    </div>
+  );
+}
+
+const CLASS_VIEWER_CELL = 100;
+const CLASS_VIEWER_NODE_W = 160;
+const CLASS_VIEWER_NODE_H = 100;
+const CLASS_VIEWER_SIZE = 20000;
+const CLASS_VIEWER_OFFSET = 10000;
+
+const classViewerTierStyles: Record<number, { border: string; bg: string; glow: string; unlocked: string }> = {
+  1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-fuchsia-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
+  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-violet-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
+  3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-amber-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
+};
+
+function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, onNodeUnlocked }: {
+  classId: string;
+  characterId: string;
+  characterClass: any;
+  canEdit: boolean;
+  onNodeUnlocked: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [selectedNode, setSelectedNode] = useState<any | null>(null);
+
+  const { data: nodes = [] } = useQuery({
+    queryKey: ['class-nodes', classId],
+    queryFn: async () => {
+      const res = await fetch(`/api/classes/${classId}/nodes`, { credentials: 'include' });
+      return res.json();
+    },
+  });
+
+  const { data: connections = [] } = useQuery({
+    queryKey: ['class-connections', classId],
+    queryFn: async () => {
+      const res = await fetch(`/api/classes/${classId}/connections`, { credentials: 'include' });
+      return res.json();
+    },
+  });
+
+  const unlockNodeMutation = useMutation({
+    mutationFn: async (nodeId: string) => {
+      const res = await fetch(`/api/characters/${characterId}/classes/${classId}/nodes/${nodeId}/unlock`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to unlock');
+      return res.json();
+    },
+    onSuccess: () => {
+      onNodeUnlocked();
+      queryClient.invalidateQueries({ queryKey: ['character-classes', characterId] });
+      setSelectedNode(null);
+      toast({ title: "Skill unlocked!" });
+    },
+    onError: (e: any) => toast({ title: "Cannot unlock", description: e.message, variant: "destructive" }),
+  });
+
+  const unlockedNodeIds = characterClass?.unlockedNodes || [];
+  const classLevel = characterClass?.classLevel || 1;
+  const totalPoints = 2 + classLevel + (2 * Math.floor(classLevel / 3));
+  const spentPoints = characterClass?.spentPoints || 0;
+  const availablePoints = totalPoints - spentPoints;
+
+  const isNodeUnlockable = useCallback((node: any) => {
+    if (unlockedNodeIds.includes(node.id)) return false;
+    if (node.cost > availablePoints) return false;
+    const incomingConns = connections.filter((c: any) => c.toNodeId === node.id);
+    if (incomingConns.length === 0) return true;
+    return incomingConns.some((c: any) => unlockedNodeIds.includes(c.fromNodeId));
+  }, [unlockedNodeIds, availablePoints, connections]);
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(prev => Math.max(0.3, Math.min(2, prev + delta)));
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) {
+      el.addEventListener('wheel', handleWheel, { passive: false });
+      return () => el.removeEventListener('wheel', handleWheel);
+    }
+  }, [handleWheel]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollLeft = CLASS_VIEWER_OFFSET - el.clientWidth / 2;
+      el.scrollTop = CLASS_VIEWER_OFFSET - el.clientHeight / 2;
+    }
+  }, []);
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 shrink-0">
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`font-medium ${availablePoints > 0 ? 'text-green-400' : 'text-stone-400'}`}>
+            {availablePoints} / {totalPoints} points
+          </span>
+          <span className="text-stone-500">|</span>
+          <span className="text-stone-400">Level {classLevel}</span>
+          <span className="text-stone-500">|</span>
+          <span className="text-fuchsia-400">{unlockedNodeIds.length} skills</span>
+        </div>
+        <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-0.5">
+          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))}>
+            <ZoomOut className="h-3 w-3" />
+          </Button>
+          <span className="text-[10px] text-stone-400 w-8 text-center">{Math.round(zoom * 100)}%</span>
+          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setZoom(z => Math.min(2, z + 0.1))}>
+            <ZoomIn className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-stone-950 relative">
+        <div style={{ width: CLASS_VIEWER_SIZE, height: CLASS_VIEWER_SIZE, transform: `scale(${zoom})`, transformOrigin: '0 0', position: 'relative' }}>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+            {connections.map((conn: any) => {
+              const fromNode = nodes.find((n: any) => n.id === conn.fromNodeId);
+              const toNode = nodes.find((n: any) => n.id === conn.toNodeId);
+              if (!fromNode || !toNode) return null;
+              const fx = fromNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_W / 2;
+              const fy = fromNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_H / 2;
+              const tx = toNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_W / 2;
+              const ty = toNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_H / 2;
+              const bothUnlocked = unlockedNodeIds.includes(fromNode.id) && unlockedNodeIds.includes(toNode.id);
+              return (
+                <line key={conn.id} x1={fx} y1={fy} x2={tx} y2={ty} stroke={bothUnlocked ? '#22c55e' : '#a855f7'} strokeWidth="2" strokeOpacity={bothUnlocked ? 1 : 0.5} markerEnd="url(#arrowhead-class-viewer)" />
+              );
+            })}
+            <defs>
+              <marker id="arrowhead-class-viewer" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
+              </marker>
+            </defs>
+          </svg>
+
+          {nodes.map((node: any) => {
+            const px = node.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET;
+            const py = node.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET;
+            const isUnlocked = unlockedNodeIds.includes(node.id);
+            const canUnlock = canEdit && isNodeUnlockable(node);
+            const style = classViewerTierStyles[node.tier] || classViewerTierStyles[1];
+
+            return (
+              <div
+                key={node.id}
+                className={`absolute rounded-lg border-2 p-2 cursor-pointer select-none transition-all ${
+                  isUnlocked ? style.unlocked : canUnlock ? `${style.border} ${style.bg} ${style.glow} ring-2 ring-green-500/30` : `${style.border} ${style.bg} opacity-60`
+                }`}
+                style={{ left: px, top: py, width: CLASS_VIEWER_NODE_W, height: CLASS_VIEWER_NODE_H, zIndex: 10 }}
+                onClick={() => setSelectedNode(node)}
+                data-testid={`class-viewer-node-${node.id}`}
+              >
+                <div className="flex flex-col h-full">
+                  <p className="text-xs font-bold text-white truncate">{node.name}</p>
+                  <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
+                  <div className="flex justify-between items-center mt-auto">
+                    <Badge variant="outline" className={`text-[9px] h-4 px-1 ${isUnlocked ? 'border-green-500 text-green-400' : 'border-stone-600'}`}>
+                      {isUnlocked ? '✓' : `T${node.tier}`}
+                    </Badge>
+                    <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Dialog open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-fuchsia-400">{selectedNode?.name}</DialogTitle>
+            {selectedNode?.description && (
+              <DialogDescription className="text-stone-400">{selectedNode.description}</DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 text-sm">
+              <Badge variant="outline" className="border-fuchsia-600 text-fuchsia-300">Tier {selectedNode?.tier}</Badge>
+              <span className="text-stone-400">Cost: {selectedNode?.cost} pts</span>
+            </div>
+            {selectedNode?.effects?.length > 0 && (
+              <div>
+                <Label className="text-stone-300 text-xs">Effects:</Label>
+                <div className="space-y-1 mt-1">
+                  {selectedNode.effects.map((eff: any, i: number) => (
+                    <div key={i} className="text-xs text-stone-300 bg-stone-800 px-2 py-1 rounded">
+                      {eff.type === 'attribute_bonus' ? `${eff.attribute} +${eff.value}` : `${eff.type.replace(/_/g, ' ')} +${eff.value}`}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {unlockedNodeIds.includes(selectedNode?.id) && (
+              <Badge className="bg-green-700 text-white">Already Unlocked</Badge>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedNode(null)}>Close</Button>
+            {canEdit && selectedNode && !unlockedNodeIds.includes(selectedNode.id) && (
+              <Button
+                className="bg-fuchsia-700 hover:bg-fuchsia-600"
+                disabled={!isNodeUnlockable(selectedNode) || unlockNodeMutation.isPending}
+                onClick={() => unlockNodeMutation.mutate(selectedNode.id)}
+                data-testid="button-unlock-node"
+              >
+                {unlockNodeMutation.isPending ? 'Unlocking...' : `Unlock (${selectedNode.cost} pts)`}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -5001,6 +5001,381 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== CLASS ROUTES (AA V2) ====================
+
+  app.get("/api/admin/classes", requireAdmin, async (req, res) => {
+    try {
+      const system = (req.query.system as string) || 'aa-v2';
+      const result = await storage.getClasses(system);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch classes" });
+    }
+  });
+
+  app.post("/api/admin/classes", requireAdmin, async (req, res) => {
+    try {
+      const newClass = await storage.createClass(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json(newClass);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create class" });
+    }
+  });
+
+  app.patch("/api/admin/classes/:id", requireAdmin, async (req, res) => {
+    try {
+      const updated = await storage.updateClass(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Class not found" });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update class" });
+    }
+  });
+
+  app.delete("/api/admin/classes/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteClass(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete class" });
+    }
+  });
+
+  app.get("/api/admin/classes/:id/nodes", requireAdmin, async (req, res) => {
+    try {
+      const nodes = await storage.getClassSkillNodes(req.params.id);
+      res.json(nodes);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class skill nodes" });
+    }
+  });
+
+  app.post("/api/admin/classes/:id/nodes", requireAdmin, async (req, res) => {
+    try {
+      const node = await storage.createClassSkillNode({ ...req.body, classId: req.params.id });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json(node);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create class skill node" });
+    }
+  });
+
+  app.patch("/api/admin/classes/:id/nodes/:nodeId", requireAdmin, async (req, res) => {
+    try {
+      const updated = await storage.updateClassSkillNode(req.params.nodeId, req.body);
+      if (!updated) return res.status(404).json({ error: "Node not found" });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update class skill node" });
+    }
+  });
+
+  app.delete("/api/admin/classes/:id/nodes/:nodeId", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteClassSkillNode(req.params.nodeId);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete class skill node" });
+    }
+  });
+
+  app.get("/api/admin/classes/:id/connections", requireAdmin, async (req, res) => {
+    try {
+      const connections = await storage.getClassSkillConnections(req.params.id);
+      res.json(connections);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class skill connections" });
+    }
+  });
+
+  app.post("/api/admin/classes/:id/connections", requireAdmin, async (req, res) => {
+    try {
+      const connection = await storage.createClassSkillConnection({ ...req.body, classId: req.params.id });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json(connection);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create class skill connection" });
+    }
+  });
+
+  app.delete("/api/admin/classes/:id/connections/:connectionId", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteClassSkillConnection(req.params.connectionId);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete class skill connection" });
+    }
+  });
+
+  app.get("/api/classes", requireAuth, async (req, res) => {
+    try {
+      const system = (req.query.system as string) || 'aa-v2';
+      const result = await storage.getClasses(system);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch classes" });
+    }
+  });
+
+  app.get("/api/classes/:classId/nodes", requireAuth, async (req, res) => {
+    try {
+      const nodes = await storage.getClassSkillNodes(req.params.classId);
+      res.json(nodes);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class nodes" });
+    }
+  });
+
+  app.get("/api/classes/:classId/connections", requireAuth, async (req, res) => {
+    try {
+      const connections = await storage.getClassSkillConnections(req.params.classId);
+      res.json(connections);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class connections" });
+    }
+  });
+
+  app.get("/api/characters/:id/classes", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'view');
+      if (!access.allowed) return res.status(403).json({ error: "No access" });
+
+      const charClasses = await storage.getCharacterClasses(req.params.id);
+      const enriched = await Promise.all(charClasses.map(async (cc) => {
+        const skills = await storage.getCharacterClassSkills(req.params.id, cc.classId);
+        const nodes = await storage.getClassSkillNodes(cc.classId);
+        const spentPoints = skills.reduce((sum, s) => {
+          const node = nodes.find(n => n.id === s.nodeId);
+          return sum + (node?.cost || 0);
+        }, 0);
+        return {
+          ...cc,
+          unlockedNodes: skills.map(s => s.nodeId),
+          spentPoints,
+        };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character classes" });
+    }
+  });
+
+  app.post("/api/characters/:id/classes", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const isAdmin = await isAdminUser(req.session.userId);
+      if (!access.isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can add classes" });
+
+      const charClass = await storage.createCharacterClass({
+        characterId: req.params.id,
+        classId: req.body.classId,
+        classLevel: 1,
+        classPoints: 0,
+      });
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "character_class_updated",
+          characterId: req.params.id,
+        });
+      }
+      res.json(charClass);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to add class to character" });
+    }
+  });
+
+  app.delete("/api/characters/:id/classes/:charClassId", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const isAdmin = await isAdminUser(req.session.userId);
+      if (!access.isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can remove classes" });
+
+      const charClasses = await storage.getCharacterClasses(req.params.id);
+      const charClass = charClasses.find(cc => cc.id === req.params.charClassId);
+      if (!charClass) return res.status(404).json({ error: "Character class not found" });
+
+      await storage.deleteCharacterClass(req.params.charClassId);
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "character_class_updated",
+          characterId: req.params.id,
+        });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to remove class from character" });
+    }
+  });
+
+  app.post("/api/characters/:id/classes/:charClassId/level-up", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const isAdmin = await isAdminUser(req.session.userId);
+      if (!access.isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can level up classes" });
+
+      const charClasses = await storage.getCharacterClasses(req.params.id);
+      const charClass = charClasses.find(cc => cc.id === req.params.charClassId);
+      if (!charClass) return res.status(404).json({ error: "Character class not found" });
+
+      const newLevel = charClass.classLevel + 1;
+      const totalPoints = 2 + newLevel + (2 * Math.floor(newLevel / 3));
+      const spentNodes = await storage.getCharacterClassSkills(req.params.id, charClass.classId);
+      const nodes = await storage.getClassSkillNodes(charClass.classId);
+      const spentPoints = spentNodes.reduce((sum, s) => {
+        const node = nodes.find(n => n.id === s.nodeId);
+        return sum + (node?.cost || 0);
+      }, 0);
+      const availablePoints = totalPoints - spentPoints;
+
+      const updated = await storage.updateCharacterClass(charClass.id, {
+        classLevel: newLevel,
+        classPoints: availablePoints,
+      });
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "character_class_updated",
+          characterId: req.params.id,
+        });
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to level up class" });
+    }
+  });
+
+  app.post("/api/characters/:id/classes/:classId/nodes/:nodeId/unlock", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      if (!access.allowed) return res.status(403).json({ error: "No edit access" });
+
+      const node = await storage.getClassSkillNode(req.params.nodeId);
+      if (!node) return res.status(404).json({ error: "Node not found" });
+      if (node.classId !== req.params.classId) return res.status(400).json({ error: "Node does not belong to this class" });
+
+      const charClasses = await storage.getCharacterClasses(req.params.id);
+      const charClass = charClasses.find(cc => cc.classId === req.params.classId);
+      if (!charClass) return res.status(400).json({ error: "Character doesn't have this class" });
+
+      const existingSkills = await storage.getCharacterClassSkills(req.params.id, req.params.classId);
+      if (existingSkills.some(s => s.nodeId === req.params.nodeId)) {
+        return res.status(400).json({ error: "Node already unlocked" });
+      }
+
+      const connections = await storage.getClassSkillConnections(req.params.classId);
+      const prereqConnections = connections.filter(c => c.toNodeId === req.params.nodeId);
+      for (const conn of prereqConnections) {
+        if (!existingSkills.some(s => s.nodeId === conn.fromNodeId)) {
+          return res.status(400).json({ error: "Prerequisites not met" });
+        }
+      }
+
+      const allNodes = await storage.getClassSkillNodes(req.params.classId);
+      const spentPoints = existingSkills.reduce((sum, s) => {
+        const n = allNodes.find(an => an.id === s.nodeId);
+        return sum + (n?.cost || 0);
+      }, 0);
+      const totalPoints = 2 + charClass.classLevel + (2 * Math.floor(charClass.classLevel / 3));
+      const available = totalPoints - spentPoints;
+
+      if (node.cost > available) {
+        return res.status(400).json({ error: "Not enough class points" });
+      }
+
+      await storage.createCharacterClassSkill({
+        characterId: req.params.id,
+        classId: req.params.classId,
+        nodeId: req.params.nodeId,
+      });
+
+      const newSpent = spentPoints + node.cost;
+      const newAvailable = totalPoints - newSpent;
+      await storage.updateCharacterClass(charClass.id, { classPoints: newAvailable });
+
+      const effects = (node.effects as any[]) || [];
+      const charUpdates: Record<string, any> = {};
+      for (const effect of effects) {
+        if (effect.type === 'hp_bonus' && effect.value) {
+          const char = await storage.getCharacter(req.params.id);
+          if (char) {
+            charUpdates.maxHp = (char.maxHp || 0) + Number(effect.value);
+            charUpdates.hp = (char.hp || 0) + Number(effect.value);
+          }
+        } else if (effect.type === 'energy_increase' && effect.value) {
+          const char = await storage.getCharacter(req.params.id);
+          if (char) {
+            charUpdates.maxEnergy = (char.maxEnergy || 0) + Number(effect.value);
+            charUpdates.energy = (char.energy || 0) + Number(effect.value);
+          }
+        } else if (effect.type === 'mana_increase' && effect.value) {
+          const char = await storage.getCharacter(req.params.id);
+          if (char) {
+            charUpdates.maxMana = (char.maxMana || 0) + Number(effect.value);
+            charUpdates.mana = (char.mana || 0) + Number(effect.value);
+          }
+        } else if (effect.type === 'attribute_bonus' && effect.attribute && effect.value) {
+          const attrMap: Record<string, string> = { might: 'might', finesse: 'finesse', wit: 'wit', presence: 'presence', will: 'will', craft: 'craft' };
+          const field = attrMap[effect.attribute];
+          if (field) {
+            const char = await storage.getCharacter(req.params.id);
+            if (char) {
+              charUpdates[field] = ((char as any)[field] || 0) + Number(effect.value);
+            }
+          }
+        }
+      }
+      if (Object.keys(charUpdates).length > 0) {
+        await storage.updateCharacter(req.params.id, charUpdates);
+      }
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "character_class_updated",
+          characterId: req.params.id,
+        });
+        if (Object.keys(charUpdates).length > 0) {
+          const updatedChar = await storage.getCharacter(req.params.id);
+          broadcastToCampaign(access.character.campaignId, {
+            type: "character_updated",
+            characterId: req.params.id,
+            character: updatedChar,
+          });
+        }
+      }
+
+      res.json({ success: true, pointsRemaining: newAvailable });
+    } catch (err) {
+      console.error("Unlock node error:", err);
+      res.status(400).json({ error: "Failed to unlock node" });
+    }
+  });
+
+  app.get("/api/classes/:classId/nodes", requireAuth, async (req, res) => {
+    try {
+      const nodes = await storage.getClassSkillNodes(req.params.classId);
+      res.json(nodes);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class nodes" });
+    }
+  });
+
+  app.get("/api/classes/:classId/connections", requireAuth, async (req, res) => {
+    try {
+      const connections = await storage.getClassSkillConnections(req.params.classId);
+      res.json(connections);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch class connections" });
+    }
+  });
+
   // ==================== FEAT TREE ROUTES ====================
 
   // Get all feat trees (admin)
