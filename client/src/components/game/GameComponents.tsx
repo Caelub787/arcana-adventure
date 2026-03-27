@@ -15792,6 +15792,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     const bonuses = {
       hp: 0,
       energy: 0,
+      mana: 0,
       dc: 0,
       attributes: {} as Record<string, number>,
       skills: {} as Record<string, number>,
@@ -15837,6 +15838,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               bonuses.skills[effect.target] = (bonuses.skills[effect.target] || 0) + (effect.value || 0);
             }
             break;
+          case 'mana_increase':
+            if (effect.subtype === 'per_level') {
+              bonuses.mana += (effect.value || 0) * charLevel;
+            } else {
+              bonuses.mana += effect.value || 0;
+            }
+            break;
         }
       }
     }
@@ -15844,9 +15852,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     return bonuses;
   }, [featTreeData?.feats, characterFeats, liveCharacter?.level]);
 
-  // Calculate effective max HP/Energy including feat bonuses
+  // Calculate effective max HP/Energy/Mana including feat bonuses
   const effectiveMaxHp = (liveCharacter.maxHp || 0) + featBonuses.hp;
   const effectiveMaxEnergy = (liveCharacter.maxEnergy || 0) + featBonuses.energy;
+  const effectiveMaxMana = (liveCharacter.maxMana || 0) + featBonuses.mana;
 
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
@@ -17680,11 +17689,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-mana">
-                            {liveCharacter.mana ?? 0} / {liveCharacter.maxMana ?? 0}
+                            {liveCharacter.mana ?? 0} / {effectiveMaxMana}
                           </span>
                         )}
                       </div>
-                      {!editingOverview && <Progress value={Math.min(100, (liveCharacter.maxMana ?? 0) > 0 ? Math.round(((liveCharacter.mana ?? 0) / (liveCharacter.maxMana ?? 0)) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />}
+                      {!editingOverview && <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />}
                     </div>
                 )}
                   </div>

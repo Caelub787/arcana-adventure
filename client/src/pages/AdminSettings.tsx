@@ -5116,6 +5116,7 @@ const EFFECT_TYPE_ICONS: Record<string, { icon: React.ComponentType<{ className?
   item_grant: { icon: Package, color: 'text-orange-400' },
   skill_grant: { icon: Sparkles, color: 'text-pink-400' },
   trait_grant: { icon: Wand2, color: 'text-violet-400' },
+  mana_increase: { icon: Sparkles, color: 'text-fuchsia-400' },
 };
 
 interface TemplateSelectorProps {
@@ -5492,13 +5493,19 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                   }
                   if (effect.type === 'hp_bonus') {
                     const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
-                    // For legacy effects, show target if it contains useful info (e.g., dice expressions)
                     const hasLegacyTarget = !effect.subtype && target && target !== '';
                     if (hasLegacyTarget) {
-                      // Legacy effect - show as "HP: <target>" to preserve original info
                       return `HP: ${target}`;
                     }
                     return `+${value} HP${subtypeLabel}`;
+                  }
+                  if (effect.type === 'energy_bonus') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    return `+${value} Energy${subtypeLabel}`;
+                  }
+                  if (effect.type === 'mana_increase') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    return `+${value} Mana${subtypeLabel}`;
                   }
                   return `+${value}${target ? ` to ${target}` : ''}`;
                 };
@@ -5524,7 +5531,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                 <div className="grid grid-cols-2 gap-2">
                   <Select
                     value={newEffect.type}
-                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: (v === 'hp_bonus' || v === 'energy_bonus') ? 'flat' : undefined })}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: (v === 'hp_bonus' || v === 'energy_bonus' || v === 'mana_increase') ? 'flat' : undefined })}
                   >
                     <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
                       <SelectValue />
@@ -5532,6 +5539,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     <SelectContent>
                       <SelectItem value="hp_bonus">HP Bonus</SelectItem>
                       <SelectItem value="energy_bonus">Energy Bonus</SelectItem>
+                      <SelectItem value="mana_increase">Mana Increase</SelectItem>
                       <SelectItem value="dc_bonus">DC Bonus</SelectItem>
                       <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
                       <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
@@ -5555,7 +5563,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                 </div>
 
                 {/* HP/Energy Bonus subtype selector */}
-                {(newEffect.type === 'hp_bonus' || newEffect.type === 'energy_bonus') && (
+                {(newEffect.type === 'hp_bonus' || newEffect.type === 'energy_bonus' || newEffect.type === 'mana_increase') && (
                   <div className="flex gap-2">
                     <Select
                       value={newEffect.subtype || 'flat'}
@@ -5571,8 +5579,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     </Select>
                     <span className="text-xs text-stone-400 self-center">
                       {newEffect.subtype === 'per_level' 
-                        ? `Adds ${newEffect.type === 'hp_bonus' ? 'HP' : 'Energy'} each level` 
-                        : `One-time ${newEffect.type === 'hp_bonus' ? 'HP' : 'Energy'} boost`}
+                        ? `Adds ${newEffect.type === 'hp_bonus' ? 'HP' : newEffect.type === 'energy_bonus' ? 'Energy' : 'Mana'} each level` 
+                        : `One-time ${newEffect.type === 'hp_bonus' ? 'HP' : newEffect.type === 'energy_bonus' ? 'Energy' : 'Mana'} boost`}
                     </span>
                   </div>
                 )}
