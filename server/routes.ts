@@ -5337,41 +5337,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const effects = (node.effects as any[]) || [];
       const charUpdates: Record<string, any> = {};
-      for (const effect of effects) {
-        if (effect.type === 'hp_bonus' && effect.value) {
-          const char = await storage.getCharacter(req.params.id);
-          if (char) {
-            charUpdates.maxHp = (char.maxHp || 0) + Number(effect.value);
-            charUpdates.hp = (char.hp || 0) + Number(effect.value);
-          }
-        } else if (effect.type === 'energy_increase' && effect.value) {
-          const char = await storage.getCharacter(req.params.id);
-          if (char) {
-            charUpdates.maxEnergy = (char.maxEnergy || 0) + Number(effect.value);
-            charUpdates.energy = (char.energy || 0) + Number(effect.value);
-          }
-        } else if (effect.type === 'mana_increase' && effect.value) {
-          const char = await storage.getCharacter(req.params.id);
-          if (char) {
-            charUpdates.maxMana = (char.maxMana || 0) + Number(effect.value);
-            charUpdates.mana = (char.mana || 0) + Number(effect.value);
-          }
-        } else if (effect.type === 'attribute_bonus' && effect.attribute && effect.value) {
-          const attrMap: Record<string, string> = { might: 'might', finesse: 'finesse', wit: 'wit', presence: 'presence', will: 'will', craft: 'craft' };
-          const field = attrMap[effect.attribute];
-          if (field) {
-            const char = await storage.getCharacter(req.params.id);
-            if (char) {
-              charUpdates[field] = ((char as any)[field] || 0) + Number(effect.value);
-            }
-          }
-        } else if (effect.type === 'skill_bonus' && effect.target && effect.value) {
-          const skillFields = ['skillAgility','skillArcana','skillCharisma','skillConcentration','skillDeception','skillHistory','skillIntimidation','skillInvestigation','skillMedicine','skillPerception','skillSleightOfHand','skillStealth','skillStrength','skillWisdom','skillCulture'];
-          const field = skillFields.find(f => f.toLowerCase() === `skill${effect.target}`.toLowerCase());
-          if (field) {
-            const char = await storage.getCharacter(req.params.id);
-            if (char) {
-              charUpdates[field] = ((char as any)[field] || 0) + Number(effect.value);
+      if (effects.length > 0) {
+        const char = await storage.getCharacter(req.params.id);
+        if (char) {
+          for (const effect of effects) {
+            if (effect.type === 'hp_bonus' && effect.value) {
+              charUpdates.maxHp = (charUpdates.maxHp ?? (char.maxHp || 0)) + Number(effect.value);
+              charUpdates.hp = (charUpdates.hp ?? (char.hp || 0)) + Number(effect.value);
+            } else if (effect.type === 'energy_increase' && effect.value) {
+              charUpdates.maxEnergy = (charUpdates.maxEnergy ?? (char.maxEnergy || 0)) + Number(effect.value);
+              charUpdates.energy = (charUpdates.energy ?? (char.energy || 0)) + Number(effect.value);
+            } else if (effect.type === 'mana_increase' && effect.value) {
+              charUpdates.maxMana = (charUpdates.maxMana ?? (char.maxMana || 0)) + Number(effect.value);
+              charUpdates.mana = (charUpdates.mana ?? (char.mana || 0)) + Number(effect.value);
+            } else if (effect.type === 'attribute_bonus' && effect.attribute && effect.value) {
+              const attrMap: Record<string, string> = { might: 'might', finesse: 'finesse', wit: 'wit', presence: 'presence', will: 'will', craft: 'craft' };
+              const field = attrMap[effect.attribute];
+              if (field) {
+                charUpdates[field] = (charUpdates[field] ?? ((char as any)[field] || 0)) + Number(effect.value);
+              }
+            } else if (effect.type === 'skill_bonus' && effect.target && effect.value) {
+              const skillFields = ['skillAgility','skillArcana','skillCharisma','skillConcentration','skillDeception','skillHistory','skillIntimidation','skillInvestigation','skillMedicine','skillPerception','skillSleightOfHand','skillStealth','skillStrength','skillWisdom','skillCulture'];
+              const field = skillFields.find(f => f.toLowerCase() === `skill${effect.target}`.toLowerCase());
+              if (field) {
+                charUpdates[field] = (charUpdates[field] ?? ((char as any)[field] || 0)) + Number(effect.value);
+              }
             }
           }
         }
