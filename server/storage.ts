@@ -4233,7 +4233,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClasses(systemName: string): Promise<GameClass[]> {
-    return db.select().from(classes).where(eq(classes.systemName, systemName));
+    return db.select().from(classes).where(eq(classes.system, systemName));
   }
 
   async getClass(id: string): Promise<GameClass | undefined> {

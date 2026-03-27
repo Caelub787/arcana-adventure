@@ -13,31 +13,30 @@ ALTER TABLE "roll_entries" ADD COLUMN IF NOT EXISTS "mana_cost" integer;
 
 CREATE TABLE IF NOT EXISTS "classes" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"system_name" varchar NOT NULL,
-	"name" varchar NOT NULL,
+	"name" text NOT NULL,
 	"description" text,
 	"image" text,
-	"color" varchar DEFAULT '#8B5CF6',
-	"icon" varchar DEFAULT 'shield',
-	"max_level" integer DEFAULT 10 NOT NULL,
-	"created_at" timestamp DEFAULT now()
+	"system" text DEFAULT 'aa-v2' NOT NULL,
+	"grid_width" integer DEFAULT 7 NOT NULL,
+	"grid_height" integer DEFAULT 10 NOT NULL,
+	"default_view_x" integer,
+	"default_view_y" integer,
+	"default_view_zoom" real,
+	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "class_skill_nodes" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"class_id" varchar NOT NULL,
-	"name" varchar NOT NULL,
+	"name" text NOT NULL,
 	"description" text,
+	"icon" text,
+	"grid_x" integer DEFAULT 0 NOT NULL,
+	"grid_y" integer DEFAULT 0 NOT NULL,
 	"tier" integer DEFAULT 1 NOT NULL,
-	"x" integer DEFAULT 0 NOT NULL,
-	"y" integer DEFAULT 0 NOT NULL,
-	"icon" varchar,
-	"color" varchar,
-	"node_type" varchar DEFAULT 'passive' NOT NULL,
-	"effects" jsonb DEFAULT '[]'::jsonb,
-	"required_level" integer DEFAULT 1 NOT NULL,
-	"point_cost" integer DEFAULT 1 NOT NULL,
-	"created_at" timestamp DEFAULT now()
+	"cost" integer DEFAULT 1 NOT NULL,
+	"effects" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "class_skill_connections" (
@@ -45,7 +44,7 @@ CREATE TABLE IF NOT EXISTS "class_skill_connections" (
 	"class_id" varchar NOT NULL,
 	"from_node_id" varchar NOT NULL,
 	"to_node_id" varchar NOT NULL,
-	"created_at" timestamp DEFAULT now()
+	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "character_classes" (
@@ -118,3 +117,6 @@ DO $$ BEGIN
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "character_classes_char_class_unique" ON "character_classes" ("character_id", "class_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "character_class_skills_unique" ON "character_class_skills" ("character_id", "class_id", "node_id");
