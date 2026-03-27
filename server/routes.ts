@@ -2657,6 +2657,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      if ('level' in updates && access.campaign?.system === 'aa-v2') {
+        const oldLevel = charData.level || 1;
+        const newLevel = updates.level;
+        if (newLevel > oldLevel) {
+          let pointsToAdd = 0;
+          for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
+            pointsToAdd += (lvl % 3 === 0) ? 5 : 3;
+          }
+          if (pointsToAdd > 0) {
+            updates.classSkillPoints = (charData.classSkillPoints || 0) + pointsToAdd;
+          }
+        }
+      }
+
       console.log('[Character Update] Saving updates for character', req.params.id, ':', req.body);
       const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
       console.log('[Character Update] Saved successfully:', updatedCharacter);
@@ -3781,7 +3795,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         if (newLevel !== char.level) {
-          await storage.updateCharacter(char.id, { level: newLevel });
+          const updateData: any = { level: newLevel };
+          if (campaign.system === 'aa-v2') {
+            const oldLevel = char.level || 1;
+            let pointsToAdd = 0;
+            if (mode === 'add') {
+              pointsToAdd = (newLevel % 3 === 0) ? 5 : 3;
+            } else if (mode === 'set' && newLevel > oldLevel) {
+              for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
+                pointsToAdd += (lvl % 3 === 0) ? 5 : 3;
+              }
+            }
+            if (pointsToAdd > 0) {
+              updateData.classSkillPoints = (char.classSkillPoints || 0) + pointsToAdd;
+            }
+          }
+          await storage.updateCharacter(char.id, updateData);
           updates.push({ id: char.id, name: char.name, newLevel });
         }
       }

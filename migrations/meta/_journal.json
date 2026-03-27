@@ -64,6 +64,13 @@
       "when": 1774684800000,
       "tag": "0008_aa_v2_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774771200000,
+      "tag": "0009_token_bar_toggles",
+      "breakpoints": true
     }
   ]
 }

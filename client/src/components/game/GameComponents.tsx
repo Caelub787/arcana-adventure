@@ -2753,8 +2753,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* HP Bar - Only show if token is linked to a character and user has view/edit permission */}
-              {character && hpPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
+              {/* HP Bar - Only show if token is linked to a character and user has view/edit permission and showHpBar is true */}
+              {character && hpPercent !== null && (character.showHpBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
                     className={`h-full transition-all duration-700 ease-in-out ${
@@ -2765,9 +2765,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
-              {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className={`absolute ${manaPercent !== null ? 'bottom-3' : 'bottom-0.5'} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission and showEnergyBar is true */}
+              {character && energyPercent !== null && (character.showEnergyBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
+                <div className={`absolute ${(manaPercent !== null && (character.showManaBar ?? true)) ? 'bottom-3' : 'bottom-0.5'} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
                   <div 
                     className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
                     style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
@@ -2775,10 +2775,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {character && manaPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
+              {/* Mana Bar - purple/pink color, respects showManaBar toggle */}
+              {character && manaPercent !== null && (character.showManaBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
-                    className="h-full transition-all duration-700 ease-in-out bg-violet-500"
+                    className="h-full transition-all duration-700 ease-in-out bg-fuchsia-500"
                     style={{ width: `${Math.max(0, Math.min(100, manaPercent))}%` }}
                   />
                 </div>
@@ -15618,6 +15619,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     visionType: string;
     dayVisionDistance: number;
     nightVisionDistance: number;
+    mana: number | string;
+    maxMana: number | string;
   }>({
     name: character?.name || "",
     level: character?.level || 1,
@@ -15634,7 +15637,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     flySpeed: character?.flySpeed || 0,
     visionType: character?.visionType || 'normal',
     dayVisionDistance: character?.dayVisionDistance || 120,
-    nightVisionDistance: character?.nightVisionDistance || 60
+    nightVisionDistance: character?.nightVisionDistance || 60,
+    mana: character?.mana ?? 0,
+    maxMana: character?.maxMana ?? 0
   });
   
   // New attributes: Might, Finesse, Wit, Presence, Will, Craft (range -2 to 5)
@@ -17535,12 +17540,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
-
-                {isAAV2 && (
-                <div className="bg-gradient-to-r from-violet-900/40 to-purple-900/40 rounded-lg p-3 border border-violet-700/50">
-                  <div className="grid grid-cols-2 gap-3">
+                    {isAAV2 && (
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <Label className="text-xs text-stone-300 flex items-center gap-1">
@@ -17548,22 +17548,37 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           Mana
                         </Label>
                         {editingOverview ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex gap-1 items-center">
                             <Input
                               type="number"
-                              value={liveCharacter.mana ?? 0}
-                              onChange={(e) => onUpdate?.({ mana: parseInt(e.target.value) || 0 })}
-                              className="w-14 h-6 text-xs bg-stone-800 border-stone-700 text-center"
+                              value={overviewData.mana ?? liveCharacter.mana ?? 0}
+                              onChange={(e) => setOverviewData({ ...overviewData, mana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                               data-testid="input-mana"
                             />
-                            <span className="text-xs text-stone-500">/</span>
-                            <Input
-                              type="number"
-                              value={liveCharacter.maxMana ?? 0}
-                              onChange={(e) => onUpdate?.({ maxMana: parseInt(e.target.value) || 0 })}
-                              className="w-14 h-6 text-xs bg-stone-800 border-stone-700 text-center"
-                              data-testid="input-max-mana"
-                            />
+                            <span className="text-xs">/</span>
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                value={overviewData.maxMana ?? liveCharacter.maxMana ?? 0}
+                                onChange={(e) => setOverviewData({ ...overviewData, maxMana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                                disabled={!isGM}
+                                data-testid="input-max-mana"
+                              />
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit Max Mana</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-mana">
@@ -17573,9 +17588,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       </div>
                       {!editingOverview && <Progress value={Math.min(100, (liveCharacter.maxMana ?? 0) > 0 ? Math.round(((liveCharacter.mana ?? 0) / (liveCharacter.maxMana ?? 0)) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />}
                     </div>
+                )}
                   </div>
                 </div>
-                )}
 
                 {/* Defense Class (DC) Display */}
                 <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
@@ -17661,6 +17676,17 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         <p className="text-stone-200">{liveCharacter.level}</p>
                       )}
                     </div>
+                    {isAAV2 && (
+                      <div>
+                        <Label className="text-xs text-stone-400 flex items-center gap-1">
+                          <Sparkles className="h-3 w-3 text-violet-400" />
+                          Class Points
+                        </Label>
+                        <p className="text-stone-200" data-testid="text-class-skill-points">
+                          {liveCharacter.classSkillPoints || 0}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <Label className="text-xs text-stone-400">Fly Speed</Label>
                       {(() => {
@@ -17861,7 +17887,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           hp: overviewData.hp === '' ? 0 : Number(overviewData.hp),
                           maxHp: overviewData.maxHp === '' ? 1 : Number(overviewData.maxHp),
                           energy: overviewData.energy === '' ? 0 : Number(overviewData.energy),
-                          maxEnergy: overviewData.maxEnergy === '' ? 0 : Number(overviewData.maxEnergy)
+                          maxEnergy: overviewData.maxEnergy === '' ? 0 : Number(overviewData.maxEnergy),
+                          mana: overviewData.mana === '' ? 0 : Number(overviewData.mana),
+                          maxMana: overviewData.maxMana === '' ? 0 : Number(overviewData.maxMana)
                         };
                         updateCharacterMutation.mutate(dataToSave);
                         setEditingOverview(false);
@@ -20446,6 +20474,65 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                   )}
                 </div>
+
+                {/* Token Bar Visibility Toggles */}
+                {canEdit && onUpdate && (
+                  <div>
+                    <Label className="text-sm text-stone-300 mb-2 block">Token Bar Display</Label>
+                    <p className="text-xs text-stone-400 mb-3">
+                      Toggle which resource bars are visible on this character's token on the battle map.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => onUpdate({ showHpBar: !(character.showHpBar ?? true) })}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                          (character.showHpBar ?? true)
+                            ? 'bg-green-900/30 border-green-700/50 text-green-300'
+                            : 'bg-stone-900 border-stone-700 text-stone-500'
+                        }`}
+                        data-testid="toggle-show-hp-bar"
+                      >
+                        <Heart className={`h-4 w-4 ${(character.showHpBar ?? true) ? 'text-green-400' : 'text-stone-600'}`} />
+                        <span className="text-sm">HP Bar</span>
+                        <span className={`ml-auto text-xs ${(character.showHpBar ?? true) ? 'text-green-400' : 'text-stone-600'}`}>
+                          {(character.showHpBar ?? true) ? 'Visible' : 'Hidden'}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => onUpdate({ showEnergyBar: !(character.showEnergyBar ?? true) })}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                          (character.showEnergyBar ?? true)
+                            ? 'bg-cyan-900/30 border-cyan-700/50 text-cyan-300'
+                            : 'bg-stone-900 border-stone-700 text-stone-500'
+                        }`}
+                        data-testid="toggle-show-energy-bar"
+                      >
+                        <Zap className={`h-4 w-4 ${(character.showEnergyBar ?? true) ? 'text-cyan-400' : 'text-stone-600'}`} />
+                        <span className="text-sm">Energy Bar</span>
+                        <span className={`ml-auto text-xs ${(character.showEnergyBar ?? true) ? 'text-cyan-400' : 'text-stone-600'}`}>
+                          {(character.showEnergyBar ?? true) ? 'Visible' : 'Hidden'}
+                        </span>
+                      </button>
+                      {campaignSystem === 'aa-v2' && (
+                        <button
+                          onClick={() => onUpdate({ showManaBar: !(character.showManaBar ?? true) })}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                            (character.showManaBar ?? true)
+                              ? 'bg-fuchsia-900/30 border-fuchsia-700/50 text-fuchsia-300'
+                              : 'bg-stone-900 border-stone-700 text-stone-500'
+                          }`}
+                          data-testid="toggle-show-mana-bar"
+                        >
+                          <Sparkles className={`h-4 w-4 ${(character.showManaBar ?? true) ? 'text-fuchsia-400' : 'text-stone-600'}`} />
+                          <span className="text-sm">Mana Bar</span>
+                          <span className={`ml-auto text-xs ${(character.showManaBar ?? true) ? 'text-fuchsia-400' : 'text-stone-600'}`}>
+                            {(character.showManaBar ?? true) ? 'Visible' : 'Hidden'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Biography Section */}
                 <div>

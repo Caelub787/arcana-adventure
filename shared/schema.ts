@@ -238,6 +238,10 @@ export const characters = pgTable("characters", {
   // Level-up Energy tracking
   bonusEnergyFromLevelUps: integer("bonus_energy_from_level_ups").notNull().default(0), // Extra energy gained from level-up dice rolls
   lastEnergyLevelUpRolled: integer("last_energy_level_up_rolled").notNull().default(1), // Last level at which energy was rolled
+  showHpBar: boolean("show_hp_bar").notNull().default(true),
+  showEnergyBar: boolean("show_energy_bar").notNull().default(true),
+  showManaBar: boolean("show_mana_bar").notNull().default(true),
+  classSkillPoints: integer("class_skill_points").notNull().default(0),
   // New Attributes (range -2 to 5, mod equals value)
   might: integer("might").notNull().default(0),
   finesse: integer("finesse").notNull().default(0),
