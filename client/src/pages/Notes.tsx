@@ -132,16 +132,13 @@ function getFolderColorClass(color: string | null | undefined): string {
   }
 }
 
-function RootDropZone({ onDropToRoot }: { onDropToRoot: (folderId: string) => void }) {
+function RootDropZone({ onDropToRoot, onDropNoteToRoot }: { onDropToRoot: (folderId: string) => void; onDropNoteToRoot?: (noteId: string) => void }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData("text/plain");
-    if (draggedId) {
-      e.dataTransfer.dropEffect = "move";
-      setIsDragOver(true);
-    }
+    e.dataTransfer.dropEffect = "move";
+    setIsDragOver(true);
   };
 
   const handleDragLeave = () => {
@@ -151,6 +148,11 @@ function RootDropZone({ onDropToRoot }: { onDropToRoot: (folderId: string) => vo
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    const noteId = e.dataTransfer.getData("application/note-id");
+    if (noteId && onDropNoteToRoot) {
+      onDropNoteToRoot(noteId);
+      return;
+    }
     const draggedId = e.dataTransfer.getData("text/plain");
     if (draggedId) {
       onDropToRoot(draggedId);
@@ -170,7 +172,7 @@ function RootDropZone({ onDropToRoot }: { onDropToRoot: (folderId: string) => vo
       data-testid="drop-zone-root"
     >
       <ArrowUp className="h-3 w-3" />
-      <span>{isDragOver ? "Drop here to move to root" : "Drag folder here to move to root"}</span>
+      <span>{isDragOver ? "Drop here to move to root" : "Drag here to move to root"}</span>
     </div>
   );
 }
@@ -206,6 +208,7 @@ interface FolderTreeItemProps {
   onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onShareNote: (noteId: string) => void;
   onDeleteNote: (note: Note) => void;
+  onMoveNote: (noteId: string, folderId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
   level?: number;
@@ -236,6 +239,7 @@ function FolderTreeItem({
   onReorderFolder,
   onShareNote,
   onDeleteNote,
+  onMoveNote,
   onCreateNote,
   onCreateCanvas,
   level = 0,
@@ -303,6 +307,13 @@ function FolderTreeItem({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    const hasNoteData = e.dataTransfer.types.includes("application/note-id");
+    if (hasNoteData) {
+      e.dataTransfer.dropEffect = "move";
+      setDropPosition("into");
+      setIsDragOver(true);
+      return;
+    }
     if (!draggedFolderId || draggedFolderId === folder.id || isDescendant(draggedFolderId, folder.id)) {
       return;
     }
@@ -334,6 +345,12 @@ function FolderTreeItem({
     e.stopPropagation();
     setIsDragOver(false);
     setDropPosition(null);
+    
+    const noteId = e.dataTransfer.getData("application/note-id");
+    if (noteId) {
+      onMoveNote(noteId, folder.id);
+      return;
+    }
     
     if (!draggedFolderId || draggedFolderId === folder.id || isDescendant(draggedFolderId, folder.id)) {
       return;
@@ -465,6 +482,7 @@ function FolderTreeItem({
               onReorderFolder={onReorderFolder}
               onShareNote={onShareNote}
               onDeleteNote={onDeleteNote}
+              onMoveNote={onMoveNote}
               onCreateNote={onCreateNote}
               onCreateCanvas={onCreateCanvas}
               level={level + 1}
@@ -484,6 +502,12 @@ function FolderTreeItem({
             <ContextMenu key={note.id}>
               <ContextMenuTrigger asChild>
                 <div
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/note-id", note.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onNoteSelect(note.id);
@@ -1931,14 +1955,18 @@ export default function Notes() {
             <option value="date">Date</option>
           </select>
         </div>
-        {/* Root level drop zone - allows dragging folders out of parent folders */}
-        {folderSortMode === "custom" && (
-          <RootDropZone 
-            onDropToRoot={(folderId) => {
-              handleReorderFolder(folderId, 0, null);
-            }}
-          />
-        )}
+        {/* Root level drop zone - allows dragging folders/notes to root */}
+        <RootDropZone 
+          onDropToRoot={(folderId) => {
+            handleReorderFolder(folderId, 0, null);
+          }}
+          onDropNoteToRoot={(noteId) => {
+            updateNoteMutation.mutate({
+              id: noteId,
+              data: { folderId: null },
+            });
+          }}
+        />
         <div className="space-y-0.5 group">
           {foldersLoading ? (
             <div className="flex items-center justify-center py-4">
@@ -1991,6 +2019,12 @@ export default function Notes() {
                 onDeleteNote={(note) => {
                   setNoteToDelete(note);
                   setDeleteNoteDialogOpen(true);
+                }}
+                onMoveNote={(noteId, folderId) => {
+                  updateNoteMutation.mutate({
+                    id: noteId,
+                    data: { folderId },
+                  });
                 }}
                 onCreateNote={(folderId) => {
                   createNoteMutation.mutate({
