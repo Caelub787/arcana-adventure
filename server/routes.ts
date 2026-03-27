@@ -5172,6 +5172,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = await isAdminUser(req.session.userId);
       if (!access.isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can add classes" });
 
+      if (access.character?.campaignId) {
+        const campaign = await storage.getCampaign(access.character.campaignId);
+        if (campaign && campaign.system !== 'aa-v2') {
+          return res.status(400).json({ error: "Classes are only available for A.A. V2 campaigns" });
+        }
+      }
+
       const charClass = await storage.createCharacterClass({
         characterId: req.params.id,
         classId: req.body.classId,
@@ -5355,24 +5362,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Unlock node error:", err);
       res.status(400).json({ error: "Failed to unlock node" });
-    }
-  });
-
-  app.get("/api/classes/:classId/nodes", requireAuth, async (req, res) => {
-    try {
-      const nodes = await storage.getClassSkillNodes(req.params.classId);
-      res.json(nodes);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch class nodes" });
-    }
-  });
-
-  app.get("/api/classes/:classId/connections", requireAuth, async (req, res) => {
-    try {
-      const connections = await storage.getClassSkillConnections(req.params.classId);
-      res.json(connections);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch class connections" });
     }
   });
 
