@@ -422,6 +422,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     startingEnergy: number | string;
     startingMaxEnergy: number | string;
     energyPerLevel: number | string;
+    startingMana: number | string;
+    startingMaxMana: number | string;
     carryWeight: number | string;
     featTree: string;
     visionType: string;
@@ -443,6 +445,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     startingEnergy: '',
     startingMaxEnergy: '',
     energyPerLevel: '',
+    startingMana: '',
+    startingMaxMana: '',
     carryWeight: '',
     featTree: '',
     visionType: 'normal',
@@ -472,6 +476,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         startingEnergy: initialData?.startingEnergy ?? '',
         startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
         energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
+        startingMana: (initialData as any)?.startingMana ?? '',
+        startingMaxMana: (initialData as any)?.startingMaxMana ?? '',
         carryWeight: initialData?.carryWeight ?? '',
         featTree: initialData?.featTree || '',
         visionType: (initialData as any)?.visionType || 'normal',
@@ -522,6 +528,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       startingEnergy: Number(formData.startingEnergy) || 10,
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
       energyPerLevel: Number(formData.energyPerLevel) || 6,
+      startingMana: Number(formData.startingMana) || 0,
+      startingMaxMana: Number(formData.startingMaxMana) || 0,
       carryWeight: Number(formData.carryWeight) || 50,
       visionType: formData.visionType || 'normal',
       dayVisionDistance: Number(formData.dayVisionDistance) || 120,
@@ -680,6 +688,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-red-400">HP</Label>
+              </div>
               <div>
                 <Label>Starting HP</Label>
                 <Input
@@ -690,7 +701,6 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
-
               <div>
                 <Label>Max HP</Label>
                 <Input
@@ -701,7 +711,6 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
-
               <div>
                 <Label>HP Per Level</Label>
                 <Input
@@ -713,6 +722,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-cyan-400">Energy</Label>
+              </div>
               <div>
                 <Label>Starting Energy</Label>
                 <Input
@@ -723,7 +735,6 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
-
               <div>
                 <Label>Max Energy</Label>
                 <Input
@@ -734,17 +745,46 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
+              {campaignSystem !== 'aa-v2' && (
+                <div>
+                  <Label>Energy Per Level</Label>
+                  <Input
+                    type="number"
+                    value={formData.energyPerLevel}
+                    onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
+                    className="bg-stone-800 border-stone-700"
+                    placeholder="6"
+                  />
+                </div>
+              )}
 
-              <div>
-                <Label>Energy Per Level</Label>
-                <Input
-                  type="number"
-                  value={formData.energyPerLevel}
-                  onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  placeholder="6"
-                />
-              </div>
+              {campaignSystem === 'aa-v2' && (
+                <>
+                  <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                    <Label className="text-sm font-semibold text-violet-400">Mana</Label>
+                  </div>
+                  <div>
+                    <Label>Starting Mana</Label>
+                    <Input
+                      type="number"
+                      value={formData.startingMana}
+                      onChange={(e) => handleNumericChange('startingMana', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label>Starting Max Mana</Label>
+                    <Input
+                      type="number"
+                      value={formData.startingMaxMana}
+                      onChange={(e) => handleNumericChange('startingMaxMana', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="0"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <Label>Carry Weight</Label>
@@ -12380,7 +12420,7 @@ export default function Campaign() {
                           setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
                           setBeaconColorDialogOpen(true);
                         }}
-                        system={isSandbox ? 'sandbox' : 'arcana-adventure'}
+                        system={isSandbox ? 'sandbox' : ((campaign as any)?.system || 'arcana-adventure')}
                         defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
                         onDefaultPanelChange={(panel: string) => {
                           if (effectiveCampaignId) {
@@ -12453,7 +12493,7 @@ export default function Campaign() {
                       setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
                       setBeaconColorDialogOpen(true);
                     }}
-                    system={isSandbox ? 'sandbox' : 'arcana-adventure'}
+                    system={isSandbox ? 'sandbox' : ((campaign as any)?.system || 'arcana-adventure')}
                     defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
                     onDefaultPanelChange={(panel: string) => {
                       if (effectiveCampaignId) {

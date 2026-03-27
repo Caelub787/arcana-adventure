@@ -560,7 +560,9 @@ export const campaignSpecies = pgTable("campaign_species", {
   hpPerLevel: integer("hp_per_level").default(5).notNull(),
   startingEnergy: integer("starting_energy").default(10).notNull(),
   startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
-  energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
+  energyPerLevel: integer("energy_per_level").default(6).notNull(),
+  startingMana: integer("starting_mana").default(0).notNull(),
+  startingMaxMana: integer("starting_max_mana").default(0).notNull(),
   carryWeight: integer("carry_weight").default(50).notNull(),
   featTree: text("feat_tree").default(""),
   visionType: text("vision_type").default("normal").notNull(),

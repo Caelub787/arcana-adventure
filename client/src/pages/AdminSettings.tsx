@@ -6362,6 +6362,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                 />
               </div>
 
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-red-400">HP</Label>
+              </div>
               <div>
                 <Label>Starting HP</Label>
                 <Input
@@ -6372,7 +6375,6 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="input-species-startinghp"
                 />
               </div>
-
               <div>
                 <Label>Starting Max HP</Label>
                 <Input
@@ -6383,7 +6385,6 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="input-species-startingmaxhp"
                 />
               </div>
-
               <div>
                 <Label>HP Per Level</Label>
                 <Input
@@ -6395,6 +6396,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                 />
               </div>
 
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-cyan-400">Energy</Label>
+              </div>
               <div>
                 <Label>Starting Energy</Label>
                 <Input
@@ -6405,7 +6409,6 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="input-species-startingenergy"
                 />
               </div>
-
               <div>
                 <Label>Starting Max Energy</Label>
                 <Input
@@ -6416,22 +6419,23 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="input-species-startingmaxenergy"
                 />
               </div>
-
-              <div>
-                <Label>Energy Per Level</Label>
-                <Input
-                  type="number"
-                  value={formData.energyPerLevel}
-                  onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-energyperlevel"
-                />
-              </div>
+              {systemSlug !== 'aa-v2' && (
+                <div>
+                  <Label>Energy Per Level</Label>
+                  <Input
+                    type="number"
+                    value={formData.energyPerLevel}
+                    onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-species-energyperlevel"
+                  />
+                </div>
+              )}
 
               {systemSlug === 'aa-v2' && (
                 <>
                   <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                    <Label className="text-sm font-semibold text-violet-400">Mana (A.A. V2)</Label>
+                    <Label className="text-sm font-semibold text-violet-400">Mana</Label>
                   </div>
                   <div>
                     <Label>Starting Mana</Label>
@@ -6451,16 +6455,6 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                       onChange={(e) => handleNumericChange('startingMaxMana', e.target.value)}
                       className="bg-stone-800 border-stone-700"
                       data-testid="input-species-startingmaxmana"
-                    />
-                  </div>
-                  <div>
-                    <Label>Mana Per Level</Label>
-                    <Input
-                      type="number"
-                      value={formData.manaPerLevel}
-                      onChange={(e) => handleNumericChange('manaPerLevel', e.target.value)}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-species-manaperlevel"
                     />
                   </div>
                 </>

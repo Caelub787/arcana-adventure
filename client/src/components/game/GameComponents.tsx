@@ -8351,17 +8351,18 @@ interface AddCharacterDialogProps {
   onOpenChange: (open: boolean) => void;
   onAddCharacter: (characterData: any) => void;
   campaignId?: string;
+  campaignSystem?: string;
 }
 
-function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: AddCharacterDialogProps) {
+function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, campaignSystem }: AddCharacterDialogProps) {
   const [name, setName] = useState("");
-  const [selectedRace, setSelectedRace] = useState("Human");
+  const [selectedRace, setSelectedRace] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch system species from database
+  const systemNameForQuery = campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
   const { data: systemSpeciesList = [] } = useQuery({
-    queryKey: ['species'],
-    queryFn: () => api.getSpecies('Arcana Adventure'),
+    queryKey: ['species', systemNameForQuery],
+    queryFn: () => api.getSpecies(systemNameForQuery),
     enabled: open,
   });
 
@@ -8372,15 +8373,19 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: 
     enabled: open && !!campaignId,
   });
 
-  // Combine system and campaign species
   const speciesList = [
     ...systemSpeciesList.map((s: any) => ({ ...s, source: 'system' })),
     ...campaignSpeciesList.map((s: any) => ({ ...s, source: 'campaign' })),
   ];
 
-  // Get the selected species data
-  const selectedSpecies = speciesList.find((s: any) => s.name === selectedRace) || {
-    name: "Human",
+  useEffect(() => {
+    if (open && speciesList.length > 0 && !selectedRace) {
+      setSelectedRace(speciesList[0].name);
+    }
+  }, [open, speciesList.length]);
+
+  const selectedSpecies = speciesList.find((s: any) => s.name === selectedRace) || (speciesList.length > 0 ? speciesList[0] : {
+    name: "",
     size: "Medium",
     naturalArmor: 5,
     sizeBonus: 0,
@@ -8391,7 +8396,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: 
     startingEnergy: 10,
     startingMaxEnergy: 10,
     featTree: ""
-  };
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -8447,7 +8452,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: 
     });
     
     setName("");
-    setSelectedRace("Human");
+    setSelectedRace("");
     setIsSubmitting(false);
     onOpenChange(false);
   };
@@ -8456,7 +8461,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: 
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
         setName("");
-        setSelectedRace("Human");
+        setSelectedRace("");
       }
       onOpenChange(open);
     }}>
@@ -11520,6 +11525,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           onOpenChange={setAddCharacterOpen}
           onAddCharacter={onAddCharacter}
           campaignId={campaignId}
+          campaignSystem={system}
         />
       )}
 
@@ -16252,7 +16258,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const missedHpLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastLevelUpRolled || 1));
   
   // Calculate if character can level up Energy (level > lastEnergyLevelUpRolled)
-  const canLevelUpEnergy = (liveCharacter.level || 1) > (liveCharacter.lastEnergyLevelUpRolled || 1);
+  const canLevelUpEnergy = !isAAV2 && (liveCharacter.level || 1) > (liveCharacter.lastEnergyLevelUpRolled || 1);
   const missedEnergyLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastEnergyLevelUpRolled || 1));
   
   // Get current species for HP and Energy per level calculation
