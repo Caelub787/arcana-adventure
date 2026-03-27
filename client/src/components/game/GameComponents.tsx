@@ -16162,6 +16162,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   // AA V2 Classes state
   const [showClassSkillTree, setShowClassSkillTree] = useState<string | null>(null);
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
+  const [showClassBrowser, setShowClassBrowser] = useState(false);
+  const [classTooltip, setClassTooltip] = useState<string | null>(null);
+  const classTooltipTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { data: availableClasses = [] } = useQuery({
     queryKey: ['classes'],
@@ -17195,7 +17198,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
     { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
     { value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
-    ...(isAAV2 ? [{ value: 'classes', icon: Layers, color: 'fuchsia', label: 'Classes' }] : []),
     { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
     { value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
   ];
@@ -17982,7 +17984,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 )}
 
-                {/* Feat Tree Section - Bottom of overview (hidden for AA V2 which uses Classes tab) */}
+                {/* Feat Tree Section - Bottom of overview (hidden for AA V2 which uses Classes) */}
                 {featTreeId && !isAAV2 && (
                   <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
                     <div className="flex justify-between items-center mb-2">
@@ -18016,6 +18018,69 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       <GitBranch className="h-4 w-4 mr-2" />
                       View {featTreeData?.tree?.name || 'Feat Tree'}
                     </Button>
+                  </div>
+                )}
+
+                {/* AA V2 Classes Section - Overview */}
+                {isAAV2 && (
+                  <div className="bg-gradient-to-r from-fuchsia-900/30 to-stone-900/50 rounded-lg p-3 border border-fuchsia-700/50">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-sm text-fuchsia-300 flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-fuchsia-400" />
+                        Classes
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        {canEditSheet && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-fuchsia-400 border-fuchsia-600 hover:bg-fuchsia-900/30 h-6 text-[10px] px-2"
+                            onClick={() => setShowClassBrowser(true)}
+                            data-testid="button-edit-classes"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" /> Edit
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    {characterClasses.length === 0 ? (
+                      <p className="text-stone-500 text-xs text-center py-2">No classes yet. {canEditSheet ? 'Tap Edit to browse and unlock class skills.' : ''}</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {characterClasses.map((cc: any) => {
+                          const classInfo = availableClasses.find((c: any) => c.id === cc.classId);
+                          if (!classInfo) return null;
+                          return (
+                            <div
+                              key={cc.id}
+                              className="relative group cursor-pointer"
+                              onClick={() => setShowClassSkillTree(cc.classId)}
+                              onMouseEnter={() => setClassTooltip(cc.classId)}
+                              onMouseLeave={() => { setClassTooltip(null); if (classTooltipTimer.current) clearTimeout(classTooltipTimer.current); }}
+                              onTouchStart={() => { classTooltipTimer.current = setTimeout(() => setClassTooltip(cc.classId), 500); }}
+                              onTouchEnd={() => { if (classTooltipTimer.current) clearTimeout(classTooltipTimer.current); setTimeout(() => setClassTooltip(null), 1500); }}
+                              data-testid={`class-icon-${cc.classId}`}
+                            >
+                              {classInfo.image ? (
+                                <img src={classInfo.image} alt={classInfo.name} className="w-10 h-10 rounded-lg object-cover border-2 border-fuchsia-600 hover:border-fuchsia-400 transition-colors" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-lg bg-fuchsia-900/60 border-2 border-fuchsia-600 hover:border-fuchsia-400 flex items-center justify-center transition-colors">
+                                  <Layers className="h-5 w-5 text-fuchsia-400" />
+                                </div>
+                              )}
+                              <div className="absolute -bottom-0.5 -right-0.5 bg-fuchsia-700 rounded-full px-1 min-w-[16px] h-4 flex items-center justify-center">
+                                <span className="text-[9px] font-bold text-white">{cc.classLevel}</span>
+                              </div>
+                              {classTooltip === cc.classId && (
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-stone-800 border border-fuchsia-600 rounded text-[10px] text-fuchsia-200 whitespace-nowrap z-50 pointer-events-none">
+                                  {classInfo.name} (Lv.{cc.classLevel})
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -20354,122 +20419,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             </AlertDialog>
           </TabsContent>
 
-          {/* CLASSES TAB (AA V2 only) */}
-          {isAAV2 && (
-          <TabsContent value="classes" className="space-y-4 mt-0" data-testid="content-classes">
-            <Card className="bg-stone-800 border-stone-700">
-              <CardContent className="pt-4">
-                <div className="flex justify-between items-center mb-3">
-                  <Label className="text-sm text-fuchsia-300 flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-fuchsia-400" />
-                    Character Classes
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    {liveCharacter.classSkillPoints !== undefined && liveCharacter.classSkillPoints > 0 && (
-                      <Badge className="bg-fuchsia-700/50 text-fuchsia-200 text-xs">
-                        {liveCharacter.classSkillPoints} global pts
-                      </Badge>
-                    )}
-                    {canEditSheet && (
-                      <Button size="sm" variant="outline" className="text-fuchsia-400 border-fuchsia-600 hover:bg-fuchsia-900/30 h-7 text-xs" onClick={() => setShowAddClassDialog(true)} data-testid="button-add-character-class">
-                        <Plus className="h-3 w-3 mr-1" /> Add Class
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {characterClasses.length === 0 ? (
-                  <p className="text-stone-500 text-sm text-center py-4">No classes assigned yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {characterClasses.map((cc: any) => {
-                      const classInfo = availableClasses.find((c: any) => c.id === cc.classId);
-                      const classLevel = cc.classLevel || 1;
-                      const totalPoints = 2 + classLevel + (2 * Math.floor(classLevel / 3));
-                      const spentPoints = cc.spentPoints || 0;
-                      const availablePoints = totalPoints - spentPoints;
-
-                      return (
-                        <div key={cc.id} className="bg-gradient-to-r from-fuchsia-900/30 to-stone-900/50 rounded-lg p-3 border border-fuchsia-700/50" data-testid={`character-class-${cc.classId}`}>
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                {classInfo?.image ? (
-                                  <img src={classInfo.image} alt={classInfo.name} className="w-6 h-6 rounded object-cover border border-fuchsia-600" />
-                                ) : null}
-                                <span className="text-sm font-bold text-fuchsia-300">{classInfo?.name || 'Unknown'}</span>
-                                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-fuchsia-600 text-fuchsia-300">
-                                  Lv.{classLevel}
-                                </Badge>
-                              </div>
-                              {classInfo?.description && (
-                                <p className="text-[11px] text-stone-400 mb-2">{classInfo.description}</p>
-                              )}
-                              <div className="flex items-center gap-3 text-xs">
-                                <span className={`${availablePoints > 0 ? 'text-green-400' : 'text-stone-400'}`}>
-                                  {availablePoints} / {totalPoints} skill pts
-                                </span>
-                                {(cc.unlockedNodes?.length || 0) > 0 && (
-                                  <span className="text-stone-500">{cc.unlockedNodes.length} skills unlocked</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              {canEditSheet && (
-                                <Button size="sm" variant="outline" className="text-green-400 border-green-600 hover:bg-green-900/30 h-6 text-[10px] px-2" onClick={() => levelUpClassMutation.mutate(cc.id)} data-testid={`button-levelup-class-${cc.classId}`}>
-                                  Level Up
-                                </Button>
-                              )}
-                              <Button size="sm" variant="outline" className="text-fuchsia-400 border-fuchsia-600 hover:bg-fuchsia-900/30 h-6 text-[10px] px-2" onClick={() => setShowClassSkillTree(cc.classId)} data-testid={`button-view-class-tree-${cc.classId}`}>
-                                Skill Tree
-                              </Button>
-                              {canEditSheet && (
-                                <Button size="sm" variant="ghost" className="text-red-400 hover:bg-red-900/30 h-6 text-[10px] px-2" onClick={() => removeCharacterClassMutation.mutate(cc.id)} data-testid={`button-remove-class-${cc.classId}`}>
-                                  Remove
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Dialog open={showAddClassDialog} onOpenChange={setShowAddClassDialog}>
-              <DialogContent className="bg-stone-900 border-stone-700">
-                <DialogHeader>
-                  <DialogTitle className="text-fuchsia-400">Add Class</DialogTitle>
-                  <DialogDescription className="text-stone-400">Choose a class to add to this character.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {availableClasses
-                    .filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id))
-                    .map((cls: any) => (
-                      <button key={cls.id} className="w-full text-left p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-fuchsia-600 transition-colors flex items-center gap-3" onClick={() => addCharacterClassMutation.mutate(cls.id)} data-testid={`button-select-class-${cls.id}`}>
-                        {cls.image ? (
-                          <img src={cls.image} alt={cls.name} className="w-8 h-8 rounded object-cover border border-fuchsia-600 shrink-0" />
-                        ) : (
-                          <div className="w-8 h-8 rounded bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center shrink-0">
-                            <Layers className="h-4 w-4 text-fuchsia-500" />
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
-                          {cls.description && <p className="text-xs text-stone-400 mt-0.5">{cls.description}</p>}
-                        </div>
-                      </button>
-                    ))}
-                  {availableClasses.filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id)).length === 0 && (
-                    <p className="text-stone-500 text-sm text-center py-4">All available classes are already assigned.</p>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-          </TabsContent>
-          )}
 
           {/* HOTBARS TAB */}
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
@@ -21281,6 +21230,68 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Class Browser Floating Panel (AA V2) */}
+      {showClassBrowser && (
+        <FloatingPanel
+          open={showClassBrowser}
+          onClose={() => setShowClassBrowser(false)}
+          title={
+            <span className="text-fuchsia-400 flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              All Classes
+            </span>
+          }
+          defaultSize={{ width: Math.min(500, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
+          minWidth={300}
+          minHeight={250}
+          zIndex={floatingZIndices?.['class-browser'] || 10140}
+          onBringToFront={() => bringToFront?.('class-browser')}
+        >
+          <div className="flex-1 min-h-0 overflow-auto p-3 space-y-2">
+            {availableClasses.length === 0 ? (
+              <p className="text-stone-500 text-sm text-center py-4">No classes available.</p>
+            ) : (
+              availableClasses.map((cls: any) => {
+                const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
+                const hasClass = !!charClass;
+                return (
+                  <button
+                    key={cls.id}
+                    className={`w-full text-left p-3 rounded-lg border transition-colors flex items-center gap-3 ${
+                      hasClass 
+                        ? 'bg-fuchsia-900/30 border-fuchsia-600 hover:border-fuchsia-400' 
+                        : 'bg-stone-800 border-stone-700 hover:border-fuchsia-600'
+                    }`}
+                    onClick={() => { setShowClassSkillTree(cls.id); }}
+                    data-testid={`class-browser-${cls.id}`}
+                  >
+                    {cls.image ? (
+                      <img src={cls.image} alt={cls.name} className="w-10 h-10 rounded-lg object-cover border border-fuchsia-600 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center shrink-0">
+                        <Layers className="h-5 w-5 text-fuchsia-500" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                        {hasClass && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-fuchsia-600 text-fuchsia-300">
+                            Lv.{charClass.classLevel}
+                          </Badge>
+                        )}
+                      </div>
+                      {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-stone-500 shrink-0" />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </FloatingPanel>
+      )}
 
       {/* Class Skill Tree Viewer Floating Panel (AA V2) */}
       {showClassSkillTree && (

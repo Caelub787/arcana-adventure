@@ -5290,8 +5290,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (node.classId !== req.params.classId) return res.status(400).json({ error: "Node does not belong to this class" });
 
       const charClasses = await storage.getCharacterClasses(req.params.id);
-      const charClass = charClasses.find(cc => cc.classId === req.params.classId);
-      if (!charClass) return res.status(400).json({ error: "Character doesn't have this class" });
+      let charClass = charClasses.find(cc => cc.classId === req.params.classId);
+      if (!charClass) {
+        charClass = await storage.createCharacterClass({
+          characterId: req.params.id,
+          classId: req.params.classId,
+          classLevel: 1,
+          classPoints: 0,
+        });
+      }
 
       const existingSkills = await storage.getCharacterClassSkills(req.params.id, req.params.classId);
       if (existingSkills.some(s => s.nodeId === req.params.nodeId)) {
