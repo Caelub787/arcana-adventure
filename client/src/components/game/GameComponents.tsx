@@ -6783,7 +6783,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     if (rollEntry.requiresEnergy && rollEntry.energyCost > 0) {
-      const currentEnergy = character?.currentEnergy ?? 0;
+      const currentEnergy = character?.energy ?? 0;
       if (currentEnergy < rollEntry.energyCost) {
         triggerRollNotification({
           type: 'system',
