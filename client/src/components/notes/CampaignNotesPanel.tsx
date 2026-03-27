@@ -765,6 +765,16 @@ export function CampaignNotesPanel({
       const isNewNote = lastLoadedNoteIdRef.current !== currentNote.id;
       
       if (isNewNote) {
+        const prevNoteId = lastLoadedNoteIdRef.current;
+        if (prevNoteId) {
+          const lastSaved = lastSavedContentRef.current;
+          if (lastSaved && (lastSaved.title !== noteTitle || lastSaved.content !== noteContent)) {
+            updateNoteMutation.mutate({
+              id: prevNoteId,
+              data: { title: noteTitle, content: noteContent },
+            });
+          }
+        }
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
         lastLoadedNoteIdRef.current = currentNote.id;
@@ -1275,11 +1285,11 @@ export function CampaignNotesPanel({
     if (!selectedNoteId || !currentNote) return;
 
     const lastSaved = lastSavedContentRef.current;
-    if (!lastSaved && debouncedTitle === currentNote.title && debouncedContent === currentNote.content) {
+    if (!lastSaved) {
       lastSavedContentRef.current = { title: debouncedTitle, content: debouncedContent };
       return;
     }
-    if (lastSaved && lastSaved.title === debouncedTitle && lastSaved.content === debouncedContent) {
+    if (lastSaved.title === debouncedTitle && lastSaved.content === debouncedContent) {
       return;
     }
 

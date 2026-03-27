@@ -774,6 +774,13 @@ export default function Notes() {
       const isNewNote = lastLoadedNoteIdRef.current !== currentNote.id;
       
       if (isNewNote) {
+        const prevNoteId = lastLoadedNoteIdRef.current;
+        if (prevNoteId && noteTitle) {
+          updateNoteMutation.mutate({
+            id: prevNoteId,
+            data: { title: noteTitle, content: noteContent },
+          });
+        }
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
         lastLoadedNoteIdRef.current = currentNote.id;
@@ -1358,13 +1365,14 @@ export default function Notes() {
   };
 
   useEffect(() => {
-    if (noteId && currentNote && (debouncedTitle !== currentNote.title || debouncedContent !== currentNote.content)) {
-      updateNoteMutation.mutate({
-        id: noteId,
-        data: { title: debouncedTitle, content: debouncedContent },
-      });
-    }
-  }, [debouncedTitle, debouncedContent]);
+    if (!noteId || !currentNote) return;
+    if (lastLoadedNoteIdRef.current !== noteId) return;
+    if (debouncedTitle === currentNote.title && debouncedContent === currentNote.content) return;
+    updateNoteMutation.mutate({
+      id: noteId,
+      data: { title: debouncedTitle, content: debouncedContent },
+    });
+  }, [debouncedTitle, debouncedContent, noteId]);
 
   useEffect(() => {
     if (noteId && currentNote?.type === "canvas" && !noteLoading) {
