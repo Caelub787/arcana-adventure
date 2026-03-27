@@ -17989,7 +17989,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     <div className="flex justify-between items-center mb-2">
                       <Label className="text-sm text-purple-300 flex items-center gap-2">
                         <GitBranch className="h-4 w-4 text-purple-400" />
-                        {isAAV2 ? 'Species Feat Tree' : 'Feat Tree'}
+                        {isAAV2 ? 'Skill Tree' : 'Feat Tree'}
                       </Label>
                       {(() => {
                         const level = liveCharacter.level || 1;
@@ -18015,7 +18015,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       data-testid="button-view-feat-tree"
                     >
                       <GitBranch className="h-4 w-4 mr-2" />
-                      View {featTreeData?.tree?.name || (isAAV2 ? 'Species Feat Tree' : 'Feat Tree')}
+                      View {featTreeData?.tree?.name || (isAAV2 ? 'Skill Tree' : 'Feat Tree')}
                     </Button>
                   </div>
                 )}
@@ -21393,7 +21393,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           title={
             <span className="text-purple-400 flex items-center gap-2">
               <GitBranch className="h-4 w-4" />
-              {featTreeData?.tree?.name || 'Feat Tree'}
+              {featTreeData?.tree?.name || (isAAV2 ? 'Skill Tree' : 'Feat Tree')}
             </span>
           }
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
@@ -21409,14 +21409,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             {!featTreeData ? (
               <div className="text-center py-12 text-stone-400">
                 <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No feat tree data available</p>
-                <p className="text-sm mt-1">Ask your GM to set up feat trees</p>
+                <p>No {isAAV2 ? 'skill tree' : 'feat tree'} data available</p>
+                <p className="text-sm mt-1">Ask your GM to set up {isAAV2 ? 'skill trees' : 'feat trees'}</p>
               </div>
             ) : featTreeData.feats.length === 0 ? (
               <div className="text-center py-12 text-stone-400">
                 <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>This feat tree has no feats yet</p>
-                <p className="text-sm mt-1">Ask your GM to add feats in Admin Settings</p>
+                <p>This {isAAV2 ? 'skill tree' : 'feat tree'} has no nodes yet</p>
+                <p className="text-sm mt-1">Ask your GM to add nodes in Admin Settings</p>
               </div>
             ) : (
               <FeatTreeViewerGrid 

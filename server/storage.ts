@@ -298,7 +298,7 @@ export interface IStorage {
   deleteFeatTemplate(id: string): Promise<void>;
 
   // Feat Tree operations
-  getFeatTrees(): Promise<FeatTree[]>;
+  getFeatTrees(system?: string): Promise<FeatTree[]>;
   getFeatTree(id: string): Promise<FeatTree | undefined>;
   getFeatTreeByName(name: string): Promise<FeatTree | undefined>;
   createFeatTree(tree: InsertFeatTree): Promise<FeatTree>;
@@ -2464,7 +2464,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Feat Tree operations
-  async getFeatTrees(): Promise<FeatTree[]> {
+  async getFeatTrees(system?: string): Promise<FeatTree[]> {
+    if (system) {
+      return await db.select().from(featTrees).where(eq(featTrees.system, system)).orderBy(featTrees.name);
+    }
     return await db.select().from(featTrees).orderBy(featTrees.name);
   }
 

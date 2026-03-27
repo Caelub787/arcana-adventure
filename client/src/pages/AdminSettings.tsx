@@ -184,8 +184,8 @@ export default function AdminSettings() {
   });
 
   const { data: allFeatTrees = [] } = useQuery({
-    queryKey: ['feat-trees'],
-    queryFn: () => api.getFeatTrees(),
+    queryKey: ['feat-trees', systemSlug],
+    queryFn: () => api.getFeatTrees(systemSlug),
     enabled: isAdmin,
   });
 
@@ -687,7 +687,8 @@ export default function AdminSettings() {
                currentView === 'notifications' ? 'Push Notifications' :
                currentView === 'archived-items' ? 'Archived Items' :
                currentView === 'archived-spells' ? 'Archived Spells' : 
-               currentView === 'classes' ? 'Classes (A.A. V2)' : 'Feat Trees'}
+               currentView === 'classes' ? 'Classes (A.A. V2)' : 
+               (currentView === 'feat-trees' && systemSlug === 'aa-v2') ? 'Skill Trees' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -873,7 +874,7 @@ export default function AdminSettings() {
         )}
 
         {currentView === 'feat-trees' && (
-          <FeatTreesView />
+          <FeatTreesView systemSlug={systemSlug} />
         )}
 
         {currentView === 'classes' && (
@@ -1452,10 +1453,10 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
           <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
             <GitBranch className="h-6 w-6 text-purple-500" />
           </div>
-          <CardTitle className="text-purple-500">{systemSlug === 'aa-v2' ? 'Species Feat Trees' : 'Feat Trees'}</CardTitle>
+          <CardTitle className="text-purple-500">{systemSlug === 'aa-v2' ? 'Skill Trees' : 'Feat Trees'}</CardTitle>
           <CardDescription className="text-stone-400">
             {systemSlug === 'aa-v2' 
-              ? 'Create and manage species-specific feat progression trees'
+              ? 'Create and manage skill trees for species and classes'
               : 'Create and manage feat progression trees for characters'}
           </CardDescription>
         </CardHeader>
@@ -3754,7 +3755,7 @@ const effectTypeIcons: Record<string, any> = {
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 100;
 
-function FeatTreesView() {
+function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   const queryClient = useQueryClient();
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
   const [showAddTree, setShowAddTree] = useState(false);
@@ -3764,10 +3765,14 @@ function FeatTreesView() {
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [featToSaveAsTemplate, setFeatToSaveAsTemplate] = useState<Partial<Feat> | null>(null);
+  const isAAV2 = systemSlug === 'aa-v2';
+  const treeLabel = isAAV2 ? 'skill tree' : 'feat tree';
+  const treeLabelCap = isAAV2 ? 'Skill Tree' : 'Feat Tree';
+  const treeLabelPlural = isAAV2 ? 'Skill Trees' : 'Feat Trees';
 
   const { data: featTrees = [], isLoading: treesLoading } = useQuery({
-    queryKey: ['feat-trees'],
-    queryFn: () => api.getFeatTrees(),
+    queryKey: ['feat-trees', systemSlug],
+    queryFn: () => api.getFeatTrees(systemSlug),
   });
 
   const { data: treeData, isLoading: treeDataLoading } = useQuery({
@@ -3846,11 +3851,11 @@ function FeatTreesView() {
   });
 
   const createTreeMutation = useMutation({
-    mutationFn: (tree: Partial<FeatTree>) => api.createFeatTree(tree),
+    mutationFn: (tree: Partial<FeatTree>) => api.createFeatTree({ ...tree, system: systemSlug }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      queryClient.invalidateQueries({ queryKey: ['feat-trees', systemSlug] });
       setShowAddTree(false);
-      toast({ title: 'Success', description: 'Feat tree created' });
+      toast({ title: 'Success', description: `${treeLabelCap} created` });
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -3860,10 +3865,10 @@ function FeatTreesView() {
   const updateTreeMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<FeatTree> }) => api.updateFeatTree(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      queryClient.invalidateQueries({ queryKey: ['feat-trees', systemSlug] });
       queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
       setEditingTree(null);
-      toast({ title: 'Success', description: 'Feat tree updated' });
+      toast({ title: 'Success', description: `${treeLabelCap} updated` });
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -3873,11 +3878,11 @@ function FeatTreesView() {
   const deleteTreeMutation = useMutation({
     mutationFn: (id: string) => api.deleteFeatTree(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      queryClient.invalidateQueries({ queryKey: ['feat-trees', systemSlug] });
       if (selectedTreeId === editingTree?.id) {
         setSelectedTreeId(null);
       }
-      toast({ title: 'Success', description: 'Feat tree deleted' });
+      toast({ title: 'Success', description: `${treeLabelCap} deleted` });
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -4850,7 +4855,7 @@ function FeatTreesView() {
     return (
       <Card className="bg-stone-900 border-stone-700">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+          <CardTitle className="text-purple-500">{treeLabelPlural}</CardTitle>
           <Button onClick={() => setShowAddTree(true)} className="bg-purple-600 hover:bg-purple-700">
             <Plus className="h-4 w-4 mr-2" />
             New Tree
@@ -4862,8 +4867,8 @@ function FeatTreesView() {
           ) : featTrees.length === 0 ? (
             <div className="text-center py-12 text-stone-400">
               <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="font-bold">No feat trees yet</p>
-              <p className="text-sm mt-2">Create a feat tree to define character progression paths</p>
+              <p className="font-bold">No {treeLabelPlural.toLowerCase()} yet</p>
+              <p className="text-sm mt-2">Create a {treeLabel} to define character progression paths</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -4898,7 +4903,7 @@ function FeatTreesView() {
                       className="text-red-500 hover:text-red-400"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('Delete this feat tree and all its feats?')) {
+                        if (confirm(`Delete this ${treeLabel} and all its nodes?`)) {
                           deleteTreeMutation.mutate(tree.id);
                         }
                       }}
@@ -6513,13 +6518,13 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
               </div>
 
               <div className="col-span-2">
-                <Label>Feat Tree</Label>
+                <Label>{systemSlug === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
                 <Select 
                   value={formData.featTree || "_none"} 
                   onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
-                    <SelectValue placeholder="Select a feat tree..." />
+                    <SelectValue placeholder={systemSlug === 'aa-v2' ? 'Select a skill tree...' : 'Select a feat tree...'} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">None</SelectItem>
@@ -7746,6 +7751,7 @@ function ClassesView() {
   const [className, setClassName] = useState('');
   const [classDesc, setClassDesc] = useState('');
   const [classImage, setClassImage] = useState('');
+  const [classSkillTreeId, setClassSkillTreeId] = useState('');
   const [showClassImageBrowser, setShowClassImageBrowser] = useState(false);
   const classImageInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
@@ -7765,6 +7771,11 @@ function ClassesView() {
       const res = await fetch('/api/admin/classes?system=aa-v2', { credentials: 'include' });
       return res.json();
     },
+  });
+
+  const { data: skillTreesForClasses = [] } = useQuery({
+    queryKey: ['feat-trees', 'aa-v2'],
+    queryFn: () => api.getFeatTrees('aa-v2'),
   });
 
   const { data: nodes = [] } = useQuery({
@@ -7793,7 +7804,7 @@ function ClassesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...data, system: 'aa-v2', image: classImage || null }),
+        body: JSON.stringify({ ...data, system: 'aa-v2', image: classImage || null, skillTreeId: classSkillTreeId || null }),
       });
       return res.json();
     },
@@ -7965,7 +7976,7 @@ function ClassesView() {
                       <CardTitle className="text-fuchsia-400">{cls.name}</CardTitle>
                     </div>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); setClassImage(cls.image || ''); }} data-testid={`button-edit-class-${cls.id}`}>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); setClassImage(cls.image || ''); setClassSkillTreeId(cls.skillTreeId || ''); }} data-testid={`button-edit-class-${cls.id}`}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="sm" variant="ghost" className="text-red-400" onClick={(e) => { e.stopPropagation(); deleteClassMutation.mutate(cls.id); }} data-testid={`button-delete-class-${cls.id}`}>
@@ -7980,7 +7991,7 @@ function ClassesView() {
           </div>
         )}
 
-        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); setClassImage(''); } }}>
+        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); setClassImage(''); setClassSkillTreeId(''); } }}>
           <DialogContent className="bg-stone-900 border-stone-700">
             <DialogHeader>
               <DialogTitle className="text-fuchsia-400">{editingClass ? 'Edit Class' : 'New Class'}</DialogTitle>
@@ -8027,12 +8038,31 @@ function ClassesView() {
                   </div>
                 </div>
               </div>
+              <div>
+                <Label className="text-stone-300">Skill Tree</Label>
+                <Select 
+                  value={classSkillTreeId || "_none"} 
+                  onValueChange={(value) => setClassSkillTreeId(value === "_none" ? "" : value)}
+                >
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-class-skilltree">
+                    <SelectValue placeholder="Select a skill tree..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {skillTreesForClasses.map((tree: any) => (
+                      <SelectItem key={tree.id} value={tree.id}>
+                        {tree.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setShowAddClass(false); setEditingClass(null); }}>Cancel</Button>
               <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => {
                 if (editingClass) {
-                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc, image: classImage || null } });
+                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc, image: classImage || null, skillTreeId: classSkillTreeId || null } });
                 } else {
                   createClassMutation.mutate({ name: className, description: classDesc });
                 }

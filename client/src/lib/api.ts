@@ -1590,8 +1590,9 @@ class ApiClient {
   }
 
   // Admin Feat Trees
-  async getFeatTrees(): Promise<FeatTree[]> {
-    return this.request('/admin/feat-trees');
+  async getFeatTrees(system?: string): Promise<FeatTree[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/feat-trees${params}`);
   }
 
   async getFeatTree(id: string): Promise<FeatTreeWithData> {
@@ -1648,8 +1649,9 @@ class ApiClient {
   }
 
   // Public feat tree routes (for character sheet)
-  async getPublicFeatTrees(): Promise<FeatTree[]> {
-    return this.request('/feat-trees');
+  async getPublicFeatTrees(system?: string): Promise<FeatTree[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/feat-trees${params}`);
   }
 
   async getFeatTreeByName(name: string): Promise<FeatTreeWithData> {

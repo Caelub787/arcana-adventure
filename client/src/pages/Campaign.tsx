@@ -402,9 +402,10 @@ interface CampaignSpeciesFormDialogProps {
   initialData?: CampaignSpecies | null;
   isLoading?: boolean;
   featTrees?: FeatTree[];
+  campaignSystem?: string;
 }
 
-function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [] }: CampaignSpeciesFormDialogProps) {
+function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [], campaignSystem }: CampaignSpeciesFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -799,13 +800,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               </div>
 
               <div className="col-span-2">
-                <Label>Feat Tree</Label>
+                <Label>{campaignSystem === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
                 <Select 
                   value={formData.featTree || "_none"} 
                   onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
-                    <SelectValue placeholder="Select a feat tree..." />
+                    <SelectValue placeholder={campaignSystem === 'aa-v2' ? 'Select a skill tree...' : 'Select a feat tree...'} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">None</SelectItem>
@@ -8179,9 +8180,10 @@ export default function Campaign() {
 
   // Load feat trees for species form (to assign racial feat trees)
   // Use public endpoint so GMs can access feat trees without admin requirement
+  const campaignSystemSlug = (campaign as any)?.system || 'arcana-adventure';
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
-    queryKey: ['/api/feat-trees'],
-    queryFn: () => api.getPublicFeatTrees(),
+    queryKey: ['/api/feat-trees', campaignSystemSlug],
+    queryFn: () => api.getPublicFeatTrees(campaignSystemSlug),
     enabled: role === 'gm' && speciesFormOpen,
   });
 
@@ -11703,6 +11705,7 @@ export default function Campaign() {
           initialData={editingSpecies}
           isLoading={createCampaignSpeciesMutation.isPending || updateCampaignSpeciesMutation.isPending}
           featTrees={featTrees}
+          campaignSystem={campaignSystemSlug}
         />
       )}
 

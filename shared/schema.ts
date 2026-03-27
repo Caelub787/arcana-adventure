@@ -818,11 +818,12 @@ export const featTrees = pgTable("feat_trees", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
-  gridWidth: integer("grid_width").default(7).notNull(), // Grid columns
-  gridHeight: integer("grid_height").default(10).notNull(), // Grid rows
-  defaultViewX: integer("default_view_x"), // Default pan X position
-  defaultViewY: integer("default_view_y"), // Default pan Y position
-  defaultViewZoom: real("default_view_zoom"), // Default zoom level
+  system: text("system").notNull().default("arcana-adventure"),
+  gridWidth: integer("grid_width").default(7).notNull(),
+  gridHeight: integer("grid_height").default(10).notNull(),
+  defaultViewX: integer("default_view_x"),
+  defaultViewY: integer("default_view_y"),
+  defaultViewZoom: real("default_view_zoom"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1775,6 +1776,7 @@ export const classes = pgTable("classes", {
   description: text("description"),
   image: text("image"),
   system: text("system").notNull().default("aa-v2"),
+  skillTreeId: text("skill_tree_id"),
   gridWidth: integer("grid_width").default(7).notNull(),
   gridHeight: integer("grid_height").default(10).notNull(),
   defaultViewX: integer("default_view_x"),

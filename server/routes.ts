@@ -5394,10 +5394,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== FEAT TREE ROUTES ====================
 
-  // Get all feat trees (admin)
   app.get("/api/admin/feat-trees", requireAdmin, async (req, res) => {
     try {
-      const trees = await storage.getFeatTrees();
+      const system = req.query.system as string | undefined;
+      const trees = await storage.getFeatTrees(system);
       res.json(trees);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feat trees" });
@@ -5562,7 +5562,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public feat tree route (for character sheet)
   app.get("/api/feat-trees", requireAuth, async (req, res) => {
     try {
-      const trees = await storage.getFeatTrees();
+      const system = req.query.system as string | undefined;
+      const trees = await storage.getFeatTrees(system);
       res.json(trees);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feat trees" });
