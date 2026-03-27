@@ -2520,11 +2520,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/campaigns/:campaignId/characters", requireAuth, async (req, res) => {
     try {
       console.log("[Character Create] Request body:", JSON.stringify(req.body, null, 2));
-      const character = await storage.createCharacter({
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      const charData: any = {
         ...req.body,
         campaignId: req.params.campaignId,
         userId: req.session.userId!
-      });
+      };
+      if (campaign?.system === 'aa-v2') {
+        const level = charData.level || 1;
+        let expectedTotal = 0;
+        for (let lvl = 1; lvl <= level; lvl++) {
+          expectedTotal += (lvl % 3 === 0) ? 5 : 3;
+        }
+        charData.classSkillPoints = expectedTotal;
+      }
+      const character = await storage.createCharacter(charData);
       console.log("[Character Create] Success:", character.id);
       
       broadcastToCampaign(req.params.campaignId, {
