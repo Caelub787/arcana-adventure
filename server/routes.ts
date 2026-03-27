@@ -2333,7 +2333,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {
     try {
-      const campaign = await storage.updateCampaign(req.params.id, req.body);
+      const userId = (req as any).user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const members = await storage.getCampaignMembers(req.params.id);
+      const member = members.find(m => m.userId === userId);
+      if (!member || (member.role !== 'gm' && member.role !== 'assistant_gm')) {
+        return res.status(403).json({ error: "Only the GM can update campaign settings" });
+      }
+
+      const allowedFields = ['name', 'defaultPanel', 'hotbarSlots', 'activeSceneId'];
+      const sanitized: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (key in req.body) sanitized[key] = req.body[key];
+      }
+      if (sanitized.name !== undefined) {
+        const name = String(sanitized.name).trim();
+        if (!name || name.length > 100) {
+          return res.status(400).json({ error: "Campaign name must be 1-100 characters" });
+        }
+        sanitized.name = name;
+      }
+
+      const campaign = await storage.updateCampaign(req.params.id, sanitized);
       if (!campaign) {
         return res.status(404).json({ error: "Campaign not found" });
       }

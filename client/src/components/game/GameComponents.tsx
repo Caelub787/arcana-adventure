@@ -9503,6 +9503,8 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [isRenamingCampaign, setIsRenamingCampaign] = useState(false);
+  const [campaignNameInput, setCampaignNameInput] = useState('');
   
   // Folder state
   const [draggingCharacterId, setDraggingCharacterId] = useState<string | null>(null);
@@ -9518,6 +9520,34 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
     return fallbackUsername;
   };
   
+  const { data: campaignData } = useQuery({
+    queryKey: [`/api/campaigns/${campaignId}`],
+    queryFn: () => api.getCampaign(campaignId!),
+    enabled: !!campaignId,
+  });
+
+  const renameCampaignMutation = useMutation({
+    mutationFn: (name: string) => api.updateCampaign(campaignId!, { name } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      setIsRenamingCampaign(false);
+      toast({ title: "Campaign renamed", duration: 2000 });
+    },
+    onError: () => {
+      toast({ title: "Failed to rename campaign", variant: "destructive", duration: 3000 });
+    },
+  });
+
+  const handleRenameCampaign = () => {
+    const trimmed = campaignNameInput.trim();
+    if (trimmed && trimmed !== (campaignData as any)?.name) {
+      renameCampaignMutation.mutate(trimmed);
+    } else {
+      setIsRenamingCampaign(false);
+    }
+  };
+
   // Folder query
   const { data: folders = [] } = useQuery({
     queryKey: ['campaign-folders', campaignId],
@@ -10243,6 +10273,40 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             <h2 className="font-display text-2xl text-amber-500 mb-1">Campaign Settings</h2>
             <p className="text-xs text-stone-500">Manage adventure details</p>
           </div>
+
+          {role === 'gm' && (
+            <div className="mb-4 p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
+              <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
+                <Pencil className="h-3 w-3 text-amber-400" /> Campaign Name
+              </h3>
+              {isRenamingCampaign ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={campaignNameInput}
+                    onChange={(e) => setCampaignNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRenameCampaign(); if (e.key === 'Escape') setIsRenamingCampaign(false); }}
+                    className="flex-1 bg-stone-800 border border-stone-700 rounded px-2 py-1 text-sm text-stone-200 focus:outline-none focus:border-amber-500"
+                    autoFocus
+                    data-testid="input-campaign-name"
+                  />
+                  <Button size="sm" variant="ghost" onClick={handleRenameCampaign} disabled={renameCampaignMutation.isPending} className="text-green-400 hover:text-green-300" data-testid="button-save-campaign-name">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setIsRenamingCampaign(false)} className="text-stone-400 hover:text-stone-300" data-testid="button-cancel-campaign-name">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-stone-200" data-testid="text-campaign-name">{(campaignData as any)?.name || 'Unnamed Campaign'}</span>
+                  <Button size="sm" variant="ghost" onClick={() => { setCampaignNameInput((campaignData as any)?.name || ''); setIsRenamingCampaign(true); }} className="text-stone-400 hover:text-amber-400" data-testid="button-rename-campaign">
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           
           {/* Invite Code Section */}
           <InviteCodeSection inviteCode={inviteCode} />
@@ -10939,6 +11003,39 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
 
       {inline && (
         <div className="space-y-4">
+          {!charactersOnly && role === 'gm' && (
+            <div className="p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
+              <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
+                <Pencil className="h-3 w-3 text-amber-400" /> Campaign Name
+              </h3>
+              {isRenamingCampaign ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={campaignNameInput}
+                    onChange={(e) => setCampaignNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRenameCampaign(); if (e.key === 'Escape') setIsRenamingCampaign(false); }}
+                    className="flex-1 bg-stone-800 border border-stone-700 rounded px-2 py-1 text-sm text-stone-200 focus:outline-none focus:border-amber-500"
+                    autoFocus
+                    data-testid="input-campaign-name-inline"
+                  />
+                  <Button size="sm" variant="ghost" onClick={handleRenameCampaign} disabled={renameCampaignMutation.isPending} className="text-green-400 hover:text-green-300" data-testid="button-save-campaign-name-inline">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setIsRenamingCampaign(false)} className="text-stone-400 hover:text-stone-300" data-testid="button-cancel-campaign-name-inline">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-stone-200" data-testid="text-campaign-name-inline">{(campaignData as any)?.name || 'Unnamed Campaign'}</span>
+                  <Button size="sm" variant="ghost" onClick={() => { setCampaignNameInput((campaignData as any)?.name || ''); setIsRenamingCampaign(true); }} className="text-stone-400 hover:text-amber-400" data-testid="button-rename-campaign-inline">
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           {!charactersOnly && <InviteCodeSection inviteCode={inviteCode} />}
           {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (
             <Button
