@@ -19,6 +19,7 @@ export function BattlemapAoeOverlay({
   zoom,
 }: BattlemapAoeOverlayProps) {
   if (!aoeTargetState.active || !aoeTargetState.spell) return null;
+  if (!aoeTargetState.locked && aoeTargetState.center.x === 0 && aoeTargetState.center.y === 0) return null;
 
   const { spell, center, locked, width: aoeWidth } = aoeTargetState;
   

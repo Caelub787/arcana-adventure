@@ -7346,6 +7346,7 @@ export default function Campaign() {
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
+  const [aoePanelPos, setAoePanelPos] = useState<{ x: number; y: number } | null>(null);
   const [pendingSandboxAoe, setPendingSandboxAoe] = useState<{
     rollFormula: string;
     hitFormula?: string;
@@ -7420,6 +7421,7 @@ export default function Campaign() {
   // Helper function to exit AoE mode
   const exitAoeMode = () => {
     setAoeTargetState(createInitialAoeState());
+    setAoePanelPos(null);
     gameWs.clearAoeTargeting();
   };
   
@@ -7767,31 +7769,35 @@ export default function Campaign() {
   }, [role, activeScene?.fogEnabled, activeScene?.id, character?.id, tokens]);
 
   const handleAoeClick = (x: number, y: number) => {
-    let isLocked = true;
-    
+    const gridSizeVal = activeScene?.gridSize || 50;
+    const snappedX = Math.floor(x / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
+    const snappedY = Math.floor(y / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
+
+    let inRange = true;
     const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
     if (casterToken) {
-      const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
-      const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
+      const casterCenterX = casterToken.x + gridSizeVal / 2;
+      const casterCenterY = casterToken.y + gridSizeVal / 2;
       const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.detonatableItem?.range || 30;
-      const gridSizeVal = activeScene?.gridSize || 50;
-      
-      const dx = x - casterCenterX;
-      const dy = y - casterCenterY;
+
+      const dx = snappedX - casterCenterX;
+      const dy = snappedY - casterCenterY;
       const distancePixels = Math.sqrt(dx * dx + dy * dy);
       const distanceFeet = (distancePixels / gridSizeVal) * 5;
-      
+
       if (distanceFeet > rangeVal) {
-        isLocked = false;
+        inRange = false;
       }
     }
-    
+
+    if (!inRange) return;
+
     setAoeTargetState(prev => ({
       ...prev,
-      center: { x, y },
-      locked: isLocked,
+      center: { x: snappedX, y: snappedY },
+      locked: true,
     }));
-    
+
     if (aoeTargetState.spell) {
       const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
       gameWs.sendAoeTargeting({
@@ -7800,16 +7806,16 @@ export default function Campaign() {
         spellAoe: aoeTargetState.spell?.aoe,
         casterTokenId: aoeTargetState.casterTokenId,
         casterName: casterChar?.name || 'Unknown',
-        center: { x, y },
-        locked: isLocked,
+        center: { x: snappedX, y: snappedY },
+        locked: true,
       });
     }
 
-    if (isLocked && pendingSandboxAoe) {
+    if (inRange && pendingSandboxAoe) {
       const gridSize = activeScene?.gridSize || 50;
       const tokensInAoe = getTokensInAoe(tokens, {
         ...aoeTargetState,
-        center: { x, y },
+        center: { x: snappedX, y: snappedY },
         locked: true,
       }, gridSize, tokens.find((t: any) => t.id === aoeTargetState.casterTokenId));
 
@@ -11953,31 +11959,42 @@ export default function Campaign() {
                aoeShape = (aoeTargetState.spell.aoeShape || 'circle').toLowerCase();
              }
              const showWidthControl = aoeShape === 'line' || aoeShape === 'cone';
+             const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
              
              return (
                <div 
-                 className="absolute top-72 z-30 pointer-events-auto bg-stone-900/95 border border-stone-700 rounded-lg p-3 shadow-xl w-52 transition-all duration-300 ease-in-out"
-                 style={{ left: '8px' }}
+                 className={`fixed z-[10800] pointer-events-auto bg-stone-900/95 border border-amber-700/60 rounded-lg shadow-2xl ${isMobileView ? 'left-1/2 -translate-x-1/2 top-14 px-3 py-2' : 'cursor-move px-4 py-2'}`}
+                 style={!isMobileView ? { top: aoePanelPos?.y ?? 56, left: aoePanelPos?.x ?? '50%', transform: aoePanelPos ? 'none' : 'translateX(-50%)' } : undefined}
+                 onPointerDown={!isMobileView ? (e) => {
+                   if ((e.target as HTMLElement).closest('button, input')) return;
+                   e.preventDefault();
+                   const el = e.currentTarget;
+                   const rect = el.getBoundingClientRect();
+                   const offsetX = e.clientX - rect.left;
+                   const offsetY = e.clientY - rect.top;
+                   const onMove = (ev: PointerEvent) => {
+                     setAoePanelPos({ x: ev.clientX - offsetX, y: ev.clientY - offsetY });
+                   };
+                   const onUp = () => {
+                     window.removeEventListener('pointermove', onMove);
+                     window.removeEventListener('pointerup', onUp);
+                   };
+                   window.addEventListener('pointermove', onMove);
+                   window.addEventListener('pointerup', onUp);
+                 } : undefined}
+                 data-testid="aoe-control-panel"
                >
-                 <div className="flex items-center justify-between mb-2">
-                   <span className="text-xs text-amber-400 font-medium">{aoeTargetState.spell.name}</span>
-                   <Button
-                     variant="ghost"
-                     size="sm"
-                     onClick={exitAoeMode}
-                     className="h-6 w-6 p-0 text-stone-400 hover:text-white hover:bg-stone-700"
-                     data-testid="button-cancel-aoe"
-                   >
-                     ×
-                   </Button>
-                 </div>
-                 {!aoeTargetState.locked && (
-                   <p className="text-xs text-stone-400">Click on the map to place the AoE</p>
-                 )}
-                 {showWidthControl && (
-                   <>
-                     <Label className="text-xs text-stone-400 mb-1 block">Width (ft)</Label>
-                     <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-3">
+                   <span className="text-xs text-amber-400 font-medium whitespace-nowrap">{aoeTargetState.spell.name}</span>
+                   {!aoeTargetState.locked && (
+                     <span className="text-xs text-stone-400 whitespace-nowrap">Click map to place</span>
+                   )}
+                   {aoeTargetState.locked && (
+                     <span className="text-xs text-green-400 whitespace-nowrap">Placed</span>
+                   )}
+                   {showWidthControl && (
+                     <div className="flex items-center gap-1">
+                       <label className="text-xs text-stone-400 whitespace-nowrap">W:</label>
                        <Input
                          type="number"
                          min={5}
@@ -11988,25 +12005,14 @@ export default function Campaign() {
                            const newWidth = Math.max(5, Math.min(30, parseInt(e.target.value) || 5));
                            setAoeTargetState(prev => ({ ...prev, width: newWidth }));
                          }}
-                         className="h-8 text-sm bg-stone-800 border-stone-600"
+                         className="h-6 w-14 text-xs bg-stone-800 border-stone-600"
                          data-testid="input-aoe-width"
                        />
                        <span className="text-xs text-stone-500">ft</span>
                      </div>
-                     <p className="text-xs text-stone-500 mt-1">
-                       {aoeShape === 'line' ? 'Line width' : 'Cone base width'}
-                     </p>
-                   </>
-                 )}
-                 {aoeTargetState.locked && (
-                   <div className="mt-2 space-y-2">
-                     <p className="text-xs text-green-400">✓ Position locked</p>
-                     {aoeTargetState.pendingRollEntry && (
-                       <p className="text-xs text-stone-400">
-                         Roll: {aoeTargetState.pendingRollEntry.name || 'Damage'}
-                       </p>
-                     )}
-                     <div className="flex gap-1.5">
+                   )}
+                   <div className="flex gap-1.5 ml-auto">
+                     {aoeTargetState.locked && (
                        <Button
                          size="sm"
                          onClick={() => {
@@ -12015,38 +12021,23 @@ export default function Campaign() {
                              exitAoeMode();
                            }, 500);
                          }}
-                         className="flex-1 h-7 text-xs bg-green-700 hover:bg-green-600 text-white"
+                         className="h-7 px-3 text-xs bg-green-700 hover:bg-green-600 text-white"
                          data-testid="button-confirm-aoe"
                        >
                          Confirm
                        </Button>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={() => {
-                           setAoeTargetState(prev => ({
-                             ...prev,
-                             locked: false,
-                             confirmed: false,
-                           }));
-                         }}
-                         className="flex-1 h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
-                         data-testid="button-replace-aoe"
-                       >
-                         Replace
-                       </Button>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={exitAoeMode}
-                         className="flex-1 h-7 text-xs border-red-800 text-red-400 hover:bg-red-900/50"
-                         data-testid="button-deny-aoe"
-                       >
-                         Deny
-                       </Button>
-                     </div>
+                     )}
+                     <Button
+                       size="sm"
+                       variant="outline"
+                       onClick={exitAoeMode}
+                       className="h-7 px-3 text-xs border-red-800 text-red-400 hover:bg-red-900/50"
+                       data-testid="button-deny-aoe"
+                     >
+                       Deny
+                     </Button>
                    </div>
-                 )}
+                 </div>
                </div>
              );
            })()}

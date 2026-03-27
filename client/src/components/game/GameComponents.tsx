@@ -1457,19 +1457,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
       return;
     }
-    // Handle AoE targeting mode mouse tracking
-    if (aoeTargetState?.active && !aoeTargetState.locked && onAoeMouseMove) {
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        // Match the wheel handler's coordinate formula: account for 9000px world offset
-        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
-        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
-        onAoeMouseMove(worldX, worldY);
-      }
-    }
+    // AoE targeting mode: no mouse-follow, placement is click-based only
     
     // Only handle if we're panning with this pointer
     if (gestureModeRef.current !== 'panning') return;
@@ -1507,9 +1495,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       // Pointer capture may already be released
     }
     
-    // If we're in AoE targeting mode, didn't drag, and AoE is not already locked, treat as click to lock AoE
-    // Once AoE is locked, user can switch to select mode to pick targets without placing new AoE markers
-    if (aoeTargetState?.active && !aoeTargetState.locked && !didDragRef.current && onAoeClick) {
+    if (aoeTargetState?.active && !didDragRef.current && onAoeClick) {
       const container = containerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -1519,6 +1505,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
         onAoeClick(worldX, worldY);
       }
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+      notifyViewChange();
+      return;
     }
     
     // Double-click on empty grid space in select mode triggers beacon
@@ -2451,10 +2442,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {
-            // If in AoE targeting mode and AoE is not locked yet, let the click go through to place the AoE
-            // Once locked, allow normal token interactions (like selecting for damage application)
-            if (aoeTargetState?.active && !aoeTargetState.locked && e.button === 0 && onAoeClick) {
-              // Calculate world coordinates and call the AoE click handler
+            if (aoeTargetState?.active && e.button === 0 && onAoeClick) {
               const container = containerRef.current;
               if (container) {
                 const rect = container.getBoundingClientRect();
@@ -2464,7 +2452,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
                 onAoeClick(worldX, worldY);
               }
-              return; // Don't process token interactions until AoE is placed
+              return;
             }
             
             e.stopPropagation();
@@ -6991,10 +6979,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
 
       for (const { token, targetChar } of targetsToSave) {
-        if (onRequestSaveRoll) {
           const assignedMembers = campaignMembers?.filter((m: any) => m.assignedCharacterId === targetChar.id) || [];
           const assignedMember = assignedMembers.find((m: any) => m.role === 'player') || assignedMembers[0];
-          const ownerUserId = assignedMember?.userId || targetChar.userId;
+          const ownerUserId = assignedMember?.userId;
 
           let effectiveDc = saveDc;
           if (dcType === 'target' && rollEntry.saveDcAttribute && targetChar) {
@@ -7002,10 +6989,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             effectiveDc = 8 + targetAttrMod + extraModifier;
           }
 
+          if (ownerUserId && onRequestSaveRoll) {
           try {
             const result = await onRequestSaveRoll({
               targetCharacterId: targetChar.id,
-              targetUserId: ownerUserId || targetChar.userId,
+              targetUserId: ownerUserId,
               spellName: itemOrSpellName,
               saveAttribute: saveAttr,
               saveDc: effectiveDc,
@@ -7045,7 +7033,33 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
             });
           }
-        }
+          } else {
+            const attrMod = targetChar[saveAttr] || 0;
+            const autoRoll = Math.floor(Math.random() * 20) + 1;
+            const autoTotal = autoRoll + attrMod;
+            const autoSaved = autoTotal >= effectiveDc;
+
+            newSaveResults.push({
+              tokenId: token.id,
+              characterId: targetChar.id,
+              characterName: targetChar.name,
+              saved: autoSaved,
+              saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
+            });
+
+            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${autoSaved ? 'SAVED!' : 'FAILED!'}`;
+            triggerRollNotification({
+              type: autoSaved ? 'system' : 'attack',
+              dieType: 'd20' as any,
+              label: saveLabel,
+              result: autoRoll,
+              total: autoTotal,
+              username: targetChar.name,
+              characterName: targetChar.name,
+              calculationBreakdown: `d20 = ${autoRoll} + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${autoTotal} vs DC ${effectiveDc}`,
+              customColor: rollEntry.primaryColor || undefined,
+            });
+          }
       }
 
       setPendingSaveResults(newSaveResults);
