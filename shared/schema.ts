@@ -221,6 +221,8 @@ export const characters = pgTable("characters", {
   maxHp: integer("max_hp").notNull(),
   energy: integer("energy").notNull(),
   maxEnergy: integer("max_energy").notNull(),
+  mana: integer("mana").notNull().default(0),
+  maxMana: integer("max_mana").notNull().default(0),
   // Race information
   race: text("race").notNull().default("Human"),
   size: text("size").notNull().default("Medium"),
@@ -686,6 +688,7 @@ export const spells = pgTable("spells", {
   mod: integer("mod").default(0), // Flat bonus added after dice roll
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   energyCost: integer("energy_cost").default(1), // Energy cost to cast
+  manaCost: integer("mana_cost").default(0), // Mana cost to cast (AA V2 only)
   isEquipped: boolean("is_equipped").default(false).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
   gainEnergy: boolean("gain_energy").default(false), // For Energy damage type: if true adds energy, if false subtracts
@@ -912,6 +915,7 @@ export const systemSpells = pgTable("system_spells", {
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   healingDice: text("healing_dice"),
   energyCost: integer("energy_cost").default(1).notNull(),
+  manaCost: integer("mana_cost").default(0).notNull(),
   concentration: boolean("concentration").default(false).notNull(),
   ritual: boolean("ritual").default(false).notNull(),
   targetType: text("target_type").default("single").notNull(),
@@ -1283,6 +1287,8 @@ export const rollEntries = pgTable("roll_entries", {
   primaryColor: text("primary_color"),
   requiresEnergy: boolean("requires_energy").default(false),
   energyCost: integer("energy_cost"),
+  requiresMana: boolean("requires_mana").default(false),
+  manaCost: integer("mana_cost"),
   noRoll: boolean("no_roll").default(false),
   enableChatMessage: boolean("enable_chat_message").default(false),
   chatMessage: text("chat_message"),
@@ -1751,3 +1757,98 @@ export const insertShopHaggleRollSchema = createInsertSchema(shopHaggleRolls).om
 });
 export type InsertShopHaggleRoll = z.infer<typeof insertShopHaggleRollSchema>;
 export type ShopHaggleRoll = typeof shopHaggleRolls.$inferSelect;
+
+export const classes = pgTable("classes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  image: text("image"),
+  system: text("system").notNull().default("aa-v2"),
+  gridWidth: integer("grid_width").default(7).notNull(),
+  gridHeight: integer("grid_height").default(10).notNull(),
+  defaultViewX: integer("default_view_x"),
+  defaultViewY: integer("default_view_y"),
+  defaultViewZoom: real("default_view_zoom"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClassSchema = createInsertSchema(classes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClass = z.infer<typeof insertClassSchema>;
+export type GameClass = typeof classes.$inferSelect;
+
+export const classSkillNodes = pgTable("class_skill_nodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  gridX: integer("grid_x").notNull().default(0),
+  gridY: integer("grid_y").notNull().default(0),
+  tier: integer("tier").default(1).notNull(),
+  cost: integer("cost").default(1).notNull(),
+  effects: jsonb("effects").default([]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClassSkillNodeSchema = createInsertSchema(classSkillNodes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClassSkillNode = z.infer<typeof insertClassSkillNodeSchema>;
+export type ClassSkillNode = typeof classSkillNodes.$inferSelect;
+
+export const classSkillConnections = pgTable("class_skill_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
+  fromNodeId: varchar("from_node_id").notNull().references(() => classSkillNodes.id, { onDelete: "cascade" }),
+  toNodeId: varchar("to_node_id").notNull().references(() => classSkillNodes.id, { onDelete: "cascade" }),
+});
+
+export const insertClassSkillConnectionSchema = createInsertSchema(classSkillConnections).omit({
+  id: true,
+});
+export type InsertClassSkillConnection = z.infer<typeof insertClassSkillConnectionSchema>;
+export type ClassSkillConnection = typeof classSkillConnections.$inferSelect;
+
+export const characterClasses = pgTable("character_classes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  classId: varchar("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
+  classLevel: integer("class_level").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueCharacterClass: uniqueIndex("character_classes_char_class_unique").on(
+    table.characterId,
+    table.classId
+  ),
+}));
+
+export const insertCharacterClassSchema = createInsertSchema(characterClasses).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCharacterClass = z.infer<typeof insertCharacterClassSchema>;
+export type CharacterClass = typeof characterClasses.$inferSelect;
+
+export const characterClassSkills = pgTable("character_class_skills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  classId: varchar("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
+  nodeId: varchar("node_id").notNull().references(() => classSkillNodes.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueCharacterClassSkill: uniqueIndex("character_class_skills_unique").on(
+    table.characterId,
+    table.nodeId
+  ),
+}));
+
+export const insertCharacterClassSkillSchema = createInsertSchema(characterClassSkills).omit({
+  id: true,
+  unlockedAt: true,
+});
+export type InsertCharacterClassSkill = z.infer<typeof insertCharacterClassSkillSchema>;
+export type CharacterClassSkill = typeof characterClassSkills.$inferSelect;
