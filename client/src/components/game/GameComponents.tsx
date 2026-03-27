@@ -8517,7 +8517,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
                     )}
                   </>
                 ) : (
-                  <SelectItem value="Human" className="text-stone-200">Human</SelectItem>
+                  <SelectItem value="Unknown" className="text-stone-400" disabled>No species available</SelectItem>
                 )}
               </SelectContent>
             </Select>
