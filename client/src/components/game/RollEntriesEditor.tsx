@@ -549,7 +549,7 @@ function RollForm({
               </div>
               <div>
                 <Label className="text-xs text-stone-400">DC Type</Label>
-                <Select value={form.saveDcType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcType: v, saveDcAttribute: v === "value" ? "" : (f.saveDcAttribute || "") }))}>
+                <Select value={form.saveDcType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcType: v, saveDcAttribute: v === "value" ? "" : (f.saveDcAttribute || "might") }))}>
                   <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveDcType`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -577,7 +577,7 @@ function RollForm({
               {(form.saveDcType === "target" || form.saveDcType === "caster") && (
                 <div>
                   <Label className="text-xs text-stone-400">DC Attribute</Label>
-                  <Select value={form.saveDcAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcAttribute: v === "_none" ? "" : v }))}>
+                  <Select value={form.saveDcAttribute || "might"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcAttribute: v }))}>
                     <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveDcAttribute`}>
                       <SelectValue placeholder="Select attribute" />
                     </SelectTrigger>
