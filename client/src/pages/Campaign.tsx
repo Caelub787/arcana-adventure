@@ -10005,6 +10005,12 @@ export default function Campaign() {
                       bringToFront('notes');
                       return;
                     }
+                    if (isMobile) {
+                      setFloatingNotesOpen(true);
+                      setFloatingNotesInitialNoteId(null);
+                      bringToFront('notes');
+                      return;
+                    }
                     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
                     } else {
@@ -10032,6 +10038,11 @@ export default function Campaign() {
                   size="icon"
                   onClick={() => {
                     if (floatingWorldBuilderOpen) {
+                      bringToFront('worldbuilder');
+                      return;
+                    }
+                    if (isMobile) {
+                      setFloatingWorldBuilderOpen(true);
                       bringToFront('worldbuilder');
                       return;
                     }
