@@ -94,7 +94,9 @@ export default function AdminSettings() {
   const queryClient = useQueryClient();
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
-  const [selectedSystem, setSelectedSystem] = useState('Arcana Adventure');
+  const [selectedSystem, setSelectedSystem] = useState(() => {
+    return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
+  });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
   
   const [showAddItem, setShowAddItem] = useState(false);
@@ -692,7 +694,7 @@ export default function AdminSettings() {
             </p>
           </div>
           <div className="w-[200px]">
-            <Select value={selectedSystem} onValueChange={setSelectedSystem}>
+            <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); localStorage.setItem('admin-selected-system', val); }}>
               <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">
                 <SelectValue placeholder="Select System" />
               </SelectTrigger>
