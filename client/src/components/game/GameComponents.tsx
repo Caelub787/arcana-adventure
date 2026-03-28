@@ -7954,7 +7954,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       <span className="text-stone-200">{spellData.damage} {spellData.damageType || ''}</span>
                     </div>
                   )}
-                  {spellData.manaCost > 0 && (
+                  {spellData.energyCost > 0 && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-cyan-400 block">Energy Cost</span>
+                      <span className="text-stone-200">{spellData.energyCost}</span>
+                    </div>
+                  )}
+                  {campaignSystem === 'aa-v2' && spellData.manaCost > 0 && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-violet-400 block">Mana Cost</span>
                       <span className="text-stone-200">{spellData.manaCost}</span>
@@ -19493,6 +19499,22 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                       </span>
                                     </>
                                   )}
+                                  {spell.energyCost > 0 && (
+                                    <>
+                                      <span className="text-stone-500">|</span>
+                                      <span className="text-cyan-400 font-medium">
+                                        {spell.energyCost} Energy
+                                      </span>
+                                    </>
+                                  )}
+                                  {campaignSystem === 'aa-v2' && spell.manaCost > 0 && (
+                                    <>
+                                      <span className="text-stone-500">|</span>
+                                      <span className="text-violet-400 font-medium">
+                                        {spell.manaCost} Mana
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -19732,7 +19754,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-stone-100">{spell.name}</span>
-                                    {spell.manaCost > 0 && (
+                                    {spell.energyCost > 0 && (
+                                      <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
+                                        {spell.energyCost} Energy
+                                      </Badge>
+                                    )}
+                                    {campaignSystem === 'aa-v2' && spell.manaCost > 0 && (
                                       <Badge className="bg-violet-600/30 text-violet-300 text-xs">
                                         {spell.manaCost} Mana
                                       </Badge>
@@ -20301,7 +20328,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-stone-100">{spell.name}</span>
-                                {spell.manaCost > 0 && (
+                                {spell.energyCost > 0 && (
+                                  <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
+                                    {spell.energyCost} Energy
+                                  </Badge>
+                                )}
+                                {campaignSystem === 'aa-v2' && spell.manaCost > 0 && (
                                   <Badge className="bg-violet-600/30 text-violet-300 text-xs">
                                     {spell.manaCost} Mana
                                   </Badge>
@@ -20359,6 +20391,16 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         <Badge className={selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'bg-blue-600/30 text-blue-300' : 'bg-red-600/30 text-red-300'}>
                           {selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
                         </Badge>
+                        {selectedSpell.energyCost > 0 && (
+                          <Badge className="bg-cyan-600/30 text-cyan-300">
+                            {selectedSpell.energyCost} Energy
+                          </Badge>
+                        )}
+                        {campaignSystem === 'aa-v2' && selectedSpell.manaCost > 0 && (
+                          <Badge className="bg-violet-600/30 text-violet-300">
+                            {selectedSpell.manaCost} Mana
+                          </Badge>
+                        )}
                         {selectedSpell.isEquipped && (
                           <Badge variant="outline" className="bg-amber-900 text-amber-100 border-amber-700">
                             Equipped
