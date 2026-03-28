@@ -1097,10 +1097,10 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
       {!isLoading && sortedRolls.length > 0 && (ownerEnergyCost > 0 || (campaignSystem === 'aa-v2' && ownerManaCost > 0)) && (
         <div className="flex gap-3 mb-1">
           {ownerEnergyCost > 0 && (
-            <span className="text-[11px] text-cyan-400 font-medium">{ownerEnergyCost} Energy</span>
+            <span className="text-[11px] text-cyan-400 font-medium">Energy Cost: {ownerEnergyCost}</span>
           )}
           {campaignSystem === 'aa-v2' && ownerManaCost > 0 && (
-            <span className="text-[11px] text-violet-400 font-medium">{ownerManaCost} Mana</span>
+            <span className="text-[11px] text-violet-400 font-medium">Mana Cost: {ownerManaCost}</span>
           )}
         </div>
       )}

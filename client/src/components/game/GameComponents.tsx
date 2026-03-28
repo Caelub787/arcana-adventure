@@ -13955,7 +13955,6 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
               {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
-              {spellData.manaCost > 0 && <p className="text-sm text-violet-400">Mana: {spellData.manaCost}</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
               <p className="text-xs text-stone-400 mt-1">Use from battlemap hotbar to cast</p>
             </TooltipContent>
