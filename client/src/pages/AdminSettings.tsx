@@ -4783,6 +4783,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                   <div className="text-[10px] text-amber-400 mt-1 font-medium">
                     Cost: {feat.cost || 1}
                   </div>
+                  </div>
                 </div>
               </div>
             );
