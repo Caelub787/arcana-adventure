@@ -7692,7 +7692,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 if (roll.requiresEnergy && roll.energyCost) {
                   stats.push(`${roll.energyCost} Energy`);
                 }
-                if (roll.requiresMana && roll.manaCost) {
+                if (campaignSystem === 'aa-v2' && roll.requiresMana && roll.manaCost) {
                   stats.push(`${roll.manaCost} Mana`);
                 }
                 if (roll.range) {

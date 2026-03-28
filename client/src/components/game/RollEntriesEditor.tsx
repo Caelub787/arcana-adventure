@@ -1147,6 +1147,12 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         {roll.diceFormula}{roll.mod && roll.mod !== 0 ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ""}
                       </span>
                     )}
+                    {roll.requiresEnergy && roll.energyCost > 0 && (
+                      <span className="text-[10px] text-cyan-400 shrink-0">{roll.energyCost}E</span>
+                    )}
+                    {campaignSystem === 'aa-v2' && roll.requiresMana && roll.manaCost > 0 && (
+                      <span className="text-[10px] text-violet-400 shrink-0">{roll.manaCost}M</span>
+                    )}
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
                     {onExecuteRoll && !isHiddenRoll && (
@@ -1239,8 +1245,8 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     {roll.gainEnergy && <p className="text-[10px] text-stone-400">⚡ Gains energy</p>}
                     {roll.passesThroughWalls && <p className="text-[10px] text-stone-400">🔮 Passes through walls</p>}
                     {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
-                    {roll.requiresEnergy && roll.energyCost && <span className="text-[10px] text-cyan-400">⚡ {roll.energyCost} Energy</span>}
-                    {roll.requiresMana && roll.manaCost && <span className="text-[10px] text-violet-400">✦ {roll.manaCost} Mana</span>}
+                    {roll.requiresEnergy && roll.energyCost > 0 && <span className="text-[10px] text-cyan-400">⚡ {roll.energyCost} Energy</span>}
+                    {campaignSystem === 'aa-v2' && roll.requiresMana && roll.manaCost > 0 && <span className="text-[10px] text-violet-400">✦ {roll.manaCost} Mana</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">💬 Chat Message</span>}
                     {roll.applyTokenEffects && (
                       <p className="text-[10px] text-violet-400">
