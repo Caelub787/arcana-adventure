@@ -12921,7 +12921,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-purple-400 truncate">{spell.name}</span>
-                      <span className="text-cyan-400 text-[10px]">{spell.energyCost || 0}E</span>
+                      {spell.manaCost > 0 && <span className="text-violet-400 text-[10px]">{spell.manaCost}M</span>}
                     </div>
                   </div>
                 ))}
@@ -13927,8 +13927,6 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
 
     // Display spell if equipped
     if (hotbar.spellId && spellData) {
-      const energyCost = spellData.energyCost || 0;
-      
       return (
         <TooltipProvider>
           <Tooltip>
@@ -13943,25 +13941,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       alt={spellData.name}
                       className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded"
                     />
-                    {/* Energy badge */}
-                    {energyCost > 0 && (
-                      <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[8px] px-1 rounded-bl font-bold">
-                        {energyCost}E
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="relative w-full h-full flex items-center justify-center">
-                    {/* Spell placeholder icon */}
                     <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
                       <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
                     </div>
-                    {/* Energy badge */}
-                    {energyCost > 0 && (
-                      <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[8px] px-1 rounded-bl font-bold">
-                        {energyCost}E
-                      </div>
-                    )}
                     {/* Damage badge if spell has damage */}
                     {(spellData.damageDice || spellData.damage) && (
                       <div className="absolute bottom-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-tr font-bold">
@@ -13977,7 +13962,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
               {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
-              <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
+              {spellData.manaCost > 0 && <p className="text-sm text-violet-400">Mana: {spellData.manaCost}</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
               <p className="text-xs text-stone-400 mt-1">Use from battlemap hotbar to cast</p>
             </TooltipContent>
@@ -16002,7 +15987,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [spellLibrarySearch, setSpellLibrarySearch] = useState('');
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
   const [spellActionTypeLibraryFilter, setSpellActionTypeLibraryFilter] = useState('all');
-  const [spellEnergyLibraryFilter, setSpellEnergyLibraryFilter] = useState('all');
+
   const [spellDamageTypeLibraryFilter, setSpellDamageTypeLibraryFilter] = useState('all');
   const [spellAttributeLibraryFilter, setSpellAttributeLibraryFilter] = useState('all');
   const [spellAoeLibraryFilter, setSpellAoeLibraryFilter] = useState('all');
@@ -16084,7 +16069,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   };
 
   const hasActiveSpellLibraryFilters = spellActionTypeLibraryFilter !== 'all' || 
-    spellEnergyLibraryFilter !== 'all' || 
     spellDamageTypeLibraryFilter !== 'all' || 
     spellAttributeLibraryFilter !== 'all' || 
     spellAoeLibraryFilter !== 'all' || 
@@ -16092,7 +16076,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
 
   const clearSpellLibraryFilters = () => {
     setSpellActionTypeLibraryFilter('all');
-    setSpellEnergyLibraryFilter('all');
     setSpellDamageTypeLibraryFilter('all');
     setSpellAttributeLibraryFilter('all');
     setSpellAoeLibraryFilter('all');
@@ -19490,7 +19473,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                     </Badge>
                                   )}
                                 </div>
-                                {/* Simplified display: action type, damage, and energy cost */}
                                 <div className="flex flex-wrap items-center gap-2 mt-1 text-sm">
                                   <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400 font-medium' : 'text-red-400 font-medium'}>
                                     {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
@@ -19503,10 +19485,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                       </span>
                                     </>
                                   )}
-                                  <span className="text-stone-500">|</span>
-                                  <span className="text-cyan-400 font-medium">
-                                    {spell.energyCost || 0} Energy
-                                  </span>
                                   {spell.saveSuccessEffect && (
                                     <>
                                       <span className="text-stone-500">|</span>
@@ -19619,21 +19597,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-stone-400 text-xs">Energy</Label>
-                                  <Select value={spellEnergyLibraryFilter} onValueChange={setSpellEnergyLibraryFilter}>
-                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-energy-filter">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="all">All</SelectItem>
-                                      <SelectItem value="0">0</SelectItem>
-                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(energy => (
-                                        <SelectItem key={energy} value={String(energy)}>{energy}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
                                   <Label className="text-stone-400 text-xs">Damage Type</Label>
                                   <Select value={spellDamageTypeLibraryFilter} onValueChange={setSpellDamageTypeLibraryFilter}>
                                     <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-damage-type-filter">
@@ -19709,14 +19672,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
                             const matchesActionType = spellActionTypeLibraryFilter === 'all' || 
                               spell.castingTime?.toLowerCase() === spellActionTypeLibraryFilter;
-                            const matchesEnergy = spellEnergyLibraryFilter === 'all' || String(spell.energyCost) === spellEnergyLibraryFilter;
                             const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
                             const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
                             const matchesAoe = spellAoeLibraryFilter === 'all' || 
                               (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
                               (spellAoeLibraryFilter === 'no' && !spell.isAoe);
                             const matchesDuration = spellDurationLibraryFilter === 'all' || spell.duration === spellDurationLibraryFilter;
-                            return matchesSearch && matchesActionType && matchesEnergy && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
+                            return matchesSearch && matchesActionType && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
                           })
                           .map((spell: any) => (
                             <div
@@ -19770,9 +19732,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-stone-100">{spell.name}</span>
-                                    <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
-                                      {spell.energyCost !== undefined ? `${spell.energyCost} Energy` : '0 Energy'}
-                                    </Badge>
+                                    {spell.manaCost > 0 && (
+                                      <Badge className="bg-violet-600/30 text-violet-300 text-xs">
+                                        {spell.manaCost} Mana
+                                      </Badge>
+                                    )}
                                   </div>
                                   <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
                                     <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
@@ -19795,14 +19759,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
                           const matchesActionType = spellActionTypeLibraryFilter === 'all' || 
                             spell.castingTime?.toLowerCase() === spellActionTypeLibraryFilter;
-                          const matchesEnergy = spellEnergyLibraryFilter === 'all' || String(spell.energyCost) === spellEnergyLibraryFilter;
                           const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
                           const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
                           const matchesAoe = spellAoeLibraryFilter === 'all' || 
                             (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
                             (spellAoeLibraryFilter === 'no' && !spell.isAoe);
                           const matchesDuration = spellDurationLibraryFilter === 'all' || spell.duration === spellDurationLibraryFilter;
-                          return matchesSearch && matchesActionType && matchesEnergy && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
+                          return matchesSearch && matchesActionType && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
                         }).length === 0 && (
                           <div className="text-center py-8 text-stone-400">
                             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
@@ -20338,9 +20301,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-stone-100">{spell.name}</span>
-                                <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
-                                  {spell.energyCost !== undefined ? `${spell.energyCost} Energy` : '0 Energy'}
-                                </Badge>
+                                {spell.manaCost > 0 && (
+                                  <Badge className="bg-violet-600/30 text-violet-300 text-xs">
+                                    {spell.manaCost} Mana
+                                  </Badge>
+                                )}
                               </div>
                               <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
                                 <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
@@ -20386,9 +20351,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               >
                     <div className="p-4 space-y-4">
                       <div className="flex gap-2">
-                        <Badge className="bg-cyan-600/30 text-cyan-300">
-                          {selectedSpell.energyCost !== undefined ? `${selectedSpell.energyCost} Energy` : '0 Energy'}
-                        </Badge>
+                        {selectedSpell.manaCost > 0 && (
+                          <Badge className="bg-violet-600/30 text-violet-300">
+                            {selectedSpell.manaCost} Mana
+                          </Badge>
+                        )}
                         <Badge className={selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'bg-blue-600/30 text-blue-300' : 'bg-red-600/30 text-red-300'}>
                           {selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
                         </Badge>
