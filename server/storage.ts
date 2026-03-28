@@ -1975,6 +1975,11 @@ export class DatabaseStorage implements IStorage {
     return newEntry;
   }
 
+  async createRollEntriesBulk(entries: InsertRollEntry[]): Promise<RollEntry[]> {
+    if (entries.length === 0) return [];
+    return await db.insert(rollEntries).values(entries).returning();
+  }
+
   async updateRollEntry(id: string, data: Partial<InsertRollEntry>): Promise<RollEntry | undefined> {
     const [entry] = await db.update(rollEntries)
       .set(data)

@@ -3247,9 +3247,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sourceTemplateId) {
         try {
           const templateRolls = await storage.getRollEntries('spell', sourceTemplateId);
-          for (const roll of templateRolls) {
-            await storage.createRollEntry({
-              ownerType: 'spell',
+          if (templateRolls.length > 0) {
+            const rollEntriesToInsert = templateRolls.map(roll => ({
+              ownerType: 'spell' as const,
               ownerId: spell.id,
               name: roll.name,
               rollType: roll.rollType,
@@ -3287,7 +3287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isHidden: roll.isHidden,
               requiredSkillId: roll.requiredSkillId,
               requiredSkillValue: roll.requiredSkillValue,
-            } as any);
+            }));
+            await storage.createRollEntriesBulk(rollEntriesToInsert as any);
           }
         } catch (rollErr) {
           console.error('Failed to copy roll entries from template spell:', rollErr);
@@ -6935,9 +6936,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sourceTemplateId) {
         try {
           const templateRolls = await storage.getRollEntries('item', sourceTemplateId);
-          for (const roll of templateRolls) {
-            await storage.createRollEntry({
-              ownerType: 'item',
+          if (templateRolls.length > 0) {
+            const rollEntriesToInsert = templateRolls.map(roll => ({
+              ownerType: 'item' as const,
               ownerId: item.id,
               name: roll.name,
               rollType: roll.rollType,
@@ -6975,7 +6976,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isHidden: roll.isHidden,
               requiredSkillId: roll.requiredSkillId,
               requiredSkillValue: roll.requiredSkillValue,
-            } as any);
+            }));
+            await storage.createRollEntriesBulk(rollEntriesToInsert as any);
           }
         } catch (rollErr) {
           console.error('Failed to copy roll entries from template item:', rollErr);
