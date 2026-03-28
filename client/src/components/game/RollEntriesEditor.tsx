@@ -1094,17 +1094,6 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
         <p className="text-xs text-stone-400 italic" data-testid="text-no-rolls">No rolls defined</p>
       )}
 
-      {!isLoading && sortedRolls.length > 0 && (ownerEnergyCost > 0 || (campaignSystem === 'aa-v2' && ownerManaCost > 0)) && (
-        <div className="flex gap-3 mb-1">
-          {ownerEnergyCost > 0 && (
-            <span className="text-[11px] text-cyan-400 font-medium">Energy Cost: {ownerEnergyCost}</span>
-          )}
-          {campaignSystem === 'aa-v2' && ownerManaCost > 0 && (
-            <span className="text-[11px] text-violet-400 font-medium">Mana Cost: {ownerManaCost}</span>
-          )}
-        </div>
-      )}
-
       {sortedRolls.map((roll) => {
         const isEditing = editingId === roll.id;
         const isExpanded = expandedId === roll.id;
@@ -1258,6 +1247,8 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     {roll.gainEnergy && <p className="text-[10px] text-stone-400">Gains energy</p>}
                     {roll.passesThroughWalls && <p className="text-[10px] text-stone-400">Passes through walls</p>}
                     {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
+                    {ownerEnergyCost > 0 && <span className="text-[10px] text-cyan-400">Energy Cost: {ownerEnergyCost}</span>}
+                    {campaignSystem === 'aa-v2' && ownerManaCost > 0 && <span className="text-[10px] text-violet-400">Mana Cost: {ownerManaCost}</span>}
                     {roll.requiresEnergy && roll.energyCost > 0 && <span className="text-[10px] text-cyan-400">{roll.energyCost} Energy</span>}
                     {campaignSystem === 'aa-v2' && roll.requiresMana && roll.manaCost > 0 && <span className="text-[10px] text-violet-400">{roll.manaCost} Mana</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">Chat Message</span>}
