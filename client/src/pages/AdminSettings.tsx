@@ -4759,7 +4759,11 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                 onPointerUp={(e) => handleFeatPointerUp(feat, e)}
                 data-testid={`feat-node-${feat.id}`}
               >
-                <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
+                <div className="h-full flex items-center gap-2 p-2 overflow-hidden">
+                  {(feat as any).image && (
+                    <img src={(feat as any).image} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-purple-500 shrink-0" />
+                  )}
+                  <div className="flex flex-col items-center justify-center flex-1 min-w-0 text-center">
                   <div className="text-sm font-bold text-white truncate w-full drop-shadow-lg">
                     {feat.name}
                   </div>
@@ -5275,9 +5279,11 @@ const ATTRIBUTES_LIST = [
 
 function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate, systemSlug }: FeatFormDialogProps) {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showFeatImageBrowser, setShowFeatImageBrowser] = useState(false);
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     description: initialData?.description || '',
+    image: (initialData as any)?.image || '',
     gridX: initialData?.gridX || 0,
     gridY: initialData?.gridY || 0,
     tier: initialData?.tier || 1,
@@ -5346,6 +5352,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
       setFormData({
         name: initialData.name || '',
         description: initialData.description || '',
+        image: (initialData as any)?.image || '',
         gridX: initialData.gridX || 0,
         gridY: initialData.gridY || 0,
         tier: initialData.tier || 1,
@@ -5358,6 +5365,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
         ...prev,
         name: '',
         description: '',
+        image: '',
         icon: '',
         effects: [],
       }));
@@ -5473,6 +5481,46 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
               placeholder="Describe what this feat does"
               className="bg-stone-800 border-stone-700"
               data-testid="input-feat-description"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-stone-400">Node Image</Label>
+            <div className="flex items-center gap-3 mt-1">
+              {formData.image ? (
+                <div className="relative">
+                  <img src={formData.image} alt="" className="h-14 w-14 rounded-full object-cover border-2 border-purple-500" />
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, image: '' })}
+                    className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3 text-white" />
+                  </button>
+                </div>
+              ) : (
+                <div className="h-14 w-14 rounded-full bg-stone-700 border-2 border-dashed border-stone-500 flex items-center justify-center">
+                  <ImageIcon className="h-5 w-5 text-stone-500" />
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowFeatImageBrowser(true)} className="text-xs">
+                  Browse Images
+                </Button>
+                <Input
+                  value={formData.image}
+                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                  placeholder="Or paste image URL"
+                  className="bg-stone-800 border-stone-700 text-xs h-7"
+                />
+              </div>
+            </div>
+            <ImageBrowser
+              open={showFeatImageBrowser}
+              onOpenChange={setShowFeatImageBrowser}
+              onSelect={(url) => {
+                setFormData({ ...formData, image: url });
+                setShowFeatImageBrowser(false);
+              }}
             />
           </div>
           <div>
@@ -8249,12 +8297,17 @@ function ClassesView() {
                 }}
                 data-testid={`class-node-${node.id}`}
               >
-                <div className="flex flex-col h-full">
-                  <p className="text-xs font-bold text-white truncate">{node.name}</p>
-                  <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
-                  <div className="flex justify-between items-center mt-auto">
-                    <Badge variant="outline" className="text-[9px] h-4 px-1 border-stone-600">T{node.tier}</Badge>
-                    <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
+                <div className="flex items-center gap-2 h-full">
+                  {node.image && (
+                    <img src={node.image} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-fuchsia-500 shrink-0" />
+                  )}
+                  <div className="flex flex-col flex-1 min-w-0 h-full">
+                    <p className="text-xs font-bold text-white truncate">{node.name}</p>
+                    <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
+                    <div className="flex justify-between items-center mt-auto">
+                      <Badge variant="outline" className="text-[9px] h-4 px-1 border-stone-600">T{node.tier}</Badge>
+                      <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -8316,6 +8369,8 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [nodeImage, setNodeImage] = useState('');
+  const [showNodeImageBrowser, setShowNodeImageBrowser] = useState(false);
   const [tier, setTier] = useState(1);
   const [cost, setCost] = useState(1);
   const [effects, setEffects] = useState<any[]>([]);
@@ -8324,6 +8379,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
     if (node) {
       setName(node.name || '');
       setDescription(node.description || '');
+      setNodeImage(node.image || '');
       setTier(node.tier || 1);
       setCost(node.cost || 1);
       setEffects(Array.isArray(node.effects) ? [...node.effects] : []);
@@ -8358,6 +8414,30 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
           <div>
             <Label className="text-stone-300">Description</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-node-description" />
+          </div>
+          <div>
+            <Label className="text-xs text-stone-400">Node Image</Label>
+            <div className="flex items-center gap-3 mt-1">
+              {nodeImage ? (
+                <div className="relative">
+                  <img src={nodeImage} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-fuchsia-500" />
+                  <button type="button" onClick={() => setNodeImage('')} className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5">
+                    <X className="h-3 w-3 text-white" />
+                  </button>
+                </div>
+              ) : (
+                <div className="h-12 w-12 rounded-full bg-stone-700 border-2 border-dashed border-stone-500 flex items-center justify-center">
+                  <ImageIcon className="h-4 w-4 text-stone-500" />
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowNodeImageBrowser(true)} className="text-xs">
+                  Browse Images
+                </Button>
+                <Input value={nodeImage} onChange={(e) => setNodeImage(e.target.value)} placeholder="Or paste image URL" className="bg-stone-800 border-stone-700 text-xs h-7" />
+              </div>
+            </div>
+            <ImageBrowser open={showNodeImageBrowser} onOpenChange={setShowNodeImageBrowser} onSelect={(url) => { setNodeImage(url); setShowNodeImageBrowser(false); }} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -8426,7 +8506,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => onSave({ name, description, tier, cost, effects })} data-testid="button-save-node">
+          <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => onSave({ name, description, image: nodeImage || null, tier, cost, effects })} data-testid="button-save-node">
             Save
           </Button>
         </DialogFooter>

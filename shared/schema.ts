@@ -846,6 +846,7 @@ export const feats = pgTable("feats", {
   name: text("name").notNull(),
   description: text("description"),
   icon: text("icon"), // Icon name or image URL
+  image: text("image"), // Profile picture image URL for visual display
   gridX: integer("grid_x").notNull().default(0), // X position in grid
   gridY: integer("grid_y").notNull().default(0), // Y position in grid
   tier: integer("tier").default(1).notNull(), // Tier level (for unlocking requirements)
@@ -1802,6 +1803,7 @@ export const classSkillNodes = pgTable("class_skill_nodes", {
   name: text("name").notNull(),
   description: text("description"),
   icon: text("icon"),
+  image: text("image"),
   gridX: integer("grid_x").notNull().default(0),
   gridY: integer("grid_y").notNull().default(0),
   tier: integer("tier").default(1).notNull(),

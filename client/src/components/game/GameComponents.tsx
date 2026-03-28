@@ -21599,7 +21599,6 @@ function FeatTreeViewerGrid({
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
-  // Query spells, traits, and skills for fallback descriptions (filtered by campaign system)
   const { data: systemSpells = [] } = useQuery({
     queryKey: ['system-spells', campaignSystem],
     queryFn: () => api.getSystemSpells(campaignSystem),
@@ -21614,12 +21613,14 @@ function FeatTreeViewerGrid({
     queryKey: ['system-skills', campaignSystem],
     queryFn: () => api.getSystemSkills(campaignSystem),
   });
+
+  const { data: systemItems = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items', campaignSystem],
+    queryFn: () => fetch(`/api/system-items${campaignSystem ? `?system=${campaignSystem}` : ''}`).then(r => r.json()),
+  });
   
-  // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description
   const getFeatDescription = (feat: Feat): string | undefined => {
     if (feat.description) return feat.description;
-    
-    // Check for spell_grant, trait_grant, or skill_grant effects
     if (feat.effects && Array.isArray(feat.effects)) {
       for (const effect of feat.effects as any[]) {
         if (effect.type === 'spell_grant' && effect.target) {
@@ -21637,6 +21638,23 @@ function FeatTreeViewerGrid({
       }
     }
     return undefined;
+  };
+
+  const getFeatImage = (feat: Feat): string | null => {
+    if ((feat as any).image) return (feat as any).image;
+    if (feat.effects && Array.isArray(feat.effects)) {
+      for (const effect of feat.effects as any[]) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (systemSpells as any[]).find(s => s.id === effect.target);
+          if (spell?.icon) return spell.icon;
+        }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (systemItems as any[]).find(i => i.id === effect.target);
+          if (item?.image) return item.image;
+        }
+      }
+    }
+    return null;
   };
   
   const NODE_WIDTH = 160;
@@ -22029,54 +22047,69 @@ function FeatTreeViewerGrid({
           {feats.map((feat: Feat) => {
             const isUnlocked = unlockedFeatIds.has(feat.id);
             const canUnlock = canUnlockFeat(feat);
+            const featImage = getFeatImage(feat);
             
-            let nodeStyle = '';
+            const NODE_SIZE = 80;
+            let borderColor = 'border-stone-600';
+            let ringStyle = '';
+            let opacityStyle = '';
             if (isUnlocked) {
-              nodeStyle = 'border-green-500 bg-gradient-to-br from-green-900/90 to-emerald-800/80 ring-2 ring-green-400/50';
+              borderColor = 'border-green-500';
+              ringStyle = 'ring-2 ring-green-400/60 shadow-[0_0_12px_rgba(34,197,94,0.4)]';
             } else if (canUnlock) {
-              nodeStyle = 'border-purple-500 bg-gradient-to-br from-purple-900/80 to-violet-800/70 hover:ring-2 hover:ring-amber-400';
+              borderColor = 'border-purple-500';
+              ringStyle = 'hover:ring-2 hover:ring-amber-400 shadow-[0_0_8px_rgba(168,85,247,0.3)]';
             } else {
-              nodeStyle = 'border-stone-600 bg-gradient-to-br from-stone-800/60 to-stone-900/80 opacity-60';
+              opacityStyle = 'opacity-50';
             }
             
             return (
               <div
                 key={feat.id}
-                className={`absolute rounded-xl border-2 cursor-pointer transition-colors ${nodeStyle}`}
+                className="absolute flex flex-col items-center"
                 style={{
-                  left: WORLD_OFFSET + feat.gridX * CELL_SIZE,
-                  top: WORLD_OFFSET + feat.gridY * CELL_SIZE,
-                  width: NODE_WIDTH,
-                  height: NODE_HEIGHT,
+                  left: WORLD_OFFSET + feat.gridX * CELL_SIZE + (NODE_WIDTH - NODE_SIZE) / 2,
+                  top: WORLD_OFFSET + feat.gridY * CELL_SIZE + (NODE_HEIGHT - NODE_SIZE - 16) / 2,
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  
-                  const now = Date.now();
-                  const isDoubleClick = lastClickedFeatRef.current === feat.id && now - lastClickTimeRef.current < 400;
-                  
-                  lastClickTimeRef.current = now;
-                  lastClickedFeatRef.current = feat.id;
-                  
-                  // Always show the feat details
-                  setSelectedFeat(feat);
-                  
-                  // On double-click, auto-unlock if possible
-                  if (isDoubleClick && canEdit && canUnlock && !unlockFeatMutation.isPending) {
-                    unlockFeatMutation.mutate(feat.id);
-                  }
-                }}
-                data-testid={`feat-node-${feat.id}`}
                 data-feat-node
               >
-                <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
-                  {isUnlocked && (
-                    <Check className="absolute top-1 right-1 h-4 w-4 text-green-400" />
+                <div
+                  className={`rounded-full border-[3px] cursor-pointer transition-all overflow-hidden ${borderColor} ${ringStyle} ${opacityStyle}`}
+                  style={{ width: NODE_SIZE, height: NODE_SIZE }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const now = Date.now();
+                    const isDoubleClick = lastClickedFeatRef.current === feat.id && now - lastClickTimeRef.current < 400;
+                    lastClickTimeRef.current = now;
+                    lastClickedFeatRef.current = feat.id;
+                    setSelectedFeat(feat);
+                    if (isDoubleClick && canEdit && canUnlock && !unlockFeatMutation.isPending) {
+                      unlockFeatMutation.mutate(feat.id);
+                    }
+                  }}
+                  data-testid={`feat-node-${feat.id}`}
+                >
+                  {featImage ? (
+                    <img src={featImage} alt={feat.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${
+                      isUnlocked ? 'bg-gradient-to-br from-green-900/90 to-emerald-800/80' :
+                      canUnlock ? 'bg-gradient-to-br from-purple-900/80 to-violet-800/70' :
+                      'bg-gradient-to-br from-stone-800/80 to-stone-900/90'
+                    }`}>
+                      <span className="text-[10px] font-bold text-white leading-tight">{feat.name}</span>
+                    </div>
                   )}
-                  <div className="text-sm font-bold text-white truncate w-full">{feat.name}</div>
-                  <Badge variant="secondary" className="text-[9px] mt-1 h-4 px-1.5 bg-stone-700/80">
-                    Cost: {feat.cost}
-                  </Badge>
+                  {isUnlocked && (
+                    <div className="absolute top-0 right-0 bg-green-600 rounded-full p-0.5 border border-green-400">
+                      <Check className="h-3 w-3 text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className={`text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate ${
+                  isUnlocked ? 'text-green-300' : canUnlock ? 'text-purple-300' : 'text-stone-500'
+                }`}>
+                  {feat.name}
                 </div>
               </div>
             );
@@ -22087,20 +22120,27 @@ function FeatTreeViewerGrid({
       {/* Feat Detail Panel - Overlay at bottom */}
       {selectedFeat && (
         <div className="absolute bottom-2 left-2 right-2 bg-gradient-to-br from-stone-800/95 to-stone-900/95 backdrop-blur-sm rounded-lg p-3 border border-stone-700 shadow-xl max-h-[40%] overflow-y-auto">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h3 className="font-bold text-lg text-amber-500">{selectedFeat.name}</h3>
-              <Badge variant="secondary" className="mt-1">
-                Cost: {selectedFeat.cost} point{selectedFeat.cost !== 1 ? 's' : ''}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {unlockedFeatIds.has(selectedFeat.id) && (
-                <Badge className="bg-green-600">Unlocked</Badge>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => setSelectedFeat(null)} className="h-8 w-8 p-0">
-                <X className="h-4 w-4" />
-              </Button>
+          <div className="flex items-start gap-3 mb-3">
+            {getFeatImage(selectedFeat) && (
+              <img src={getFeatImage(selectedFeat)!} alt="" className="h-14 w-14 rounded-full object-cover border-2 border-amber-500 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-bold text-lg text-amber-500">{selectedFeat.name}</h3>
+                  <Badge variant="secondary" className="mt-1">
+                    Cost: {selectedFeat.cost} point{selectedFeat.cost !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {unlockedFeatIds.has(selectedFeat.id) && (
+                    <Badge className="bg-green-600">Unlocked</Badge>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedFeat(null)} className="h-8 w-8 p-0">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -22342,26 +22382,44 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
             const isUnlocked = unlockedNodeIds.includes(node.id);
             const canUnlock = canEdit && isNodeUnlockable(node);
             const style = classViewerTierStyles[node.tier] || classViewerTierStyles[1];
+            const nodeImg = node.image || null;
+            const CLASS_NODE_SIZE = 80;
 
             return (
               <div
                 key={node.id}
-                className={`absolute rounded-lg border-2 p-2 cursor-pointer select-none transition-all ${
-                  isUnlocked ? style.unlocked : canUnlock ? `${style.border} ${style.bg} ${style.glow} ring-2 ring-green-500/30` : `${style.border} ${style.bg} opacity-60`
-                }`}
-                style={{ left: px, top: py, width: CLASS_VIEWER_NODE_W, height: CLASS_VIEWER_NODE_H, zIndex: 10 }}
-                onClick={() => setSelectedNode(node)}
-                data-testid={`class-viewer-node-${node.id}`}
+                className="absolute flex flex-col items-center"
+                style={{ left: px + (CLASS_VIEWER_NODE_W - CLASS_NODE_SIZE) / 2, top: py + (CLASS_VIEWER_NODE_H - CLASS_NODE_SIZE - 16) / 2, zIndex: 10 }}
               >
-                <div className="flex flex-col h-full">
-                  <p className="text-xs font-bold text-white truncate">{node.name}</p>
-                  <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
-                  <div className="flex justify-between items-center mt-auto">
-                    <Badge variant="outline" className={`text-[9px] h-4 px-1 ${isUnlocked ? 'border-green-500 text-green-400' : 'border-stone-600'}`}>
-                      {isUnlocked ? '✓' : `T${node.tier}`}
-                    </Badge>
-                    <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
-                  </div>
+                <div
+                  className={`rounded-full border-[3px] cursor-pointer select-none transition-all overflow-hidden ${
+                    isUnlocked ? 'border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.4)]' :
+                    canUnlock ? `${style.border} ring-2 ring-green-500/30 ${style.glow}` :
+                    `${style.border} opacity-50`
+                  }`}
+                  style={{ width: CLASS_NODE_SIZE, height: CLASS_NODE_SIZE }}
+                  onClick={() => setSelectedNode(node)}
+                  data-testid={`class-viewer-node-${node.id}`}
+                >
+                  {nodeImg ? (
+                    <img src={nodeImg} alt={node.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${
+                      isUnlocked ? 'bg-gradient-to-br from-green-900/80 to-fuchsia-900/40' : style.bg
+                    }`}>
+                      <span className="text-[10px] font-bold text-white leading-tight">{node.name}</span>
+                    </div>
+                  )}
+                  {isUnlocked && (
+                    <div className="absolute top-0 right-0 bg-green-600 rounded-full p-0.5 border border-green-400">
+                      <Check className="h-3 w-3 text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className={`text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate ${
+                  isUnlocked ? 'text-green-300' : canUnlock ? 'text-fuchsia-300' : 'text-stone-500'
+                }`}>
+                  {node.name}
                 </div>
               </div>
             );
@@ -22372,7 +22430,12 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       <Dialog open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
         <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-fuchsia-400">{selectedNode?.name}</DialogTitle>
+            <DialogTitle className="text-fuchsia-400 flex items-center gap-3">
+              {selectedNode?.image && (
+                <img src={selectedNode.image} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-fuchsia-500 shrink-0" />
+              )}
+              {selectedNode?.name}
+            </DialogTitle>
             {selectedNode?.description && (
               <DialogDescription className="text-stone-400">{selectedNode.description}</DialogDescription>
             )}
