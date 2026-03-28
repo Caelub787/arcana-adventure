@@ -1846,7 +1846,10 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                       <span className="capitalize">{item.itemType}</span>
                     </div>
                   </div>
-                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
+                    <Button variant="ghost" size="icon" onClick={() => onEditItem(item.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-${item.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     {onCopyToSystem && (
                       <Button variant="ghost" size="icon" onClick={() => onCopyToSystem(item.id)} className="text-stone-400 hover:text-green-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-copy-system-${item.id}`} title={`Copy to ${copyTargetLabel || 'other system'}`}>
                         <Send className="h-4 w-4" />
@@ -1854,9 +1857,6 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                     )}
                     <Button variant="ghost" size="icon" onClick={() => onDuplicateItem(item.id)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-duplicate-${item.id}`} title="Duplicate item">
                       <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => onEditItem(item.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-${item.id}`}>
-                      <Pencil className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => onArchiveItem(item.id)} className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-archive-${item.id}`} title="Archive item">
                       <Archive className="h-4 w-4" />
@@ -1960,7 +1960,7 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
                       <span>| Armor: {s.naturalArmor}</span>
                     </div>
                   </div>
-                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -2114,7 +2114,10 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       <span>| {spell.duration}</span>
                     </div>
                   </div>
-                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
+                    <Button variant="ghost" size="icon" onClick={() => onEditSpell(spell)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-spell-${spell.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     {onCopyToSystem && (
                       <Button variant="ghost" size="icon" onClick={() => onCopyToSystem(spell.id)} className="text-stone-400 hover:text-green-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-copy-spell-${spell.id}`} title={`Copy to ${copyTargetLabel || 'other system'}`}>
                         <Send className="h-4 w-4" />
@@ -2122,9 +2125,6 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                     )}
                     <Button variant="ghost" size="icon" onClick={() => onDuplicateSpell(spell.id)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-duplicate-spell-${spell.id}`} title="Duplicate spell">
                       <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => onEditSpell(spell)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-spell-${spell.id}`}>
-                      <Pencil className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => onArchiveSpell(spell.id)} className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-archive-spell-${spell.id}`} title="Archive spell">
                       <Archive className="h-4 w-4" />
@@ -2238,7 +2238,7 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -2821,7 +2821,7 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <Button
                       variant="ghost"
                       size="icon"

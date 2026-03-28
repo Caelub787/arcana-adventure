@@ -7437,7 +7437,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   let tooltipContent = null;
 
   if (hotbar?.spellId && spellData) {
-    const energyCost = spellData.energyCost || 0;
     content = spellData.image ? (
       <div className="relative w-full h-full flex items-center justify-center">
         <img 
@@ -7445,22 +7444,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           alt={spellData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        {energyCost > 0 && (
-          <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[6px] px-0.5 rounded-bl font-bold">
-            {energyCost}E
-          </div>
-        )}
       </div>
     ) : (
       <>
         <div className="font-bold truncate text-purple-400">
           {spellData.name.substring(0, 3)}
         </div>
-        {energyCost > 0 && (
-          <div className="text-[7px] text-cyan-400">
-            {energyCost}E
-          </div>
-        )}
       </>
     );
     tooltipContent = (
@@ -7473,7 +7462,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           const displayRange = rollRange || spellData.rangeNum;
           return displayRange ? <p className="text-sm">Range: {displayRange}ft</p> : null;
         })()}
-        <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
         {spellData.manaCost > 0 && <p className="text-sm text-violet-400">Mana: {spellData.manaCost}</p>}
         <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
       </>
@@ -7964,12 +7952,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Damage</span>
                       <span className="text-stone-200">{spellData.damage} {spellData.damageType || ''}</span>
-                    </div>
-                  )}
-                  {spellData.energyCost && (
-                    <div className="bg-stone-800 rounded p-2">
-                      <span className="text-stone-500 block">Energy Cost</span>
-                      <span className="text-stone-200">{spellData.energyCost}</span>
                     </div>
                   )}
                   {spellData.manaCost > 0 && (
