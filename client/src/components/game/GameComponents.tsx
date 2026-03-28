@@ -16244,6 +16244,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       return isNaN(num) ? undefined : num;
     };
     
+    const aoeValue = spellFormData.isAoe && spellFormData.aoeShape && spellFormData.aoeRange
+      ? `${spellFormData.aoeShape}:${spellFormData.aoeRange}`
+      : undefined;
     const spellData = {
       name: spellFormData.name,
       description: spellFormData.description,
@@ -16256,6 +16259,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       attribute: normalizeNone(spellFormData.attribute),
       energyCost: Number(spellFormData.energyCost) || 1,
       isAoe: spellFormData.isAoe,
+      aoe: aoeValue,
       aoeRange: spellFormData.isAoe ? optionalNum(spellFormData.aoeRange) : undefined,
       aoeShape: spellFormData.isAoe ? spellFormData.aoeShape : undefined,
       isAttack: spellFormData.isAttack,

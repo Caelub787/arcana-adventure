@@ -7438,9 +7438,28 @@ export default function Campaign() {
     const casterToken = tokens.find((t: any) => t.id === casterTokenId);
     const casterChar = characters ? (characters as any[]).find((c: any) => c.id === casterToken?.characterId) : null;
     
+    const mergedSpell = { ...spell };
+    if (pendingRollEntry) {
+      if (pendingRollEntry.aoeShape && !mergedSpell.aoeShape) {
+        mergedSpell.aoeShape = pendingRollEntry.aoeShape;
+      }
+      if (pendingRollEntry.aoeRange && !mergedSpell.aoeRange) {
+        mergedSpell.aoeRange = pendingRollEntry.aoeRange;
+      }
+      if (pendingRollEntry.aoeShape && pendingRollEntry.aoeRange) {
+        const rollAoe = `${pendingRollEntry.aoeShape}:${pendingRollEntry.aoeRange}`;
+        if (!mergedSpell.aoe || !mergedSpell.aoe.includes(':')) {
+          mergedSpell.aoe = rollAoe;
+        }
+      }
+      if (pendingRollEntry.range && !mergedSpell.rangeNum) {
+        mergedSpell.rangeNum = pendingRollEntry.range;
+      }
+    }
+    
     setAoeTargetState({
       active: true,
-      spell,
+      spell: mergedSpell,
       casterTokenId,
       center: { x: 0, y: 0 },
       locked: false,
@@ -7450,8 +7469,8 @@ export default function Campaign() {
     
     gameWs.sendAoeTargeting({
       active: true,
-      spellName: spell.name,
-      spellAoe: spell.aoe,
+      spellName: mergedSpell.name,
+      spellAoe: mergedSpell.aoe,
       casterTokenId,
       casterName: casterChar?.name || 'Unknown',
       center: { x: 0, y: 0 },
