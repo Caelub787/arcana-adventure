@@ -1321,58 +1321,51 @@ export class DatabaseStorage implements IStorage {
     const itemIdMap = new Map<string, string>();
     const spellIdMap = new Map<string, string>();
     
-    // Copy items from template to new character, tracking ID mappings
-    // First pass: create all items without containerId references
     const templateItems = await this.getItemsByCharacter(templateId);
-    for (const item of templateItems) {
-      const { id: oldItemId, characterId, containerId, ...itemData } = item;
-      const [newItem] = await db.insert(items).values({
-        ...itemData,
-        characterId: newChar.id,
-        containerId: null, // Clear containerId initially
-      }).returning();
-      itemIdMap.set(oldItemId, newItem.id);
-    }
-    
-    // Second pass: update containerId references to point to new item IDs
-    for (const item of templateItems) {
-      if (item.containerId) {
-        const newItemId = itemIdMap.get(item.id);
-        const newContainerId = itemIdMap.get(item.containerId);
-        if (newItemId && newContainerId) {
-          await db.update(items)
-            .set({ containerId: newContainerId })
-            .where(eq(items.id, newItemId));
-        }
+    if (templateItems.length > 0) {
+      const newItems = await db.insert(items).values(
+        templateItems.map(item => {
+          const { id: _oldId, characterId: _cid, containerId: _cntId, ...itemData } = item;
+          return { ...itemData, characterId: newChar.id, containerId: null };
+        })
+      ).returning();
+      templateItems.forEach((oldItem, i) => itemIdMap.set(oldItem.id, newItems[i].id));
+      const containerUpdates = templateItems.filter(item => item.containerId);
+      if (containerUpdates.length > 0) {
+        await Promise.all(containerUpdates.map(item => {
+          const newItemId = itemIdMap.get(item.id);
+          const newContainerId = itemIdMap.get(item.containerId!);
+          if (newItemId && newContainerId) {
+            return db.update(items).set({ containerId: newContainerId }).where(eq(items.id, newItemId));
+          }
+        }));
       }
     }
     
-    // Copy spells from template to new character, tracking ID mappings
     const templateSpells = await this.getSpellsByCharacter(templateId);
-    for (const spell of templateSpells) {
-      const { id: oldSpellId, characterId, ...spellData } = spell;
-      const [newSpell] = await db.insert(spells).values({
-        ...spellData,
-        characterId: newChar.id,
-      }).returning();
-      spellIdMap.set(oldSpellId, newSpell.id);
+    if (templateSpells.length > 0) {
+      const newSpells = await db.insert(spells).values(
+        templateSpells.map(spell => {
+          const { id: _oldId, characterId: _cid, ...spellData } = spell;
+          return { ...spellData, characterId: newChar.id };
+        })
+      ).returning();
+      templateSpells.forEach((oldSpell, i) => spellIdMap.set(oldSpell.id, newSpells[i].id));
     }
     
-    // Copy hotbars from template, remapping item/spell IDs to new ones
     const templateHotbars = await this.getHotbarsByCharacter(templateId);
-    for (const hotbar of templateHotbars) {
-      const { id: hotbarId, characterId, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
-      
-      // Remap item and spell IDs to the newly copied ones
-      const newItemId = oldItemId ? itemIdMap.get(oldItemId) || null : null;
-      const newSpellId = oldSpellId ? spellIdMap.get(oldSpellId) || null : null;
-      
-      await db.insert(hotbars).values({
-        ...hotbarData,
-        characterId: newChar.id,
-        itemId: newItemId,
-        spellId: newSpellId,
-      });
+    if (templateHotbars.length > 0) {
+      await db.insert(hotbars).values(
+        templateHotbars.map(hotbar => {
+          const { id: _hid, characterId: _cid, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
+          return {
+            ...hotbarData,
+            characterId: newChar.id,
+            itemId: oldItemId ? itemIdMap.get(oldItemId) || null : null,
+            spellId: oldSpellId ? spellIdMap.get(oldSpellId) || null : null,
+          };
+        })
+      );
     }
     
     return newChar;
@@ -1402,78 +1395,71 @@ export class DatabaseStorage implements IStorage {
     const itemIdMap = new Map<string, string>();
     const spellIdMap = new Map<string, string>();
     
-    // Copy items from character to template, tracking ID mappings
-    // First pass: create all items without containerId references
     const characterItems = await this.getItemsByCharacter(characterId);
-    for (const item of characterItems) {
-      const { id: oldItemId, characterId: charId, containerId, ...itemData } = item;
-      const [newItem] = await db.insert(items).values({
-        ...itemData,
-        characterId: newTemplate.id,
-        containerId: null, // Clear containerId initially
-      }).returning();
-      itemIdMap.set(oldItemId, newItem.id);
-    }
-    
-    // Second pass: update containerId references to point to new item IDs
-    for (const item of characterItems) {
-      if (item.containerId) {
-        const newItemId = itemIdMap.get(item.id);
-        const newContainerId = itemIdMap.get(item.containerId);
-        if (newItemId && newContainerId) {
-          await db.update(items)
-            .set({ containerId: newContainerId })
-            .where(eq(items.id, newItemId));
-        }
+    if (characterItems.length > 0) {
+      const newItems = await db.insert(items).values(
+        characterItems.map(item => {
+          const { id: _oldId, characterId: _cid, containerId: _cntId, ...itemData } = item;
+          return { ...itemData, characterId: newTemplate.id, containerId: null };
+        })
+      ).returning();
+      characterItems.forEach((oldItem, i) => itemIdMap.set(oldItem.id, newItems[i].id));
+      const containerUpdates = characterItems.filter(item => item.containerId);
+      if (containerUpdates.length > 0) {
+        await Promise.all(containerUpdates.map(item => {
+          const newItemId = itemIdMap.get(item.id);
+          const newContainerId = itemIdMap.get(item.containerId!);
+          if (newItemId && newContainerId) {
+            return db.update(items).set({ containerId: newContainerId }).where(eq(items.id, newItemId));
+          }
+        }));
       }
     }
     
-    // Copy spells from character to template, tracking ID mappings
     const characterSpells = await this.getSpellsByCharacter(characterId);
-    for (const spell of characterSpells) {
-      const { id: oldSpellId, characterId: charId, ...spellData } = spell;
-      const [newSpell] = await db.insert(spells).values({
-        ...spellData,
-        characterId: newTemplate.id,
-      }).returning();
-      spellIdMap.set(oldSpellId, newSpell.id);
+    if (characterSpells.length > 0) {
+      const newSpells = await db.insert(spells).values(
+        characterSpells.map(spell => {
+          const { id: _oldId, characterId: _cid, ...spellData } = spell;
+          return { ...spellData, characterId: newTemplate.id };
+        })
+      ).returning();
+      characterSpells.forEach((oldSpell, i) => spellIdMap.set(oldSpell.id, newSpells[i].id));
     }
     
-    // Copy hotbars from character, remapping item/spell IDs to new ones
     const characterHotbars = await this.getHotbarsByCharacter(characterId);
-    for (const hotbar of characterHotbars) {
-      const { id: hotbarId, characterId: charId, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
-      
-      // Remap item and spell IDs to the newly copied ones
-      const newItemId = oldItemId ? itemIdMap.get(oldItemId) || null : null;
-      const newSpellId = oldSpellId ? spellIdMap.get(oldSpellId) || null : null;
-      
-      await db.insert(hotbars).values({
-        ...hotbarData,
-        characterId: newTemplate.id,
-        itemId: newItemId,
-        spellId: newSpellId,
-      });
+    if (characterHotbars.length > 0) {
+      await db.insert(hotbars).values(
+        characterHotbars.map(hotbar => {
+          const { id: _hid, characterId: _cid, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
+          return {
+            ...hotbarData,
+            characterId: newTemplate.id,
+            itemId: oldItemId ? itemIdMap.get(oldItemId) || null : null,
+            spellId: oldSpellId ? spellIdMap.get(oldSpellId) || null : null,
+          };
+        })
+      );
     }
     
-    // Copy custom skills
     const customSkillsList = await this.getCharacterCustomSkills(characterId);
-    for (const skill of customSkillsList) {
-      const { id: skillId, characterId: charId, ...skillData } = skill;
-      await db.insert(characterCustomSkills).values({
-        ...skillData,
-        characterId: newTemplate.id,
-      });
+    if (customSkillsList.length > 0) {
+      await db.insert(characterCustomSkills).values(
+        customSkillsList.map(skill => {
+          const { id: _sid, characterId: _cid, ...skillData } = skill;
+          return { ...skillData, characterId: newTemplate.id };
+        })
+      );
     }
     
-    // Copy traits
     const traitsList = await this.getCharacterTraits(characterId);
-    for (const trait of traitsList) {
-      const { id: traitId, characterId: charId, ...traitData } = trait;
-      await db.insert(characterTraits).values({
-        ...traitData,
-        characterId: newTemplate.id,
-      });
+    if (traitsList.length > 0) {
+      await db.insert(characterTraits).values(
+        traitsList.map(trait => {
+          const { id: _tid, characterId: _cid, ...traitData } = trait;
+          return { ...traitData, characterId: newTemplate.id };
+        })
+      );
     }
     
     return newTemplate;
@@ -1503,77 +1489,71 @@ export class DatabaseStorage implements IStorage {
     const itemIdMap = new Map<string, string>();
     const spellIdMap = new Map<string, string>();
     
-    // Copy items from source to new character, tracking ID mappings
-    // First pass: create all items without containerId references
     const sourceItems = await this.getItemsByCharacter(characterId);
-    for (const item of sourceItems) {
-      const { id: oldItemId, characterId: charId, containerId, ...itemData } = item;
-      const [newItem] = await db.insert(items).values({
-        ...itemData,
-        characterId: newChar.id,
-        containerId: null,
-      }).returning();
-      itemIdMap.set(oldItemId, newItem.id);
-    }
-    
-    // Second pass: update containerId references to point to new item IDs
-    for (const item of sourceItems) {
-      if (item.containerId) {
-        const newItemId = itemIdMap.get(item.id);
-        const newContainerId = itemIdMap.get(item.containerId);
-        if (newItemId && newContainerId) {
-          await db.update(items)
-            .set({ containerId: newContainerId })
-            .where(eq(items.id, newItemId));
-        }
+    if (sourceItems.length > 0) {
+      const newItems = await db.insert(items).values(
+        sourceItems.map(item => {
+          const { id: _oldId, characterId: _cid, containerId: _cntId, ...itemData } = item;
+          return { ...itemData, characterId: newChar.id, containerId: null };
+        })
+      ).returning();
+      sourceItems.forEach((oldItem, i) => itemIdMap.set(oldItem.id, newItems[i].id));
+      const containerUpdates = sourceItems.filter(item => item.containerId);
+      if (containerUpdates.length > 0) {
+        await Promise.all(containerUpdates.map(item => {
+          const newItemId = itemIdMap.get(item.id);
+          const newContainerId = itemIdMap.get(item.containerId!);
+          if (newItemId && newContainerId) {
+            return db.update(items).set({ containerId: newContainerId }).where(eq(items.id, newItemId));
+          }
+        }));
       }
     }
     
-    // Copy spells from source to new character, tracking ID mappings
     const sourceSpells = await this.getSpellsByCharacter(characterId);
-    for (const spell of sourceSpells) {
-      const { id: oldSpellId, characterId: charId, ...spellData } = spell;
-      const [newSpell] = await db.insert(spells).values({
-        ...spellData,
-        characterId: newChar.id,
-      }).returning();
-      spellIdMap.set(oldSpellId, newSpell.id);
+    if (sourceSpells.length > 0) {
+      const newSpells = await db.insert(spells).values(
+        sourceSpells.map(spell => {
+          const { id: _oldId, characterId: _cid, ...spellData } = spell;
+          return { ...spellData, characterId: newChar.id };
+        })
+      ).returning();
+      sourceSpells.forEach((oldSpell, i) => spellIdMap.set(oldSpell.id, newSpells[i].id));
     }
     
-    // Copy hotbars from source, remapping item/spell IDs to new ones
     const sourceHotbars = await this.getHotbarsByCharacter(characterId);
-    for (const hotbar of sourceHotbars) {
-      const { id: hotbarId, characterId: charId, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
-      
-      const newItemId = oldItemId ? itemIdMap.get(oldItemId) || null : null;
-      const newSpellId = oldSpellId ? spellIdMap.get(oldSpellId) || null : null;
-      
-      await db.insert(hotbars).values({
-        ...hotbarData,
-        characterId: newChar.id,
-        itemId: newItemId,
-        spellId: newSpellId,
-      });
+    if (sourceHotbars.length > 0) {
+      await db.insert(hotbars).values(
+        sourceHotbars.map(hotbar => {
+          const { id: _hid, characterId: _cid, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
+          return {
+            ...hotbarData,
+            characterId: newChar.id,
+            itemId: oldItemId ? itemIdMap.get(oldItemId) || null : null,
+            spellId: oldSpellId ? spellIdMap.get(oldSpellId) || null : null,
+          };
+        })
+      );
     }
     
-    // Copy custom skills
     const customSkillsList = await this.getCharacterCustomSkills(characterId);
-    for (const skill of customSkillsList) {
-      const { id: skillId, characterId: charId, ...skillData } = skill;
-      await db.insert(characterCustomSkills).values({
-        ...skillData,
-        characterId: newChar.id,
-      });
+    if (customSkillsList.length > 0) {
+      await db.insert(characterCustomSkills).values(
+        customSkillsList.map(skill => {
+          const { id: _sid, characterId: _cid, ...skillData } = skill;
+          return { ...skillData, characterId: newChar.id };
+        })
+      );
     }
     
-    // Copy traits
     const traitsList = await this.getCharacterTraits(characterId);
-    for (const trait of traitsList) {
-      const { id: traitId, characterId: charId, ...traitData } = trait;
-      await db.insert(characterTraits).values({
-        ...traitData,
-        characterId: newChar.id,
-      });
+    if (traitsList.length > 0) {
+      await db.insert(characterTraits).values(
+        traitsList.map(trait => {
+          const { id: _tid, characterId: _cid, ...traitData } = trait;
+          return { ...traitData, characterId: newChar.id };
+        })
+      );
     }
     
     return newChar;

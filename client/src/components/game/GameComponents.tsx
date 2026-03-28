@@ -2766,7 +2766,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 const showEnergy = character && energyPercent !== null && (character.showEnergyBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
                 const showHp = character && hpPercent !== null && (character.showHpBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
                 let barIndex = 0;
-                const barPositions = ['bottom-0.5', 'bottom-[9px]', 'bottom-[17px]'];
+                const barPositions = ['bottom-0.5', 'bottom-[10px]', 'bottom-[18px]'];
                 const manaPos = showMana ? barPositions[barIndex++] : '';
                 const energyPos = showEnergy ? barPositions[barIndex++] : '';
                 const hpPos = showHp ? barPositions[barIndex++] : '';

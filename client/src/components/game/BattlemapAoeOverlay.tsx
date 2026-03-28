@@ -44,6 +44,11 @@ export function BattlemapAoeOverlay({
   const diameterInCells = aoeRangeFeet / 5;
   const radiusPixels = (diameterInCells / 2) * gridSize;
 
+  // For line and cone, the LENGTH comes from the spell's range (how far from caster),
+  // and the aoeRange determines the WIDTH of the shape
+  const spellRangePixels = (spellRangeFeet / 5) * gridSize;
+  const aoeWidthPixels = (aoeRangeFeet / 5) * gridSize;
+
   const casterX = casterToken ? casterToken.x + gridSize / 2 : 0;
   const casterY = casterToken ? casterToken.y + gridSize / 2 : 0;
 
@@ -95,21 +100,20 @@ export function BattlemapAoeOverlay({
       case 'cone':
         if (!casterToken) return null;
         const angleRad = Math.atan2(center.y - casterY, center.x - casterX);
-        const halfConeAngle = (90 / 2) * (Math.PI / 180);
+        const coneLength = spellRangePixels;
+        const halfConeAngle = Math.atan2(aoeWidthPixels / 2, coneLength);
         const leftAngle = angleRad - halfConeAngle;
         const rightAngle = angleRad + halfConeAngle;
-        const leftX = casterX + Math.cos(leftAngle) * radiusPixels;
-        const leftY = casterY + Math.sin(leftAngle) * radiusPixels;
-        const rightX = casterX + Math.cos(rightAngle) * radiusPixels;
-        const rightY = casterY + Math.sin(rightAngle) * radiusPixels;
-        const arcSweep = '0';
-        const largeArc = '0';
+        const leftX = casterX + Math.cos(leftAngle) * coneLength;
+        const leftY = casterY + Math.sin(leftAngle) * coneLength;
+        const rightX = casterX + Math.cos(rightAngle) * coneLength;
+        const rightY = casterY + Math.sin(rightAngle) * coneLength;
         return (
           <path
             d={`
               M ${casterX} ${casterY}
               L ${leftX} ${leftY}
-              A ${radiusPixels} ${radiusPixels} 0 ${largeArc} 1 ${rightX} ${rightY}
+              A ${coneLength} ${coneLength} 0 0 1 ${rightX} ${rightY}
               Z
             `}
             fill={actualFill}
@@ -121,8 +125,9 @@ export function BattlemapAoeOverlay({
 
       case 'line':
         if (!casterToken) return null;
-        // Use aoeWidth in feet (default 5ft = 1 grid cell)
-        const lineWidth = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
+        {
+        const lineLength = spellRangePixels;
+        const lineWidth = aoeWidthPixels;
         const dirX = center.x - casterX;
         const dirY = center.y - casterY;
         const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -131,8 +136,8 @@ export function BattlemapAoeOverlay({
         const normY = dirY / dirLen;
         const perpX = -normY * (lineWidth / 2);
         const perpY = normX * (lineWidth / 2);
-        const endX = casterX + normX * radiusPixels;
-        const endY = casterY + normY * radiusPixels;
+        const endX = casterX + normX * lineLength;
+        const endY = casterY + normY * lineLength;
         return (
           <polygon
             points={`
@@ -147,6 +152,7 @@ export function BattlemapAoeOverlay({
             strokeDasharray={locked ? 'none' : `${8 / zoom} ${4 / zoom}`}
           />
         );
+        }
 
       default:
         return (
@@ -173,6 +179,8 @@ export function BattlemapAoeOverlay({
   const screenCasterY = casterToken ? (casterToken.y + gridSize/2 + 9000) * zoom + panY - 9000 : 0;
   // Radius should scale with zoom to maintain proper size relative to the grid
   const screenRadius = radiusPixels * zoom;
+  const screenSpellRange = spellRangePixels * zoom;
+  const screenAoeWidth = aoeWidthPixels * zoom;
 
   const renderScreenShape = () => {
     switch (aoeShape) {
@@ -207,19 +215,20 @@ export function BattlemapAoeOverlay({
         if (!casterToken) return null;
         {
           const angleRad = Math.atan2(screenCenterY - screenCasterY, screenCenterX - screenCasterX);
-          const halfConeAngle = (90 / 2) * (Math.PI / 180);
+          const coneLen = screenSpellRange;
+          const halfConeAngle = Math.atan2(screenAoeWidth / 2, coneLen);
           const leftAngle = angleRad - halfConeAngle;
           const rightAngle = angleRad + halfConeAngle;
-          const leftX = screenCasterX + Math.cos(leftAngle) * screenRadius;
-          const leftY = screenCasterY + Math.sin(leftAngle) * screenRadius;
-          const rightX = screenCasterX + Math.cos(rightAngle) * screenRadius;
-          const rightY = screenCasterY + Math.sin(rightAngle) * screenRadius;
+          const leftX = screenCasterX + Math.cos(leftAngle) * coneLen;
+          const leftY = screenCasterY + Math.sin(leftAngle) * coneLen;
+          const rightX = screenCasterX + Math.cos(rightAngle) * coneLen;
+          const rightY = screenCasterY + Math.sin(rightAngle) * coneLen;
           return (
             <path
               d={`
                 M ${screenCasterX} ${screenCasterY}
                 L ${leftX} ${leftY}
-                A ${screenRadius} ${screenRadius} 0 0 1 ${rightX} ${rightY}
+                A ${coneLen} ${coneLen} 0 0 1 ${rightX} ${rightY}
                 Z
               `}
               fill={actualFill}
@@ -233,18 +242,18 @@ export function BattlemapAoeOverlay({
       case 'line':
         if (!casterToken) return null;
         {
-          // Use aoeWidth in feet (default 5ft = 1 grid cell)
-          const screenLineWidth = aoeWidth ? ((aoeWidth / 5) * gridSize) * zoom : gridSize * zoom;
+          const lineLen = screenSpellRange;
+          const lineW = screenAoeWidth;
           const dirX = screenCenterX - screenCasterX;
           const dirY = screenCenterY - screenCasterY;
           const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
           if (dirLen === 0) return null;
           const normX = dirX / dirLen;
           const normY = dirY / dirLen;
-          const perpX = -normY * (screenLineWidth / 2);
-          const perpY = normX * (screenLineWidth / 2);
-          const endX = screenCasterX + normX * screenRadius;
-          const endY = screenCasterY + normY * screenRadius;
+          const perpX = -normY * (lineW / 2);
+          const perpY = normX * (lineW / 2);
+          const endX = screenCasterX + normX * lineLen;
+          const endY = screenCasterY + normY * lineLen;
           return (
             <polygon
               points={`

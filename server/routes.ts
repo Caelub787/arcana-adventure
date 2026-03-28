@@ -4811,10 +4811,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isTemplate || item.characterId || item.campaignId) return res.status(404).json({ error: "System item not found" });
       const { id, createdAt, ...itemData } = item as any;
       const newItem = await storage.createItem({ ...itemData, system: targetSystem });
-      const rollEntries = await storage.getRollEntries('item', req.params.id);
-      for (const re of rollEntries) {
-        const { id: reId, createdAt: reCreated, ...reData } = re as any;
-        await storage.createRollEntry({ ...reData, ownerId: newItem.id });
+      const sourceRolls = await storage.getRollEntries('item', req.params.id);
+      if (sourceRolls.length > 0) {
+        await db.insert(rollEntries).values(sourceRolls.map(re => {
+          const { id: _id, createdAt: _c, ...reData } = re as any;
+          return { ...reData, ownerId: newItem.id };
+        }));
       }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(newItem);
@@ -4829,10 +4831,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isTemplate) return res.status(404).json({ error: "System item not found" });
       const { id, createdAt, ...itemData } = item as any;
       const newItem = await storage.createItem({ ...itemData, name: `${item.name} (Copy)` });
-      const rollEntries = await storage.getRollEntries('item', req.params.id);
-      for (const re of rollEntries) {
-        const { id: reId, createdAt: reCreated, ...reData } = re as any;
-        await storage.createRollEntry({ ...reData, ownerId: newItem.id });
+      const sourceRolls = await storage.getRollEntries('item', req.params.id);
+      if (sourceRolls.length > 0) {
+        await db.insert(rollEntries).values(sourceRolls.map(re => {
+          const { id: _id, createdAt: _c, ...reData } = re as any;
+          return { ...reData, ownerId: newItem.id };
+        }));
       }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(newItem);
@@ -5972,10 +5976,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!spell) return res.status(404).json({ error: "Spell not found" });
       const { id, createdAt, ...spellData } = spell as any;
       const newSpell = await storage.createSystemSpell({ ...spellData, system: targetSystem });
-      const rollEntries = await storage.getRollEntries('spell', req.params.id);
-      for (const re of rollEntries) {
-        const { id: reId, createdAt: reCreated, ...reData } = re as any;
-        await storage.createRollEntry({ ...reData, ownerId: newSpell.id });
+      const sourceRolls = await storage.getRollEntries('spell', req.params.id);
+      if (sourceRolls.length > 0) {
+        await db.insert(rollEntries).values(sourceRolls.map(re => {
+          const { id: _id, createdAt: _c, ...reData } = re as any;
+          return { ...reData, ownerId: newSpell.id };
+        }));
       }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(newSpell);
@@ -5990,10 +5996,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!spell) return res.status(404).json({ error: "Spell not found" });
       const { id, createdAt, ...spellData } = spell as any;
       const newSpell = await storage.createSystemSpell({ ...spellData, name: `${spell.name} (Copy)` });
-      const rollEntries = await storage.getRollEntries('spell', req.params.id);
-      for (const re of rollEntries) {
-        const { id: reId, createdAt: reCreated, ...reData } = re as any;
-        await storage.createRollEntry({ ...reData, ownerId: newSpell.id });
+      const sourceRolls = await storage.getRollEntries('spell', req.params.id);
+      if (sourceRolls.length > 0) {
+        await db.insert(rollEntries).values(sourceRolls.map(re => {
+          const { id: _id, createdAt: _c, ...reData } = re as any;
+          return { ...reData, ownerId: newSpell.id };
+        }));
       }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(newSpell);
