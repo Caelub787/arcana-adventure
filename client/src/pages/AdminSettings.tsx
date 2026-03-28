@@ -101,7 +101,6 @@ export default function AdminSettings() {
   
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [duplicatingItem, setDuplicatingItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -209,7 +208,6 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       setShowAddItem(false);
-      setDuplicatingItem(null);
       toast({ title: 'Item Created', description: 'System item created successfully' });
     },
     onError: (error: any) => {
@@ -412,6 +410,29 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
       toast({ title: 'Spell Copied', description: `Spell copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}` });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const duplicateItemMutation = useMutation({
+    mutationFn: (id: string) => api.duplicateSystemItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      toast({ title: 'Item Duplicated', description: 'Item and all its rolls have been duplicated.' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const duplicateSpellMutation = useMutation({
+    mutationFn: (id: string) => api.duplicateSystemSpell(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'Spell Duplicated', description: 'Spell and all its rolls have been duplicated.' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -730,10 +751,7 @@ export default function AdminSettings() {
               }
             }}
             onDuplicateItem={async (itemId) => {
-              // Fetch full item data for duplication
-              const fullItem = await api.getSystemItem(itemId);
-              setDuplicatingItem(fullItem);
-              setShowAddItem(true);
+              duplicateItemMutation.mutate(itemId);
             }}
             onArchiveItem={(id) => {
               if (confirm('Archive this item? It will be removed from campaign item lists but remain on character sheets.')) {
@@ -776,6 +794,9 @@ export default function AdminSettings() {
               if (confirm('Are you sure you want to delete this spell?')) {
                 deleteSpellMutation.mutate(id);
               }
+            }}
+            onDuplicateSpell={(id) => {
+              duplicateSpellMutation.mutate(id);
             }}
             onArchiveSpell={(id) => {
               if (confirm('Archive this spell? It will be removed from campaign spell lists but remain on character sheets.')) {
@@ -910,10 +931,8 @@ export default function AdminSettings() {
           open={showAddItem}
           onOpenChange={(open) => {
             setShowAddItem(open);
-            if (!open) setDuplicatingItem(null);
           }}
           onSave={(data, draftRolls) => createItemMutation.mutate({ item: data, draftRolls })}
-          initialData={duplicatingItem ? { ...duplicatingItem, name: `${duplicatingItem.name} (Copy)` } : undefined}
           isLoading={createItemMutation.isPending}
           campaignSystem={systemSlug}
         />
@@ -1979,13 +1998,14 @@ interface SpellsViewProps {
   onAddSpell: () => void;
   onEditSpell: (spell: SystemSpell) => void;
   onDeleteSpell: (id: string) => void;
+  onDuplicateSpell: (id: string) => void;
   onArchiveSpell: (id: string) => void;
   onCopyToSystem?: (id: string) => void;
   copyTargetLabel?: string;
 }
 
 
-function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell, onCopyToSystem, copyTargetLabel }: SpellsViewProps) {
+function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onDuplicateSpell, onArchiveSpell, onCopyToSystem, copyTargetLabel }: SpellsViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   
@@ -2100,6 +2120,9 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                         <Send className="h-4 w-4" />
                       </Button>
                     )}
+                    <Button variant="ghost" size="icon" onClick={() => onDuplicateSpell(spell.id)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-duplicate-spell-${spell.id}`} title="Duplicate spell">
+                      <Copy className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => onEditSpell(spell)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-spell-${spell.id}`}>
                       <Pencil className="h-4 w-4" />
                     </Button>

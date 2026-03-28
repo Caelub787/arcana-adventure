@@ -1123,10 +1123,22 @@ class ApiClient {
     });
   }
 
+  async duplicateSystemItem(id: string): Promise<Item> {
+    return this.request(`/admin/system-items/${id}/duplicate`, {
+      method: 'POST',
+    });
+  }
+
   async copySpellToSystem(id: string, targetSystem: string): Promise<SystemSpell> {
     return this.request(`/admin/spells/${id}/copy-to-system`, {
       method: 'POST',
       body: JSON.stringify({ targetSystem }),
+    });
+  }
+
+  async duplicateSystemSpell(id: string): Promise<SystemSpell> {
+    return this.request(`/admin/spells/${id}/duplicate`, {
+      method: 'POST',
     });
   }
 

@@ -4811,10 +4811,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isTemplate || item.characterId || item.campaignId) return res.status(404).json({ error: "System item not found" });
       const { id, createdAt, ...itemData } = item as any;
       const newItem = await storage.createItem({ ...itemData, system: targetSystem });
+      const rollEntries = await storage.getRollEntries('item', req.params.id);
+      for (const re of rollEntries) {
+        const { id: reId, createdAt: reCreated, ...reData } = re as any;
+        await storage.createRollEntry({ ...reData, ownerId: newItem.id });
+      }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(newItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to copy item" });
+    }
+  });
+
+  app.post("/api/admin/system-items/:id/duplicate", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "System item not found" });
+      const { id, createdAt, ...itemData } = item as any;
+      const newItem = await storage.createItem({ ...itemData, name: `${item.name} (Copy)` });
+      const rollEntries = await storage.getRollEntries('item', req.params.id);
+      for (const re of rollEntries) {
+        const { id: reId, createdAt: reCreated, ...reData } = re as any;
+        await storage.createRollEntry({ ...reData, ownerId: newItem.id });
+      }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
+      res.json(newItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to duplicate item" });
     }
   });
 
@@ -5949,10 +5972,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!spell) return res.status(404).json({ error: "Spell not found" });
       const { id, createdAt, ...spellData } = spell as any;
       const newSpell = await storage.createSystemSpell({ ...spellData, system: targetSystem });
+      const rollEntries = await storage.getRollEntries('spell', req.params.id);
+      for (const re of rollEntries) {
+        const { id: reId, createdAt: reCreated, ...reData } = re as any;
+        await storage.createRollEntry({ ...reData, ownerId: newSpell.id });
+      }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(newSpell);
     } catch (err) {
       res.status(400).json({ error: "Failed to copy spell" });
+    }
+  });
+
+  app.post("/api/admin/spells/:id/duplicate", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getSystemSpell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { id, createdAt, ...spellData } = spell as any;
+      const newSpell = await storage.createSystemSpell({ ...spellData, name: `${spell.name} (Copy)` });
+      const rollEntries = await storage.getRollEntries('spell', req.params.id);
+      for (const re of rollEntries) {
+        const { id: reId, createdAt: reCreated, ...reData } = re as any;
+        await storage.createRollEntry({ ...reData, ownerId: newSpell.id });
+      }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
+      res.json(newSpell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to duplicate spell" });
     }
   });
 
