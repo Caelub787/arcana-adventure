@@ -188,6 +188,8 @@ export function getTokensInAoe(
     aoeShape = spell.aoeShape?.toLowerCase() || 'circle';
     aoeRangeFeet = spell.aoeRange || 15;
   }
+  if (aoeShape === 'sphere') aoeShape = 'circle';
+  if (aoeShape === 'cube') aoeShape = 'square';
   
   console.log('[AoE] getTokensInAoe shape:', aoeShape, 'casterTokenId:', casterTokenId, 'casterToken.id:', casterToken?.id, 'casterToken.characterId:', casterToken?.characterId, 'spell.aoe:', spell.aoe);
   

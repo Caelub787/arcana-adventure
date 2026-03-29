@@ -37,6 +37,8 @@ export function BattlemapAoeOverlay({
     aoeShape = (spell.aoeShape || 'circle').toLowerCase();
     aoeRangeFeet = spell.aoeRange || 15;
   }
+  if (aoeShape === 'sphere') aoeShape = 'circle';
+  if (aoeShape === 'cube') aoeShape = 'square';
   const spellRangeFeet = spell.rangeNum || spell.range || 30;
   // AOE stat is the diameter (edge-to-edge distance), not radius
   // 30ft AOE = 6 squares diameter = 3 squares radius

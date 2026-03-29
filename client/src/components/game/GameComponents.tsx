@@ -3289,7 +3289,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const spell = aoeTargetState.spell;
           const aoeField = spell.aoe || '';
           const [parsedShape, parsedRadius] = aoeField.split(':');
-          const aoeShape = (parsedShape || 'circle').toLowerCase();
+          let aoeShape = (parsedShape || 'circle').toLowerCase();
+          if (aoeShape === 'sphere') aoeShape = 'circle';
+          if (aoeShape === 'cube') aoeShape = 'square';
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
@@ -3423,7 +3425,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         {/* Detonatable Item AoE Targeting Overlay */}
         {aoeTargetState?.active && aoeTargetState.detonatableItem && !aoeTargetState.spell && (() => {
           const item = aoeTargetState.detonatableItem;
-          const aoeShape = (item.detonateAoeShape || 'circle').toLowerCase();
+          let aoeShape = (item.detonateAoeShape || 'circle').toLowerCase();
+          if (aoeShape === 'sphere') aoeShape = 'circle';
+          if (aoeShape === 'cube') aoeShape = 'square';
           const aoeRangeFeet = item.detonateAoeRange || 10;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
@@ -3529,7 +3533,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           const aoeField = playerAoe.spellAoe || '';
           const [parsedShape, parsedRadius] = aoeField.split(':');
-          const aoeShape = (parsedShape || 'circle').toLowerCase();
+          let aoeShape = (parsedShape || 'circle').toLowerCase();
+          if (aoeShape === 'sphere') aoeShape = 'circle';
+          if (aoeShape === 'cube') aoeShape = 'square';
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
@@ -20082,7 +20088,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   <SelectContent>
                                     <SelectItem value="_none">None</SelectItem>
                                     <SelectItem value="circle">Circle</SelectItem>
+                                    <SelectItem value="sphere">Sphere</SelectItem>
                                     <SelectItem value="square">Square</SelectItem>
+                                    <SelectItem value="cube">Cube</SelectItem>
                                     <SelectItem value="cone">Cone</SelectItem>
                                     <SelectItem value="line">Line</SelectItem>
                                   </SelectContent>
