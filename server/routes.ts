@@ -1161,22 +1161,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             newEnergy = Math.max(0, character.energy - amount);
           }
           
-          // Update character energy directly - bypassing normal permission checks
           await storage.updateCharacter(characterId, { energy: newEnergy });
           
-          // Create a chat message for the combat log
           const actionText = isGain ? 'restored' : 'drained';
-          const chatText = `${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`;
           
-          const chatMessage = await storage.createChatMessage({
-            campaignId,
-            userId: authenticatedUserId,
-            sender: username,
-            text: chatText,
-            type: "roll"
-          });
-          
-          // Broadcast to ALL campaign members - everyone needs to see energy changes
           broadcastToCampaign(campaignId, {
             type: "character_energy_update",
             characterId,
@@ -1185,11 +1173,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             amount,
             isGain,
             attackerName: attackerName || username
-          });
-          
-          broadcastToCampaign(campaignId, {
-            type: "chat_message",
-            message: chatMessage
           });
           
           console.log(`[WebSocket] Combat energy: ${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`);
@@ -1225,15 +1208,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateCharacter(characterId, { mana: newMana });
           
           const actionText = isGain ? 'restored' : 'drained';
-          const chatText = `${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`;
-          
-          const chatMessage = await storage.createChatMessage({
-            campaignId,
-            userId: authenticatedUserId,
-            sender: username,
-            text: chatText,
-            type: "roll"
-          });
           
           broadcastToCampaign(campaignId, {
             type: "character_mana_update",
@@ -1243,11 +1217,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             amount,
             isGain,
             attackerName: attackerName || username
-          });
-          
-          broadcastToCampaign(campaignId, {
-            type: "chat_message",
-            message: chatMessage
           });
           
           console.log(`[WebSocket] Combat mana: ${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`);

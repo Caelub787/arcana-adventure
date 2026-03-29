@@ -10189,24 +10189,22 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                         ${isCritFail ? 'ring-2 ring-red-500/50' : ''}
                       `}>
                         <div className="absolute inset-0 bg-black/20 rounded-lg" />
-                        <div className="relative px-2 py-2">
-                          {/* Header row with name and roll type */}
-                          <div className="flex items-center gap-1.5 text-white/80 text-xs">
-                            <Dice5 className="w-4 h-4 text-white flex-shrink-0" />
+                        <div className="relative px-2 py-2 text-center">
+                          <div className="flex items-center justify-center gap-1.5 text-white/80 text-xs">
+                            <Dice5 className="w-3.5 h-3.5 text-white flex-shrink-0" />
                             <span className="font-medium truncate">{getDisplayName(msg.userId, msg.sender)}</span>
-                            <span className="text-white/50">•</span>
-                            <span className="text-white/70 truncate">{parseRollLabel(msg.text)}</span>
                           </div>
-                          {/* Total - prominent display */}
-                          <div className="flex items-baseline gap-2 mt-1">
-                            <span className={`text-2xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
+                          <div className="text-white/60 text-xs mt-1 truncate">
+                            {parseRollLabel(msg.text)}
+                          </div>
+                          <div className="flex items-center justify-center gap-2 mt-0.5">
+                            <span className={`text-3xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
                               {parseRollTotal(msg.text) || '?'}
                             </span>
                             {isCritSuccess && <span className="text-yellow-200 text-xs font-bold">CRIT!</span>}
                             {isCritFail && <span className="text-red-200 text-xs font-bold">FAIL!</span>}
                           </div>
-                          {/* Breakdown */}
-                          <div className="text-white/60 text-xs mt-0.5 break-words">
+                          <div className="text-white/50 text-[10px] mt-0.5 break-words">
                             {parseRollBreakdown(msg.text)}
                           </div>
                         </div>
