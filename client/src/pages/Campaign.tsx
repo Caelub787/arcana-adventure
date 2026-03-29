@@ -12062,93 +12062,35 @@ export default function Campaign() {
            />
            
            {aoeTargetState.active && aoeTargetState.spell && (() => {
-             const aoeField = aoeTargetState.spell.aoe || '';
-             let aoeShape = 'circle';
-             if (aoeField && typeof aoeField === 'string' && aoeField.includes(':')) {
-               const [parsedShape] = aoeField.split(':');
-               aoeShape = (parsedShape || 'circle').toLowerCase();
-             } else if (aoeTargetState.spell.aoeShape) {
-               aoeShape = (aoeTargetState.spell.aoeShape || 'circle').toLowerCase();
-             }
-             const showWidthControl = aoeShape === 'line' || aoeShape === 'cone';
-             const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
-             
              return (
                <div 
-                 className={`fixed z-[10800] pointer-events-auto bg-stone-900/95 border border-amber-700/60 rounded-lg shadow-2xl ${isMobileView ? 'left-1/2 -translate-x-1/2 top-14 px-3 py-2' : 'cursor-move px-4 py-2'}`}
-                 style={!isMobileView ? { top: aoePanelPos?.y ?? 56, left: aoePanelPos?.x ?? '50%', transform: aoePanelPos ? 'none' : 'translateX(-50%)' } : undefined}
-                 onPointerDown={!isMobileView ? (e) => {
-                   if ((e.target as HTMLElement).closest('button, input')) return;
-                   e.preventDefault();
-                   const el = e.currentTarget;
-                   const rect = el.getBoundingClientRect();
-                   const offsetX = e.clientX - rect.left;
-                   const offsetY = e.clientY - rect.top;
-                   const onMove = (ev: PointerEvent) => {
-                     setAoePanelPos({ x: ev.clientX - offsetX, y: ev.clientY - offsetY });
-                   };
-                   const onUp = () => {
-                     window.removeEventListener('pointermove', onMove);
-                     window.removeEventListener('pointerup', onUp);
-                   };
-                   window.addEventListener('pointermove', onMove);
-                   window.addEventListener('pointerup', onUp);
-                 } : undefined}
+                 className="fixed z-[10800] pointer-events-auto left-1/2 -translate-x-1/2 top-14"
                  data-testid="aoe-control-panel"
                >
-                 <div className="flex items-center gap-3">
-                   <span className="text-xs text-amber-400 font-medium whitespace-nowrap">{aoeTargetState.spell.name}</span>
-                   {!aoeTargetState.locked && (
-                     <span className="text-xs text-stone-400 whitespace-nowrap">Click map to place</span>
-                   )}
+                 <div className="flex items-center gap-2">
                    {aoeTargetState.locked && (
-                     <span className="text-xs text-green-400 whitespace-nowrap">Placed</span>
-                   )}
-                   {showWidthControl && (
-                     <div className="flex items-center gap-1">
-                       <label className="text-xs text-stone-400 whitespace-nowrap">W:</label>
-                       <Input
-                         type="number"
-                         min={5}
-                         max={30}
-                         step={5}
-                         value={aoeTargetState.width || 5}
-                         onChange={(e) => {
-                           const newWidth = Math.max(5, Math.min(30, parseInt(e.target.value) || 5));
-                           setAoeTargetState(prev => ({ ...prev, width: newWidth }));
-                         }}
-                         className="h-6 w-14 text-xs bg-stone-800 border-stone-600"
-                         data-testid="input-aoe-width"
-                       />
-                       <span className="text-xs text-stone-500">ft</span>
-                     </div>
-                   )}
-                   <div className="flex gap-1.5 ml-auto">
-                     {aoeTargetState.locked && (
-                       <Button
-                         size="sm"
-                         onClick={() => {
-                           setAoeTargetState(prev => ({ ...prev, confirmed: true }));
-                           setTimeout(() => {
-                             exitAoeMode();
-                           }, 500);
-                         }}
-                         className="h-7 px-3 text-xs bg-green-700 hover:bg-green-600 text-white"
-                         data-testid="button-confirm-aoe"
-                       >
-                         Confirm
-                       </Button>
-                     )}
                      <Button
                        size="sm"
-                       variant="outline"
-                       onClick={exitAoeMode}
-                       className="h-7 px-3 text-xs border-red-800 text-red-400 hover:bg-red-900/50"
-                       data-testid="button-deny-aoe"
+                       onClick={() => {
+                         setAoeTargetState(prev => ({ ...prev, confirmed: true }));
+                         setTimeout(() => {
+                           exitAoeMode();
+                         }, 500);
+                       }}
+                       className="h-9 w-9 p-0 rounded-full bg-green-700 hover:bg-green-600 text-white shadow-lg"
+                       data-testid="button-confirm-aoe"
                      >
-                       Deny
+                       <Check className="h-5 w-5" />
                      </Button>
-                   </div>
+                   )}
+                   <Button
+                     size="sm"
+                     onClick={exitAoeMode}
+                     className="h-9 w-9 p-0 rounded-full bg-red-700 hover:bg-red-600 text-white shadow-lg"
+                     data-testid="button-deny-aoe"
+                   >
+                     <X className="h-5 w-5" />
+                   </Button>
                  </div>
                </div>
              );

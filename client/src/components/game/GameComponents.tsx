@@ -3383,7 +3383,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {aoeShape === 'line' && casterToken && (() => {
                 const casterCenterX = casterToken.x + (gridSize) / 2 + 9000;
                 const casterCenterY = casterToken.y + (gridSize) / 2 + 9000;
-                const lineWidth = (gridSize);
+                const lineLength = spellRangePixels;
+                const lineWidth = (aoeRangeFeet / 5) * gridSize;
                 const dirX = worldX - casterCenterX;
                 const dirY = worldY - casterCenterY;
                 const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -3392,8 +3393,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 const normY = dirY / dirLen;
                 const perpX = -normY * (lineWidth / 2);
                 const perpY = normX * (lineWidth / 2);
-                const endX = casterCenterX + normX * radiusPixels;
-                const endY = casterCenterY + normY * radiusPixels;
+                const endX = casterCenterX + normX * lineLength;
+                const endY = casterCenterY + normY * lineLength;
                 return (
                   <polygon
                     points={`${casterCenterX + perpX},${casterCenterY + perpY} ${endX + perpX},${endY + perpY} ${endX - perpX},${endY - perpY} ${casterCenterX - perpX},${casterCenterY - perpY}`}
