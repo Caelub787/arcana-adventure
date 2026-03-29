@@ -4689,9 +4689,9 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
               }
               
               const x1 = WORLD_OFFSET + fromX + NODE_WIDTH / 2;
-              const y1 = WORLD_OFFSET + fromY + NODE_HEIGHT / 2;
+              const y1 = WORLD_OFFSET + fromY + 40;
               const x2 = WORLD_OFFSET + toX + NODE_WIDTH / 2;
-              const y2 = WORLD_OFFSET + toY + NODE_HEIGHT / 2;
+              const y2 = WORLD_OFFSET + toY + 40;
               
               const pathD = generateCurvePath(x1, y1, x2, y2);
               const midX = (x1 + x2) / 2;
@@ -8227,9 +8227,9 @@ function ClassesView() {
               const fromDrag = pendingDragUpdates.current.get(fromNode.id);
               const toDrag = pendingDragUpdates.current.get(toNode.id);
               const fx = ((fromDrag?.gridX ?? fromNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
-              const fy = ((fromDrag?.gridY ?? fromNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_HEIGHT / 2;
+              const fy = ((fromDrag?.gridY ?? fromNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + 40;
               const tx = ((toDrag?.gridX ?? toNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
-              const ty = ((toDrag?.gridY ?? toNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_HEIGHT / 2;
+              const ty = ((toDrag?.gridY ?? toNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + 40;
               const mx = (fx + tx) / 2;
               const my = (fy + ty) / 2;
               return (
