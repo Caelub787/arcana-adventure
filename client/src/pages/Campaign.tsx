@@ -12068,21 +12068,20 @@ export default function Campaign() {
                  data-testid="aoe-control-panel"
                >
                  <div className="flex items-center gap-2">
-                   {aoeTargetState.locked && (
-                     <Button
-                       size="sm"
-                       onClick={() => {
-                         setAoeTargetState(prev => ({ ...prev, confirmed: true }));
-                         setTimeout(() => {
-                           exitAoeMode();
-                         }, 500);
-                       }}
-                       className="h-9 w-9 p-0 rounded-full bg-green-700 hover:bg-green-600 text-white shadow-lg"
-                       data-testid="button-confirm-aoe"
-                     >
-                       <Check className="h-5 w-5" />
-                     </Button>
-                   )}
+                   <Button
+                     size="sm"
+                     disabled={!aoeTargetState.locked}
+                     onClick={() => {
+                       setAoeTargetState(prev => ({ ...prev, confirmed: true }));
+                       setTimeout(() => {
+                         exitAoeMode();
+                       }, 500);
+                     }}
+                     className="h-9 w-9 p-0 rounded-full bg-green-700 hover:bg-green-600 text-white shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                     data-testid="button-confirm-aoe"
+                   >
+                     <Check className="h-5 w-5" />
+                   </Button>
                    <Button
                      size="sm"
                      onClick={exitAoeMode}
