@@ -21559,7 +21559,7 @@ function FeatTreeViewerGrid({
   
   const { data: systemSpells = [] } = useQuery({
     queryKey: ['public-spells', campaignSystem],
-    queryFn: () => fetch(`/api/spells${campaignSystem ? `?system=${encodeURIComponent(campaignSystem)}` : ''}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/spells${campaignSystem ? `?system=${encodeURIComponent(campaignSystem)}` : ''}`, { credentials: 'include' }).then(r => r.json()),
   });
   
   const { data: systemTraits = [] } = useQuery({
@@ -21574,7 +21574,7 @@ function FeatTreeViewerGrid({
 
   const { data: systemItems = [] } = useQuery<any[]>({
     queryKey: ['/api/system-items', campaignSystem],
-    queryFn: () => fetch(`/api/system-items${campaignSystem ? `?system=${campaignSystem}` : ''}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/system-items${campaignSystem ? `?system=${campaignSystem}` : ''}`, { credentials: 'include' }).then(r => r.json()),
   });
   
   const getFeatDescription = (feat: Feat): string | undefined => {
@@ -22239,12 +22239,12 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 
   const { data: classViewerSpells = [] } = useQuery({
     queryKey: ['public-spells', 'aa-v2'],
-    queryFn: () => fetch('/api/spells?system=aa-v2').then(r => r.json()),
+    queryFn: () => fetch('/api/spells?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
   });
 
   const { data: classViewerItems = [] } = useQuery<any[]>({
     queryKey: ['/api/system-items', 'aa-v2'],
-    queryFn: () => fetch('/api/system-items?system=aa-v2').then(r => r.json()),
+    queryFn: () => fetch('/api/system-items?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
   });
 
   const getNodeImage = (node: any): string | null => {
