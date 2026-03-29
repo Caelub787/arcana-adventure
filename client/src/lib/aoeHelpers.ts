@@ -167,7 +167,7 @@ export function getTokensInAoe(
   tokens: any[],
   aoeState: AoeTargetState,
   gridSize: number,
-  casterToken?: { x: number; y: number; id?: string; speciesSize?: string },
+  casterToken?: { x: number; y: number; id?: string; speciesSize?: string; characterId?: string },
   aoeWidth?: number,
   walls?: WallSegment[],
   doors?: DoorSegment[],
@@ -177,8 +177,6 @@ export function getTokensInAoe(
 
   const { spell, center, casterTokenId } = aoeState;
   
-  // Parse the aoe field which is in format "shape:radius" like "circle:15"
-  // Fall back to separate aoeShape/aoeRange fields for backwards compatibility
   let aoeShape = 'circle';
   let aoeRangeFeet = 15;
   
@@ -191,16 +189,13 @@ export function getTokensInAoe(
     aoeRangeFeet = spell.aoeRange || 15;
   }
   
-  // AOE stat is the diameter (edge-to-edge distance), not radius
-  // 30ft AOE = 6 squares diameter = 3 squares radius
-  // Each grid square = 5ft
+  console.log('[AoE] getTokensInAoe shape:', aoeShape, 'casterTokenId:', casterTokenId, 'casterToken.id:', casterToken?.id, 'casterToken.characterId:', (casterToken as any)?.characterId, 'spell.aoe:', spell.aoe);
+  
   const diameterInCells = aoeRangeFeet / 5;
   const radiusPixels = (diameterInCells / 2) * gridSize;
   
-  // Width for line/cone (in grid cells, default to 1 cell = 5 feet)
   const widthPixels = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
 
-  // Calculate caster center accounting for token size
   const casterGridSpan = getTokenGridSpan(casterToken?.speciesSize);
   const casterX = casterToken?.x ?? 0;
   const casterY = casterToken?.y ?? 0;
@@ -208,9 +203,11 @@ export function getTokensInAoe(
   const casterCenterY = casterY + (casterGridSpan * gridSize) / 2;
 
   return tokens.filter((token) => {
-    // Exclude caster from cone and line AOE (they don't damage themselves)
     if ((aoeShape === 'cone' || aoeShape === 'line') && 
-        (token.id === casterTokenId || token.id === casterToken?.id)) {
+        (token.id === casterTokenId || 
+         token.id === casterToken?.id || 
+         (casterToken?.characterId && token.characterId === casterToken.characterId))) {
+      console.log('[AoE] Excluding caster token from', aoeShape, 'AOE:', token.id, 'charId:', token.characterId);
       return false;
     }
     

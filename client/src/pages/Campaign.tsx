@@ -7457,6 +7457,8 @@ export default function Campaign() {
       }
     }
     
+    console.log('[AoE] enterAoeMode - spell.aoe:', mergedSpell.aoe, 'aoeShape:', mergedSpell.aoeShape, 'casterTokenId:', casterTokenId);
+    
     setAoeTargetState({
       active: true,
       spell: mergedSpell,
