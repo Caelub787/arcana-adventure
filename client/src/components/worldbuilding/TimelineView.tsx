@@ -473,6 +473,12 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                       Player Visible
                     </div>
                   </SelectItem>
+                  <SelectItem value="shared" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-3 w-3 text-amber-400" />
+                      Shared
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1020,6 +1026,12 @@ function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEdi
                     <div className="flex items-center gap-2">
                       <Eye className="h-3 w-3 text-green-400" />
                       Player Visible
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="shared" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-3 w-3 text-amber-400" />
+                      Shared
                     </div>
                   </SelectItem>
                 </SelectContent>
