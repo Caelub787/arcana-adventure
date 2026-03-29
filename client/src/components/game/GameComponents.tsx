@@ -21558,8 +21558,8 @@ function FeatTreeViewerGrid({
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['system-spells', campaignSystem],
-    queryFn: () => api.getSystemSpells(campaignSystem),
+    queryKey: ['public-spells', campaignSystem],
+    queryFn: () => fetch(`/api/spells${campaignSystem ? `?system=${encodeURIComponent(campaignSystem)}` : ''}`).then(r => r.json()),
   });
   
   const { data: systemTraits = [] } = useQuery({
@@ -22237,6 +22237,33 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     },
   });
 
+  const { data: classViewerSpells = [] } = useQuery({
+    queryKey: ['public-spells', 'aa-v2'],
+    queryFn: () => fetch('/api/spells?system=aa-v2').then(r => r.json()),
+  });
+
+  const { data: classViewerItems = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items', 'aa-v2'],
+    queryFn: () => fetch('/api/system-items?system=aa-v2').then(r => r.json()),
+  });
+
+  const getNodeImage = (node: any): string | null => {
+    if (node.image) return node.image;
+    if (node.effects && Array.isArray(node.effects)) {
+      for (const effect of node.effects) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (classViewerSpells as any[]).find((s: any) => s.id === effect.target);
+          if (spell?.icon) return spell.icon;
+        }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (classViewerItems as any[]).find((i: any) => i.id === effect.target);
+          if (item?.image) return item.image;
+        }
+      }
+    }
+    return null;
+  };
+
   const unlockNodeMutation = useMutation({
     mutationFn: async (nodeId: string) => {
       const res = await fetch(`/api/characters/${characterId}/classes/${classId}/nodes/${nodeId}/unlock`, {
@@ -22340,7 +22367,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
             const isUnlocked = unlockedNodeIds.includes(node.id);
             const canUnlock = canEdit && isNodeUnlockable(node);
             const style = classViewerTierStyles[node.tier] || classViewerTierStyles[1];
-            const nodeImg = node.image || null;
+            const nodeImg = getNodeImage(node);
             const CLASS_NODE_SIZE = 80;
 
             return (
