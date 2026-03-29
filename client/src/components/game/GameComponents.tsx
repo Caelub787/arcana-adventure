@@ -21618,8 +21618,8 @@ function FeatTreeViewerGrid({
   const NODE_WIDTH = 160;
   const NODE_HEIGHT = 100;
   const CELL_SIZE = 100;
-  const WORLD_SIZE = 6000;
-  const WORLD_OFFSET = WORLD_SIZE / 2;
+  const WORLD_SIZE = 20000;
+  const WORLD_OFFSET = 10000;
   
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
   const { feats, connections, tree } = treeData;
@@ -21700,16 +21700,14 @@ function FeatTreeViewerGrid({
     return () => observer.disconnect();
   }, []);
   
-  // Reset view when viewport or tree changes - use default view if set (world-space coordinates)
+  // Reset view when viewport or tree changes - use default view if set
   useEffect(() => {
     if (viewportSize.width > 0) {
-      // Use default view if set (stored as world-space center coordinates)
       if (tree?.defaultViewX != null && tree?.defaultViewY != null) {
         const worldCenterX = tree.defaultViewX;
         const worldCenterY = tree.defaultViewY;
         const defaultZoom = tree.defaultViewZoom || 1;
         
-        // Convert world-space center to viewport-relative pan
         const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
         const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
         

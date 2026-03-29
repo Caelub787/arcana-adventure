@@ -4209,16 +4209,14 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     return () => observer.disconnect();
   }, [selectedTreeId]);
 
-  // Reset view when tree changes - use default view if set (world-space coordinates)
+  // Reset view when tree changes - use default view if set
   useEffect(() => {
     if (selectedTreeId && viewportSize.width > 0 && treeData) {
-      // Use default view if set (stored as world-space center coordinates)
       if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
         const worldCenterX = treeData.tree.defaultViewX;
         const worldCenterY = treeData.tree.defaultViewY;
         const defaultZoom = treeData.tree.defaultViewZoom || 1;
         
-        // Convert world-space center to viewport-relative pan
         const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
         const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
         
@@ -4428,13 +4426,11 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const resetView = () => {
     if (viewportSize.width > 0 && treeData) {
-      // Use default view if set (world-space coordinates), otherwise center on the first feat
       if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
         const worldCenterX = treeData.tree.defaultViewX;
         const worldCenterY = treeData.tree.defaultViewY;
         const defaultZoom = treeData.tree.defaultViewZoom || 1;
         
-        // Convert world-space center to viewport-relative pan
         const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
         const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
         
@@ -4546,7 +4542,6 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             className="bg-amber-800/80 hover:bg-amber-700 text-xs border border-amber-600"
             onClick={() => {
               if (selectedTreeId && viewportSize.width > 0) {
-                // Store world-space center coordinates instead of viewport-relative pan
                 const zoom = zoomRef.current;
                 const pan = panRef.current;
                 const worldCenterX = (viewportSize.width / 2 - pan.x) / zoom;
