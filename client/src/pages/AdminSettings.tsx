@@ -3816,6 +3816,11 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     queryKey: ['system-spells', systemSlug],
     queryFn: () => api.getSystemSpells(systemSlug),
   });
+
+  const { data: systemItemsForFeats = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items', systemSlug],
+    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`).then(r => r.json()),
+  });
   
   const { data: systemTraitsForFeats = [] } = useQuery({
     queryKey: ['system-traits', systemSlug],
@@ -3849,6 +3854,23 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       }
     }
     return undefined;
+  };
+
+  const getFeatImage = (feat: Feat): string | null => {
+    if ((feat as any).image) return (feat as any).image;
+    if (feat.effects && Array.isArray(feat.effects)) {
+      for (const effect of feat.effects as any[]) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (systemSpellsForFeats as any[]).find((s: any) => s.id === effect.target);
+          if (spell?.icon) return spell.icon;
+        }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (systemItemsForFeats as any[]).find((i: any) => i.id === effect.target);
+          if (item?.image) return item.image;
+        }
+      }
+    }
+    return null;
   };
 
   const createTemplateMutation = useMutation({
@@ -4719,15 +4741,14 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             const isConnectSource = connectingFrom === feat.id;
             const isDragging = dragOffset?.id === feat.id;
             const pendingUpdate = pendingDragUpdates.get(feat.id);
+            const featImage = getFeatImage(feat);
             
-            // Convert grid indices to pixels and apply drag offset (or pending update offset)
             let posX = feat.gridX * CELL_SIZE;
             let posY = feat.gridY * CELL_SIZE;
             if (isDragging) {
               posX += dragOffset.dx;
               posY += dragOffset.dy;
             } else if (pendingUpdate) {
-              // Keep visual offset while mutation is pending
               posX += pendingUpdate.dx;
               posY += pendingUpdate.dy;
             }
@@ -4736,14 +4757,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
               <div
                 key={feat.id}
                 data-feat-cell
-                className={`
-                  absolute rounded-xl border-2 
-                  ${featNodeStyle.border} ${featNodeStyle.bg} ${featNodeStyle.glow}
-                  ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
-                  ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
-                  ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}
-                  ${!isDragging ? 'transition-transform duration-150 hover:scale-105' : ''}
-                `}
+                className={`absolute flex flex-col items-center ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}`}
                 style={{
                   left: WORLD_OFFSET + posX,
                   top: WORLD_OFFSET + posY,
@@ -4759,31 +4773,25 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                 onPointerUp={(e) => handleFeatPointerUp(feat, e)}
                 data-testid={`feat-node-${feat.id}`}
               >
-                <div className="h-full flex items-center gap-2 p-2 overflow-hidden">
-                  {(feat as any).image && (
-                    <img src={(feat as any).image} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-purple-500 shrink-0" />
-                  )}
-                  <div className="flex flex-col items-center justify-center flex-1 min-w-0 text-center">
-                  <div className="text-sm font-bold text-white truncate w-full drop-shadow-lg">
-                    {feat.name}
-                  </div>
-                  {getFeatDescription(feat) && (
-                    <div className="text-[10px] text-stone-300 mt-1 line-clamp-2 w-full leading-tight">
-                      {getFeatDescription(feat)}
+                <div
+                  className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0
+                    ${featNodeStyle.border} ${featNodeStyle.glow}
+                    ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
+                    ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
+                    ${!isDragging ? 'hover:scale-105' : ''}
+                  `}
+                  style={{ width: 80, height: 80 }}
+                >
+                  {featImage ? (
+                    <img src={featImage} alt={feat.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${featNodeStyle.bg}`}>
+                      <span className="text-[10px] font-bold text-white leading-tight">{feat.name}</span>
                     </div>
                   )}
-                  {(feat.effects as any[])?.length > 0 && (
-                    <div className="flex gap-0.5 mt-1">
-                      {(feat.effects as any[]).slice(0, 3).map((effect: any, idx: number) => {
-                        const Icon = effectTypeIcons[effect.type] || Star;
-                        return <Icon key={idx} className="h-3 w-3 text-white/70" />;
-                      })}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-amber-400 mt-1 font-medium">
-                    Cost: {feat.cost || 1}
-                  </div>
-                  </div>
+                </div>
+                <div className="text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate text-purple-300">
+                  {feat.name}
                 </div>
               </div>
             );
@@ -7829,6 +7837,33 @@ function ClassesView() {
     },
   });
 
+  const { data: classSpells = [] } = useQuery({
+    queryKey: ['system-spells', 'aa-v2'],
+    queryFn: () => api.getSystemSpells('aa-v2'),
+  });
+
+  const { data: classItems = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items', 'aa-v2'],
+    queryFn: () => fetch('/api/system-items?system=aa-v2').then(r => r.json()),
+  });
+
+  const getNodeImage = (node: any): string | null => {
+    if (node.image) return node.image;
+    if (node.effects && Array.isArray(node.effects)) {
+      for (const effect of node.effects as any[]) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (classSpells as any[]).find((s: any) => s.id === effect.target);
+          if (spell?.icon) return spell.icon;
+        }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (classItems as any[]).find((i: any) => i.id === effect.target);
+          if (item?.image) return item.image;
+        }
+      }
+    }
+    return null;
+  };
+
   const { data: skillTreesForClasses = [] } = useQuery({
     queryKey: ['feat-trees', 'aa-v2'],
     queryFn: () => api.getFeatTrees('aa-v2'),
@@ -8228,11 +8263,12 @@ function ClassesView() {
             const px = gx * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
             const py = gy * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
             const style = classTierStyles[node.tier] || classTierStyles[1];
+            const nodeImg = getNodeImage(node);
 
             return (
               <div
                 key={node.id}
-                className={`absolute rounded-lg border-2 ${style.border} ${style.bg} ${style.glow} p-2 cursor-grab select-none`}
+                className="absolute flex flex-col items-center cursor-grab select-none"
                 style={{
                   left: px,
                   top: py,
@@ -8298,18 +8334,20 @@ function ClassesView() {
                 }}
                 data-testid={`class-node-${node.id}`}
               >
-                <div className="flex items-center gap-2 h-full">
-                  {node.image && (
-                    <img src={node.image} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-fuchsia-500 shrink-0" />
-                  )}
-                  <div className="flex flex-col flex-1 min-w-0 h-full">
-                    <p className="text-xs font-bold text-white truncate">{node.name}</p>
-                    <p className="text-[10px] text-stone-400 truncate flex-1">{node.description || ''}</p>
-                    <div className="flex justify-between items-center mt-auto">
-                      <Badge variant="outline" className="text-[9px] h-4 px-1 border-stone-600">T{node.tier}</Badge>
-                      <span className="text-[9px] text-fuchsia-400">{node.cost} pts</span>
+                <div
+                  className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0 ${style.border} ${style.glow} hover:scale-105`}
+                  style={{ width: 80, height: 80 }}
+                >
+                  {nodeImg ? (
+                    <img src={nodeImg} alt={node.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${style.bg}`}>
+                      <span className="text-[10px] font-bold text-white leading-tight">{node.name}</span>
                     </div>
-                  </div>
+                  )}
+                </div>
+                <div className="text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate text-fuchsia-300">
+                  {node.name}
                 </div>
               </div>
             );
