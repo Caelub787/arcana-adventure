@@ -3761,11 +3761,18 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
   );
 }
 
-// Feat node styling (uniform style without tiers)
-const featNodeStyle = {
-  border: 'border-purple-600',
-  bg: 'bg-gradient-to-br from-purple-900/90 to-stone-900/90',
-  glow: 'shadow-[0_0_15px_rgba(147,51,234,0.4)]',
+// Feat node styling (cost-based tiers: 1=purple, 2=violet, 3+=amber)
+const featTierStyles: Record<number, { border: string; bg: string; glow: string }> = {
+  1: { border: 'border-purple-600', bg: 'bg-gradient-to-br from-purple-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(147,51,234,0.3)]' },
+  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
+  3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
+};
+
+const getFeatTier = (feat: any): number => {
+  const cost = feat.cost || 1;
+  if (cost >= 3) return 3;
+  if (cost >= 2) return 2;
+  return 1;
 };
 
 const effectTypeIcons: Record<string, any> = {
@@ -4742,6 +4749,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             const isDragging = dragOffset?.id === feat.id;
             const pendingUpdate = pendingDragUpdates.get(feat.id);
             const featImage = getFeatImage(feat);
+            const featStyle = featTierStyles[getFeatTier(feat)] || featTierStyles[1];
             
             let posX = feat.gridX * CELL_SIZE;
             let posY = feat.gridY * CELL_SIZE;
@@ -4775,7 +4783,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
               >
                 <div
                   className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0
-                    ${featNodeStyle.border} ${featNodeStyle.glow}
+                    ${featStyle.border} ${featStyle.glow}
                     ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
                     ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
                     ${!isDragging ? 'hover:scale-105' : ''}
@@ -4785,7 +4793,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                   {featImage ? (
                     <img src={featImage} alt={feat.name} className="w-full h-full object-cover" />
                   ) : (
-                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${featNodeStyle.bg}`}>
+                    <div className={`w-full h-full flex items-center justify-center text-center p-1 ${featStyle.bg}`}>
                       <span className="text-[10px] font-bold text-white leading-tight">{feat.name}</span>
                     </div>
                   )}
