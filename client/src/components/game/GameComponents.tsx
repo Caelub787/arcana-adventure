@@ -777,6 +777,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
+  const aoeCursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
+  const [aoeCursorInRange, setAoeCursorInRange] = useState(true);
   
   // Track viewport dimensions for viewport-independent centering
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -2040,18 +2042,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           y: motionY, 
           scale: motionZoom,
           cursor: aoeTargetState?.active ? (() => {
-            if (aoeTargetState.locked) return 'crosshair';
-            const casterToken = aoeTargetState.casterTokenId ? tokens.find(t => t.id === aoeTargetState.casterTokenId) : null;
-            if (!casterToken) return 'crosshair';
-            const spell = aoeTargetState.spell;
-            const item = aoeTargetState.detonatableItem;
-            const rangeFeet = spell ? (spell.rangeNum || 30) : (item?.range || 30);
-            const rangePixels = (rangeFeet / 5) * gridSize;
-            const cx = casterToken.x + gridSize / 2;
-            const cy = casterToken.y + gridSize / 2;
-            const dist = Math.sqrt(Math.pow(aoeTargetState.center.x - cx, 2) + Math.pow(aoeTargetState.center.y - cy, 2));
-            const inRange = dist <= rangePixels;
-            const color = inRange ? '%2322c55e' : '%23ef4444';
+            const color = aoeCursorInRange ? '%2322c55e' : '%23ef4444';
             return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='${color}' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='${color}' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='5' fill='none' stroke='${color}' stroke-width='1.5'/%3E%3C/svg%3E") 12 12, crosshair`;
           })() : undefined,
           left: '-9000px',
@@ -2062,6 +2053,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onPointerMove={handleMapPointerMove}
         onPointerUp={handleMapPointerUp}
         onPointerCancel={handleMapPointerCancel}
+        onMouseMove={aoeTargetState?.active ? (e: React.MouseEvent) => {
+          const container = containerRef.current;
+          if (!container) return;
+          const rect = container.getBoundingClientRect();
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+          const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+          aoeCursorWorldPosRef.current = { x: worldX, y: worldY };
+          const casterToken = aoeTargetState.casterTokenId ? tokens.find(t => t.id === aoeTargetState.casterTokenId) : null;
+          if (casterToken) {
+            const spell = aoeTargetState.spell;
+            const item = aoeTargetState.detonatableItem;
+            const rangeFeet = spell ? (spell.rangeNum || 30) : (item?.range || 30);
+            const rangePixels = (rangeFeet / 5) * gridSize;
+            const cx = casterToken.x + gridSize / 2;
+            const cy = casterToken.y + gridSize / 2;
+            const dist = Math.sqrt(Math.pow(worldX - cx, 2) + Math.pow(worldY - cy, 2));
+            const nowInRange = dist <= rangePixels;
+            setAoeCursorInRange(prev => prev !== nowInRange ? nowInRange : prev);
+          }
+        } : undefined}
         onClick={(e) => {
           setShowDeleteButton(null);
           if (pinPlaceMode && onPinPlaced && bgImageDimensions.width > 0 && bgImageDimensions.height > 0) {
