@@ -6242,19 +6242,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       const doorSegments = cachedDoors.map((d: any) => ({ x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, isOpen: d.isOpen }));
       const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken, aoeTargetState.width, wallSegments, doorSegments, spellData?.passesThroughWalls);
       
-      if (tokensInAoe.length === 0) {
-        triggerRollNotification({
-          type: 'system',
-          label: `${spellData.name} - No targets in AoE!`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: 'No tokens are within the area of effect',
-        });
-        return;
-      }
-      
       // DC Save handling for AOE spells - damaging AOE spells always trigger saves
       // IMPORTANT: Don't roll damage yet for save spells - saves must complete first
       if (!isHealing && spellData.damageType !== 'Energy' && diceNotation && (spellData.requiresSave || spellData.saveSuccessEffect || spellData.saveAttribute)) {
@@ -6388,10 +6375,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             : `${diceNotation} = ${dmgDiceResult}`;
           const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
           
+          const dmgLabel = saveResults.length === 0
+            ? `${spellData.name} ${isHealing ? 'Healing' : 'Damage'} - No targets hit`
+            : `${spellData.name} ${isHealing ? 'Healing' : 'Damage'}`;
+          
           triggerRollNotification({
             type: 'attack',
             dieType: dmgDieType as any,
-            label: `${spellData.name} ${isHealing ? 'Healing' : 'Damage'}`,
+            label: dmgLabel,
             result: dmgResult,
             modifier: mod,
             total: totalDamage,
@@ -6401,7 +6392,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           });
           if (character.campaignId) {
             gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-              `${spellData.name} ${isHealing ? 'Healing' : 'Damage'}: ${dmgBreakdown} = ${totalDamage}${damageTypeDisplay}`, 'roll');
+              `${dmgLabel}: ${dmgBreakdown} = ${totalDamage}${damageTypeDisplay}`, 'roll');
           }
           
           // STEP 3: Apply damage based on save results
@@ -6473,9 +6464,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       
       const aoeEffectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
       const aoeCritPrefix = options?.critSuccess ? 'CRIT ' : '';
-      const label = isHealing 
-        ? `${spellData.name} AoE Healing → ${affectedNames.join(', ')}`
-        : `${spellData.name} AoE ${aoeCritPrefix}${aoeEffectLabel} → ${affectedNames.join(', ')}`;
+      const label = affectedNames.length === 0
+        ? `${spellData.name} AoE ${aoeCritPrefix}${aoeEffectLabel} - No targets hit`
+        : isHealing 
+          ? `${spellData.name} AoE Healing → ${affectedNames.join(', ')}`
+          : `${spellData.name} AoE ${aoeCritPrefix}${aoeEffectLabel} → ${affectedNames.join(', ')}`;
       
       triggerRollNotification({
         type: 'attack',
@@ -7039,7 +7032,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
       }
 
-      if (targetsToSave.length === 0) {
+      const isAoeLocked = rollEntry.isAoe && aoeTargetState?.active && aoeTargetState?.locked;
+      if (targetsToSave.length === 0 && !isAoeLocked) {
         triggerRollNotification({
           type: 'system',
           label: `${itemOrSpellName} - ${rollEntry.name}: No valid targets`,
@@ -7145,8 +7139,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           }
       }
 
-      if (rollEntry.diceFormula && newSaveResults.length > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      if (rollEntry.diceFormula && (newSaveResults.length > 0 || isAoeLocked)) {
+        await new Promise(resolve => setTimeout(resolve, newSaveResults.length > 0 ? 1500 : 0));
         const { result: dmgResult, dieType: dmgDieType } = rollDice(rollEntry.diceFormula);
         const rollMod = rollEntry.mod || 0;
         let attrMod = 0;
@@ -7220,7 +7214,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
         }
 
-        const saveLabel = `${itemOrSpellName} - ${rollEntry.name} → ${affectedNames.join(', ')}`;
+        const saveLabel = affectedNames.length === 0
+          ? `${itemOrSpellName} - ${rollEntry.name} - No targets hit`
+          : `${itemOrSpellName} - ${rollEntry.name} → ${affectedNames.join(', ')}`;
 
         triggerRollNotification({
           type: isHealing ? 'heal' : 'damage',
