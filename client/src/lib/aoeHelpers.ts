@@ -189,7 +189,7 @@ export function getTokensInAoe(
     aoeRangeFeet = spell.aoeRange || 15;
   }
   
-  console.log('[AoE] getTokensInAoe shape:', aoeShape, 'casterTokenId:', casterTokenId, 'casterToken.id:', casterToken?.id, 'casterToken.characterId:', (casterToken as any)?.characterId, 'spell.aoe:', spell.aoe);
+  console.log('[AoE] getTokensInAoe shape:', aoeShape, 'casterTokenId:', casterTokenId, 'casterToken.id:', casterToken?.id, 'casterToken.characterId:', casterToken?.characterId, 'spell.aoe:', spell.aoe);
   
   const diameterInCells = aoeRangeFeet / 5;
   const radiusPixels = (diameterInCells / 2) * gridSize;
