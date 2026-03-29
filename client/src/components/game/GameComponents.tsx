@@ -19755,7 +19755,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                     <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
                                       {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
                                     </span>
-                                    {spell.rangeNum && <span>| {spell.rangeNum}ft</span>}
                                     {spell.damageDice && <span>| {spell.damageDice} {spell.damageType}</span>}
                                     {spell.duration && <span>| {spell.duration}</span>}
                                   </div>
@@ -20321,7 +20320,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                 <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
                                   {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
                                 </span>
-                                {spell.rangeNum && <span>| {spell.rangeNum}ft</span>}
                                 {spell.damageDice && <span>| {spell.damageDice} {spell.damageType}</span>}
                                 {spell.duration && <span>| {spell.duration}</span>}
                               </div>

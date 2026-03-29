@@ -7440,19 +7440,16 @@ export default function Campaign() {
     
     const mergedSpell = { ...spell };
     if (pendingRollEntry) {
-      if (pendingRollEntry.aoeShape && !mergedSpell.aoeShape) {
+      if (pendingRollEntry.aoeShape) {
         mergedSpell.aoeShape = pendingRollEntry.aoeShape;
       }
-      if (pendingRollEntry.aoeRange && !mergedSpell.aoeRange) {
+      if (pendingRollEntry.aoeRange) {
         mergedSpell.aoeRange = pendingRollEntry.aoeRange;
       }
       if (pendingRollEntry.aoeShape && pendingRollEntry.aoeRange) {
-        const rollAoe = `${pendingRollEntry.aoeShape}:${pendingRollEntry.aoeRange}`;
-        if (!mergedSpell.aoe || !mergedSpell.aoe.includes(':')) {
-          mergedSpell.aoe = rollAoe;
-        }
+        mergedSpell.aoe = `${pendingRollEntry.aoeShape}:${pendingRollEntry.aoeRange}`;
       }
-      if (pendingRollEntry.range && !mergedSpell.rangeNum) {
+      if (pendingRollEntry.range) {
         mergedSpell.rangeNum = pendingRollEntry.range;
       }
     }
