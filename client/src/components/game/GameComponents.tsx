@@ -2032,13 +2032,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
       <motion.div 
-        className={`absolute ${aoeTargetState?.active ? 'cursor-crosshair' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
+        className={`absolute ${aoeTargetState?.active ? '' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
           width: '20000px', 
           height: '20000px', 
           x: motionX, 
           y: motionY, 
           scale: motionZoom,
+          cursor: aoeTargetState?.active ? (() => {
+            if (aoeTargetState.locked) return 'crosshair';
+            const casterToken = aoeTargetState.casterTokenId ? tokens.find(t => t.id === aoeTargetState.casterTokenId) : null;
+            if (!casterToken) return 'crosshair';
+            const spell = aoeTargetState.spell;
+            const item = aoeTargetState.detonatableItem;
+            const rangeFeet = spell ? (spell.rangeNum || 30) : (item?.range || 30);
+            const rangePixels = (rangeFeet / 5) * gridSize;
+            const cx = casterToken.x + gridSize / 2;
+            const cy = casterToken.y + gridSize / 2;
+            const dist = Math.sqrt(Math.pow(aoeTargetState.center.x - cx, 2) + Math.pow(aoeTargetState.center.y - cy, 2));
+            const inRange = dist <= rangePixels;
+            const color = inRange ? '%2322c55e' : '%23ef4444';
+            return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='${color}' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='${color}' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='5' fill='none' stroke='${color}' stroke-width='1.5'/%3E%3C/svg%3E") 12 12, crosshair`;
+          })() : undefined,
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
