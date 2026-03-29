@@ -1175,6 +1175,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             attackerName: attackerName || username
           });
           
+          const isSelfCost = !isGain && character.userId === authenticatedUserId;
+          if (!isSelfCost) {
+            const chatText = `${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`;
+            const chatMessage = await storage.createChatMessage({
+              campaignId,
+              userId: authenticatedUserId,
+              sender: username,
+              text: chatText,
+              type: "roll"
+            });
+            broadcastToCampaign(campaignId, {
+              type: "chat_message",
+              message: chatMessage
+            });
+          }
+          
           console.log(`[WebSocket] Combat energy: ${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`);
         }
         
@@ -1218,6 +1234,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isGain,
             attackerName: attackerName || username
           });
+          
+          const isSelfCost = !isGain && character.userId === authenticatedUserId;
+          if (!isSelfCost) {
+            const chatText = `${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`;
+            const chatMessage = await storage.createChatMessage({
+              campaignId,
+              userId: authenticatedUserId,
+              sender: username,
+              text: chatText,
+              type: "roll"
+            });
+            broadcastToCampaign(campaignId, {
+              type: "chat_message",
+              message: chatMessage
+            });
+          }
           
           console.log(`[WebSocket] Combat mana: ${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`);
         }
