@@ -596,6 +596,7 @@ export default function SharedWorldView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [initialEntityHandled, setInitialEntityHandled] = useState(false);
 
   const entities = data?.entities || [];
   const entityLinks = data?.entityLinks || [];
@@ -622,10 +623,26 @@ export default function SharedWorldView() {
 
   const selectedEntity = entities.find(e => e.id === selectedEntityId);
 
+  useEffect(() => {
+    if (data && entities.length > 0 && !initialEntityHandled) {
+      setInitialEntityHandled(true);
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#entity=')) {
+        const entityId = hash.replace('#entity=', '');
+        const found = entities.find(e => e.id === entityId);
+        if (found) {
+          setSelectedEntityId(entityId);
+          setActiveSection("encyclopedia");
+        }
+      }
+    }
+  }, [data, entities, initialEntityHandled]);
+
   const handleSelectEntity = (entityId: string) => {
     setSelectedEntityId(entityId);
     setActiveSection("encyclopedia");
     setMobileSidebarOpen(false);
+    window.history.replaceState(null, '', `${window.location.pathname}#entity=${entityId}`);
   };
 
   if (isLoading) {
@@ -1060,7 +1077,7 @@ export default function SharedWorldView() {
                 <div className="flex-1 overflow-y-auto">
                   <div className="max-w-3xl mx-auto p-4 md:p-8">
                     <div className="flex items-center gap-2 mb-1">
-                      <Button variant="ghost" size="sm" className="text-stone-500 text-xs h-6 px-2" onClick={() => setSelectedEntityId(null)} data-testid="button-back-to-list">
+                      <Button variant="ghost" size="sm" className="text-stone-500 text-xs h-6 px-2" onClick={() => { setSelectedEntityId(null); window.history.replaceState(null, '', window.location.pathname); }} data-testid="button-back-to-list">
                         <ChevronLeft className="h-3 w-3 mr-1" /> Back
                       </Button>
                     </div>
@@ -1096,6 +1113,25 @@ export default function SharedWorldView() {
                         ))}
                       </div>
                     )}
+                    {(() => {
+                      const loreFields = (selectedEntity as any).loreFields as Record<string, any> | null;
+                      const dataKey = `${selectedEntity.entityType}Data`;
+                      const typeData = (selectedEntity as any)[dataKey] as Record<string, any> | null;
+                      const fields = loreFields || typeData;
+                      if (!fields || Object.keys(fields).length === 0) return null;
+                      const entries = Object.entries(fields).filter(([_, v]) => v && (typeof v !== 'string' || v.trim()) && (!Array.isArray(v) || v.filter(Boolean).length > 0));
+                      if (entries.length === 0) return null;
+                      return (
+                        <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2 bg-stone-900/30 rounded-lg p-3 border border-stone-800/50">
+                          {entries.map(([key, value]) => (
+                            <div key={key} className={typeof value === 'string' && value.length > 60 ? 'col-span-2' : ''}>
+                              <span className="text-[10px] text-stone-500 uppercase tracking-wider">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</span>
+                              <div className="text-xs text-stone-300">{Array.isArray(value) ? value.filter(Boolean).join(', ') : String(value)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {selectedEntity.articleContent && (
                       <div className="prose prose-invert prose-sm max-w-none">
                         {renderArticleContent(selectedEntity.articleContent)}

@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, Edit3, Save, Hash, Minus } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Minus, Share2, ExternalLink } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const TYPE_TEMPLATE_FIELDS: Record<string, { key: string; label: string; type: 'text' | 'textarea' | 'select' | 'list'; options?: string[] }[]> = {
   location: [
@@ -92,6 +93,7 @@ interface WikiArticleEditorProps {
   worldId?: string;
   isGM: boolean;
   onEntityUpdated?: () => void;
+  shareToken?: string;
 }
 
 function renderMarkdownPreview(content: string): string {
@@ -111,7 +113,7 @@ function renderMarkdownPreview(content: string): string {
   return html;
 }
 
-export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated }: WikiArticleEditorProps) {
+export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, shareToken }: WikiArticleEditorProps) {
   const resolvedId = worldId || campaignId;
   const scope = worldId ? "worlds" as const : "campaigns" as const;
   const updateEntity = useUpdateEntity(resolvedId, scope);
@@ -124,6 +126,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     const dataKey = `${entity.entityType}Data` as keyof Entity;
     return (entity[dataKey] as Record<string, any>) || (entity.loreFields as Record<string, any>) || {};
   });
+  const [visibility, setVisibility] = useState(entity.visibility || "gm_only");
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -133,6 +136,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     setDescription(entity.description || "");
     setDisplayName(entity.displayName || "");
     setImage(entity.image || "");
+    setVisibility(entity.visibility || "gm_only");
     const dataKey = `${entity.entityType}Data` as keyof Entity;
     setTemplateData((entity[dataKey] as Record<string, any>) || (entity.loreFields as Record<string, any>) || {});
   }, [entity.id]);
@@ -146,6 +150,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
       description,
       displayName,
       image: image || undefined,
+      visibility,
     };
     if (['location', 'faction', 'event', 'clue', 'lore', 'timeline', 'article', 'character'].includes(entity.entityType)) {
       updateData.loreFields = templateData;
@@ -158,7 +163,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     } finally {
       setIsSaving(false);
     }
-  }, [entity.id, articleContent, description, displayName, image, templateData, updateEntity, onEntityUpdated]);
+  }, [entity.id, articleContent, description, displayName, image, visibility, templateData, updateEntity, onEntityUpdated]);
 
   const autoSave = useCallback(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -207,6 +212,31 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
             {isSaving && <span className="text-xs text-stone-500">Saving...</span>}
             {isGM && (
               <>
+                <Select value={visibility} onValueChange={(val) => { setVisibility(val); autoSave(); }}>
+                  <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
+                    <div className="flex items-center gap-1.5">
+                      {visibility === "gm_only" ? <EyeOff className="h-3 w-3 text-stone-500" /> : <Eye className="h-3 w-3 text-amber-400" />}
+                      <SelectValue />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="gm_only" className="text-xs text-stone-300">GM Only</SelectItem>
+                    <SelectItem value="player_visible" className="text-xs text-stone-300">Players</SelectItem>
+                    <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
+                  </SelectContent>
+                </Select>
+                {shareToken && visibility !== "gm_only" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-stone-400 hover:text-amber-400 h-7 text-xs"
+                    onClick={() => window.open(`${window.location.origin}/world/${shareToken}#entity=${entity.id}`, '_blank')}
+                    title="Preview article in shared view"
+                    data-testid="button-preview-article"
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" /> Preview
+                  </Button>
+                )}
                 {mode === "edit" ? (
                   <Button size="sm" onClick={() => { saveChanges(); setMode("view"); }} className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" data-testid="button-save-article">
                     <Save className="h-3 w-3 mr-1" /> Save

@@ -1032,6 +1032,7 @@ export default function WorldBuilder() {
                           entity={selectedEntity}
                           worldId={selectedWorldId}
                           isGM={true}
+                          shareToken={shareLink?.token}
                         />
                       </div>
                     </div>
