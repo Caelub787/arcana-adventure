@@ -3828,7 +3828,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const { data: systemItemsForFeats = [] } = useQuery<any[]>({
     queryKey: ['/api/system-items', systemSlug],
-    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`, { credentials: 'include' }).then(r => r.json()),
   });
   
   const { data: systemTraitsForFeats = [] } = useQuery({
@@ -3865,7 +3865,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     return undefined;
   };
 
-  const getFeatImage = (feat: Feat): string | null => {
+  const getFeatImage = useCallback((feat: Feat): string | null => {
     if ((feat as any).image) return (feat as any).image;
     if (feat.effects && Array.isArray(feat.effects)) {
       for (const effect of feat.effects as any[]) {
@@ -3880,7 +3880,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       }
     }
     return null;
-  };
+  }, [systemSpellsForFeats, systemItemsForFeats]);
 
   const createTemplateMutation = useMutation({
     mutationFn: (template: Partial<FeatTemplate>) => api.createFeatTemplate(template),
