@@ -4145,8 +4145,9 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       // Don't stopPropagation or capture yet - let canvas pan work if user moves
     } else {
       // On mouse: immediate drag
+      e.preventDefault();
       e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
       draggingRef.current = {
         featId: feat.id,
         startX: e.clientX,
@@ -4155,6 +4156,12 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
         origY: feat.gridY * CELL_SIZE,
       };
     }
+  };
+
+  const handleFeatPointerCancel = () => {
+    cancelLongPress();
+    draggingRef.current = null;
+    setDragOffset(null);
   };
 
   const handleFeatPointerMove = (e: React.PointerEvent) => {
@@ -4861,6 +4868,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                 onPointerDown={(e) => handleFeatPointerDown(feat, e)}
                 onPointerMove={handleFeatPointerMove}
                 onPointerUp={(e) => handleFeatPointerUp(feat, e)}
+                onPointerCancel={handleFeatPointerCancel}
+                onDragStart={(e) => e.preventDefault()}
                 data-testid={`feat-node-${feat.id}`}
               >
                 <div
@@ -4874,7 +4883,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                   style={{ width: NODE_CIRCLE_SIZE, height: NODE_CIRCLE_SIZE }}
                 >
                   {featImage ? (
-                    <img src={featImage} alt={feat.name} className="w-full h-full object-cover" />
+                    <img src={featImage} alt={feat.name} className="w-full h-full object-cover" draggable={false} />
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center text-center p-1 ${featStyle.bg}`}>
                       <span className="text-[10px] font-bold text-white leading-tight">{feat.name}</span>
@@ -8179,8 +8188,9 @@ function ClassesView() {
         };
       }, 400);
     } else {
+      e.preventDefault();
       e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
       draggingRef.current = {
         nodeId: node.id,
         startX: e.clientX,
@@ -8189,6 +8199,12 @@ function ClassesView() {
         origY: node.gridY * CLASS_CELL_SIZE,
       };
     }
+  };
+
+  const handleNodePointerCancel = () => {
+    cancelLongPressClass();
+    draggingRef.current = null;
+    setDragOffset(null);
   };
 
   const handleNodePointerMove = (e: React.PointerEvent) => {
@@ -8832,6 +8848,8 @@ function ClassesView() {
                 onPointerDown={(e) => handleNodePointerDown(node, e)}
                 onPointerMove={handleNodePointerMove}
                 onPointerUp={(e) => handleNodePointerUp(node, e)}
+                onPointerCancel={handleNodePointerCancel}
+                onDragStart={(e) => e.preventDefault()}
                 data-testid={`class-node-${node.id}`}
               >
                 <div
@@ -8845,7 +8863,7 @@ function ClassesView() {
                   style={{ width: CLASS_NODE_CIRCLE_SIZE, height: CLASS_NODE_CIRCLE_SIZE }}
                 >
                   {nodeImg ? (
-                    <img src={nodeImg} alt={node.name} className="w-full h-full object-cover" />
+                    <img src={nodeImg} alt={node.name} className="w-full h-full object-cover" draggable={false} />
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center text-center p-1 ${style.bg}`}>
                       <span className="text-[10px] font-bold text-white leading-tight">{node.name}</span>
