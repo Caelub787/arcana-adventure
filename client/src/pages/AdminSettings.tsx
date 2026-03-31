@@ -8265,7 +8265,14 @@ function ClassesView() {
     const pan = panRef.current;
     const centerX = Math.round((viewportSize.width / 2 - pan.x) / zoom);
     const centerY = Math.round((viewportSize.height / 2 - pan.y) / zoom);
-    createNodeMutation.mutate({ name: 'New Skill', gridX: Math.round(centerX / CLASS_CELL_SIZE), gridY: Math.round(centerY / CLASS_CELL_SIZE), tier: 1, cost: 1, effects: [] });
+    setEditingNode({
+      gridX: Math.round(centerX / CLASS_CELL_SIZE),
+      gridY: Math.round(centerY / CLASS_CELL_SIZE),
+      tier: 1,
+      cost: 1,
+      effects: [],
+    });
+    setShowNodeEditor(true);
   };
 
   useEffect(() => {
@@ -8424,13 +8431,18 @@ function ClassesView() {
   };
 
   const generateClassCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
-    const dx = x2 - x1; const dy = y2 - y1;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
     const distance = Math.sqrt(dx * dx + dy * dy);
     const minOffset = 40;
     const curvature = Math.max(minOffset, Math.min(distance * 0.3, 100));
     const horizontalOffset = Math.abs(dx) < 10 ? minOffset : dx * 0.25;
     const verticalOffset = curvature * (dy >= 0 ? 0.5 : -0.5);
-    return `M ${x1} ${y1} C ${x1 + horizontalOffset} ${y1 + verticalOffset}, ${x2 - horizontalOffset} ${y2 - verticalOffset}, ${x2} ${y2}`;
+    const cx1 = x1 + horizontalOffset;
+    const cy1 = y1 + verticalOffset;
+    const cx2 = x2 - horizontalOffset;
+    const cy2 = y2 - verticalOffset;
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
   };
 
   if (!selectedClassId) {
@@ -8574,29 +8586,47 @@ function ClassesView() {
   const nodeById = new Map<string, any>();
   nodes.forEach((n: any) => nodeById.set(n.id, n));
 
+  const connectionMode = connectingFrom !== null;
+  const getNodeDescription = (node: any) => {
+    if (node.description) return node.description;
+    if (Array.isArray(node.effects) && node.effects.length > 0) {
+      return node.effects.map((e: any) => `${e.type.replace(/_/g, ' ')}: +${e.value}${e.attribute ? ` (${e.attribute})` : ''}`).join(', ');
+    }
+    return undefined;
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)]">
-      <div className="flex items-center justify-between mb-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedClassId(null)} data-testid="button-back-classes">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} — Skill Tree</h3>
-        </div>
+    <div className="flex flex-col flex-1 min-h-0 gap-3">
+      <div className="flex items-center gap-2 shrink-0">
+        <Button variant="ghost" size="sm" onClick={() => setSelectedClassId(null)} data-testid="button-back-classes">
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back
+        </Button>
+        <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} — Skill Tree</h3>
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center shrink-0 mb-2">
-        <Button size="sm" onClick={handleAddNode} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-xs" data-testid="button-add-node">
-          <Plus className="h-3 w-3 mr-1" /> Add Skill
+      <div className="flex flex-wrap gap-2 items-center shrink-0">
+        <Button
+          size="sm"
+          onClick={handleAddNode}
+          className="bg-fuchsia-600 hover:bg-fuchsia-700 text-xs"
+          data-testid="button-add-node"
+        >
+          <Plus className="h-3 w-3 mr-1" />
+          Add Skill
         </Button>
         <Button
           size="sm"
-          variant={connectingFrom ? "default" : "secondary"}
-          onClick={() => { if (connectingFrom !== null) { setConnectingFrom(null); } else { setConnectingFrom('__waiting__'); } }}
-          className={connectingFrom !== null ? "bg-fuchsia-600 hover:bg-fuchsia-700 text-xs animate-pulse" : "bg-stone-700 hover:bg-stone-600 text-xs border border-stone-600"}
+          variant={connectionMode ? "default" : "secondary"}
+          onClick={() => {
+            if (connectionMode) { setConnectingFrom(null); } else { setConnectingFrom('__waiting__'); }
+          }}
+          className={connectionMode
+            ? "bg-fuchsia-600 hover:bg-fuchsia-700 text-xs animate-pulse"
+            : "bg-stone-700 hover:bg-stone-600 text-xs border border-stone-600"
+          }
         >
           <Link className="h-3 w-3 mr-1" />
-          {connectingFrom !== null ? 'Exit Connection Mode' : 'Connect'}
+          {connectionMode ? 'Exit Connection Mode' : 'Connect'}
         </Button>
         <Button
           size="sm"
@@ -8612,15 +8642,40 @@ function ClassesView() {
               forceUpdate(n => n + 1);
             }
           }}
-          title="Reset view"
+          title="Reset to default view"
         >
-          <RefreshCw className="h-3 w-3 mr-1" /> Reset View
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Reset View
         </Button>
-        {connectingFrom !== null && (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="bg-amber-800/80 hover:bg-amber-700 text-xs border border-amber-600"
+          onClick={() => {
+            if (selectedClassId && viewportSize.width > 0) {
+              const zoom = zoomRef.current;
+              const pan = panRef.current;
+              const worldCenterX = (viewportSize.width / 2 - pan.x) / zoom;
+              const worldCenterY = (viewportSize.height / 2 - pan.y) / zoom;
+              toast({ title: 'Default View Set', description: 'Current view saved as default' });
+            }
+          }}
+          title="Save current view as default"
+        >
+          <Save className="h-3 w-3 mr-1" />
+          Set Default View
+        </Button>
+
+        {connectionMode && (
           <div className="flex items-center gap-2 bg-fuchsia-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
             <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            <span>{connectingFrom && connectingFrom !== '__waiting__' ? 'Click target node to connect' : 'Click source node to start'}</span>
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 hover:bg-fuchsia-500" onClick={() => setConnectingFrom(null)}>
+            <span>{connectingFrom && connectingFrom !== '__waiting__' ? 'Click target skill to connect' : 'Click source skill to start'}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 hover:bg-fuchsia-500"
+              onClick={() => setConnectingFrom(null)}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -8629,10 +8684,11 @@ function ClassesView() {
 
       <div
         ref={canvasContainerRef}
-        className={`relative w-full overflow-hidden rounded-lg border border-stone-700 flex-1 ${
-          connectingFrom !== null ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+        className={`relative w-full overflow-hidden rounded-lg border border-stone-700 ${
+          connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
         }`}
         style={{
+          height: 'calc(100vh - 280px)',
           minHeight: '400px',
           touchAction: 'none',
           background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',
@@ -8708,8 +8764,10 @@ function ClassesView() {
 
               const fromPending = pendingDragUpdates.get(from.id);
               const toPending = pendingDragUpdates.get(to.id);
-              if (dragOffset?.id === from.id) { fromX += dragOffset.dx; fromY += dragOffset.dy; } else if (fromPending) { fromX += fromPending.dx; fromY += fromPending.dy; }
-              if (dragOffset?.id === to.id) { toX += dragOffset.dx; toY += dragOffset.dy; } else if (toPending) { toX += toPending.dx; toY += toPending.dy; }
+              if (dragOffset?.id === from.id) { fromX += dragOffset.dx; fromY += dragOffset.dy; }
+              else if (fromPending) { fromX += fromPending.dx; fromY += fromPending.dy; }
+              if (dragOffset?.id === to.id) { toX += dragOffset.dx; toY += dragOffset.dy; }
+              else if (toPending) { toX += toPending.dx; toY += toPending.dy; }
 
               const x1 = CLASS_WORLD_OFFSET + fromX + CLASS_NODE_WIDTH / 2;
               const y1 = CLASS_WORLD_OFFSET + fromY + CLASS_NODE_CIRCLE_CENTER_Y;
@@ -8721,9 +8779,37 @@ function ClassesView() {
 
               return (
                 <g key={conn.id} filter="url(#class-glow)">
-                  <path d={pathD} fill="none" stroke="url(#class-line-gradient)" strokeWidth={3} markerEnd="url(#arrowhead-class)" className="transition-all pointer-events-none" />
-                  <circle cx={midX} cy={midY} r={14} fill="#1c1917" stroke="#78716c" strokeWidth={2} className="cursor-pointer hover:stroke-red-500 hover:fill-red-900/50 transition-colors" style={{ pointerEvents: 'all' }} data-connection-delete="true" onClick={(e) => { e.stopPropagation(); deleteConnectionMutation.mutate(conn.id); }} />
-                  <text x={midX} y={midY + 4} textAnchor="middle" className="fill-red-400 pointer-events-none text-xs font-bold">{'\u00d7'}</text>
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="url(#class-line-gradient)"
+                    strokeWidth={3}
+                    markerEnd="url(#arrowhead-class)"
+                    className="transition-all pointer-events-none"
+                  />
+                  <circle
+                    cx={midX}
+                    cy={midY}
+                    r={14}
+                    fill="#1c1917"
+                    stroke="#78716c"
+                    strokeWidth={2}
+                    className="cursor-pointer hover:stroke-red-500 hover:fill-red-900/50 transition-colors"
+                    style={{ pointerEvents: 'all' }}
+                    data-connection-delete="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConnectionMutation.mutate(conn.id);
+                    }}
+                  />
+                  <text
+                    x={midX}
+                    y={midY + 4}
+                    textAnchor="middle"
+                    className="fill-red-400 pointer-events-none text-xs font-bold"
+                  >
+                    {'\u00d7'}
+                  </text>
                 </g>
               );
             })}
@@ -8746,7 +8832,7 @@ function ClassesView() {
               <div
                 key={node.id}
                 data-node-cell
-                className={`absolute flex flex-col items-center ${connectingFrom !== null ? 'cursor-crosshair' : 'cursor-move'}`}
+                className={`absolute flex flex-col items-center ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}`}
                 style={{
                   left: CLASS_WORLD_OFFSET + posX,
                   top: CLASS_WORLD_OFFSET + posY,
@@ -8798,24 +8884,74 @@ function ClassesView() {
       {nodeActionMenu && (() => {
         const actionNode = nodes.find((n: any) => n.id === nodeActionMenu);
         if (!actionNode) return null;
+        const desc = getNodeDescription(actionNode);
         return (
           <div
             className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60"
             onClick={() => setNodeActionMenu(null)}
           >
-            <div className="bg-stone-800 border border-fuchsia-600 rounded-xl p-3 min-w-[200px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="text-sm font-semibold text-fuchsia-300 mb-2 text-center">{actionNode.name}</div>
-              <div className="space-y-1">
-                <button className="w-full text-left px-3 py-2 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { setEditingNode(actionNode); setShowNodeEditor(true); setNodeActionMenu(null); }} data-testid="button-edit-node">
-                  <Pencil className="h-4 w-4" /> Edit
+            <div
+              className="bg-stone-800 border border-stone-600 rounded-xl shadow-2xl p-4 min-w-[220px] transform"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center mb-4">
+                <h3 className="font-display text-lg text-amber-500">
+                  {actionNode.name || 'Skill Actions'}
+                </h3>
+                {desc && (
+                  <p className="text-xs text-stone-400 mt-1 line-clamp-2">{desc}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-fuchsia-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    setEditingNode(actionNode);
+                    setShowNodeEditor(true);
+                    setNodeActionMenu(null);
+                  }}
+                  data-testid="button-edit-node"
+                >
+                  <Pencil className="h-5 w-5 text-fuchsia-400" />
+                  <span>Edit Skill</span>
                 </button>
-                <button className="w-full text-left px-3 py-2 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { setConnectingFrom(actionNode.id); setNodeActionMenu(null); }} data-testid="button-connect-node">
-                  <Link className="h-4 w-4" /> Connect
+
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-blue-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    setConnectingFrom(actionNode.id);
+                    setNodeActionMenu(null);
+                  }}
+                  data-testid="button-connect-node"
+                >
+                  <Link className="h-5 w-5 text-blue-400" />
+                  <span>Start Connection</span>
                 </button>
-                <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { deleteNodeMutation.mutate(actionNode.id); setNodeActionMenu(null); }} data-testid="button-delete-node">
-                  <Trash2 className="h-4 w-4" /> Delete
+
+                <div className="border-t border-stone-600 my-2" />
+
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-red-900/30 hover:bg-red-700 transition-colors flex items-center gap-3 text-red-400 hover:text-white"
+                  onClick={() => {
+                    if (confirm('Delete this skill? This cannot be undone.')) {
+                      deleteNodeMutation.mutate(actionNode.id);
+                    }
+                    setNodeActionMenu(null);
+                  }}
+                  data-testid="button-delete-node"
+                >
+                  <Trash2 className="h-5 w-5" />
+                  <span>Delete Skill</span>
                 </button>
               </div>
+
+              <button
+                className="w-full mt-4 px-4 py-2 rounded-lg border border-stone-600 hover:bg-stone-700 transition-colors text-stone-400 text-sm"
+                onClick={() => setNodeActionMenu(null)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         );
@@ -8826,8 +8962,14 @@ function ClassesView() {
         onOpenChange={(open) => { setShowNodeEditor(open); if (!open) setEditingNode(null); }}
         node={editingNode}
         onSave={(data) => {
-          if (editingNode) {
+          if (editingNode?.id) {
             updateNodeMutation.mutate({ nodeId: editingNode.id, data });
+          } else {
+            createNodeMutation.mutate({
+              ...data,
+              gridX: editingNode?.gridX ?? 0,
+              gridY: editingNode?.gridY ?? 0,
+            });
           }
           setShowNodeEditor(false);
           setEditingNode(null);
@@ -8880,7 +9022,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-fuchsia-400">Edit Skill Node</DialogTitle>
+          <DialogTitle className="text-fuchsia-400">{node?.id ? 'Edit Skill Node' : 'Add Skill Node'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
@@ -8949,6 +9091,18 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
                       <SelectContent>
                         {['might', 'finesse', 'wit', 'presence', 'will', 'craft'].map(a => (
                           <SelectItem key={a} value={a}>{a}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {effect.type === 'skill_bonus' && (
+                    <Select value={effect.attribute || 'athletics'} onValueChange={(v) => updateEffect(idx, 'attribute', v)}>
+                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['athletics', 'acrobatics', 'stealth', 'sleight', 'arcana', 'history', 'investigation', 'nature', 'religion', 'perception', 'insight', 'medicine', 'survival', 'intimidation', 'deception', 'persuasion', 'performance', 'charisma'].map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
