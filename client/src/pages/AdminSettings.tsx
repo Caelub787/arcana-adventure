@@ -4090,25 +4090,84 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     setFeatActionMenu(null);
   };
 
+  // Long-press state for mobile drag
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressActiveRef = useRef(false);
+  const [longPressId, setLongPressId] = useState<string | null>(null);
+  const pendingPointerRef = useRef<{ element: HTMLElement; pointerId: number; feat: Feat; clientX: number; clientY: number } | null>(null);
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressActiveRef.current = false;
+    setLongPressId(null);
+    pendingPointerRef.current = null;
+  };
+
   // Drag handlers for feat nodes
   const handleFeatPointerDown = (feat: Feat, e: React.PointerEvent) => {
     if (connectionMode) return;
-    // Don't start a new drag if there's a pending update for this feat
     if (pendingDragUpdates.has(feat.id)) return;
     
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    const isTouch = e.pointerType === 'touch';
     
-    draggingRef.current = {
-      featId: feat.id,
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: feat.gridX * CELL_SIZE,
-      origY: feat.gridY * CELL_SIZE,
-    };
+    if (isTouch) {
+      // On touch: require long-press before dragging
+      pendingPointerRef.current = {
+        element: e.currentTarget as HTMLElement,
+        pointerId: e.pointerId,
+        feat,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      };
+      longPressTimerRef.current = setTimeout(() => {
+        const pending = pendingPointerRef.current;
+        if (!pending) return;
+        longPressActiveRef.current = true;
+        setLongPressId(feat.id);
+        // Cancel any active canvas pan so drag takes over
+        gestureModeRef.current = 'idle';
+        panPointerIdRef.current = null;
+        panStartRef.current = null;
+        try {
+          pending.element.setPointerCapture(pending.pointerId);
+        } catch {}
+        draggingRef.current = {
+          featId: feat.id,
+          startX: pending.clientX,
+          startY: pending.clientY,
+          origX: feat.gridX * CELL_SIZE,
+          origY: feat.gridY * CELL_SIZE,
+        };
+      }, 400);
+      // Don't stopPropagation or capture yet - let canvas pan work if user moves
+    } else {
+      // On mouse: immediate drag
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      draggingRef.current = {
+        featId: feat.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: feat.gridX * CELL_SIZE,
+        origY: feat.gridY * CELL_SIZE,
+      };
+    }
   };
 
   const handleFeatPointerMove = (e: React.PointerEvent) => {
+    // If long-press pending but not yet active, check if user moved too far (cancel long-press, allow pan)
+    if (pendingPointerRef.current && !longPressActiveRef.current) {
+      const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
+      const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
+      if (dx > 10 || dy > 10) {
+        cancelLongPress();
+      }
+      return;
+    }
+    
     if (!draggingRef.current) return;
     
     const zoom = zoomRef.current;
@@ -4119,6 +4178,11 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   };
 
   const handleFeatPointerUp = (feat: Feat, e: React.PointerEvent) => {
+    // Cancel any pending long-press
+    if (pendingPointerRef.current) {
+      cancelLongPress();
+    }
+    
     if (!draggingRef.current || draggingRef.current.featId !== feat.id) return;
     
     const zoom = zoomRef.current;
@@ -4130,7 +4194,6 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       const newX = draggingRef.current.origX + dx;
       const newY = draggingRef.current.origY + dy;
       
-      // Keep the visual offset until mutation completes to prevent snap-back
       setPendingDragUpdates(prev => new Map(prev).set(feat.id, { dx, dy }));
       
       updateFeatMutation.mutate({
@@ -4144,6 +4207,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     
     draggingRef.current = null;
     setDragOffset(null);
+    longPressActiveRef.current = false;
+    setLongPressId(null);
     
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -4397,10 +4462,10 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     // Only pan with left mouse button or touch
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     
-    // Don't start pan if clicking on a feat or connection delete button
+    // Don't start pan if clicking on a feat (mouse only - touch uses long-press for drag) or connection delete button
     const target = e.target as HTMLElement;
-    if (target.closest('[data-feat-cell]')) return;
     if (target.closest('[data-connection-delete]')) return;
+    if (e.pointerType !== 'touch' && target.closest('[data-feat-cell]')) return;
     
     gestureModeRef.current = 'panning';
     panPointerIdRef.current = e.pointerId;
@@ -4803,6 +4868,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                     ${featStyle.border} ${featStyle.glow}
                     ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
                     ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
+                    ${longPressId === feat.id ? 'ring-2 ring-amber-400 scale-110' : ''}
                     ${!isDragging ? 'hover:scale-105' : ''}
                   `}
                   style={{ width: NODE_CIRCLE_SIZE, height: NODE_CIRCLE_SIZE }}
