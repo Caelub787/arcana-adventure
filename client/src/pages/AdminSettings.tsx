@@ -8971,159 +8971,727 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
   node: any;
   onSave: (data: any) => void;
 }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [nodeImage, setNodeImage] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    image: '',
+    tier: 1,
+    cost: 1,
+    effects: [] as any[],
+  });
   const [showNodeImageBrowser, setShowNodeImageBrowser] = useState(false);
-  const [tier, setTier] = useState(1);
-  const [cost, setCost] = useState(1);
-  const [effects, setEffects] = useState<any[]>([]);
+
+  const [newEffect, setNewEffect] = useState<{
+    type: string;
+    value: number;
+    target: string;
+    subtype?: string;
+  }>({
+    type: 'hp_bonus',
+    value: 0,
+    target: '',
+    subtype: 'flat',
+  });
+
+  const [showSpellPicker, setShowSpellPicker] = useState(false);
+  const [showItemPicker, setShowItemPicker] = useState(false);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [showTraitPicker, setShowTraitPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  const systemSlug = 'aa-v2';
+
+  const { data: systemSpells = [] } = useQuery({
+    queryKey: ['admin-spells', systemSlug],
+    queryFn: () => api.getSystemSpells(systemSlug),
+    enabled: open,
+  });
+
+  const { data: customSkills = [] } = useQuery({
+    queryKey: ['admin-skills', systemSlug],
+    queryFn: () => api.getSystemSkills(systemSlug),
+    enabled: open,
+  });
+
+  const { data: systemItems = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items', systemSlug],
+    queryFn: () => fetch(`/api/system-items?system=${systemSlug}`).then(r => r.json()),
+    enabled: open,
+  });
+
+  const { data: systemTraitsForDropdown = [] } = useQuery({
+    queryKey: ['admin-traits', systemSlug],
+    queryFn: () => api.getSystemTraits(systemSlug),
+    enabled: open,
+  });
+
+  const normalizeEffects = (effects: any[] | undefined): any[] => {
+    if (!effects) return [];
+    return effects.map((effect: any) => ({ ...effect }));
+  };
 
   useEffect(() => {
     if (node) {
-      setName(node.name || '');
-      setDescription(node.description || '');
-      setNodeImage(node.image || '');
-      setTier(node.tier || 1);
-      setCost(node.cost || 1);
-      setEffects(Array.isArray(node.effects) ? [...node.effects] : []);
+      setFormData({
+        name: node.name || '',
+        description: node.description || '',
+        image: node.image || '',
+        tier: node.tier || 1,
+        cost: node.cost || 1,
+        effects: normalizeEffects(node.effects),
+      });
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        name: '',
+        description: '',
+        image: '',
+        effects: [],
+      }));
     }
-  }, [node]);
+  }, [node, open]);
 
-  const addEffect = (type: string) => {
-    setEffects([...effects, { type, value: 0, attribute: type === 'attribute_bonus' ? 'might' : undefined }]);
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Skill name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({ ...formData, image: formData.image || null });
   };
 
-  const removeEffect = (idx: number) => {
-    setEffects(effects.filter((_, i) => i !== idx));
+  const addEffect = () => {
+    const requiresValue = newEffect.type !== 'spell_grant' &&
+                          newEffect.type !== 'item_grant' &&
+                          newEffect.type !== 'skill_grant' &&
+                          newEffect.type !== 'trait_grant' &&
+                          !(newEffect.type === 'hp_bonus' && newEffect.target);
+    if (requiresValue && newEffect.value === 0) {
+      toast({ title: 'Error', description: 'Effect value cannot be 0', variant: 'destructive' });
+      return;
+    }
+    if ((newEffect.type === 'skill_bonus' || newEffect.type === 'attribute_bonus') && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a target', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'spell_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a spell', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'skill_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a skill', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'trait_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a trait', variant: 'destructive' });
+      return;
+    }
+    setFormData({
+      ...formData,
+      effects: [...(formData.effects || []), { ...newEffect }],
+    });
+    setNewEffect({ type: 'hp_bonus', value: 0, target: '', subtype: 'flat' });
   };
 
-  const updateEffect = (idx: number, field: string, value: any) => {
-    const copy = [...effects];
-    copy[idx] = { ...copy[idx], [field]: value };
-    setEffects(copy);
+  const removeEffect = (index: number) => {
+    const effects = [...(formData.effects || [])];
+    effects.splice(index, 1);
+    setFormData({ ...formData, effects });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-fuchsia-400">{node?.id ? 'Edit Skill Node' : 'Add Skill Node'}</DialogTitle>
+          <DialogTitle className="text-fuchsia-400 flex items-center gap-2">
+            {node?.id ? 'Edit Skill Node' : 'Add Skill Node'}
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+
+        <div className="space-y-4">
           <div>
-            <Label className="text-stone-300">Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-node-name" />
+            <Label>Name</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Power Strike"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-node-name"
+            />
           </div>
           <div>
-            <Label className="text-stone-300">Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-node-description" />
+            <Label>Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe what this skill does"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-node-description"
+            />
           </div>
           <div>
             <Label className="text-xs text-stone-400">Node Image</Label>
             <div className="flex items-center gap-3 mt-1">
-              {nodeImage ? (
+              {formData.image ? (
                 <div className="relative">
-                  <img src={nodeImage} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-fuchsia-500" />
-                  <button type="button" onClick={() => setNodeImage('')} className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5">
+                  <img src={formData.image} alt="" className="h-14 w-14 rounded-full object-cover border-2 border-fuchsia-500" />
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, image: '' })}
+                    className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5"
+                  >
                     <X className="h-3 w-3 text-white" />
                   </button>
                 </div>
               ) : (
-                <div className="h-12 w-12 rounded-full bg-stone-700 border-2 border-dashed border-stone-500 flex items-center justify-center">
-                  <ImageIcon className="h-4 w-4 text-stone-500" />
+                <div className="h-14 w-14 rounded-full bg-stone-700 border-2 border-dashed border-stone-500 flex items-center justify-center">
+                  <ImageIcon className="h-5 w-5 text-stone-500" />
                 </div>
               )}
               <div className="flex flex-col gap-1">
                 <Button type="button" variant="outline" size="sm" onClick={() => setShowNodeImageBrowser(true)} className="text-xs">
                   Browse Images
                 </Button>
-                <Input value={nodeImage} onChange={(e) => setNodeImage(e.target.value)} placeholder="Or paste image URL" className="bg-stone-800 border-stone-700 text-xs h-7" />
+                <Input
+                  value={formData.image}
+                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                  placeholder="Or paste image URL"
+                  className="bg-stone-800 border-stone-700 text-xs h-7"
+                />
               </div>
             </div>
-            <ImageBrowser open={showNodeImageBrowser} onOpenChange={setShowNodeImageBrowser} onSelect={(url) => { setNodeImage(url); setShowNodeImageBrowser(false); }} />
+            <ImageBrowser
+              open={showNodeImageBrowser}
+              onOpenChange={setShowNodeImageBrowser}
+              onSelect={(url) => {
+                setFormData({ ...formData, image: url });
+                setShowNodeImageBrowser(false);
+              }}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-stone-300">Tier</Label>
-              <Select value={tier.toString()} onValueChange={(v) => setTier(Number(v))}>
-                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-node-tier">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Tier 1</SelectItem>
-                  <SelectItem value="2">Tier 2</SelectItem>
-                  <SelectItem value="3">Tier 3</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-stone-300">Cost (points)</Label>
-              <Input type="number" min={1} value={cost} onChange={(e) => setCost(Number(e.target.value) || 1)} className="bg-stone-800 border-stone-700" data-testid="input-node-cost" />
-            </div>
+          <div>
+            <Label>Cost (skill points)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={formData.cost}
+              onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-node-cost"
+            />
           </div>
 
-          <div>
-            <Label className="text-stone-300 mb-2 block">Effects</Label>
-            <div className="space-y-2">
-              {effects.map((effect, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded border border-stone-700">
-                  <span className="text-xs text-stone-400 capitalize w-24 truncate">{effect.type.replace(/_/g, ' ')}</span>
-                  {effect.type === 'attribute_bonus' && (
-                    <Select value={effect.attribute || 'might'} onValueChange={(v) => updateEffect(idx, 'attribute', v)}>
-                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {['might', 'finesse', 'wit', 'presence', 'will', 'craft'].map(a => (
-                          <SelectItem key={a} value={a}>{a}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {effect.type === 'skill_bonus' && (
-                    <Select value={effect.attribute || 'athletics'} onValueChange={(v) => updateEffect(idx, 'attribute', v)}>
-                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {['athletics', 'acrobatics', 'stealth', 'sleight', 'arcana', 'history', 'investigation', 'nature', 'religion', 'perception', 'insight', 'medicine', 'survival', 'intimidation', 'deception', 'persuasion', 'performance', 'charisma'].map(s => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <Input
-                    type="number"
-                    value={effect.value || 0}
-                    onChange={(e) => updateEffect(idx, 'value', Number(e.target.value))}
-                    className="bg-stone-900 border-stone-600 h-7 text-xs w-16"
-                  />
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-400" onClick={() => removeEffect(idx)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
+          <div className="border-t border-stone-700 pt-4">
+            <Label className="text-base font-semibold">Effects</Label>
+            <div className="mt-2 space-y-2">
+              {(formData.effects || []).map((effect: any, idx: number) => {
+                const getEffectDisplay = () => {
+                  const value = effect.value ?? 0;
+                  const target = effect.target ?? '';
+
+                  if (effect.type === 'spell_grant') {
+                    const spell = (systemSpells as SystemSpell[]).find(s => s.id === target);
+                    return spell ? `Grants: ${spell.name}` : target || '(select spell)';
+                  }
+                  if (effect.type === 'skill_grant') {
+                    const skill = (customSkills as SystemSkill[]).find(s => s.id === target);
+                    return skill ? `Grants: ${skill.name}` : target || '(select skill)';
+                  }
+                  if (effect.type === 'item_grant') {
+                    const item = systemItems.find((i: any) => i.id === target);
+                    return item ? `Grants: ${item.name}` : target || '(select item)';
+                  }
+                  if (effect.type === 'trait_grant') {
+                    const trait = (systemTraitsForDropdown as SystemTrait[]).find(t => t.id === target);
+                    return trait ? `Grants: ${trait.name}` : target || '(select trait)';
+                  }
+                  if (effect.type === 'skill_bonus') {
+                    const skill = SKILLS_LIST.find(s => s.key === target);
+                    return `+${value} to ${skill?.name || target || '(select skill)'}`;
+                  }
+                  if (effect.type === 'attribute_bonus') {
+                    const attr = ATTRIBUTES_LIST.find(a => a.key === target);
+                    return `+${value} to ${attr?.name || target || '(select attribute)'}`;
+                  }
+                  if (effect.type === 'hp_bonus') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    const hasLegacyTarget = !effect.subtype && target && target !== '';
+                    if (hasLegacyTarget) {
+                      return `HP: ${target}`;
+                    }
+                    return `+${value} HP${subtypeLabel}`;
+                  }
+                  if (effect.type === 'energy_bonus' || effect.type === 'energy_increase') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    return `+${value} Energy${subtypeLabel}`;
+                  }
+                  if (effect.type === 'mana_increase') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    return `+${value} Mana${subtypeLabel}`;
+                  }
+                  return `+${value}${target ? ` to ${target}` : ''}`;
+                };
+
+                return (
+                  <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded">
+                    <Badge variant="secondary">{effect.type.replace('_', ' ')}</Badge>
+                    <span className="text-sm">{getEffectDisplay()}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="ml-auto h-6 w-6 text-red-400"
+                      onClick={() => removeEffect(idx)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {[
-                { type: 'hp_bonus', label: 'HP', icon: '❤️' },
-                { type: 'energy_increase', label: 'Energy', icon: '⚡' },
-                { type: 'mana_increase', label: 'Mana', icon: '💜' },
-                { type: 'attribute_bonus', label: 'Attribute', icon: '✨' },
-                { type: 'skill_bonus', label: 'Skill', icon: '⭐' },
-              ].map(({ type, label, icon }) => (
-                <Button key={type} variant="outline" size="sm" className="h-6 text-[10px] px-2 border-stone-600" onClick={() => addEffect(type)}>
-                  {icon} +{label}
-                </Button>
-              ))}
+            <div className="mt-3 p-3 bg-stone-800/50 rounded border border-stone-700">
+              <div className="space-y-2 mb-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    value={newEffect.type}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: (v === 'hp_bonus' || v === 'energy_bonus' || v === 'energy_increase' || v === 'mana_increase') ? 'flat' : undefined })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hp_bonus">HP Bonus</SelectItem>
+                      <SelectItem value="energy_increase">Energy Bonus</SelectItem>
+                      <SelectItem value="mana_increase">Mana Increase</SelectItem>
+                      <SelectItem value="dc_bonus">DC Bonus</SelectItem>
+                      <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
+                      <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
+                      <SelectItem value="spell_grant">Grant Spell</SelectItem>
+                      <SelectItem value="item_grant">Grant Item</SelectItem>
+                      <SelectItem value="skill_grant">Grant Custom Skill</SelectItem>
+                      <SelectItem value="trait_grant">Grant Trait</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && newEffect.type !== 'trait_grant' && (
+                    <Input
+                      type="number"
+                      value={newEffect.value}
+                      onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
+                      placeholder="Value"
+                      className="bg-stone-800 border-stone-700 text-xs"
+                    />
+                  )}
+                </div>
+
+                {(newEffect.type === 'hp_bonus' || newEffect.type === 'energy_bonus' || newEffect.type === 'energy_increase' || newEffect.type === 'mana_increase') && (
+                  <div className="flex gap-2">
+                    <Select
+                      value={newEffect.subtype || 'flat'}
+                      onValueChange={(v) => setNewEffect({ ...newEffect, subtype: v })}
+                    >
+                      <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="flat">Flat Bonus</SelectItem>
+                        <SelectItem value="per_level">Per Level</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-stone-400 self-center">
+                      {newEffect.subtype === 'per_level'
+                        ? `Adds ${newEffect.type === 'hp_bonus' ? 'HP' : newEffect.type === 'mana_increase' ? 'Mana' : 'Energy'} each level`
+                        : `One-time ${newEffect.type === 'hp_bonus' ? 'HP' : newEffect.type === 'mana_increase' ? 'Mana' : 'Energy'} boost`}
+                    </span>
+                  </div>
+                )}
+
+                {newEffect.type === 'skill_bonus' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select skill..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SKILLS_LIST.map((skill) => (
+                        <SelectItem key={skill.key} value={skill.key}>{skill.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {newEffect.type === 'attribute_bonus' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select attribute..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ATTRIBUTES_LIST.map((attr) => (
+                        <SelectItem key={attr.key} value={attr.key}>{attr.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {newEffect.type === 'spell_grant' && (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPickerSearch(''); setShowSpellPicker(true); }}
+                      className="w-full justify-between bg-stone-800 border-stone-700 text-xs"
+                    >
+                      {newEffect.target ? (
+                        <span className="flex items-center gap-2">
+                          <BookOpen className="h-3 w-3 text-cyan-400" />
+                          {(systemSpells as SystemSpell[]).find(s => s.id === newEffect.target)?.name || 'Select spell...'}
+                        </span>
+                      ) : (
+                        <span className="text-stone-400">Select spell...</span>
+                      )}
+                      <Search className="h-3 w-3" />
+                    </Button>
+                    <Dialog open={showSpellPicker} onOpenChange={setShowSpellPicker}>
+                      <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle className="text-cyan-400 flex items-center gap-2">
+                            <BookOpen className="h-5 w-5" />
+                            Select Spell
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                          <Input
+                            placeholder="Search spells..."
+                            value={pickerSearch}
+                            onChange={(e) => setPickerSearch(e.target.value)}
+                            className="pl-9 bg-stone-800 border-stone-700"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(systemSpells as SystemSpell[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No spells created yet</p>
+                            </div>
+                          ) : (
+                            (systemSpells as SystemSpell[])
+                              .filter(spell => spell.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                spell.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((spell) => (
+                                <div
+                                  key={spell.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === spell.id
+                                      ? 'bg-cyan-900/30 border-cyan-500'
+                                      : 'bg-stone-800 border-stone-700 hover:border-cyan-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: spell.id });
+                                    setShowSpellPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {spell.icon ? (
+                                      <img src={spell.icon} alt="" className="w-8 h-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                        <Sparkles className="h-4 w-4 text-cyan-400" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{spell.name}</span>
+                                        <Badge variant="secondary" className="text-xs text-cyan-400">{spell.energyCost || 0}E</Badge>
+                                      </div>
+                                      {spell.description && (
+                                        <p className="text-xs text-stone-400 truncate">{spell.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
+
+                {newEffect.type === 'item_grant' && (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPickerSearch(''); setShowItemPicker(true); }}
+                      className="w-full justify-between bg-stone-800 border-stone-700 text-xs"
+                    >
+                      {newEffect.target ? (
+                        <span className="flex items-center gap-2">
+                          <Package className="h-3 w-3 text-orange-400" />
+                          {systemItems.find((i: any) => i.id === newEffect.target)?.name || 'Select item...'}
+                        </span>
+                      ) : (
+                        <span className="text-stone-400">Select item...</span>
+                      )}
+                      <Search className="h-3 w-3" />
+                    </Button>
+                    <Dialog open={showItemPicker} onOpenChange={setShowItemPicker}>
+                      <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle className="text-orange-400 flex items-center gap-2">
+                            <Package className="h-5 w-5" />
+                            Select Item
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                          <Input
+                            placeholder="Search items..."
+                            value={pickerSearch}
+                            onChange={(e) => setPickerSearch(e.target.value)}
+                            className="pl-9 bg-stone-800 border-stone-700"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {systemItems.length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No system items available</p>
+                            </div>
+                          ) : (
+                            systemItems
+                              .filter((item: any) => item.id && item.name?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((item: any) => (
+                                <div
+                                  key={item.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === item.id
+                                      ? 'bg-orange-900/30 border-orange-500'
+                                      : 'bg-stone-800 border-stone-700 hover:border-orange-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: item.id });
+                                    setShowItemPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {item.image ? (
+                                      <img src={item.image} alt="" className="w-8 h-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                        <Package className="h-4 w-4 text-orange-400" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{item.name}</span>
+                                        {item.itemType && (
+                                          <Badge variant="secondary" className="text-xs capitalize">{item.itemType}</Badge>
+                                        )}
+                                      </div>
+                                      {item.description && (
+                                        <p className="text-xs text-stone-400 truncate">{item.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
+
+                {newEffect.type === 'skill_grant' && (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPickerSearch(''); setShowSkillPicker(true); }}
+                      className="w-full justify-between bg-stone-800 border-stone-700 text-xs"
+                    >
+                      {newEffect.target ? (
+                        <span className="flex items-center gap-2">
+                          <Sparkles className="h-3 w-3 text-pink-400" />
+                          {(customSkills as SystemSkill[]).find(s => s.id === newEffect.target)?.name || 'Select skill...'}
+                        </span>
+                      ) : (
+                        <span className="text-stone-400">Select custom skill...</span>
+                      )}
+                      <Search className="h-3 w-3" />
+                    </Button>
+                    <Dialog open={showSkillPicker} onOpenChange={setShowSkillPicker}>
+                      <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle className="text-pink-400 flex items-center gap-2">
+                            <Sparkles className="h-5 w-5" />
+                            Select Custom Skill
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                          <Input
+                            placeholder="Search skills..."
+                            value={pickerSearch}
+                            onChange={(e) => setPickerSearch(e.target.value)}
+                            className="pl-9 bg-stone-800 border-stone-700"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(customSkills as SystemSkill[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No custom skills created yet</p>
+                            </div>
+                          ) : (
+                            (customSkills as SystemSkill[])
+                              .filter(skill => skill.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                skill.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((skill) => (
+                                <div
+                                  key={skill.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === skill.id
+                                      ? 'bg-pink-900/30 border-pink-500'
+                                      : 'bg-stone-800 border-stone-700 hover:border-pink-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: skill.id });
+                                    setShowSkillPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                      <Sparkles className="h-4 w-4 text-pink-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{skill.name}</span>
+                                        <Badge variant="secondary" className="text-xs capitalize">{skill.parentAttribute}</Badge>
+                                      </div>
+                                      {skill.description && (
+                                        <p className="text-xs text-stone-400 truncate">{skill.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
+
+                {newEffect.type === 'trait_grant' && (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPickerSearch(''); setShowTraitPicker(true); }}
+                      className="w-full justify-between bg-stone-800 border-stone-700 text-xs"
+                    >
+                      {newEffect.target ? (
+                        <span className="flex items-center gap-2">
+                          <Wand2 className="h-3 w-3 text-violet-400" />
+                          {(systemTraitsForDropdown as SystemTrait[]).find(t => t.id === newEffect.target)?.name || 'Select trait...'}
+                        </span>
+                      ) : (
+                        <span className="text-stone-400">Select trait...</span>
+                      )}
+                      <Search className="h-3 w-3" />
+                    </Button>
+                    <Dialog open={showTraitPicker} onOpenChange={setShowTraitPicker}>
+                      <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle className="text-violet-400 flex items-center gap-2">
+                            <Wand2 className="h-5 w-5" />
+                            Select Trait
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                          <Input
+                            placeholder="Search traits..."
+                            value={pickerSearch}
+                            onChange={(e) => setPickerSearch(e.target.value)}
+                            className="pl-9 bg-stone-800 border-stone-700"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(systemTraitsForDropdown as SystemTrait[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No traits created yet</p>
+                            </div>
+                          ) : (
+                            (systemTraitsForDropdown as SystemTrait[])
+                              .filter(trait => trait.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                trait.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((trait) => (
+                                <div
+                                  key={trait.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === trait.id
+                                      ? 'bg-violet-900/30 border-violet-500'
+                                      : 'bg-stone-800 border-stone-700 hover:border-violet-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: trait.id });
+                                    setShowTraitPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                      <Wand2 className="h-4 w-4 text-violet-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{trait.name}</span>
+                                        <Badge variant="secondary" className="text-xs capitalize">{trait.parentAttribute}</Badge>
+                                      </div>
+                                      {trait.description && (
+                                        <p className="text-xs text-stone-400 truncate">{trait.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
+              </div>
+              <Button size="sm" variant="secondary" onClick={addEffect} className="w-full">
+                <Plus className="h-3 w-3 mr-1" /> Add Effect
+              </Button>
             </div>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => onSave({ name, description, image: nodeImage || null, tier, cost, effects })} data-testid="button-save-node">
-            Save
+          <Button
+            className="bg-fuchsia-700 hover:bg-fuchsia-600"
+            onClick={handleSubmit}
+            data-testid="button-save-node"
+          >
+            {node?.id ? 'Update' : 'Create'}
           </Button>
         </DialogFooter>
       </DialogContent>
