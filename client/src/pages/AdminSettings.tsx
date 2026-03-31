@@ -7914,13 +7914,32 @@ function ClassesView() {
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [editingNode, setEditingNode] = useState<any | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
-  const [actionMenuNode, setActionMenuNode] = useState<any | null>(null);
-  const [actionMenuPos, setActionMenuPos] = useState<{ x: number; y: number } | null>(null);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  const pendingDragUpdates = useRef(new Map<string, { gridX: number; gridY: number }>());
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const [, forceUpdate] = useState(0);
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
+  type ClassGestureMode = 'idle' | 'panning' | 'pinching';
+  const gestureModeRef = useRef<ClassGestureMode>('idle');
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
+  const panPointerIdRef = useRef<number | null>(null);
+  const lastTouchDistanceRef = useRef<number | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+
+  const draggingRef = useRef<{ nodeId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const [pendingDragUpdates, setPendingDragUpdates] = useState<Map<string, { dx: number; dy: number }>>(new Map());
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [nodeActionMenu, setNodeActionMenu] = useState<string | null>(null);
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressActiveRef = useRef(false);
+  const [longPressId, setLongPressId] = useState<string | null>(null);
+  const pendingPointerRef = useRef<{ element: HTMLElement; pointerId: number; nodeId: string; clientX: number; clientY: number } | null>(null);
 
   const { data: classes = [], isLoading } = useQuery({
     queryKey: ['admin-classes'],
@@ -8055,8 +8074,28 @@ function ClassesView() {
       });
       return res.json();
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['class-nodes', selectedClassId] });
+      const previousData = queryClient.getQueryData(['class-nodes', selectedClassId]);
+      return { previousData };
+    },
+    onSuccess: () => {
+      setShowNodeEditor(false);
+      setEditingNode(null);
+    },
+    onError: (err: any, _variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['class-nodes', selectedClassId], context.previousData);
+      }
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+    onSettled: (_data, _error, variables) => {
+      setPendingDragUpdates(prev => {
+        const next = new Map(prev);
+        next.delete(variables.nodeId);
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
     },
   });
 
@@ -8095,39 +8134,304 @@ function ClassesView() {
     },
   });
 
-  const handleAddNode = () => {
-    if (!selectedClassId || !scrollRef.current) return;
-    const container = scrollRef.current;
-    const centerX = (container.scrollLeft + container.clientWidth / 2) / zoom;
-    const centerY = (container.scrollTop + container.clientHeight / 2) / zoom;
-    const gridX = Math.round((centerX - CLASS_WORLD_OFFSET) / CLASS_CELL_SIZE);
-    const gridY = Math.round((centerY - CLASS_WORLD_OFFSET) / CLASS_CELL_SIZE);
-    createNodeMutation.mutate({ name: 'New Skill', gridX, gridY, tier: 1, cost: 1, effects: [] });
+  const cancelLongPressClass = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressActiveRef.current = false;
+    setLongPressId(null);
+    pendingPointerRef.current = null;
   };
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(prev => Math.max(0.3, Math.min(2, prev + delta)));
+  const handleNodePointerDown = (node: any, e: React.PointerEvent) => {
+    if (connectingFrom) return;
+    if (pendingDragUpdates.has(node.id)) return;
+    const isTouch = e.pointerType === 'touch';
+    if (isTouch) {
+      pendingPointerRef.current = {
+        element: e.currentTarget as HTMLElement,
+        pointerId: e.pointerId,
+        nodeId: node.id,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      };
+      longPressTimerRef.current = setTimeout(() => {
+        const pending = pendingPointerRef.current;
+        if (!pending) return;
+        longPressActiveRef.current = true;
+        setLongPressId(node.id);
+        gestureModeRef.current = 'idle';
+        panPointerIdRef.current = null;
+        panStartRef.current = null;
+        try { pending.element.setPointerCapture(pending.pointerId); } catch {}
+        draggingRef.current = {
+          nodeId: node.id,
+          startX: pending.clientX,
+          startY: pending.clientY,
+          origX: node.gridX * CLASS_CELL_SIZE,
+          origY: node.gridY * CLASS_CELL_SIZE,
+        };
+      }, 400);
+    } else {
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      draggingRef.current = {
+        nodeId: node.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: node.gridX * CLASS_CELL_SIZE,
+        origY: node.gridY * CLASS_CELL_SIZE,
+      };
     }
-  }, []);
+  };
+
+  const handleNodePointerMove = (e: React.PointerEvent) => {
+    if (pendingPointerRef.current && !longPressActiveRef.current) {
+      const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
+      const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
+      if (dx > 10 || dy > 10) { cancelLongPressClass(); }
+      return;
+    }
+    if (!draggingRef.current) return;
+    const zoom = zoomRef.current;
+    const dx = (e.clientX - draggingRef.current.startX) / zoom;
+    const dy = (e.clientY - draggingRef.current.startY) / zoom;
+    setDragOffset({ id: draggingRef.current.nodeId, dx, dy });
+  };
+
+  const handleNodePointerUp = (node: any, e: React.PointerEvent) => {
+    if (pendingPointerRef.current) { cancelLongPressClass(); }
+    if (!draggingRef.current || draggingRef.current.nodeId !== node.id) return;
+    const zoom = zoomRef.current;
+    const dx = (e.clientX - draggingRef.current.startX) / zoom;
+    const dy = (e.clientY - draggingRef.current.startY) / zoom;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      const newX = draggingRef.current.origX + dx;
+      const newY = draggingRef.current.origY + dy;
+      setPendingDragUpdates(prev => new Map(prev).set(node.id, { dx, dy }));
+      updateNodeMutation.mutate({
+        nodeId: node.id,
+        data: { gridX: Math.round(newX / CLASS_CELL_SIZE), gridY: Math.round(newY / CLASS_CELL_SIZE) },
+      });
+    }
+    draggingRef.current = null;
+    setDragOffset(null);
+    longPressActiveRef.current = false;
+    setLongPressId(null);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  const handleNodeClick = (node: any, e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
+    if (connectingFrom !== null) {
+      if (connectingFrom === '__waiting__' || connectingFrom === '') {
+        setConnectingFrom(node.id);
+      } else if (connectingFrom !== node.id) {
+        createConnectionMutation.mutate({ fromNodeId: connectingFrom, toNodeId: node.id });
+        setConnectingFrom(null);
+      } else {
+        setConnectingFrom(null);
+      }
+    } else {
+      setSelectedNodeId(node.id);
+    }
+  };
+
+  const handleNodeDoubleClick = (node: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNodeActionMenu(node.id);
+    setSelectedNodeId(node.id);
+  };
+
+  const handleNodeContextMenu = (node: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setNodeActionMenu(node.id);
+    setSelectedNodeId(node.id);
+  };
+
+  const handleClassCanvasClick = () => {
+    if (!draggingRef.current) {
+      setSelectedNodeId(null);
+      if (connectingFrom) setConnectingFrom(null);
+    }
+    setNodeActionMenu(null);
+  };
+
+  const handleAddNode = () => {
+    if (!selectedClassId) return;
+    const zoom = zoomRef.current;
+    const pan = panRef.current;
+    const centerX = Math.round((viewportSize.width / 2 - pan.x) / zoom);
+    const centerY = Math.round((viewportSize.height / 2 - pan.y) / zoom);
+    createNodeMutation.mutate({ name: 'New Skill', gridX: Math.round(centerX / CLASS_CELL_SIZE), gridY: Math.round(centerY / CLASS_CELL_SIZE), tier: 1, cost: 1, effects: [] });
+  };
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.addEventListener('wheel', handleWheel, { passive: false });
-      return () => el.removeEventListener('wheel', handleWheel);
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setViewportSize(prev => prev.width !== rect.width || prev.height !== rect.height ? { width: rect.width, height: rect.height } : prev);
     }
-  }, [handleWheel, selectedClassId]);
-
-  useEffect(() => {
-    if (selectedClassId && scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollLeft = CLASS_WORLD_OFFSET - el.clientWidth / 2;
-      el.scrollTop = CLASS_WORLD_OFFSET - el.clientHeight / 2;
-    }
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setViewportSize(prev => prev.width !== width || prev.height !== height ? { width, height } : prev);
+        }
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [selectedClassId]);
+
+  useEffect(() => {
+    if (selectedClassId && viewportSize.width > 0) {
+      const centerX = viewportSize.width / 2;
+      const centerY = viewportSize.height / 2;
+      panRef.current = { x: centerX, y: centerY };
+      zoomRef.current = 1;
+      motionX.set(centerX);
+      motionY.set(centerY);
+      motionZoom.set(1);
+      forceUpdate(n => n + 1);
+    }
+  }, [selectedClassId, viewportSize.width]);
+
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container || !selectedClassId) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (gestureModeRef.current !== 'idle' && gestureModeRef.current !== 'panning') return;
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const delta = -e.deltaY * 0.002;
+      const newZoom = Math.max(0.3, Math.min(3, currentZoom + delta));
+      if (Math.abs(newZoom - currentZoom) > 0.001) {
+        const worldX = ((mouseX + CLASS_WORLD_OFFSET - currentPan.x) / currentZoom) - CLASS_WORLD_OFFSET;
+        const worldY = ((mouseY + CLASS_WORLD_OFFSET - currentPan.y) / currentZoom) - CLASS_WORLD_OFFSET;
+        const newPan = {
+          x: mouseX + CLASS_WORLD_OFFSET - (worldX + CLASS_WORLD_OFFSET) * newZoom,
+          y: mouseY + CLASS_WORLD_OFFSET - (worldY + CLASS_WORLD_OFFSET) * newZoom
+        };
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+        motionX.set(newPan.x);
+        motionY.set(newPan.y);
+        motionZoom.set(newZoom);
+        forceUpdate(n => n + 1);
+      }
+    };
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [selectedClassId, viewportSize.width, motionX, motionY, motionZoom]);
+
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container || !selectedClassId) return;
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        if (gestureModeRef.current === 'panning') { gestureModeRef.current = 'idle'; panPointerIdRef.current = null; panStartRef.current = null; }
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+      } else if (e.touches.length === 1) { setIsPinching(false); }
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
+        const t1 = e.touches[0]; const t2 = e.touches[1];
+        const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const rect = container.getBoundingClientRect();
+        const centerX = ((t1.clientX + t2.clientX) / 2) - rect.left;
+        const centerY = ((t1.clientY + t2.clientY) / 2) - rect.top;
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+          const newZoom = Math.max(0.3, Math.min(3, currentZoom + delta));
+          if (Math.abs(newZoom - currentZoom) > 0.001) {
+            const worldX = ((centerX + CLASS_WORLD_OFFSET - currentPan.x) / currentZoom) - CLASS_WORLD_OFFSET;
+            const worldY = ((centerY + CLASS_WORLD_OFFSET - currentPan.y) / currentZoom) - CLASS_WORLD_OFFSET;
+            const newPan = {
+              x: centerX + CLASS_WORLD_OFFSET - (worldX + CLASS_WORLD_OFFSET) * newZoom,
+              y: centerY + CLASS_WORLD_OFFSET - (worldY + CLASS_WORLD_OFFSET) * newZoom
+            };
+            panRef.current = newPan;
+            zoomRef.current = newZoom;
+            motionX.set(newPan.x); motionY.set(newPan.y); motionZoom.set(newZoom);
+            forceUpdate(n => n + 1);
+          }
+        }
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+    const handleTouchEnd = () => {
+      lastTouchDistanceRef.current = null;
+      if (gestureModeRef.current === 'pinching') { gestureModeRef.current = 'idle'; setIsPinching(false); }
+    };
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [selectedClassId, viewportSize.width]);
+
+  const handleClassCanvasPointerDown = (e: React.PointerEvent) => {
+    if (isPinching) return;
+    if (gestureModeRef.current !== 'idle') return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-connection-delete]')) return;
+    if (e.pointerType !== 'touch' && target.closest('[data-node-cell]')) return;
+    gestureModeRef.current = 'panning';
+    panPointerIdRef.current = e.pointerId;
+    panStartRef.current = { pointerX: e.clientX, pointerY: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleClassCanvasPointerMove = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    if (panPointerIdRef.current !== e.pointerId) return;
+    if (!panStartRef.current) return;
+    const dx = e.clientX - panStartRef.current.pointerX;
+    const dy = e.clientY - panStartRef.current.pointerY;
+    const newPan = { x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy };
+    panRef.current = newPan;
+    motionX.set(newPan.x);
+    motionY.set(newPan.y);
+  };
+
+  const handleClassCanvasPointerUp = (e: React.PointerEvent) => {
+    if (panPointerIdRef.current === e.pointerId) {
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    }
+  };
+
+  const generateClassCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1; const dy = y2 - y1;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const minOffset = 40;
+    const curvature = Math.max(minOffset, Math.min(distance * 0.3, 100));
+    const horizontalOffset = Math.abs(dx) < 10 ? minOffset : dx * 0.25;
+    const verticalOffset = curvature * (dy >= 0 ? 0.5 : -0.5);
+    return `M ${x1} ${y1} C ${x1 + horizontalOffset} ${y1 + verticalOffset}, ${x2 - horizontalOffset} ${y2 - verticalOffset}, ${x2} ${y2}`;
+  };
 
   if (!selectedClassId) {
     return (
@@ -8267,6 +8571,8 @@ function ClassesView() {
   }
 
   const selectedClass = classes.find((c: any) => c.id === selectedClassId);
+  const nodeById = new Map<string, any>();
+  nodes.forEach((n: any) => nodeById.set(n.id, n));
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)]">
@@ -8277,158 +8583,193 @@ function ClassesView() {
           </Button>
           <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} — Skill Tree</h3>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-1">
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} data-testid="button-zoom-out-class">
-              <ZoomOut className="h-3 w-3" />
-            </Button>
-            <span className="text-xs text-stone-400 w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setZoom(z => Math.min(2, z + 0.1))} data-testid="button-zoom-in-class">
-              <ZoomIn className="h-3 w-3" />
-            </Button>
-          </div>
-          {connectingFrom && (
-            <Badge className="bg-green-700 text-white">
-              Click target node to connect
-              <Button variant="ghost" size="sm" className="h-4 w-4 p-0 ml-1" onClick={() => setConnectingFrom(null)}>
-                <X className="h-3 w-3" />
-              </Button>
-            </Badge>
-          )}
-          <Button size="sm" onClick={handleAddNode} className="bg-fuchsia-700 hover:bg-fuchsia-600" data-testid="button-add-node">
-            <Plus className="h-4 w-4 mr-1" /> Add Skill
-          </Button>
-        </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-auto bg-stone-950 rounded-lg border border-stone-700 relative" data-testid="class-skill-tree-canvas">
-        <div
-          ref={containerRef}
+      <div className="flex flex-wrap gap-2 items-center shrink-0 mb-2">
+        <Button size="sm" onClick={handleAddNode} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-xs" data-testid="button-add-node">
+          <Plus className="h-3 w-3 mr-1" /> Add Skill
+        </Button>
+        <Button
+          size="sm"
+          variant={connectingFrom ? "default" : "secondary"}
+          onClick={() => { if (connectingFrom !== null) { setConnectingFrom(null); } else { setConnectingFrom('__waiting__'); } }}
+          className={connectingFrom !== null ? "bg-fuchsia-600 hover:bg-fuchsia-700 text-xs animate-pulse" : "bg-stone-700 hover:bg-stone-600 text-xs border border-stone-600"}
+        >
+          <Link className="h-3 w-3 mr-1" />
+          {connectingFrom !== null ? 'Exit Connection Mode' : 'Connect'}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
+          onClick={() => {
+            if (viewportSize.width > 0) {
+              const centerX = viewportSize.width / 2;
+              const centerY = viewportSize.height / 2;
+              panRef.current = { x: centerX, y: centerY };
+              zoomRef.current = 1;
+              motionX.set(centerX); motionY.set(centerY); motionZoom.set(1);
+              forceUpdate(n => n + 1);
+            }
+          }}
+          title="Reset view"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" /> Reset View
+        </Button>
+        {connectingFrom !== null && (
+          <div className="flex items-center gap-2 bg-fuchsia-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+            <span>{connectingFrom && connectingFrom !== '__waiting__' ? 'Click target node to connect' : 'Click source node to start'}</span>
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 hover:bg-fuchsia-500" onClick={() => setConnectingFrom(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={canvasContainerRef}
+        className={`relative w-full overflow-hidden rounded-lg border border-stone-700 flex-1 ${
+          connectingFrom !== null ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+        }`}
+        style={{
+          minHeight: '400px',
+          touchAction: 'none',
+          background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',
+          userSelect: 'none',
+          WebkitUserSelect: 'none'
+        }}
+        onPointerDown={handleClassCanvasPointerDown}
+        onPointerMove={handleClassCanvasPointerMove}
+        onPointerUp={handleClassCanvasPointerUp}
+        onPointerCancel={handleClassCanvasPointerUp}
+        onClick={handleClassCanvasClick}
+        data-testid="class-skill-tree-canvas"
+      >
+        <motion.div
+          className="absolute"
           style={{
+            x: motionX,
+            y: motionY,
+            scale: motionZoom,
             width: CLASS_WORLD_SIZE,
             height: CLASS_WORLD_SIZE,
-            transform: `scale(${zoom})`,
-            transformOrigin: '0 0',
-            position: 'relative',
+            left: -CLASS_WORLD_OFFSET,
+            top: -CLASS_WORLD_OFFSET,
+            transformOrigin: '0 0'
           }}
         >
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+          <div
+            className="absolute inset-0 pointer-events-none opacity-30"
+            style={{
+              backgroundImage: `
+                radial-gradient(circle at center, rgba(217,70,239,0.1) 0%, transparent 70%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+              `,
+              backgroundSize: `100% 100%, 50px 50px, 50px 50px`,
+              backgroundPosition: `center, ${CLASS_WORLD_OFFSET}px ${CLASS_WORLD_OFFSET}px, ${CLASS_WORLD_OFFSET}px ${CLASS_WORLD_OFFSET}px`
+            }}
+          />
+
+          <svg
+            className="absolute"
+            style={{ width: CLASS_WORLD_SIZE, height: CLASS_WORLD_SIZE, left: 0, top: 0 }}
+          >
+            <defs>
+              <marker id="arrowhead-class" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
+                <polygon points="0 0, 12 4, 0 8" fill="url(#class-arrow-gradient)" />
+              </marker>
+              <linearGradient id="class-arrow-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#d946ef" />
+                <stop offset="100%" stopColor="#eab308" />
+              </linearGradient>
+              <linearGradient id="class-line-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#d946ef" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#eab308" stopOpacity="0.8" />
+              </linearGradient>
+              <filter id="class-glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
             {connections.map((conn: any) => {
-              const fromNode = nodes.find((n: any) => n.id === conn.fromNodeId);
-              const toNode = nodes.find((n: any) => n.id === conn.toNodeId);
-              if (!fromNode || !toNode) return null;
-              const fromDrag = pendingDragUpdates.current.get(fromNode.id);
-              const toDrag = pendingDragUpdates.current.get(toNode.id);
-              const fx = ((fromDrag?.gridX ?? fromNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
-              const fy = ((fromDrag?.gridY ?? fromNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_CIRCLE_CENTER_Y;
-              const tx = ((toDrag?.gridX ?? toNode.gridX) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_WIDTH / 2;
-              const ty = ((toDrag?.gridY ?? toNode.gridY) * CLASS_CELL_SIZE) + CLASS_WORLD_OFFSET + CLASS_NODE_CIRCLE_CENTER_Y;
-              const mx = (fx + tx) / 2;
-              const my = (fy + ty) / 2;
+              const from = nodeById.get(conn.fromNodeId);
+              const to = nodeById.get(conn.toNodeId);
+              if (!from || !to) return null;
+
+              let fromX = from.gridX * CLASS_CELL_SIZE;
+              let fromY = from.gridY * CLASS_CELL_SIZE;
+              let toX = to.gridX * CLASS_CELL_SIZE;
+              let toY = to.gridY * CLASS_CELL_SIZE;
+
+              const fromPending = pendingDragUpdates.get(from.id);
+              const toPending = pendingDragUpdates.get(to.id);
+              if (dragOffset?.id === from.id) { fromX += dragOffset.dx; fromY += dragOffset.dy; } else if (fromPending) { fromX += fromPending.dx; fromY += fromPending.dy; }
+              if (dragOffset?.id === to.id) { toX += dragOffset.dx; toY += dragOffset.dy; } else if (toPending) { toX += toPending.dx; toY += toPending.dy; }
+
+              const x1 = CLASS_WORLD_OFFSET + fromX + CLASS_NODE_WIDTH / 2;
+              const y1 = CLASS_WORLD_OFFSET + fromY + CLASS_NODE_CIRCLE_CENTER_Y;
+              const x2 = CLASS_WORLD_OFFSET + toX + CLASS_NODE_WIDTH / 2;
+              const y2 = CLASS_WORLD_OFFSET + toY + CLASS_NODE_CIRCLE_CENTER_Y;
+              const pathD = generateClassCurvePath(x1, y1, x2, y2);
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
+
               return (
-                <g key={conn.id}>
-                  <line x1={fx} y1={fy} x2={tx} y2={ty} stroke="#a855f7" strokeWidth="2" markerEnd="url(#arrowhead-class)" />
-                  <foreignObject x={mx - 10} y={my - 10} width={20} height={20} style={{ overflow: 'visible' }}>
-                    <button
-                      className="w-5 h-5 rounded-full bg-red-900 border border-red-600 flex items-center justify-center text-red-400 hover:bg-red-700 pointer-events-auto"
-                      onClick={() => deleteConnectionMutation.mutate(conn.id)}
-                      data-testid={`button-delete-connection-${conn.id}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </foreignObject>
+                <g key={conn.id} filter="url(#class-glow)">
+                  <path d={pathD} fill="none" stroke="url(#class-line-gradient)" strokeWidth={3} markerEnd="url(#arrowhead-class)" className="transition-all pointer-events-none" />
+                  <circle cx={midX} cy={midY} r={14} fill="#1c1917" stroke="#78716c" strokeWidth={2} className="cursor-pointer hover:stroke-red-500 hover:fill-red-900/50 transition-colors" style={{ pointerEvents: 'all' }} data-connection-delete="true" onClick={(e) => { e.stopPropagation(); deleteConnectionMutation.mutate(conn.id); }} />
+                  <text x={midX} y={midY + 4} textAnchor="middle" className="fill-red-400 pointer-events-none text-xs font-bold">{'\u00d7'}</text>
                 </g>
               );
             })}
-            <defs>
-              <marker id="arrowhead-class" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
-              </marker>
-            </defs>
           </svg>
 
-          <div className="absolute w-3 h-3 rounded-full bg-fuchsia-500/60" style={{ left: CLASS_WORLD_OFFSET - 6, top: CLASS_WORLD_OFFSET - 6, zIndex: 2 }} />
-
           {nodes.map((node: any) => {
-            const dragPos = pendingDragUpdates.current.get(node.id);
-            const gx = dragPos?.gridX ?? node.gridX;
-            const gy = dragPos?.gridY ?? node.gridY;
-            const px = gx * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
-            const py = gy * CLASS_CELL_SIZE + CLASS_WORLD_OFFSET;
-            const style = classTierStyles[node.tier] || classTierStyles[1];
+            const isSelected = selectedNodeId === node.id;
+            const isConnectSource = connectingFrom === node.id;
+            const isDragging = dragOffset?.id === node.id;
+            const pendingUpdate = pendingDragUpdates.get(node.id);
             const nodeImg = getNodeImage(node);
+            const style = classTierStyles[node.tier] || classTierStyles[1];
+
+            let posX = node.gridX * CLASS_CELL_SIZE;
+            let posY = node.gridY * CLASS_CELL_SIZE;
+            if (isDragging) { posX += dragOffset.dx; posY += dragOffset.dy; }
+            else if (pendingUpdate) { posX += pendingUpdate.dx; posY += pendingUpdate.dy; }
 
             return (
               <div
                 key={node.id}
-                className="absolute flex flex-col items-center cursor-grab select-none"
+                data-node-cell
+                className={`absolute flex flex-col items-center ${connectingFrom !== null ? 'cursor-crosshair' : 'cursor-move'}`}
                 style={{
-                  left: px,
-                  top: py,
+                  left: CLASS_WORLD_OFFSET + posX,
+                  top: CLASS_WORLD_OFFSET + posY,
                   width: CLASS_NODE_WIDTH,
                   height: CLASS_NODE_HEIGHT,
-                  zIndex: 10,
+                  willChange: isDragging ? 'left, top' : 'auto',
                 }}
-                onPointerDown={(e) => {
-                  if (connectingFrom) {
-                    if (connectingFrom !== node.id) {
-                      createConnectionMutation.mutate({ fromNodeId: connectingFrom, toNodeId: node.id });
-                    }
-                    return;
-                  }
-                  e.preventDefault();
-                  e.stopPropagation();
-                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  const startX = e.clientX;
-                  const startY = e.clientY;
-                  const startGridX = gx;
-                  const startGridY = gy;
-
-                  const handleMove = (me: PointerEvent) => {
-                    const dx = (me.clientX - startX) / zoom;
-                    const dy = (me.clientY - startY) / zoom;
-                    const newGridX = startGridX + Math.round(dx / CLASS_CELL_SIZE);
-                    const newGridY = startGridY + Math.round(dy / CLASS_CELL_SIZE);
-                    pendingDragUpdates.current.set(node.id, { gridX: newGridX, gridY: newGridY });
-                    queryClient.setQueryData(['class-nodes', selectedClassId], (old: any[]) =>
-                      old?.map(n => n.id === node.id ? { ...n, gridX: newGridX, gridY: newGridY } : n)
-                    );
-                  };
-
-                  const handleUp = () => {
-                    const finalPos = pendingDragUpdates.current.get(node.id);
-                    if (finalPos && (finalPos.gridX !== startGridX || finalPos.gridY !== startGridY)) {
-                      updateNodeMutation.mutate({ nodeId: node.id, data: { gridX: finalPos.gridX, gridY: finalPos.gridY } });
-                    }
-                    pendingDragUpdates.current.delete(node.id);
-                    document.removeEventListener('pointermove', handleMove);
-                    document.removeEventListener('pointerup', handleUp);
-                  };
-
-                  document.addEventListener('pointermove', handleMove);
-                  document.addEventListener('pointerup', handleUp);
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  const rect = scrollRef.current?.getBoundingClientRect();
-                  if (rect) {
-                    setActionMenuNode(node);
-                    setActionMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const rect = scrollRef.current?.getBoundingClientRect();
-                  if (rect) {
-                    setActionMenuNode(node);
-                    setActionMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
+                onClick={(e) => handleNodeClick(node, e)}
+                onDoubleClick={(e) => handleNodeDoubleClick(node, e)}
+                onContextMenu={(e) => handleNodeContextMenu(node, e)}
+                onPointerDown={(e) => handleNodePointerDown(node, e)}
+                onPointerMove={handleNodePointerMove}
+                onPointerUp={(e) => handleNodePointerUp(node, e)}
                 data-testid={`class-node-${node.id}`}
               >
                 <div
-                  className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0 ${style.border} ${style.glow} hover:scale-105`}
+                  className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0
+                    ${style.border} ${style.glow}
+                    ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
+                    ${isConnectSource ? 'animate-pulse ring-2 ring-fuchsia-400' : ''}
+                    ${longPressId === node.id ? 'ring-2 ring-amber-400 scale-110' : ''}
+                    ${!isDragging ? 'hover:scale-105' : ''}
+                  `}
                   style={{ width: CLASS_NODE_CIRCLE_SIZE, height: CLASS_NODE_CIRCLE_SIZE }}
                 >
                   {nodeImg ? (
@@ -8445,37 +8786,40 @@ function ClassesView() {
               </div>
             );
           })}
-        </div>
 
-        {actionMenuNode && actionMenuPos && (
           <div
-            className="absolute bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-1 z-50"
-            style={{ left: actionMenuPos.x, top: actionMenuPos.y }}
-          >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2"
-              onClick={() => { setEditingNode(actionMenuNode); setShowNodeEditor(true); setActionMenuNode(null); }}
-              data-testid="button-edit-node"
-            >
-              <Pencil className="h-3 w-3" /> Edit
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2"
-              onClick={() => { setConnectingFrom(actionMenuNode.id); setActionMenuNode(null); }}
-              data-testid="button-connect-node"
-            >
-              <Link className="h-3 w-3" /> Connect
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-stone-700 rounded flex items-center gap-2"
-              onClick={() => { deleteNodeMutation.mutate(actionMenuNode.id); setActionMenuNode(null); }}
-              data-testid="button-delete-node"
-            >
-              <Trash2 className="h-3 w-3" /> Delete
-            </button>
-          </div>
-        )}
+            className="absolute w-4 h-4 bg-fuchsia-500/50 rounded-full border-2 border-fuchsia-400"
+            style={{ left: CLASS_WORLD_OFFSET - 8, top: CLASS_WORLD_OFFSET - 8 }}
+            title="Origin (0,0)"
+          />
+        </motion.div>
       </div>
+
+      {nodeActionMenu && (() => {
+        const actionNode = nodes.find((n: any) => n.id === nodeActionMenu);
+        if (!actionNode) return null;
+        return (
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60"
+            onClick={() => setNodeActionMenu(null)}
+          >
+            <div className="bg-stone-800 border border-fuchsia-600 rounded-xl p-3 min-w-[200px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold text-fuchsia-300 mb-2 text-center">{actionNode.name}</div>
+              <div className="space-y-1">
+                <button className="w-full text-left px-3 py-2 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { setEditingNode(actionNode); setShowNodeEditor(true); setNodeActionMenu(null); }} data-testid="button-edit-node">
+                  <Pencil className="h-4 w-4" /> Edit
+                </button>
+                <button className="w-full text-left px-3 py-2 text-sm text-stone-300 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { setConnectingFrom(actionNode.id); setNodeActionMenu(null); }} data-testid="button-connect-node">
+                  <Link className="h-4 w-4" /> Connect
+                </button>
+                <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-stone-700 rounded flex items-center gap-2" onClick={() => { deleteNodeMutation.mutate(actionNode.id); setNodeActionMenu(null); }} data-testid="button-delete-node">
+                  <Trash2 className="h-4 w-4" /> Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <ClassNodeEditorDialog
         open={showNodeEditor}

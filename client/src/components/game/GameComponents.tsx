@@ -18196,12 +18196,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   <Layers className="h-5 w-5 text-fuchsia-400" />
                                 </div>
                               )}
-                              <div className="absolute -bottom-0.5 -right-0.5 bg-fuchsia-700 rounded-full px-1 min-w-[16px] h-4 flex items-center justify-center">
-                                <span className="text-[9px] font-bold text-white">{cc.classLevel}</span>
-                              </div>
                               {classTooltip === cc.classId && (
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-stone-800 border border-fuchsia-600 rounded text-[10px] text-fuchsia-200 whitespace-nowrap z-50 pointer-events-none">
-                                  {classInfo.name} (Lv.{cc.classLevel})
+                                  {classInfo.name}
                                 </div>
                               )}
                             </div>
@@ -21355,7 +21352,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               availableClasses.map((cls: any) => {
                 const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
                 const hasClass = !!charClass;
-                const classLevel = charClass?.classLevel || 0;
                 const globalAvailablePoints = liveCharacter.classSkillPoints || 0;
                 return (
                   <div
@@ -21378,11 +21374,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
-                          {hasClass && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1 border-fuchsia-600 text-fuchsia-300">
-                              Lv.{classLevel}
-                            </Badge>
-                          )}
                         </div>
                         {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
                         {hasClass && (
@@ -21401,18 +21392,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         >
                           <GitBranch className="h-4 w-4" />
                         </Button>
-                        {isGM && hasClass && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/30"
-                            onClick={() => levelUpClassMutation.mutate(charClass.id)}
-                            disabled={levelUpClassMutation.isPending}
-                            data-testid={`class-levelup-${cls.id}`}
-                          >
-                            <TrendingUp className="h-4 w-4" />
-                          </Button>
-                        )}
                         {isGM && !hasClass && (
                           <Button
                             size="sm"
