@@ -8074,9 +8074,14 @@ function ClassesView() {
       });
       return res.json();
     },
-    onMutate: async () => {
+    onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: ['class-nodes', selectedClassId] });
       const previousData = queryClient.getQueryData(['class-nodes', selectedClassId]);
+      if (variables.data.gridX !== undefined || variables.data.gridY !== undefined) {
+        queryClient.setQueryData(['class-nodes', selectedClassId], (old: any[]) =>
+          old?.map(n => n.id === variables.nodeId ? { ...n, gridX: variables.data.gridX ?? n.gridX, gridY: variables.data.gridY ?? n.gridY } : n)
+        );
+      }
       return { previousData };
     },
     onSuccess: () => {
@@ -8647,25 +8652,6 @@ function ClassesView() {
           <RefreshCw className="h-3 w-3 mr-1" />
           Reset View
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="bg-amber-800/80 hover:bg-amber-700 text-xs border border-amber-600"
-          onClick={() => {
-            if (selectedClassId && viewportSize.width > 0) {
-              const zoom = zoomRef.current;
-              const pan = panRef.current;
-              const worldCenterX = (viewportSize.width / 2 - pan.x) / zoom;
-              const worldCenterY = (viewportSize.height / 2 - pan.y) / zoom;
-              toast({ title: 'Default View Set', description: 'Current view saved as default' });
-            }
-          }}
-          title="Save current view as default"
-        >
-          <Save className="h-3 w-3 mr-1" />
-          Set Default View
-        </Button>
-
         {connectionMode && (
           <div className="flex items-center gap-2 bg-fuchsia-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
             <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
