@@ -8234,9 +8234,9 @@ function ClassesView() {
         setConnectingFrom(node.id);
       } else if (connectingFrom !== node.id) {
         createConnectionMutation.mutate({ fromNodeId: connectingFrom, toNodeId: node.id });
-        setConnectingFrom(null);
+        setConnectingFrom('__waiting__');
       } else {
-        setConnectingFrom(null);
+        setConnectingFrom('__waiting__');
       }
     } else {
       setSelectedNodeId(node.id);
