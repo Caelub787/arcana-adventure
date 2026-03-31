@@ -3960,16 +3960,20 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const updateFeatMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Feat> }) => api.updateFeat(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
       setShowFeatEditor(false);
       setEditingFeat(null);
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      setPendingDragUpdates(prev => {
+        const next = new Map(prev);
+        next.delete(err?.id || '');
+        return next;
+      });
     },
     onSettled: (_data, _error, variables) => {
-      // Clear only the pending drag update for this specific feat
       setPendingDragUpdates(prev => {
         const next = new Map(prev);
         next.delete(variables.id);
@@ -7969,8 +7973,8 @@ function ClassesView() {
       });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['class-nodes', selectedClassId] });
     },
   });
 
