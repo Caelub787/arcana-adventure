@@ -3841,11 +3841,9 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     queryFn: () => api.getSystemSkills(systemSlug),
   });
   
-  // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description
   const getFeatDescription = (feat: Feat): string | undefined => {
     if (feat.description) return feat.description;
     
-    // Check for spell_grant, trait_grant, or skill_grant effects
     if (feat.effects && Array.isArray(feat.effects)) {
       for (const effect of feat.effects as any[]) {
         if (effect.type === 'spell_grant' && effect.target) {
@@ -3860,12 +3858,16 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           const skill = (customSkillsForFeats as any[]).find(s => s.id === effect.target);
           if (skill?.description) return skill.description;
         }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (systemItemsForFeats as any[]).find((i: any) => i.id === effect.target);
+          if (item?.description) return item.description;
+        }
       }
     }
     return undefined;
   };
 
-  const getFeatImage = useCallback((feat: Feat): string | null => {
+  const getFeatImage = (feat: Feat): string | null => {
     if ((feat as any).image) return (feat as any).image;
     if (feat.effects && Array.isArray(feat.effects)) {
       for (const effect of feat.effects as any[]) {
@@ -3880,7 +3882,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       }
     }
     return null;
-  }, [systemSpellsForFeats, systemItemsForFeats]);
+  };
 
   const createTemplateMutation = useMutation({
     mutationFn: (template: Partial<FeatTemplate>) => api.createFeatTemplate(template),
@@ -3960,18 +3962,31 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const updateFeatMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Feat> }) => api.updateFeat(id, data),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      const previousData = queryClient.getQueryData(['feat-tree', selectedTreeId]);
+      if (variables.data.gridX !== undefined || variables.data.gridY !== undefined) {
+        queryClient.setQueryData(['feat-tree', selectedTreeId], (old: any) => {
+          if (!old?.feats) return old;
+          return {
+            ...old,
+            feats: old.feats.map((f: any) =>
+              f.id === variables.id ? { ...f, ...variables.data } : f
+            ),
+          };
+        });
+      }
+      return { previousData };
+    },
+    onSuccess: () => {
       setShowFeatEditor(false);
       setEditingFeat(null);
     },
-    onError: (err: any) => {
+    onError: (err: any, _variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['feat-tree', selectedTreeId], context.previousData);
+      }
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
-      setPendingDragUpdates(prev => {
-        const next = new Map(prev);
-        next.delete(err?.id || '');
-        return next;
-      });
     },
     onSettled: (_data, _error, variables) => {
       setPendingDragUpdates(prev => {
@@ -3979,6 +3994,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
         next.delete(variables.id);
         return next;
       });
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
     },
   });
 

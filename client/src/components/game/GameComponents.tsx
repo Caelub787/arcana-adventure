@@ -21593,6 +21593,10 @@ function FeatTreeViewerGrid({
           const skill = (customSkills as any[]).find(s => s.id === effect.target);
           if (skill?.description) return skill.description;
         }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (systemItems as any[]).find((i: any) => i.id === effect.target);
+          if (item?.description) return item.description;
+        }
       }
     }
     return undefined;
