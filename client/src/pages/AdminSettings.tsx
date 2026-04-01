@@ -4044,11 +4044,16 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   const [pendingDragUpdates, setPendingDragUpdates] = useState<Map<string, { dx: number; dy: number }>>(new Map());
 
   // Handle feat node click
+  const suppressClickRef = useRef(false);
+
   const handleFeatClick = (feat: Feat, e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     
     if (connectionMode && connectingFrom) {
-      // Complete connection
       if (connectingFrom !== feat.id) {
         createConnectionMutation.mutate({
           treeId: selectedTreeId!,
@@ -4057,10 +4062,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       }
       setConnectingFrom(null);
     } else if (connectionMode) {
-      // Start connection
       setConnectingFrom(feat.id);
     } else {
-      // Select feat
       setSelectedFeatId(feat.id);
     }
   };
@@ -4109,7 +4112,6 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const touchPanningRef = useRef(false);
 
-  // Drag handlers for feat nodes
   const handleFeatPointerDown = (feat: Feat, e: React.PointerEvent) => {
     if (connectionMode) return;
     if (pendingDragUpdates.has(feat.id)) return;
@@ -4119,27 +4121,25 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     if (isTouch) {
       e.stopPropagation();
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-      pendingPointerRef.current = {
-        element: e.currentTarget as HTMLElement,
-        pointerId: e.pointerId,
-        feat,
-        clientX: e.clientX,
-        clientY: e.clientY,
-      };
       touchPanningRef.current = false;
-      longPressTimerRef.current = setTimeout(() => {
-        const pending = pendingPointerRef.current;
-        if (!pending) return;
-        longPressActiveRef.current = true;
-        setLongPressId(feat.id);
+
+      if (selectedFeatId === feat.id) {
         draggingRef.current = {
           featId: feat.id,
-          startX: pending.clientX,
-          startY: pending.clientY,
+          startX: e.clientX,
+          startY: e.clientY,
           origX: feat.gridX * CELL_SIZE,
           origY: feat.gridY * CELL_SIZE,
         };
-      }, 400);
+      } else {
+        pendingPointerRef.current = {
+          element: e.currentTarget as HTMLElement,
+          pointerId: e.pointerId,
+          feat,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        };
+      }
     } else {
       e.preventDefault();
       e.stopPropagation();
@@ -4155,18 +4155,18 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   };
 
   const handleFeatPointerCancel = () => {
-    cancelLongPress();
+    pendingPointerRef.current = null;
     draggingRef.current = null;
     setDragOffset(null);
     touchPanningRef.current = false;
   };
 
   const handleFeatPointerMove = (e: React.PointerEvent) => {
-    if (pendingPointerRef.current && !longPressActiveRef.current && !touchPanningRef.current) {
+    if (pendingPointerRef.current && !touchPanningRef.current) {
       const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
       const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
       if (dx > 10 || dy > 10) {
-        cancelLongPress();
+        suppressClickRef.current = true;
         touchPanningRef.current = true;
         panStartRef.current = {
           pointerX: pendingPointerRef.current.clientX,
@@ -4174,6 +4174,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           panX: panRef.current.x,
           panY: panRef.current.y,
         };
+        pendingPointerRef.current = null;
       }
       return;
     }
@@ -4189,6 +4190,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     }
     
     if (!draggingRef.current) return;
+    suppressClickRef.current = true;
     
     const zoom = zoomRef.current;
     const dx = (e.clientX - draggingRef.current.startX) / zoom;
@@ -4199,7 +4201,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   const handleFeatPointerUp = (feat: Feat, e: React.PointerEvent) => {
     if (pendingPointerRef.current) {
-      cancelLongPress();
+      pendingPointerRef.current = null;
     }
 
     if (touchPanningRef.current) {
@@ -4236,8 +4238,6 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     }
     
     draggingRef.current = null;
-    longPressActiveRef.current = false;
-    setLongPressId(null);
     
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -8186,27 +8186,25 @@ function ClassesView() {
     if (isTouch) {
       e.stopPropagation();
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-      pendingPointerRef.current = {
-        element: e.currentTarget as HTMLElement,
-        pointerId: e.pointerId,
-        nodeId: node.id,
-        clientX: e.clientX,
-        clientY: e.clientY,
-      };
       touchPanningRefClass.current = false;
-      longPressTimerRef.current = setTimeout(() => {
-        const pending = pendingPointerRef.current;
-        if (!pending) return;
-        longPressActiveRef.current = true;
-        setLongPressId(node.id);
+
+      if (selectedNodeId === node.id) {
         draggingRef.current = {
           nodeId: node.id,
-          startX: pending.clientX,
-          startY: pending.clientY,
+          startX: e.clientX,
+          startY: e.clientY,
           origX: node.gridX * CLASS_CELL_SIZE,
           origY: node.gridY * CLASS_CELL_SIZE,
         };
-      }, 400);
+      } else {
+        pendingPointerRef.current = {
+          element: e.currentTarget as HTMLElement,
+          pointerId: e.pointerId,
+          nodeId: node.id,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        };
+      }
     } else {
       e.preventDefault();
       e.stopPropagation();
@@ -8222,18 +8220,18 @@ function ClassesView() {
   };
 
   const handleNodePointerCancel = () => {
-    cancelLongPressClass();
+    pendingPointerRef.current = null;
     draggingRef.current = null;
     setDragOffset(null);
     touchPanningRefClass.current = false;
   };
 
   const handleNodePointerMove = (e: React.PointerEvent) => {
-    if (pendingPointerRef.current && !longPressActiveRef.current && !touchPanningRefClass.current) {
+    if (pendingPointerRef.current && !touchPanningRefClass.current) {
       const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
       const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
       if (dx > 10 || dy > 10) {
-        cancelLongPressClass();
+        suppressClickRefClass.current = true;
         touchPanningRefClass.current = true;
         panStartRef.current = {
           pointerX: pendingPointerRef.current.clientX,
@@ -8241,6 +8239,7 @@ function ClassesView() {
           panX: panRef.current.x,
           panY: panRef.current.y,
         };
+        pendingPointerRef.current = null;
       }
       return;
     }
@@ -8256,6 +8255,7 @@ function ClassesView() {
     }
 
     if (!draggingRef.current) return;
+    suppressClickRefClass.current = true;
     const zoom = zoomRef.current;
     const dx = (e.clientX - draggingRef.current.startX) / zoom;
     const dy = (e.clientY - draggingRef.current.startY) / zoom;
@@ -8263,7 +8263,9 @@ function ClassesView() {
   };
 
   const handleNodePointerUp = (node: any, e: React.PointerEvent) => {
-    if (pendingPointerRef.current) { cancelLongPressClass(); }
+    if (pendingPointerRef.current) {
+      pendingPointerRef.current = null;
+    }
 
     if (touchPanningRefClass.current) {
       touchPanningRefClass.current = false;
@@ -8291,13 +8293,17 @@ function ClassesView() {
       setDragOffset(null);
     }
     draggingRef.current = null;
-    longPressActiveRef.current = false;
-    setLongPressId(null);
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
   };
 
+  const suppressClickRefClass = useRef(false);
+
   const handleNodeClick = (node: any, e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
+    if (suppressClickRefClass.current) {
+      suppressClickRefClass.current = false;
+      return;
+    }
     if (connectingFrom !== null) {
       if (connectingFrom === '__waiting__' || connectingFrom === '') {
         setConnectingFrom(node.id);
