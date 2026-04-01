@@ -5891,13 +5891,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      // Check if user has permission to modify this character
-      const isOwner = character.userId === req.session.userId;
       const campaign = await storage.getCampaign(character.campaignId);
       const isGM = campaign?.gmUserId === req.session.userId;
       
-      if (!isOwner && !isGM) {
-        return res.status(403).json({ error: "Not authorized to modify this character" });
+      if (!isGM) {
+        return res.status(403).json({ error: "Only the GM can remove feat unlocks" });
+      }
+      
+      const feat = await storage.getFeat(req.params.featId);
+      
+      if (feat?.effects && Array.isArray(feat.effects)) {
+        for (const effect of feat.effects as any[]) {
+          if (effect.type === 'trait_grant' && effect.target) {
+            try {
+              const charTraits = await storage.getCharacterTraits(req.params.id);
+              const matchingTrait = charTraits.find(t => t.systemTraitId === effect.target);
+              if (matchingTrait) {
+                await storage.removeCharacterTrait(matchingTrait.id);
+                console.log(`[feat_revoke] Removed trait "${matchingTrait.name}" from character ${req.params.id}`);
+              }
+            } catch (err) {
+              console.error('[feat_revoke] Error removing trait:', err);
+            }
+          }
+          
+          if (effect.type === 'spell_grant' && effect.target) {
+            try {
+              const systemSpell = await storage.getSystemSpell(effect.target);
+              if (systemSpell) {
+                const charSpells = await storage.getSpellsByCharacter(req.params.id);
+                const matchingSpell = charSpells.find(s => s.name === systemSpell.name);
+                if (matchingSpell) {
+                  await storage.deleteSpell(matchingSpell.id);
+                  console.log(`[feat_revoke] Removed spell "${matchingSpell.name}" from character ${req.params.id}`);
+                }
+              }
+            } catch (err) {
+              console.error('[feat_revoke] Error removing spell:', err);
+            }
+          }
+          
+          if (effect.type === 'skill_grant' && effect.target) {
+            try {
+              const charSkills = await storage.getCharacterCustomSkills(req.params.id);
+              const matchingSkill = charSkills.find(s => s.systemSkillId === effect.target);
+              if (matchingSkill) {
+                await storage.removeCharacterCustomSkill(matchingSkill.id);
+                console.log(`[feat_revoke] Removed skill "${matchingSkill.name}" from character ${req.params.id}`);
+              }
+            } catch (err) {
+              console.error('[feat_revoke] Error removing skill:', err);
+            }
+          }
+        }
       }
       
       await storage.removeCharacterFeat(req.params.id, req.params.featId);

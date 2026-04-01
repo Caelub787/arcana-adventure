@@ -21503,6 +21503,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 characterFeats={characterFeats}
                 characterId={liveCharacter.id}
                 canEdit={canEditSheet}
+                isGM={isGM}
                 characterLevel={liveCharacter.level}
                 isAAV2={isAAV2}
                 campaignSystem={campaignSystem}
@@ -21521,6 +21522,7 @@ function FeatTreeViewerGrid({
   characterFeats, 
   characterId,
   canEdit,
+  isGM = false,
   characterLevel = 1,
   isAAV2 = false,
   campaignSystem
@@ -21529,6 +21531,7 @@ function FeatTreeViewerGrid({
   characterFeats: CharacterFeat[];
   characterId: string;
   canEdit: boolean;
+  isGM?: boolean;
   characterLevel?: number;
   isAAV2?: boolean;
   campaignSystem?: string;
@@ -21618,20 +21621,18 @@ function FeatTreeViewerGrid({
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
-  const [, forceUpdate] = useState(0);
+  const [zoomDisplay, setZoomDisplay] = useState(100);
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
   const motionZoom = useMotionValue(1);
   
-  // Gesture state
   type GestureMode = 'idle' | 'panning' | 'pinching';
   const gestureModeRef = useRef<GestureMode>('idle');
   const panStartRef = useRef({ x: 0, y: 0 });
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
-  const [isPinching, setIsPinching] = useState(false);
+  const isPinchingRef = useRef(false);
   
-  // Double-click tracking for feat nodes
   const lastClickTimeRef = useRef(0);
   const lastClickedFeatRef = useRef<string | null>(null);
   
@@ -21641,6 +21642,20 @@ function FeatTreeViewerGrid({
       queryClient.invalidateQueries({ queryKey: ['character-feats', characterId] });
       const feat = featById.get(featId);
       toast({ title: 'Feat Unlocked!', description: `You've unlocked ${feat?.name || selectedFeat?.name}` });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const removeFeatMutation = useMutation({
+    mutationFn: (featId: string) => api.removeCharacterFeat(characterId, featId),
+    onSuccess: (_, featId) => {
+      queryClient.invalidateQueries({ queryKey: ['character-feats', characterId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${characterId}`] });
+      const feat = featById.get(featId);
+      toast({ title: 'Feat Removed', description: `Removed ${feat?.name || selectedFeat?.name} and reversed its grants` });
+      setSelectedFeat(null);
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -21699,11 +21714,10 @@ function FeatTreeViewerGrid({
         motionX.set(panX);
         motionY.set(panY);
         motionZoom.set(defaultZoom);
-        forceUpdate(n => n + 1);
+        setZoomDisplay(Math.round(defaultZoom * 100));
         return;
       }
       
-      // Fallback: Center on origin (0,0) in world space
       const centerX = viewportSize.width / 2;
       const centerY = viewportSize.height / 2;
       panRef.current = { x: centerX, y: centerY };
@@ -21711,11 +21725,10 @@ function FeatTreeViewerGrid({
       motionX.set(centerX);
       motionY.set(centerY);
       motionZoom.set(1);
-      forceUpdate(n => n + 1);
+      setZoomDisplay(100);
     }
   }, [viewportSize.width, tree?.defaultViewX, tree?.defaultViewY]);
   
-  // Wheel zoom handler
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -21734,7 +21747,6 @@ function FeatTreeViewerGrid({
       const newZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
       
       if (Math.abs(newZoom - currentZoom) > 0.001) {
-        // Zoom towards cursor
         const worldX = ((mouseX + WORLD_OFFSET - currentPan.x) / currentZoom) - WORLD_OFFSET;
         const worldY = ((mouseY + WORLD_OFFSET - currentPan.y) / currentZoom) - WORLD_OFFSET;
         
@@ -21748,7 +21760,7 @@ function FeatTreeViewerGrid({
         motionX.set(newPan.x);
         motionY.set(newPan.y);
         motionZoom.set(newZoom);
-        forceUpdate(n => n + 1);
+        setZoomDisplay(Math.round(newZoom * 100));
       }
     };
 
@@ -21767,9 +21779,9 @@ function FeatTreeViewerGrid({
           gestureModeRef.current = 'idle';
         }
         gestureModeRef.current = 'pinching';
-        setIsPinching(true);
+        isPinchingRef.current = true;
       } else if (e.touches.length === 1) {
-        setIsPinching(false);
+        isPinchingRef.current = false;
       }
     };
 
@@ -21777,7 +21789,7 @@ function FeatTreeViewerGrid({
       if (e.touches.length === 2) {
         e.preventDefault();
         gestureModeRef.current = 'pinching';
-        setIsPinching(true);
+        isPinchingRef.current = true;
         
         const currentZoom = zoomRef.current;
         const currentPan = panRef.current;
@@ -21811,7 +21823,7 @@ function FeatTreeViewerGrid({
             motionX.set(newPan.x);
             motionY.set(newPan.y);
             motionZoom.set(newZoom);
-            forceUpdate(n => n + 1);
+            setZoomDisplay(Math.round(newZoom * 100));
           }
         }
         lastTouchDistanceRef.current = distance;
@@ -21822,7 +21834,7 @@ function FeatTreeViewerGrid({
       lastTouchDistanceRef.current = null;
       if (gestureModeRef.current === 'pinching') {
         gestureModeRef.current = 'idle';
-        setIsPinching(false);
+        isPinchingRef.current = false;
       }
     };
 
@@ -21839,9 +21851,8 @@ function FeatTreeViewerGrid({
     };
   }, []);
   
-  // Pan handlers
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isPinching) return;
+    if (isPinchingRef.current) return;
     if (e.button !== 0) return; // Only left click
     
     // Don't start panning if clicking on a feat node
@@ -21869,7 +21880,6 @@ function FeatTreeViewerGrid({
     panRef.current = newPan;
     motionX.set(newPan.x);
     motionY.set(newPan.y);
-    forceUpdate(n => n + 1);
   };
   
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -22116,6 +22126,17 @@ function FeatTreeViewerGrid({
                    : 'Prerequisites Not Met'}
             </Button>
           )}
+          {isGM && unlockedFeatIds.has(selectedFeat.id) && (
+            <Button
+              variant="destructive"
+              onClick={() => removeFeatMutation.mutate(selectedFeat.id)}
+              disabled={removeFeatMutation.isPending}
+              className="w-full mt-2"
+              data-testid="button-remove-feat-unlock"
+            >
+              {removeFeatMutation.isPending ? 'Removing...' : `Remove Unlock (+${selectedFeat.cost} point${selectedFeat.cost !== 1 ? 's' : ''} back)`}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -22202,7 +22223,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
-  const [, forceUpdate] = useState(0);
+  const [zoomDisplay, setZoomDisplay] = useState(100);
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
   const motionZoom = useMotionValue(1);
@@ -22212,7 +22233,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   const panStartRef = useRef({ x: 0, y: 0 });
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
-  const [isPinching, setIsPinching] = useState(false);
+  const isPinchingRef = useRef(false);
 
   const lastClickTimeRef = useRef(0);
   const lastClickedNodeRef = useRef<string | null>(null);
@@ -22375,7 +22396,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       motionX.set(centerX);
       motionY.set(centerY);
       motionZoom.set(1);
-      forceUpdate(n => n + 1);
+      setZoomDisplay(100);
     }
   }, [viewportSize.width]);
 
@@ -22407,7 +22428,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       motionX.set(newPan.x);
       motionY.set(newPan.y);
       motionZoom.set(newZoom);
-      forceUpdate(n => n + 1);
+      setZoomDisplay(Math.round(newZoom * 100));
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -22422,7 +22443,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       if (e.touches.length === 2) {
         e.preventDefault();
         gestureModeRef.current = 'pinching';
-        setIsPinching(true);
+        isPinchingRef.current = true;
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         lastTouchDistanceRef.current = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
@@ -22460,7 +22481,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
             motionX.set(newPan.x);
             motionY.set(newPan.y);
             motionZoom.set(newZoom);
-            forceUpdate(n => n + 1);
+            setZoomDisplay(Math.round(newZoom * 100));
           }
         }
         lastTouchDistanceRef.current = distance;
@@ -22471,7 +22492,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       lastTouchDistanceRef.current = null;
       if (gestureModeRef.current === 'pinching') {
         gestureModeRef.current = 'idle';
-        setIsPinching(false);
+        isPinchingRef.current = false;
       }
     };
 
@@ -22489,7 +22510,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isPinching) return;
+    if (isPinchingRef.current) return;
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-class-node]')) return;
@@ -22507,7 +22528,6 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     panRef.current = newPan;
     motionX.set(newPan.x);
     motionY.set(newPan.y);
-    forceUpdate(n => n + 1);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -22541,7 +22561,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
           <span className="text-fuchsia-400">{unlockedNodeIds.length} skills unlocked</span>
         </div>
         <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-0.5">
-          <span className="text-[10px] text-stone-400 w-8 text-center">{Math.round(zoomRef.current * 100)}%</span>
+          <span className="text-[10px] text-stone-400 w-8 text-center">{zoomDisplay}%</span>
         </div>
       </div>
 
