@@ -22180,8 +22180,8 @@ export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: 
 const CLASS_VIEWER_CELL = 100;
 const CLASS_VIEWER_NODE_W = 160;
 const CLASS_VIEWER_NODE_H = 100;
-const CLASS_VIEWER_SIZE = 6000;
-const CLASS_VIEWER_OFFSET = 3000;
+const CLASS_VIEWER_WORLD_SIZE = 20000;
+const CLASS_VIEWER_WORLD_OFFSET = 10000;
 
 const classViewerTierStyles: Record<number, { border: string; bg: string; glow: string; unlocked: string }> = {
   1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-fuchsia-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
@@ -22198,8 +22198,25 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   globalClassPoints: number;
 }) {
   const queryClient = useQueryClient();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const [, forceUpdate] = useState(0);
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
+
+  type GestureMode = 'idle' | 'panning' | 'pinching';
+  const gestureModeRef = useRef<GestureMode>('idle');
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+  const lastTouchDistanceRef = useRef<number | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+
+  const lastClickTimeRef = useRef(0);
+  const lastClickedNodeRef = useRef<string | null>(null);
+
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
 
   const { data: nodes = [] } = useQuery({
@@ -22332,29 +22349,186 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     return incomingConns.some((c: any) => unlockedNodeIds.includes(c.fromNodeId));
   }, [unlockedNodeIds, availablePoints, connections]);
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setViewportSize((prev) => {
+            if (prev.width !== width || prev.height !== height) return { width, height };
+            return prev;
+          });
+        }
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (viewportSize.width > 0) {
+      const centerX = viewportSize.width / 2;
+      const centerY = viewportSize.height / 2;
+      panRef.current = { x: centerX, y: centerY };
+      zoomRef.current = 1;
+      motionX.set(centerX);
+      motionY.set(centerY);
+      motionZoom.set(1);
+      forceUpdate(n => n + 1);
+    }
+  }, [viewportSize.width]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(prev => Math.max(0.3, Math.min(2, prev + delta)));
-    }
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const worldX = ((mouseX + CLASS_VIEWER_WORLD_OFFSET - currentPan.x) / currentZoom) - CLASS_VIEWER_WORLD_OFFSET;
+      const worldY = ((mouseY + CLASS_VIEWER_WORLD_OFFSET - currentPan.y) / currentZoom) - CLASS_VIEWER_WORLD_OFFSET;
+
+      const delta = e.deltaY > 0 ? -0.08 : 0.08;
+      const newZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
+
+      const newPan = {
+        x: mouseX + CLASS_VIEWER_WORLD_OFFSET - (worldX + CLASS_VIEWER_WORLD_OFFSET) * newZoom,
+        y: mouseY + CLASS_VIEWER_WORLD_OFFSET - (worldY + CLASS_VIEWER_WORLD_OFFSET) * newZoom,
+      };
+
+      panRef.current = newPan;
+      zoomRef.current = newZoom;
+      motionX.set(newPan.x);
+      motionY.set(newPan.y);
+      motionZoom.set(newZoom);
+      forceUpdate(n => n + 1);
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
   }, []);
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.addEventListener('wheel', handleWheel, { passive: false });
-      return () => el.removeEventListener('wheel', handleWheel);
-    }
-  }, [handleWheel]);
+    const container = containerRef.current;
+    if (!container) return;
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollLeft = CLASS_VIEWER_OFFSET - el.clientWidth / 2;
-      el.scrollTop = CLASS_VIEWER_OFFSET - el.clientHeight / 2;
-    }
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        lastTouchDistanceRef.current = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && gestureModeRef.current === 'pinching') {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
+
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.005;
+          const newZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
+
+          if (Math.abs(newZoom - currentZoom) > 0.001) {
+            const rect = container.getBoundingClientRect();
+            const centerX = ((t1.clientX + t2.clientX) / 2) - rect.left;
+            const centerY = ((t1.clientY + t2.clientY) / 2) - rect.top;
+
+            const worldX = ((centerX + CLASS_VIEWER_WORLD_OFFSET - currentPan.x) / currentZoom) - CLASS_VIEWER_WORLD_OFFSET;
+            const worldY = ((centerY + CLASS_VIEWER_WORLD_OFFSET - currentPan.y) / currentZoom) - CLASS_VIEWER_WORLD_OFFSET;
+
+            const newPan = {
+              x: centerX + CLASS_VIEWER_WORLD_OFFSET - (worldX + CLASS_VIEWER_WORLD_OFFSET) * newZoom,
+              y: centerY + CLASS_VIEWER_WORLD_OFFSET - (worldY + CLASS_VIEWER_WORLD_OFFSET) * newZoom,
+            };
+
+            panRef.current = newPan;
+            zoomRef.current = newZoom;
+            motionX.set(newPan.x);
+            motionY.set(newPan.y);
+            motionZoom.set(newZoom);
+            forceUpdate(n => n + 1);
+          }
+        }
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      lastTouchDistanceRef.current = null;
+      if (gestureModeRef.current === 'pinching') {
+        gestureModeRef.current = 'idle';
+        setIsPinching(false);
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
   }, []);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (isPinching) return;
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-class-node]')) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    gestureModeRef.current = 'panning';
+    panStartRef.current = { ...panRef.current };
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
+    const newPan = { x: panStartRef.current.x + dx, y: panStartRef.current.y + dy };
+    panRef.current = newPan;
+    motionX.set(newPan.x);
+    motionY.set(newPan.y);
+    forceUpdate(n => n + 1);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    gestureModeRef.current = 'idle';
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  const generateCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const minCurve = 40;
+    let horizontalOffset = dx * 0.4;
+    if (Math.abs(horizontalOffset) < minCurve) horizontalOffset = dx >= 0 ? minCurve : -minCurve;
+    let verticalOffset = dy * 0.3;
+    if (Math.abs(verticalOffset) < minCurve * 0.75) verticalOffset = dy >= 0 ? minCurve * 0.75 : -minCurve * 0.75;
+    const cx1 = x1 + horizontalOffset;
+    const cy1 = y1 + verticalOffset;
+    const cx2 = x2 - horizontalOffset;
+    const cy2 = y2 - verticalOffset;
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -22367,69 +22541,112 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
           <span className="text-fuchsia-400">{unlockedNodeIds.length} skills unlocked</span>
         </div>
         <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-0.5">
-          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))}>
-            <ZoomOut className="h-3 w-3" />
-          </Button>
-          <span className="text-[10px] text-stone-400 w-8 text-center">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setZoom(z => Math.min(2, z + 0.1))}>
-            <ZoomIn className="h-3 w-3" />
-          </Button>
+          <span className="text-[10px] text-stone-400 w-8 text-center">{Math.round(zoomRef.current * 100)}%</span>
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-auto bg-stone-950 relative">
-        <div style={{ width: CLASS_VIEWER_SIZE, height: CLASS_VIEWER_SIZE, transform: `scale(${zoom})`, transformOrigin: '0 0', position: 'relative' }}>
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+      <div
+        ref={containerRef}
+        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-fuchsia-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing flex-1 min-h-0"
+        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <motion.div
+          className="absolute"
+          style={{
+            x: motionX,
+            y: motionY,
+            scale: motionZoom,
+            width: CLASS_VIEWER_WORLD_SIZE,
+            height: CLASS_VIEWER_WORLD_SIZE,
+            left: -CLASS_VIEWER_WORLD_OFFSET,
+            top: -CLASS_VIEWER_WORLD_OFFSET,
+            transformOrigin: '0 0'
+          }}
+        >
+          <svg
+            className="absolute pointer-events-none"
+            width={CLASS_VIEWER_WORLD_SIZE}
+            height={CLASS_VIEWER_WORLD_SIZE}
+            style={{ overflow: 'visible' }}
+          >
             {connections.map((conn: any) => {
               const fromNode = nodes.find((n: any) => n.id === conn.fromNodeId);
               const toNode = nodes.find((n: any) => n.id === conn.toNodeId);
               if (!fromNode || !toNode) return null;
-              const fx = fromNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_W / 2;
-              const fy = fromNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_H / 2;
-              const tx = toNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_W / 2;
-              const ty = toNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET + CLASS_VIEWER_NODE_H / 2;
-              const bothUnlocked = unlockedNodeIds.includes(fromNode.id) && unlockedNodeIds.includes(toNode.id);
+              const fx = CLASS_VIEWER_WORLD_OFFSET + fromNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_NODE_W / 2;
+              const fy = CLASS_VIEWER_WORLD_OFFSET + fromNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_NODE_H / 2;
+              const tx = CLASS_VIEWER_WORLD_OFFSET + toNode.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_NODE_W / 2;
+              const ty = CLASS_VIEWER_WORLD_OFFSET + toNode.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_NODE_H / 2;
+              const fromUnlocked = unlockedNodeIds.includes(fromNode.id);
+              const toUnlocked = unlockedNodeIds.includes(toNode.id);
+              let strokeColor = '#57534e';
+              if (fromUnlocked && toUnlocked) strokeColor = '#22c55e';
+              else if (fromUnlocked) strokeColor = '#eab308';
+              const pathD = generateCurvePath(fx, fy, tx, ty);
               return (
-                <line key={conn.id} x1={fx} y1={fy} x2={tx} y2={ty} stroke={bothUnlocked ? '#22c55e' : '#a855f7'} strokeWidth="2" strokeOpacity={bothUnlocked ? 1 : 0.5} markerEnd="url(#arrowhead-class-viewer)" />
+                <path key={conn.id} d={pathD} fill="none" stroke={strokeColor} strokeWidth={3} />
               );
             })}
-            <defs>
-              <marker id="arrowhead-class-viewer" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
-              </marker>
-            </defs>
           </svg>
 
           {nodes.map((node: any) => {
-            const px = node.gridX * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET;
-            const py = node.gridY * CLASS_VIEWER_CELL + CLASS_VIEWER_OFFSET;
             const isUnlocked = unlockedNodeIds.includes(node.id);
             const canUnlock = canEdit && isNodeUnlockable(node);
             const style = classViewerTierStyles[node.tier] || classViewerTierStyles[1];
             const nodeImg = getNodeImage(node);
             const CLASS_NODE_SIZE = 80;
 
+            let borderColor = 'border-stone-600';
+            let ringStyle = '';
+            let opacityStyle = '';
+            if (isUnlocked) {
+              borderColor = 'border-green-500';
+              ringStyle = 'ring-2 ring-green-400/60 shadow-[0_0_12px_rgba(34,197,94,0.4)]';
+            } else if (canUnlock) {
+              borderColor = style.border;
+              ringStyle = `hover:ring-2 hover:ring-amber-400 ${style.glow}`;
+            } else {
+              borderColor = style.border;
+              opacityStyle = 'opacity-50';
+            }
+
             return (
               <div
                 key={node.id}
                 className="absolute flex flex-col items-center"
-                style={{ left: px + (CLASS_VIEWER_NODE_W - CLASS_NODE_SIZE) / 2, top: py + (CLASS_VIEWER_NODE_H - CLASS_NODE_SIZE - 16) / 2, zIndex: 10 }}
+                style={{
+                  left: CLASS_VIEWER_WORLD_OFFSET + node.gridX * CLASS_VIEWER_CELL + (CLASS_VIEWER_NODE_W - CLASS_NODE_SIZE) / 2,
+                  top: CLASS_VIEWER_WORLD_OFFSET + node.gridY * CLASS_VIEWER_CELL + (CLASS_VIEWER_NODE_H - CLASS_NODE_SIZE - 16) / 2,
+                }}
+                data-class-node
               >
                 <div
-                  className={`rounded-full border-[3px] cursor-pointer select-none transition-all overflow-hidden ${
-                    isUnlocked ? 'border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.4)]' :
-                    canUnlock ? `${style.border} ring-2 ring-green-500/30 ${style.glow}` :
-                    `${style.border} opacity-50`
-                  }`}
+                  className={`rounded-full border-[3px] cursor-pointer transition-all overflow-hidden ${borderColor} ${ringStyle} ${opacityStyle}`}
                   style={{ width: CLASS_NODE_SIZE, height: CLASS_NODE_SIZE }}
-                  onClick={() => setSelectedNode(node)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const now = Date.now();
+                    const isDoubleClick = lastClickedNodeRef.current === node.id && now - lastClickTimeRef.current < 400;
+                    lastClickTimeRef.current = now;
+                    lastClickedNodeRef.current = node.id;
+                    setSelectedNode(node);
+                    if (isDoubleClick && canEdit && canUnlock && !unlockNodeMutation.isPending) {
+                      unlockNodeMutation.mutate(node.id);
+                    }
+                  }}
                   data-testid={`class-viewer-node-${node.id}`}
                 >
                   {nodeImg ? (
                     <img src={nodeImg} alt={node.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center text-center p-1 ${
-                      isUnlocked ? 'bg-gradient-to-br from-green-900/80 to-fuchsia-900/40' : style.bg
+                      isUnlocked ? 'bg-gradient-to-br from-green-900/90 to-emerald-800/80' :
+                      canUnlock ? style.bg :
+                      'bg-gradient-to-br from-stone-800/80 to-stone-900/90'
                     }`}>
                       <span className="text-[10px] font-bold text-white leading-tight">{node.name}</span>
                     </div>
@@ -22448,7 +22665,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
               </div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
 
       <Dialog open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
