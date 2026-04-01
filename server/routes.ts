@@ -5891,11 +5891,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
+      const isOwner = character.userId === req.session.userId;
       const campaign = await storage.getCampaign(character.campaignId);
       const isGM = campaign?.gmUserId === req.session.userId;
       
-      if (!isGM) {
-        return res.status(403).json({ error: "Only the GM can remove feat unlocks" });
+      if (!isGM && !isOwner) {
+        return res.status(403).json({ error: "Not authorized to remove feat unlocks" });
       }
       
       const feat = await storage.getFeat(req.params.featId);

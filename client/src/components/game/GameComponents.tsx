@@ -22126,12 +22126,12 @@ function FeatTreeViewerGrid({
                    : 'Prerequisites Not Met'}
             </Button>
           )}
-          {isGM && unlockedFeatIds.has(selectedFeat.id) && (
+          {(isGM || canEdit) && unlockedFeatIds.has(selectedFeat.id) && (
             <Button
               variant="destructive"
               onClick={() => removeFeatMutation.mutate(selectedFeat.id)}
               disabled={removeFeatMutation.isPending}
-              className="w-full mt-2"
+              className="w-full mt-2 bg-red-800 hover:bg-red-700"
               data-testid="button-remove-feat-unlock"
             >
               {removeFeatMutation.isPending ? 'Removing...' : `Remove Unlock (+${selectedFeat.cost} point${selectedFeat.cost !== 1 ? 's' : ''} back)`}
