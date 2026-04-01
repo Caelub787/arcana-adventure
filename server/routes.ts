@@ -2529,10 +2529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       if (campaign?.system === 'aa-v2') {
         const level = charData.level || 1;
-        let expectedTotal = 0;
-        for (let lvl = 1; lvl <= level; lvl++) {
-          expectedTotal += (lvl % 3 === 0) ? 5 : 3;
-        }
+        const expectedTotal = 3 + 2 * (level - 1) + Math.floor(level / 5);
         charData.classSkillPoints = expectedTotal;
       }
       const character = await storage.createCharacter(charData);
@@ -2703,7 +2700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (newLevel > oldLevel) {
           let pointsToAdd = 0;
           for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
-            pointsToAdd += (lvl % 3 === 0) ? 5 : 3;
+            pointsToAdd += (lvl % 5 === 0) ? 3 : 2;
           }
           if (pointsToAdd > 0) {
             updates.classSkillPoints = (charData.classSkillPoints || 0) + pointsToAdd;
@@ -3863,10 +3860,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const oldLevel = char.level || 1;
             let pointsToAdd = 0;
             if (mode === 'add') {
-              pointsToAdd = (newLevel % 3 === 0) ? 5 : 3;
+              pointsToAdd = (newLevel % 5 === 0) ? 3 : 2;
             } else if (mode === 'set' && newLevel > oldLevel) {
               for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
-                pointsToAdd += (lvl % 3 === 0) ? 5 : 3;
+                pointsToAdd += (lvl % 5 === 0) ? 3 : 2;
               }
             }
             if (pointsToAdd > 0) {
@@ -5427,7 +5424,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const n = allNodes.find(an => an.id === s.nodeId);
         return sum + (n?.cost || 0);
       }, 0);
-      const perClassTotal = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
+      const perClassTotal = 3 + 2 * (charClass.classLevel - 1) + Math.floor(charClass.classLevel / 5);
       await storage.updateCharacterClass(charClass.id, { classPoints: perClassTotal - spentInClass });
 
       const effects = (node.effects as any[]) || [];
@@ -5562,7 +5559,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const n = allNodes.find(an => an.id === s.nodeId);
           return sum + (n?.cost || 0);
         }, 0);
-        const perClassTotal = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
+        const perClassTotal = 3 + 2 * (charClass.classLevel - 1) + Math.floor(charClass.classLevel / 5);
         await storage.updateCharacterClass(charClass.id, { classPoints: perClassTotal - spentInClass });
       }
 
@@ -12147,9 +12144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (char.isTemplate) continue;
           const level = char.level || 1;
           let expectedTotal = 0;
-          for (let lvl = 1; lvl <= level; lvl++) {
-            expectedTotal += (lvl % 3 === 0) ? 5 : 3;
-          }
+          expectedTotal = 3 + 2 * (level - 1) + Math.floor(level / 5);
           const charClasses = await storage.getCharacterClasses(char.id);
           let totalSpent = 0;
           for (const cc of charClasses) {
