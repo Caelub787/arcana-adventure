@@ -3975,6 +3975,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             ),
           };
         });
+        setDragOffset(null);
       }
       return { previousData };
     },
@@ -4230,10 +4231,11 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           gridY: Math.round(newY / CELL_SIZE),
         },
       });
+    } else {
+      setDragOffset(null);
     }
     
     draggingRef.current = null;
-    setDragOffset(null);
     longPressActiveRef.current = false;
     setLongPressId(null);
     
@@ -4856,18 +4858,14 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             const isSelected = selectedFeatId === feat.id;
             const isConnectSource = connectingFrom === feat.id;
             const isDragging = dragOffset?.id === feat.id;
-            const pendingUpdate = pendingDragUpdates.get(feat.id);
             const featImage = getFeatImage(feat);
             const featStyle = featTierStyles[getFeatTier(feat)] || featTierStyles[1];
             
             let posX = feat.gridX * CELL_SIZE;
             let posY = feat.gridY * CELL_SIZE;
-            if (isDragging) {
+            if (isDragging && dragOffset) {
               posX += dragOffset.dx;
               posY += dragOffset.dy;
-            } else if (pendingUpdate) {
-              posX += pendingUpdate.dx;
-              posY += pendingUpdate.dy;
             }
             
             return (
@@ -8110,6 +8108,7 @@ function ClassesView() {
         queryClient.setQueryData(['class-nodes', selectedClassId], (old: any[]) =>
           old?.map(n => n.id === variables.nodeId ? { ...n, gridX: variables.data.gridX ?? n.gridX, gridY: variables.data.gridY ?? n.gridY } : n)
         );
+        setDragOffset(null);
       }
       return { previousData };
     },
@@ -8288,9 +8287,10 @@ function ClassesView() {
         nodeId: node.id,
         data: { gridX: Math.round(newX / CLASS_CELL_SIZE), gridY: Math.round(newY / CLASS_CELL_SIZE) },
       });
+    } else {
+      setDragOffset(null);
     }
     draggingRef.current = null;
-    setDragOffset(null);
     longPressActiveRef.current = false;
     setLongPressId(null);
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
@@ -8874,14 +8874,12 @@ function ClassesView() {
             const isSelected = selectedNodeId === node.id;
             const isConnectSource = connectingFrom === node.id;
             const isDragging = dragOffset?.id === node.id;
-            const pendingUpdate = pendingDragUpdates.get(node.id);
             const nodeImg = getNodeImage(node);
             const style = classTierStyles[node.tier] || classTierStyles[1];
 
             let posX = node.gridX * CLASS_CELL_SIZE;
             let posY = node.gridY * CLASS_CELL_SIZE;
-            if (isDragging) { posX += dragOffset.dx; posY += dragOffset.dy; }
-            else if (pendingUpdate) { posX += pendingUpdate.dx; posY += pendingUpdate.dy; }
+            if (isDragging && dragOffset) { posX += dragOffset.dx; posY += dragOffset.dy; }
 
             return (
               <div
