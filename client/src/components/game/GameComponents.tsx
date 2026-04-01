@@ -22228,6 +22228,16 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     queryFn: () => fetch('/api/system-items?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
   });
 
+  const { data: classViewerTraits = [] } = useQuery<any[]>({
+    queryKey: ['public-traits', 'aa-v2'],
+    queryFn: () => fetch('/api/traits?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+  });
+
+  const { data: classViewerSkills = [] } = useQuery<any[]>({
+    queryKey: ['public-skills', 'aa-v2'],
+    queryFn: () => fetch('/api/custom-skills?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+  });
+
   const getNodeImage = (node: any): string | null => {
     if (node.image) return node.image;
     if (node.effects && Array.isArray(node.effects)) {
@@ -22243,6 +22253,54 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       }
     }
     return null;
+  };
+
+  const getNodeDescription = (node: any): string | undefined => {
+    if (node.description) return node.description;
+    if (node.effects && Array.isArray(node.effects)) {
+      for (const effect of node.effects) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (classViewerSpells as any[]).find((s: any) => s.id === effect.target);
+          if (spell?.description) return spell.description;
+        }
+        if (effect.type === 'trait_grant' && effect.target) {
+          const trait = (classViewerTraits as any[]).find((t: any) => t.id === effect.target);
+          if (trait?.description) return trait.description;
+        }
+        if (effect.type === 'skill_grant' && effect.target) {
+          const skill = (classViewerSkills as any[]).find((s: any) => s.id === effect.target);
+          if (skill?.description) return skill.description;
+        }
+        if (effect.type === 'item_grant' && effect.target) {
+          const item = (classViewerItems as any[]).find((i: any) => i.id === effect.target);
+          if (item?.description) return item.description;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const getEffectLabel = (eff: any): string => {
+    if (eff.type === 'spell_grant' && eff.target) {
+      const spell = (classViewerSpells as any[]).find((s: any) => s.id === eff.target);
+      return `Spell: ${spell?.name || 'Unknown'}`;
+    }
+    if (eff.type === 'item_grant' && eff.target) {
+      const item = (classViewerItems as any[]).find((i: any) => i.id === eff.target);
+      return `Item: ${item?.name || 'Unknown'}`;
+    }
+    if (eff.type === 'trait_grant' && eff.target) {
+      const trait = (classViewerTraits as any[]).find((t: any) => t.id === eff.target);
+      return `Trait: ${trait?.name || 'Unknown'}`;
+    }
+    if (eff.type === 'skill_grant' && eff.target) {
+      const skill = (classViewerSkills as any[]).find((s: any) => s.id === eff.target);
+      return `Skill: ${skill?.name || 'Unknown'}`;
+    }
+    if (eff.type === 'attribute_bonus') {
+      return `${eff.attribute} +${eff.value}${eff.subtype === 'per_level' ? '/lvl' : ''}`;
+    }
+    return `${eff.type.replace(/_/g, ' ')} +${eff.value}${eff.subtype === 'per_level' ? '/lvl' : ''}`;
   };
 
   const unlockNodeMutation = useMutation({
@@ -22397,13 +22455,13 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
         <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-fuchsia-400 flex items-center gap-3">
-              {selectedNode?.image && (
-                <img src={selectedNode.image} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-fuchsia-500 shrink-0" />
+              {selectedNode && getNodeImage(selectedNode) && (
+                <img src={getNodeImage(selectedNode)!} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-fuchsia-500 shrink-0" />
               )}
               {selectedNode?.name}
             </DialogTitle>
-            {selectedNode?.description && (
-              <DialogDescription className="text-stone-400">{selectedNode.description}</DialogDescription>
+            {selectedNode && getNodeDescription(selectedNode) && (
+              <DialogDescription className="text-stone-400">{getNodeDescription(selectedNode)}</DialogDescription>
             )}
           </DialogHeader>
           <div className="space-y-2">
@@ -22417,7 +22475,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
                 <div className="space-y-1 mt-1">
                   {selectedNode.effects.map((eff: any, i: number) => (
                     <div key={i} className="text-xs text-stone-300 bg-stone-800 px-2 py-1 rounded">
-                      {eff.type === 'attribute_bonus' ? `${eff.attribute} +${eff.value}` : `${eff.type.replace(/_/g, ' ')} +${eff.value}`}
+                      {getEffectLabel(eff)}
                     </div>
                   ))}
                 </div>
