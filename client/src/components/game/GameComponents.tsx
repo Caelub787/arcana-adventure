@@ -21774,8 +21774,8 @@ function FeatTreeViewerGrid({
     if (!container) return;
 
     const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
       if (e.touches.length === 2) {
+        e.preventDefault();
         if (gestureModeRef.current === 'panning') {
           gestureModeRef.current = 'idle';
         }
@@ -22461,8 +22461,8 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     if (!container) return;
 
     const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
       if (e.touches.length === 2) {
+        e.preventDefault();
         gestureModeRef.current = 'pinching';
         isPinchingRef.current = true;
         const t1 = e.touches[0];
