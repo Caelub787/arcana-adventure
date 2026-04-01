@@ -4106,6 +4106,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     pendingPointerRef.current = null;
   };
 
+  const touchPanningRef = useRef(false);
+
   // Drag handlers for feat nodes
   const handleFeatPointerDown = (feat: Feat, e: React.PointerEvent) => {
     if (connectionMode) return;
@@ -4114,7 +4116,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     const isTouch = e.pointerType === 'touch';
     
     if (isTouch) {
-      // On touch: require long-press before dragging
+      e.stopPropagation();
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
       pendingPointerRef.current = {
         element: e.currentTarget as HTMLElement,
         pointerId: e.pointerId,
@@ -4122,18 +4125,12 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
         clientX: e.clientX,
         clientY: e.clientY,
       };
+      touchPanningRef.current = false;
       longPressTimerRef.current = setTimeout(() => {
         const pending = pendingPointerRef.current;
         if (!pending) return;
         longPressActiveRef.current = true;
         setLongPressId(feat.id);
-        // Cancel any active canvas pan so drag takes over
-        gestureModeRef.current = 'idle';
-        panPointerIdRef.current = null;
-        panStartRef.current = null;
-        try {
-          pending.element.setPointerCapture(pending.pointerId);
-        } catch {}
         draggingRef.current = {
           featId: feat.id,
           startX: pending.clientX,
@@ -4142,9 +4139,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           origY: feat.gridY * CELL_SIZE,
         };
       }, 400);
-      // Don't stopPropagation or capture yet - let canvas pan work if user moves
     } else {
-      // On mouse: immediate drag
       e.preventDefault();
       e.stopPropagation();
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
@@ -4162,16 +4157,33 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     cancelLongPress();
     draggingRef.current = null;
     setDragOffset(null);
+    touchPanningRef.current = false;
   };
 
   const handleFeatPointerMove = (e: React.PointerEvent) => {
-    // If long-press pending but not yet active, check if user moved too far (cancel long-press, allow pan)
-    if (pendingPointerRef.current && !longPressActiveRef.current) {
+    if (pendingPointerRef.current && !longPressActiveRef.current && !touchPanningRef.current) {
       const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
       const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
       if (dx > 10 || dy > 10) {
         cancelLongPress();
+        touchPanningRef.current = true;
+        panStartRef.current = {
+          pointerX: pendingPointerRef.current.clientX,
+          pointerY: pendingPointerRef.current.clientY,
+          panX: panRef.current.x,
+          panY: panRef.current.y,
+        };
       }
+      return;
+    }
+
+    if (touchPanningRef.current && panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.pointerX;
+      const dy = e.clientY - panStartRef.current.pointerY;
+      const newPan = { x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy };
+      panRef.current = newPan;
+      motionX.set(newPan.x);
+      motionY.set(newPan.y);
       return;
     }
     
@@ -4185,18 +4197,26 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   };
 
   const handleFeatPointerUp = (feat: Feat, e: React.PointerEvent) => {
-    // Cancel any pending long-press
     if (pendingPointerRef.current) {
       cancelLongPress();
     }
+
+    if (touchPanningRef.current) {
+      touchPanningRef.current = false;
+      panStartRef.current = null;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     
-    if (!draggingRef.current || draggingRef.current.featId !== feat.id) return;
+    if (!draggingRef.current || draggingRef.current.featId !== feat.id) {
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     
     const zoom = zoomRef.current;
     const dx = (e.clientX - draggingRef.current.startX) / zoom;
     const dy = (e.clientY - draggingRef.current.startY) / zoom;
     
-    // Only save if moved significantly
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
       const newX = draggingRef.current.origX + dx;
       const newY = draggingRef.current.origY + dy;
@@ -8158,11 +8178,15 @@ function ClassesView() {
     pendingPointerRef.current = null;
   };
 
+  const touchPanningRefClass = useRef(false);
+
   const handleNodePointerDown = (node: any, e: React.PointerEvent) => {
     if (connectingFrom) return;
     if (pendingDragUpdates.has(node.id)) return;
     const isTouch = e.pointerType === 'touch';
     if (isTouch) {
+      e.stopPropagation();
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
       pendingPointerRef.current = {
         element: e.currentTarget as HTMLElement,
         pointerId: e.pointerId,
@@ -8170,15 +8194,12 @@ function ClassesView() {
         clientX: e.clientX,
         clientY: e.clientY,
       };
+      touchPanningRefClass.current = false;
       longPressTimerRef.current = setTimeout(() => {
         const pending = pendingPointerRef.current;
         if (!pending) return;
         longPressActiveRef.current = true;
         setLongPressId(node.id);
-        gestureModeRef.current = 'idle';
-        panPointerIdRef.current = null;
-        panStartRef.current = null;
-        try { pending.element.setPointerCapture(pending.pointerId); } catch {}
         draggingRef.current = {
           nodeId: node.id,
           startX: pending.clientX,
@@ -8205,15 +8226,36 @@ function ClassesView() {
     cancelLongPressClass();
     draggingRef.current = null;
     setDragOffset(null);
+    touchPanningRefClass.current = false;
   };
 
   const handleNodePointerMove = (e: React.PointerEvent) => {
-    if (pendingPointerRef.current && !longPressActiveRef.current) {
+    if (pendingPointerRef.current && !longPressActiveRef.current && !touchPanningRefClass.current) {
       const dx = Math.abs(e.clientX - pendingPointerRef.current.clientX);
       const dy = Math.abs(e.clientY - pendingPointerRef.current.clientY);
-      if (dx > 10 || dy > 10) { cancelLongPressClass(); }
+      if (dx > 10 || dy > 10) {
+        cancelLongPressClass();
+        touchPanningRefClass.current = true;
+        panStartRef.current = {
+          pointerX: pendingPointerRef.current.clientX,
+          pointerY: pendingPointerRef.current.clientY,
+          panX: panRef.current.x,
+          panY: panRef.current.y,
+        };
+      }
       return;
     }
+
+    if (touchPanningRefClass.current && panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.pointerX;
+      const dy = e.clientY - panStartRef.current.pointerY;
+      const newPan = { x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy };
+      panRef.current = newPan;
+      motionX.set(newPan.x);
+      motionY.set(newPan.y);
+      return;
+    }
+
     if (!draggingRef.current) return;
     const zoom = zoomRef.current;
     const dx = (e.clientX - draggingRef.current.startX) / zoom;
@@ -8223,7 +8265,18 @@ function ClassesView() {
 
   const handleNodePointerUp = (node: any, e: React.PointerEvent) => {
     if (pendingPointerRef.current) { cancelLongPressClass(); }
-    if (!draggingRef.current || draggingRef.current.nodeId !== node.id) return;
+
+    if (touchPanningRefClass.current) {
+      touchPanningRefClass.current = false;
+      panStartRef.current = null;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
+
+    if (!draggingRef.current || draggingRef.current.nodeId !== node.id) {
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     const zoom = zoomRef.current;
     const dx = (e.clientX - draggingRef.current.startX) / zoom;
     const dy = (e.clientY - draggingRef.current.startY) / zoom;
