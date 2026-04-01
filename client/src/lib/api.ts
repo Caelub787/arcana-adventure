@@ -1687,6 +1687,10 @@ class ApiClient {
     return this.request(`/characters/${characterId}/feats/${featId}`, { method: 'DELETE' });
   }
 
+  async removeCharacterClassNode(characterId: string, classId: string, nodeId: string): Promise<any> {
+    return this.request(`/characters/${characterId}/classes/${classId}/nodes/${nodeId}`, { method: 'DELETE' });
+  }
+
   // Campaign Template Items
   async getTemplateItems(campaignId: string): Promise<{ campaignItems: Item[], systemItems: Item[] }> {
     return this.request(`/campaigns/${campaignId}/template-items`);

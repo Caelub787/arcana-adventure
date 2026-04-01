@@ -22359,6 +22359,24 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     onError: (e: any) => toast({ title: "Cannot unlock", description: e.message, variant: "destructive" }),
   });
 
+  const removeNodeMutation = useMutation({
+    mutationFn: async (nodeId: string) => {
+      const res = await fetch(`/api/characters/${characterId}/classes/${classId}/nodes/${nodeId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to remove');
+      return res.json();
+    },
+    onSuccess: () => {
+      onNodeUnlocked();
+      queryClient.invalidateQueries({ queryKey: ['character-classes', characterId] });
+      setSelectedNode(null);
+      toast({ title: "Node unlock removed" });
+    },
+    onError: (e: any) => toast({ title: "Cannot remove", description: e.message, variant: "destructive" }),
+  });
+
   const unlockedNodeIds = characterClass?.unlockedNodes || [];
   const availablePoints = globalClassPoints;
 
@@ -22722,18 +22740,31 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
               <Badge className="bg-green-700 text-white">Already Unlocked</Badge>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedNode(null)}>Close</Button>
-            {canEdit && selectedNode && !unlockedNodeIds.includes(selectedNode.id) && (
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            {canEdit && selectedNode && unlockedNodeIds.includes(selectedNode.id) && (
               <Button
-                className="bg-fuchsia-700 hover:bg-fuchsia-600"
-                disabled={!isNodeUnlockable(selectedNode) || unlockNodeMutation.isPending}
-                onClick={() => unlockNodeMutation.mutate(selectedNode.id)}
-                data-testid="button-unlock-node"
+                variant="destructive"
+                className="w-full bg-red-800 hover:bg-red-700"
+                disabled={removeNodeMutation.isPending}
+                onClick={() => removeNodeMutation.mutate(selectedNode.id)}
+                data-testid="button-remove-node-unlock"
               >
-                {unlockNodeMutation.isPending ? 'Unlocking...' : `Unlock (${selectedNode.cost} pts)`}
+                {removeNodeMutation.isPending ? 'Removing...' : `Remove Unlock (+${selectedNode.cost} pt${selectedNode.cost !== 1 ? 's' : ''} back)`}
               </Button>
             )}
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" onClick={() => setSelectedNode(null)}>Close</Button>
+              {canEdit && selectedNode && !unlockedNodeIds.includes(selectedNode.id) && (
+                <Button
+                  className="bg-fuchsia-700 hover:bg-fuchsia-600 flex-1"
+                  disabled={!isNodeUnlockable(selectedNode) || unlockNodeMutation.isPending}
+                  onClick={() => unlockNodeMutation.mutate(selectedNode.id)}
+                  data-testid="button-unlock-node"
+                >
+                  {unlockNodeMutation.isPending ? 'Unlocking...' : `Unlock (${selectedNode.cost} pts)`}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

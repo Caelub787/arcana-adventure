@@ -5487,6 +5487,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/characters/:id/classes/:classId/nodes/:nodeId", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+
+      const isOwner = character.userId === req.session.userId;
+      const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
+      const isGM = campaign?.gmUserId === req.session.userId;
+      if (!isGM && !isOwner) return res.status(403).json({ error: "Not authorized" });
+
+      const node = await storage.getClassSkillNode(req.params.nodeId);
+      if (!node) return res.status(404).json({ error: "Node not found" });
+      if (node.classId !== req.params.classId) return res.status(400).json({ error: "Node does not belong to this class" });
+
+      const existingSkills = await storage.getCharacterClassSkills(req.params.id, req.params.classId);
+      const skillRecord = existingSkills.find(s => s.nodeId === req.params.nodeId);
+      if (!skillRecord) return res.status(400).json({ error: "Node not unlocked" });
+
+      const connections = await storage.getClassSkillConnections(req.params.classId);
+      const dependentNodes = connections.filter(c => c.fromNodeId === req.params.nodeId);
+      for (const dep of dependentNodes) {
+        if (existingSkills.some(s => s.nodeId === dep.toNodeId)) {
+          const depNode = await storage.getClassSkillNode(dep.toNodeId);
+          return res.status(400).json({ error: `Cannot remove: "${depNode?.name || 'another node'}" depends on this node` });
+        }
+      }
+
+      await storage.deleteCharacterClassSkill(skillRecord.id);
+
+      const globalPoints = character.classSkillPoints || 0;
+      await storage.updateCharacter(req.params.id, {
+        classSkillPoints: globalPoints + node.cost,
+      });
+
+      const effects = (node.effects as any[]) || [];
+      const charUpdates: Record<string, any> = {};
+      if (effects.length > 0) {
+        for (const effect of effects) {
+          if (effect.type === 'hp_bonus' && effect.value) {
+            charUpdates.maxHp = (charUpdates.maxHp ?? (character.maxHp || 0)) - Number(effect.value);
+            charUpdates.hp = Math.min(character.hp || 0, charUpdates.maxHp ?? (character.maxHp || 0));
+          } else if (effect.type === 'energy_increase' && effect.value) {
+            charUpdates.maxEnergy = (charUpdates.maxEnergy ?? (character.maxEnergy || 0)) - Number(effect.value);
+            charUpdates.energy = Math.min(character.energy || 0, charUpdates.maxEnergy ?? (character.maxEnergy || 0));
+          } else if (effect.type === 'mana_increase' && effect.value) {
+            charUpdates.maxMana = (charUpdates.maxMana ?? (character.maxMana || 0)) - Number(effect.value);
+            charUpdates.mana = Math.min(character.mana || 0, charUpdates.maxMana ?? (character.maxMana || 0));
+          } else if (effect.type === 'attribute_bonus' && effect.attribute && effect.value) {
+            const attrMap: Record<string, string> = { might: 'might', finesse: 'finesse', wit: 'wit', presence: 'presence', will: 'will', craft: 'craft' };
+            const field = attrMap[effect.attribute];
+            if (field) {
+              charUpdates[field] = (charUpdates[field] ?? ((character as any)[field] || 0)) - Number(effect.value);
+            }
+          } else if (effect.type === 'skill_bonus' && effect.target && effect.value) {
+            const skillFields = ['skillAgility','skillArcana','skillCharisma','skillConcentration','skillDeception','skillHistory','skillIntimidation','skillInvestigation','skillMedicine','skillPerception','skillSleightOfHand','skillStealth','skillStrength','skillWisdom','skillCulture'];
+            const field = skillFields.find(f => f.toLowerCase() === `skill${effect.target}`.toLowerCase());
+            if (field) {
+              charUpdates[field] = (charUpdates[field] ?? ((character as any)[field] || 0)) - Number(effect.value);
+            }
+          }
+        }
+      }
+      if (Object.keys(charUpdates).length > 0) {
+        await storage.updateCharacter(req.params.id, charUpdates);
+      }
+
+      const charClasses = await storage.getCharacterClasses(req.params.id);
+      const charClass = charClasses.find(cc => cc.classId === req.params.classId);
+      if (charClass) {
+        const allNodes = await storage.getClassSkillNodes(req.params.classId);
+        const remainingSkills = await storage.getCharacterClassSkills(req.params.id, req.params.classId);
+        const spentInClass = remainingSkills.reduce((sum, s) => {
+          const n = allNodes.find(an => an.id === s.nodeId);
+          return sum + (n?.cost || 0);
+        }, 0);
+        const perClassTotal = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
+        await storage.updateCharacterClass(charClass.id, { classPoints: perClassTotal - spentInClass });
+      }
+
+      if (character.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "character_class_updated",
+          characterId: req.params.id,
+        });
+        const updatedChar = await storage.getCharacter(req.params.id);
+        broadcastToCampaign(character.campaignId, {
+          type: "character_updated",
+          characterId: req.params.id,
+          character: updatedChar,
+        });
+      }
+
+      res.json({ success: true, pointsReturned: node.cost });
+    } catch (err) {
+      console.error("Remove class node unlock error:", err);
+      res.status(400).json({ error: "Failed to remove node unlock" });
+    }
+  });
+
   // ==================== FEAT TREE ROUTES ====================
 
   app.get("/api/admin/feat-trees", requireAdmin, async (req, res) => {
