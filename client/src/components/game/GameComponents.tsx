@@ -21774,6 +21774,7 @@ function FeatTreeViewerGrid({
     if (!container) return;
 
     const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
       if (e.touches.length === 2) {
         if (gestureModeRef.current === 'panning') {
           gestureModeRef.current = 'idle';
@@ -21786,8 +21787,8 @@ function FeatTreeViewerGrid({
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
       if (e.touches.length === 2) {
-        e.preventDefault();
         gestureModeRef.current = 'pinching';
         isPinchingRef.current = true;
         
@@ -21936,6 +21937,8 @@ function FeatTreeViewerGrid({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         {/* Infinite canvas world */}
         <motion.div
@@ -22458,8 +22461,8 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     if (!container) return;
 
     const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
       if (e.touches.length === 2) {
-        e.preventDefault();
         gestureModeRef.current = 'pinching';
         isPinchingRef.current = true;
         const t1 = e.touches[0];
@@ -22469,8 +22472,8 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
       if (e.touches.length === 2 && gestureModeRef.current === 'pinching') {
-        e.preventDefault();
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
@@ -22591,6 +22594,8 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         <motion.div
           className="absolute"
