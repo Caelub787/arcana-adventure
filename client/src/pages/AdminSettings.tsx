@@ -4248,10 +4248,13 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   const handleAddFeat = () => {
     const zoom = zoomRef.current;
     const pan = panRef.current;
+    const container = canvasContainerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const vw = rect?.width || viewportSize.width || 800;
+    const vh = rect?.height || viewportSize.height || 600;
     
-    // Calculate world position at viewport center (in pixels), then convert to grid indices
-    const centerX = Math.round((viewportSize.width / 2 - pan.x) / zoom);
-    const centerY = Math.round((viewportSize.height / 2 - pan.y) / zoom);
+    const centerX = Math.round((vw / 2 - pan.x) / zoom);
+    const centerY = Math.round((vh / 2 - pan.y) / zoom);
     
     setEditingFeat({ 
       gridX: Math.round(centerX / CELL_SIZE), 
@@ -4260,6 +4263,30 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
       cost: 1 
     } as Feat);
     setShowFeatEditor(true);
+  };
+
+  const handleDuplicateFeat = (feat: Feat) => {
+    const zoom = zoomRef.current;
+    const pan = panRef.current;
+    const container = canvasContainerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const vw = rect?.width || viewportSize.width || 800;
+    const vh = rect?.height || viewportSize.height || 600;
+    const centerX = Math.round((vw / 2 - pan.x) / zoom);
+    const centerY = Math.round((vh / 2 - pan.y) / zoom);
+
+    const newFeat: Partial<Feat> = {
+      name: feat.name + ' (Copy)',
+      description: (feat as any).description || undefined,
+      icon: feat.icon || undefined,
+      image: (feat as any).image || undefined,
+      gridX: Math.round(centerX / CELL_SIZE) + 1,
+      gridY: Math.round(centerY / CELL_SIZE),
+      tier: feat.tier || 1,
+      cost: feat.cost || 1,
+      effects: (feat as any).effects || [],
+    };
+    createFeatMutation.mutate({ treeId: selectedTreeId!, feat: newFeat });
   };
 
   // Infinite canvas state - use refs to avoid re-renders during pan/zoom
@@ -4976,6 +5003,18 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
                 >
                   <Link className="h-5 w-5 text-blue-400" />
                   <span>Start Connection</span>
+                </button>
+                
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-green-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    const feat = featById.get(featActionMenu);
+                    if (feat) handleDuplicateFeat(feat);
+                    setFeatActionMenu(null);
+                  }}
+                >
+                  <Copy className="h-5 w-5 text-green-400" />
+                  <span>Duplicate Feat</span>
                 </button>
                 
                 <div className="border-t border-stone-600 my-2" />
@@ -8343,8 +8382,12 @@ function ClassesView() {
     if (!selectedClassId) return;
     const zoom = zoomRef.current;
     const pan = panRef.current;
-    const centerX = Math.round((viewportSize.width / 2 - pan.x) / zoom);
-    const centerY = Math.round((viewportSize.height / 2 - pan.y) / zoom);
+    const container = canvasContainerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const vw = rect?.width || viewportSize.width || 800;
+    const vh = rect?.height || viewportSize.height || 600;
+    const centerX = Math.round((vw / 2 - pan.x) / zoom);
+    const centerY = Math.round((vh / 2 - pan.y) / zoom);
     setEditingNode({
       gridX: Math.round(centerX / CLASS_CELL_SIZE),
       gridY: Math.round(centerY / CLASS_CELL_SIZE),
@@ -8353,6 +8396,30 @@ function ClassesView() {
       effects: [],
     });
     setShowNodeEditor(true);
+  };
+
+  const handleDuplicateNode = (node: any) => {
+    if (!selectedClassId) return;
+    const zoom = zoomRef.current;
+    const pan = panRef.current;
+    const container = canvasContainerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const vw = rect?.width || viewportSize.width || 800;
+    const vh = rect?.height || viewportSize.height || 600;
+    const centerX = Math.round((vw / 2 - pan.x) / zoom);
+    const centerY = Math.round((vh / 2 - pan.y) / zoom);
+
+    createNodeMutation.mutate({
+      name: node.name + ' (Copy)',
+      description: node.description || undefined,
+      icon: node.icon || undefined,
+      image: node.image || undefined,
+      gridX: Math.round(centerX / CLASS_CELL_SIZE) + 1,
+      gridY: Math.round(centerY / CLASS_CELL_SIZE),
+      tier: node.tier || 1,
+      cost: node.cost || 1,
+      effects: node.effects || [],
+    });
   };
 
   useEffect(() => {
@@ -8988,6 +9055,18 @@ function ClassesView() {
                 >
                   <Link className="h-5 w-5 text-blue-400" />
                   <span>Start Connection</span>
+                </button>
+
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-green-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    handleDuplicateNode(actionNode);
+                    setNodeActionMenu(null);
+                  }}
+                  data-testid="button-duplicate-node"
+                >
+                  <Copy className="h-5 w-5 text-green-400" />
+                  <span>Duplicate Skill</span>
                 </button>
 
                 <div className="border-t border-stone-600 my-2" />
