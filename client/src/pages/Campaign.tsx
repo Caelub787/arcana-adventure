@@ -6992,6 +6992,7 @@ function WorldBuilderContent({
                             onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
                             onEntityContextMenu={handleWbEntityContextMenu}
                             skipSync
+                            onEntityCreated={(id, name) => handleOpenEntityInCurrentTab(id, name)}
                           />
                         </div>
                       )}
@@ -7012,6 +7013,7 @@ function WorldBuilderContent({
                               onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
                               onEntityContextMenu={handleWbEntityContextMenu}
                             />
+                              onEntityCreated={(id, name) => { const resolvedTitle = name || "Article"; setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId: id, title: resolvedTitle } : t)); setSelectedEntityId(id); }}
                           </div>
                           <div className="flex-1 overflow-y-auto min-w-0">
                             <EntitySidePanel

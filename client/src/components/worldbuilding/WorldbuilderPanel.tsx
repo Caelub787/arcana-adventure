@@ -24,13 +24,14 @@ interface WorldbuilderPanelProps {
   onOpenEntity?: (entityId: string, title?: string) => void;
   onOpenEntityNewTab?: (entityId: string, title?: string) => void;
   onEntityContextMenu?: (e: React.MouseEvent, entityId: string, entityName: string) => void;
+  onEntityCreated?: (entityId: string, title: string) => void;
   createOnly?: boolean;
   onCloseCreate?: () => void;
   customTags?: string[];
   skipSync?: boolean;
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, onEntityContextMenu, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, onEntityContextMenu, onEntityCreated, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
   useWorldbuildingSync(skipSync ? undefined : resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
@@ -85,10 +86,11 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
 
   const handleCreate = async () => {
     if (!newEntity.displayName.trim()) return;
-    await createEntity.mutateAsync({
+    const name = newEntity.displayName.trim();
+    const created = await createEntity.mutateAsync({
       worldId: worldId || undefined,
       campaignId: campaignId || undefined,
-      displayName: newEntity.displayName.trim(),
+      displayName: name,
       entityType: newEntity.entityType,
       description: newEntity.description.trim() || undefined,
       visibility: newEntity.visibility,
@@ -98,6 +100,9 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
     setShowCreateDialog(false);
     setNewEntity({ displayName: "", entityType: "article", description: "", visibility: "gm_only", sheetId: "", selectedTags: [] });
     setCreateTagSearch("");
+    if (created?.id && onEntityCreated) {
+      onEntityCreated(created.id, name);
+    }
     if (createOnly && onCloseCreate) onCloseCreate();
   };
 

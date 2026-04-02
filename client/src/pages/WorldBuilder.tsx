@@ -1572,6 +1572,7 @@ export default function WorldBuilder() {
           worldId={selectedWorldId}
           isGM={true}
           onOpenEntity={handleSelectEntity}
+          onEntityCreated={(id, name) => { setShowCreateInline(false); handleOpenEntityInCurrentTab(id, name); }}
           createOnly={true}
           onCloseCreate={() => setShowCreateInline(false)}
           customTags={(selectedWorld?.customTags as string[]) || []}
