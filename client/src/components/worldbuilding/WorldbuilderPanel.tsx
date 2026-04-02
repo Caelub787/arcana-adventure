@@ -47,7 +47,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
     displayName: "",
     entityType: "article",
     description: "",
-    visibility: "gm_only",
+    visibility: "shared",
     sheetId: "",
     selectedTags: [] as string[],
   });
@@ -98,7 +98,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
       tags: newEntity.selectedTags,
     });
     setShowCreateDialog(false);
-    setNewEntity({ displayName: "", entityType: "article", description: "", visibility: "gm_only", sheetId: "", selectedTags: [] });
+    setNewEntity({ displayName: "", entityType: "article", description: "", visibility: "shared", sheetId: "", selectedTags: [] });
     setCreateTagSearch("");
     if (created?.id && onEntityCreated) {
       onEntityCreated(created.id, name);
