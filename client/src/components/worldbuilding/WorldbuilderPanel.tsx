@@ -21,13 +21,14 @@ interface WorldbuilderPanelProps {
   worldId?: string;
   isGM: boolean;
   characters?: any[];
-  onOpenEntity?: (entityId: string) => void;
+  onOpenEntity?: (entityId: string, title?: string) => void;
+  onOpenEntityNewTab?: (entityId: string, title?: string) => void;
   createOnly?: boolean;
   onCloseCreate?: () => void;
   customTags?: string[];
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate, customTags = [] }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, createOnly = false, onCloseCreate, customTags = [] }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
   useWorldbuildingSync(resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
@@ -99,8 +100,12 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
   };
 
   const handleEntityClick = (entityId: string) => {
-    if (onOpenEntity) {
-      onOpenEntity(entityId);
+    const entity = entities.find(e => e.id === entityId);
+    const title = entity?.displayName || "Article";
+    if (onOpenEntityNewTab) {
+      onOpenEntityNewTab(entityId, title);
+    } else if (onOpenEntity) {
+      onOpenEntity(entityId, title);
     } else {
       setSelectedEntityId(entityId);
     }

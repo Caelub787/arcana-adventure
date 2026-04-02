@@ -6411,6 +6411,8 @@ function WorldBuilderContent({
   const [activeSection, setActiveSection] = useState<WorldBuilderSection>("home");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [entityHistory, setEntityHistory] = useState<string[]>([]);
+  const [wbTabs, setWbTabs] = useState<Array<{ id: string; entityId: string; title: string; type: string }>>([]);
+  const [activeWbTabId, setActiveWbTabId] = useState<string | null>(null);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
@@ -6589,12 +6591,67 @@ function WorldBuilderContent({
     }
   };
 
-  const handleSelectEntity = (entityId: string) => {
-    if (selectedEntityId && selectedEntityId !== entityId) {
-      setEntityHistory(prev => [...prev, selectedEntityId]);
+  const getEntityTitle = (entityId: string, fallback?: string) => {
+    const entity = entities.find((e: any) => e.id === entityId);
+    return entity?.displayName || fallback || "Article";
+  };
+
+  const handleOpenEntityInNewTab = (entityId: string, title?: string) => {
+    const existingTab = wbTabs.find(t => t.entityId === entityId);
+    if (existingTab) {
+      setActiveWbTabId(existingTab.id);
+      setSelectedEntityId(entityId);
+    } else {
+      const resolvedTitle = title || getEntityTitle(entityId);
+      const tabId = `wb-tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      setWbTabs(prev => [...prev, { id: tabId, entityId, title: resolvedTitle, type: "article" }]);
+      setActiveWbTabId(tabId);
+      setSelectedEntityId(entityId);
     }
-    setSelectedEntityId(entityId);
     setActiveSection("encyclopedia");
+  };
+
+  const handleOpenEntityInCurrentTab = (entityId: string, title?: string) => {
+    const resolvedTitle = title || getEntityTitle(entityId);
+    if (activeWbTabId) {
+      setWbTabs(prev => prev.map(t => t.id === activeWbTabId ? { ...t, entityId, title: resolvedTitle } : t));
+      setSelectedEntityId(entityId);
+    } else {
+      handleOpenEntityInNewTab(entityId, resolvedTitle);
+    }
+    setActiveSection("encyclopedia");
+  };
+
+  const handleSelectEntity = (entityId: string) => {
+    if (activeSection !== "encyclopedia" || !activeWbTabId) {
+      handleOpenEntityInNewTab(entityId);
+    } else {
+      handleOpenEntityInCurrentTab(entityId);
+    }
+  };
+
+  const handleCloseWbTab = (tabId: string) => {
+    setWbTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId);
+      const newTabs = prev.filter(t => t.id !== tabId);
+      if (activeWbTabId === tabId) {
+        if (newTabs.length === 0) {
+          setActiveWbTabId(null);
+          setSelectedEntityId(null);
+        } else {
+          const nextTab = idx > 0 ? newTabs[idx - 1] : newTabs[0];
+          setActiveWbTabId(nextTab.id);
+          setSelectedEntityId(nextTab.entityId);
+        }
+      }
+      return newTabs;
+    });
+  };
+
+  const handleSwitchWbTab = (tabId: string) => {
+    setActiveWbTabId(tabId);
+    const tab = wbTabs.find(t => t.id === tabId);
+    if (tab) setSelectedEntityId(tab.entityId);
   };
 
   const handleEntityBack = () => {
@@ -6605,6 +6662,11 @@ function WorldBuilderContent({
     } else {
       setSelectedEntityId(null);
     }
+  };
+
+  const handleWbGoHome = () => {
+    setSelectedEntityId(null);
+    setActiveWbTabId(null);
   };
 
   const handleSelectTimeline = (timelineId: string | null) => {
@@ -6747,40 +6809,102 @@ function WorldBuilderContent({
 
                 {activeSection === "encyclopedia" && (
                   <div className="flex flex-col h-full">
-                    {selectedEntityId && (
+                    {wbTabs.length > 0 && (
+                      <div className="border-b border-stone-800 bg-stone-900/80 py-1 shrink-0">
+                        <div className="flex items-center gap-1 px-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleWbGoHome}
+                            className={`h-6 px-2 text-xs flex-shrink-0 ${!activeWbTabId ? 'text-amber-400 bg-stone-800' : 'text-stone-400 hover:text-white'}`}
+                            data-testid="button-wb-home"
+                          >
+                            <Home className="h-3 w-3 mr-1" />
+                            Home
+                          </Button>
+                          <div className="h-4 w-px bg-stone-700 flex-shrink-0" />
+                          <div className="flex gap-1 overflow-x-auto flex-1">
+                            {wbTabs.map((tab) => {
+                              const isActive = tab.id === activeWbTabId;
+                              return (
+                                <button
+                                  key={tab.id}
+                                  onClick={() => handleSwitchWbTab(tab.id)}
+                                  className={`group flex items-center gap-1.5 px-2 py-1 rounded-t flex-shrink-0 text-xs max-w-[160px] ${
+                                    isActive
+                                      ? "bg-stone-800 text-amber-400 border-b-2 border-amber-500"
+                                      : "bg-stone-900/50 text-stone-400 hover:bg-stone-800/70 hover:text-stone-300 border-b-2 border-transparent"
+                                  } transition-all duration-150`}
+                                  data-testid={`wb-tab-${tab.id}`}
+                                >
+                                  <FileText className={`flex-shrink-0 h-3 w-3 ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
+                                  <span className="truncate flex-1 text-left">{tab.title || "Article"}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCloseWbTab(tab.id);
+                                    }}
+                                    className={`flex-shrink-0 p-0.5 rounded hover:bg-stone-700 transition-colors ${
+                                      isActive ? 'text-stone-400 hover:text-stone-200' : 'text-stone-500 hover:text-stone-300 opacity-0 group-hover:opacity-100'
+                                    }`}
+                                    data-testid={`wb-tab-close-${tab.id}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {selectedEntityId && activeWbTabId && (
                       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-stone-700 bg-stone-800/30 shrink-0">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={handleEntityBack}
+                          onClick={handleWbGoHome}
                           className="h-7 text-stone-400 hover:text-white text-xs"
-                          data-testid="button-entity-back"
+                          data-testid="button-entity-home"
                         >
-                          <ArrowLeft className="h-3.5 w-3.5 mr-1" />
-                          {entityHistory.length > 0 ? "Back" : "Close"}
+                          <Home className="h-3.5 w-3.5 mr-1" />
+                          Encyclopedia
                         </Button>
                       </div>
                     )}
                     <div className="flex flex-1 overflow-hidden">
-                      <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
-                        <WorldbuilderPanel
-                          worldId={selectedWorldId}
-                          isGM={isGM}
-                          characters={characters}
-                          onOpenEntity={(entityId) => handleSelectEntity(entityId)}
-                        />
-                      </div>
-                      {selectedEntityId && (
-                        <div className="w-1/2 overflow-y-auto">
-                          <EntitySidePanel
+                      {(!activeWbTabId || !selectedEntityId) ? (
+                        <div className="w-full overflow-hidden">
+                          <WorldbuilderPanel
                             worldId={selectedWorldId}
-                            entityId={selectedEntityId}
-                            onClose={() => { setSelectedEntityId(null); setEntityHistory([]); }}
-                            onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
                             isGM={isGM}
-                            embedded={true}
+                            characters={characters}
+                            onOpenEntity={(entityId, title) => handleSelectEntity(entityId)}
+                            onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
                           />
                         </div>
+                      ) : (
+                        <>
+                          <div className="w-1/3 border-r border-stone-700 overflow-hidden">
+                            <WorldbuilderPanel
+                              worldId={selectedWorldId}
+                              isGM={isGM}
+                              characters={characters}
+                              onOpenEntity={(entityId, title) => handleOpenEntityInCurrentTab(entityId, title)}
+                              onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
+                            />
+                          </div>
+                          <div className="w-2/3 overflow-y-auto">
+                            <EntitySidePanel
+                              worldId={selectedWorldId}
+                              entityId={selectedEntityId}
+                              onClose={() => { if (activeWbTabId) handleCloseWbTab(activeWbTabId); }}
+                              onNavigateToEntity={(entityId) => handleOpenEntityInCurrentTab(entityId)}
+                              isGM={isGM}
+                              embedded={true}
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
