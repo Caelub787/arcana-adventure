@@ -657,9 +657,9 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
         {image && (
-          <div className="relative h-48 overflow-hidden">
+          <div className="relative h-48 overflow-hidden flex-shrink-0">
             <img src={image} alt="" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-stone-950 to-transparent" />
           </div>
@@ -673,10 +673,10 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
             worldId={worldId || ""}
           />
         ) : (
-          <div className="p-3 md:p-4 relative" ref={editorContainerRef}>
+          <div className="p-3 md:p-4 relative flex-1 flex flex-col min-h-0" ref={editorContainerRef}>
             {mode === "edit" ? (
               <>
-                <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap">
+                <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap flex-shrink-0">
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
                   <div className="w-px h-4 bg-stone-700 mx-1" />
@@ -697,7 +697,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                   value={articleContent}
                   onChange={handleArticleContentChange}
                   placeholder="Write your article here... Type [[ to insert a wiki link."
-                  className="bg-stone-950 border-stone-800 text-stone-300 min-h-[250px] md:min-h-[400px] font-mono text-sm resize-none leading-relaxed"
+                  className="bg-stone-950 border-stone-800 text-stone-300 flex-1 min-h-[200px] font-mono text-sm resize-none leading-relaxed"
                   data-testid="textarea-article-content"
                 />
                 {wikiPickerOpen && worldId && (
