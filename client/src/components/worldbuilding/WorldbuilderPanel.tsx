@@ -341,7 +341,9 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                   <div
                     key={entity.id}
                     role="listitem"
+                    tabIndex={0}
                     onClick={(e) => handleEntityClick(entity.id, e)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEntityClick(entity.id); } }}
                     className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 cursor-pointer ${
                       selectedEntityId === entity.id
                         ? 'bg-stone-800 border-l-2 border-amber-400'
