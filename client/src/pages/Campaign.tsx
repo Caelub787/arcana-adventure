@@ -6786,9 +6786,11 @@ function WorldBuilderContent({
         )}
       </div>
 
-      {wbTabs.length > 0 && (
-        <div className="border-b border-stone-700 bg-stone-900/80 shrink-0">
+      <div className="border-b border-stone-700 bg-stone-900/80 shrink-0 min-h-[30px]">
           <div className="flex items-center overflow-x-auto">
+            {wbTabs.length === 0 && (
+              <span className="text-[10px] text-stone-600 px-3 py-1.5 italic">No tabs open</span>
+            )}
             {wbTabs.map((tab) => {
               const isActive = tab.id === activeWbTabId;
               const tabMeta = TAB_TYPE_ICONS[tab.type] || TAB_TYPE_ICONS.article;
@@ -6825,8 +6827,7 @@ function WorldBuilderContent({
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
 
       <div className="flex-1 overflow-hidden relative">
           {!selectedWorldId ? (

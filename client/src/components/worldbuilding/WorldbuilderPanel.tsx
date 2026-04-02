@@ -100,13 +100,16 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
     if (createOnly && onCloseCreate) onCloseCreate();
   };
 
-  const handleEntityClick = (entityId: string) => {
-    const entity = entities.find(e => e.id === entityId);
+  const handleEntityClick = (entityId: string, e?: React.MouseEvent) => {
+    const entity = entities.find(ent => ent.id === entityId);
     const title = entity?.displayName || "Article";
-    if (onOpenEntityNewTab) {
+    const wantsNewTab = e && (e.ctrlKey || e.metaKey);
+    if (wantsNewTab && onOpenEntityNewTab) {
       onOpenEntityNewTab(entityId, title);
     } else if (onOpenEntity) {
       onOpenEntity(entityId, title);
+    } else if (onOpenEntityNewTab) {
+      onOpenEntityNewTab(entityId, title);
     } else {
       setSelectedEntityId(entityId);
     }
@@ -337,7 +340,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                 return (
                   <button
                     key={entity.id}
-                    onClick={() => handleEntityClick(entity.id)}
+                    onClick={(e) => handleEntityClick(entity.id, e)}
                     className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
                       selectedEntityId === entity.id
                         ? 'bg-stone-800 border-l-2 border-amber-400'
