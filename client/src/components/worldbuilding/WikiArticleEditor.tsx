@@ -311,17 +311,19 @@ function WikiReferencePicker({ worldId, onSelect, onClose, position }: {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") { onClose(); return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, results.length - 1)); return; }
-    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); return; }
-    if (e.key === "Enter" && results[selectedIndex]) { e.preventDefault(); onSelect(results[selectedIndex]); return; }
-  };
-
   const grouped = results.reduce<Record<string, WikiSearchResult[]>>((acc, r) => {
     (acc[r.category] = acc[r.category] || []).push(r);
     return acc;
   }, {});
+
+  const flatList = Object.values(grouped).flat();
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, flatList.length - 1)); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); return; }
+    if (e.key === "Enter" && flatList[selectedIndex]) { e.preventDefault(); onSelect(flatList[selectedIndex]); return; }
+  };
 
   let flatIndex = 0;
 
