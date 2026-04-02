@@ -7583,6 +7583,9 @@ export default function Campaign() {
 
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
 
+  const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
+  const showWorldButton = role === 'gm' || !!playerLinkedWorld;
+
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
     if (campaign && !defaultPanelAppliedRef.current) {
@@ -10166,6 +10169,7 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          {showWorldButton && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10200,6 +10204,7 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          )}
 
           {role === 'gm' && (
             <TooltipProvider>
