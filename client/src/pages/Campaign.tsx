@@ -6808,11 +6808,6 @@ function WorldBuilderContent({
                     <RelationshipGraph
                       worldId={selectedWorldId}
                       onSelectEntity={handleSelectEntity}
-                      onSelectNode={(category, id) => {
-                        if (category === "article" || category === "canvas") {
-                          handleSelectEntity(id);
-                        }
-                      }}
                       selectedEntityId={selectedEntityId}
                     />
                   </div>
