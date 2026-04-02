@@ -26,11 +26,12 @@ interface WorldbuilderPanelProps {
   createOnly?: boolean;
   onCloseCreate?: () => void;
   customTags?: string[];
+  skipSync?: boolean;
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, createOnly = false, onCloseCreate, customTags = [] }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
-  useWorldbuildingSync(resolvedId);
+  useWorldbuildingSync(skipSync ? undefined : resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
   const createEntity = useCreateEntity(resolvedId);
   const deleteEntity = useDeleteEntity(resolvedId);
