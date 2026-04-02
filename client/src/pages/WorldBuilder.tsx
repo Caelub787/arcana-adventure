@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
@@ -10,7 +10,7 @@ import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
-import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline } from "@/lib/worldbuilding-api";
+import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap } from "@/lib/worldbuilding-api";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -121,8 +121,19 @@ export default function WorldBuilder() {
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
-  const [wbTabs, setWbTabs] = useState<WbTab[]>([]);
-  const [activeWbTabId, setActiveWbTabId] = useState<string | null>(null);
+  const [wbTabs, setWbTabs] = useState<WbTab[]>(() => {
+    try {
+      const saved = localStorage.getItem("wb-tabs");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [activeWbTabId, setActiveWbTabId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("wb-active-tab") || null;
+    } catch { return null; }
+  });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: "entity" | "timeline"; id: string; name: string } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState("");
@@ -177,6 +188,53 @@ export default function WorldBuilder() {
       setActiveSection("home");
     }
   }, [selectedWorldId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("wb-tabs", JSON.stringify(wbTabs));
+    } catch {}
+  }, [wbTabs]);
+
+  useEffect(() => {
+    try {
+      if (activeWbTabId) {
+        localStorage.setItem("wb-active-tab", activeWbTabId);
+      } else {
+        localStorage.removeItem("wb-active-tab");
+      }
+    } catch {}
+  }, [activeWbTabId]);
+
+  useEffect(() => {
+    if (wbTabs.length > 0 && activeWbTabId) {
+      const tab = wbTabs.find(t => t.id === activeWbTabId);
+      if (tab) {
+        if (tab.type === "article" && tab.entityId) {
+          setSelectedEntityId(tab.entityId);
+          setActiveSection("encyclopedia");
+        } else if (tab.type === "map-edit" && tab.mapId) {
+          setEditingMapId(tab.mapId);
+          setActiveSection("maps");
+        } else {
+          setActiveSection(tab.type as ActiveSection);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    if (contextMenu) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [contextMenu]);
+
+  const deleteTimelineMutation = useDeleteTimeline(selectedWorldId || undefined);
 
   const activeTab = wbTabs.find(t => t.id === activeWbTabId);
 
@@ -408,12 +466,51 @@ export default function WorldBuilder() {
       if (selectedEntityId === deleteEntityConfirm) {
         setSelectedEntityId(null);
       }
+      setWbTabs(prev => prev.filter(t => !(t.type === "article" && t.entityId === deleteEntityConfirm)));
       toast({ title: "Entity deleted" });
     } catch {
       toast({ title: "Failed to delete entity", variant: "destructive" });
     }
     setDeleteEntityConfirm(null);
   };
+
+  const handleDeleteTimeline = async (timelineId: string) => {
+    try {
+      await deleteTimelineMutation.mutateAsync(timelineId);
+      if (selectedTimelineId === timelineId) {
+        setSelectedTimelineId(null);
+      }
+      toast({ title: "Timeline deleted" });
+    } catch {
+      toast({ title: "Failed to delete timeline", variant: "destructive" });
+    }
+  };
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, type: "entity" | "timeline", id: string, name: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, type, id, name });
+  }, []);
+
+  const handleContextMenuAction = useCallback((action: "edit" | "delete") => {
+    if (!contextMenu) return;
+    const { type, id, name } = contextMenu;
+    setContextMenu(null);
+    if (action === "edit") {
+      if (type === "entity") {
+        handleOpenEntityInCurrentTab(id, name);
+      } else if (type === "timeline") {
+        setSelectedTimelineId(id);
+        handleNavigateCurrentTab("timeline");
+      }
+    } else if (action === "delete") {
+      if (type === "entity") {
+        setDeleteEntityConfirm(id);
+      } else if (type === "timeline") {
+        handleDeleteTimeline(id);
+      }
+    }
+  }, [contextMenu]);
 
   const filteredEntities = useMemo(() => {
     let result = entities;
@@ -678,6 +775,7 @@ export default function WorldBuilder() {
                     <button
                       key={entity.id}
                       onClick={() => handleSelectEntity(entity.id)}
+                      onContextMenu={(e) => handleContextMenu(e, "entity", entity.id, entity.displayName)}
                       className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
                         selectedEntityId === entity.id
                           ? 'bg-stone-800 border-l-2 border-amber-400'
@@ -756,6 +854,7 @@ export default function WorldBuilder() {
                     <button
                       key={tl.id}
                       onClick={() => handleSelectTimeline(tl.id)}
+                      onContextMenu={(e) => handleContextMenu(e, "timeline", tl.id, tl.name)}
                       className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
                         isSelected
                           ? 'bg-stone-800 border-l-2 border-amber-400'
@@ -1681,6 +1780,35 @@ export default function WorldBuilder() {
           worldId={selectedWorldId}
           onClose={() => setWikiLinkPreview(null)}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-[9999] min-w-[160px] bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 animate-in fade-in-0 zoom-in-95"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          data-testid="wb-context-menu"
+        >
+          <div className="px-3 py-1.5 text-[10px] text-stone-500 font-medium truncate border-b border-stone-700 mb-0.5">
+            {contextMenu.name}
+          </div>
+          <button
+            onClick={() => handleContextMenuAction("edit")}
+            className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 flex items-center gap-2 transition-colors"
+            data-testid="context-menu-edit"
+          >
+            <Pencil className="h-3 w-3 text-stone-400" />
+            Open & Edit
+          </button>
+          <button
+            onClick={() => handleContextMenuAction("delete")}
+            className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors"
+            data-testid="context-menu-delete"
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </button>
+        </div>
       )}
     </div>
   );

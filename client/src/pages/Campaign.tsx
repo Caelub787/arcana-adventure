@@ -44,7 +44,7 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
-import { useEntities, useWorldbuildingSync, useLinkedWorld } from "@/lib/worldbuilding-api";
+import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
 
 // Scene Settings Form Component
@@ -6417,8 +6417,19 @@ function WorldBuilderContent({
     mapId?: string | null;
     selectedTimelineId?: string | null;
   }
-  const [wbTabs, setWbTabs] = useState<WbTab[]>([]);
-  const [activeWbTabId, setActiveWbTabId] = useState<string | null>(null);
+  const [wbTabs, setWbTabs] = useState<WbTab[]>(() => {
+    try {
+      const saved = localStorage.getItem(`wb-tabs-${campaignId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [activeWbTabId, setActiveWbTabId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`wb-active-tab-${campaignId}`) || null;
+    } catch { return null; }
+  });
+  const [wbContextMenu, setWbContextMenu] = useState<{ x: number; y: number; entityId: string; entityName: string } | null>(null);
+  const wbContextMenuRef = React.useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [homeContent, setHomeContent] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
@@ -6464,6 +6475,70 @@ function WorldBuilderContent({
     }
   }, [selectedWorldId]);
 
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(`wb-tabs-${campaignId}`, JSON.stringify(wbTabs));
+    } catch {}
+  }, [wbTabs, campaignId]);
+
+  React.useEffect(() => {
+    try {
+      if (activeWbTabId) {
+        localStorage.setItem(`wb-active-tab-${campaignId}`, activeWbTabId);
+      } else {
+        localStorage.removeItem(`wb-active-tab-${campaignId}`);
+      }
+    } catch {}
+  }, [activeWbTabId, campaignId]);
+
+  React.useEffect(() => {
+    if (wbTabs.length > 0 && activeWbTabId) {
+      const tab = wbTabs.find(t => t.id === activeWbTabId);
+      if (tab) {
+        if (tab.type === "article" && tab.entityId) {
+          setSelectedEntityId(tab.entityId);
+        }
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wbContextMenuRef.current && !wbContextMenuRef.current.contains(e.target as Node)) {
+        setWbContextMenu(null);
+      }
+    };
+    if (wbContextMenu) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [wbContextMenu]);
+
+  const handleWbEntityContextMenu = React.useCallback((e: React.MouseEvent, entityId: string, entityName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setWbContextMenu({ x: e.clientX, y: e.clientY, entityId, entityName });
+  }, []);
+
+  const handleWbContextMenuAction = React.useCallback((action: "edit" | "delete") => {
+    if (!wbContextMenu) return;
+    const { entityId, entityName } = wbContextMenu;
+    setWbContextMenu(null);
+    if (action === "edit") {
+      handleOpenEntityInCurrentTab(entityId, entityName);
+    } else if (action === "delete") {
+      if (confirm(`Delete "${entityName}"? This cannot be undone.`)) {
+        deleteEntityMutation.mutateAsync(entityId).then(() => {
+          if (selectedEntityId === entityId) setSelectedEntityId(null);
+          setWbTabs(prev => prev.filter(t => !(t.type === "article" && t.entityId === entityId)));
+          toast({ title: "Entity deleted" });
+        }).catch(() => {
+          toast({ title: "Failed to delete entity", variant: "destructive" });
+        });
+      }
+    }
+  }, [wbContextMenu]);
+
   const selectedWorld = isGM
     ? worlds.find((w: any) => w.id === selectedWorldId)
     : linkedWorld && linkedWorld.id === selectedWorldId ? linkedWorld : null;
@@ -6484,6 +6559,7 @@ function WorldBuilderContent({
 
   useWorldbuildingSync(selectedWorldId || undefined);
   const { data: entities = [] } = useEntities(selectedWorldId || undefined);
+  const deleteEntityMutation = useDeleteEntity(selectedWorldId || undefined);
   const { data: links = [] } = useQuery<any[]>({
     queryKey: ["/api/worlds", selectedWorldId, "entity-links"],
     queryFn: async () => {
@@ -6914,6 +6990,7 @@ function WorldBuilderContent({
                             characters={characters}
                             onOpenEntity={(entityId, title) => handleOpenEntityInCurrentTab(entityId, title)}
                             onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
+                            onEntityContextMenu={handleWbEntityContextMenu}
                             skipSync
                           />
                         </div>
@@ -6933,6 +7010,7 @@ function WorldBuilderContent({
                                 setSelectedEntityId(entityId);
                               }}
                               onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
+                              onEntityContextMenu={handleWbEntityContextMenu}
                             />
                           </div>
                           <div className="flex-1 overflow-y-auto min-w-0">
@@ -7176,6 +7254,37 @@ function WorldBuilderContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {wbContextMenu && (
+        <div
+          ref={wbContextMenuRef}
+          className="fixed z-[9999] min-w-[160px] bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 animate-in fade-in-0 zoom-in-95"
+          style={{ top: wbContextMenu.y, left: wbContextMenu.x }}
+          data-testid="wb-context-menu"
+        >
+          <div className="px-3 py-1.5 text-[10px] text-stone-500 font-medium truncate border-b border-stone-700 mb-0.5">
+            {wbContextMenu.entityName}
+          </div>
+          <button
+            onClick={() => handleWbContextMenuAction("edit")}
+            className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 flex items-center gap-2 transition-colors"
+            data-testid="context-menu-edit"
+          >
+            <Pencil className="h-3 w-3 text-stone-400" />
+            Open & Edit
+          </button>
+          {isGM && (
+            <button
+              onClick={() => handleWbContextMenuAction("delete")}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors"
+              data-testid="context-menu-delete"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -23,13 +23,14 @@ interface WorldbuilderPanelProps {
   characters?: any[];
   onOpenEntity?: (entityId: string, title?: string) => void;
   onOpenEntityNewTab?: (entityId: string, title?: string) => void;
+  onEntityContextMenu?: (e: React.MouseEvent, entityId: string, entityName: string) => void;
   createOnly?: boolean;
   onCloseCreate?: () => void;
   customTags?: string[];
   skipSync?: boolean;
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, onEntityContextMenu, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
   useWorldbuildingSync(skipSync ? undefined : resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
@@ -349,6 +350,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                         ? 'bg-stone-800 border-l-2 border-amber-400'
                         : 'hover:bg-stone-800/60'
                     }`}
+                    onContextMenu={onEntityContextMenu ? (e) => onEntityContextMenu(e, entity.id, entity.displayName) : undefined}
                     data-testid={`entity-list-item-${entity.id}`}
                   >
                     <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "18" }}>
