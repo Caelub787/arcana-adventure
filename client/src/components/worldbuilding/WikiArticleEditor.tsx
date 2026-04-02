@@ -229,6 +229,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
   const [displayName, setDisplayName] = useState(entity.displayName || "");
   const [image, setImage] = useState(entity.image || "");
   const [visibility, setVisibility] = useState(entity.visibility || "gm_only");
+  const [entityType, setEntityType] = useState(entity.entityType || "article");
   const [tags, setTags] = useState<string[]>((entity.tags as string[]) || []);
   const [isSaving, setIsSaving] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState("");
@@ -242,6 +243,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     setDisplayName(entity.displayName || "");
     setImage(entity.image || "");
     setVisibility(entity.visibility || "gm_only");
+    setEntityType(entity.entityType || "article");
     setTags((entity.tags as string[]) || []);
   }, [entity.id]);
 
@@ -254,6 +256,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
       displayName,
       image: image || undefined,
       visibility,
+      entityType,
       tags,
     };
     try {
@@ -316,6 +319,24 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
             {isSaving && <span className="text-xs text-stone-500">Saving...</span>}
             {isGM && (
               <>
+                {mode === "edit" && (
+                  <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
+                    <button
+                      className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
+                      onClick={() => { setEntityType("article"); autoSave(); }}
+                      data-testid="toggle-type-article"
+                    >
+                      <FileText className="h-3 w-3" /> Article
+                    </button>
+                    <button
+                      className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
+                      onClick={() => { setEntityType("canvas"); autoSave(); }}
+                      data-testid="toggle-type-canvas"
+                    >
+                      <Layout className="h-3 w-3" /> Canvas
+                    </button>
+                  </div>
+                )}
                 <Select value={visibility} onValueChange={(val) => { setVisibility(val); autoSave(); }}>
                   <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
                     <div className="flex items-center gap-1.5">
@@ -441,7 +462,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
           </div>
         )}
 
-        {entity.entityType === "canvas" ? (
+        {entityType === "canvas" ? (
           <CanvasArticleEditor
             content={articleContent}
             onChange={(c) => { setArticleContent(c); autoSave(); }}

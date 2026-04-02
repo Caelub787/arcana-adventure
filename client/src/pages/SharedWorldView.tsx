@@ -163,6 +163,26 @@ function renderArticleContent(content: string) {
   });
 }
 
+function CanvasReadOnlyView({ content }: { content: string }) {
+  let nodes: Array<{ id: string; type: string; x: number; y: number; width: number; height: number; content: string; color?: string; shapeType?: string }> = [];
+  try { nodes = JSON.parse(content); } catch { return <p className="text-stone-500 italic text-sm">Unable to render canvas content.</p>; }
+  if (!Array.isArray(nodes) || nodes.length === 0) return <p className="text-stone-500 italic text-sm">Empty canvas.</p>;
+  const maxX = Math.max(...nodes.map(n => n.x + n.width)) + 20;
+  const maxY = Math.max(...nodes.map(n => n.y + n.height)) + 20;
+  return (
+    <div className="relative bg-stone-950 rounded-lg border border-stone-800 overflow-auto" style={{ minHeight: Math.min(maxY, 600), height: maxY }} data-testid="canvas-readonly-view">
+      {nodes.map(node => (
+        <div key={node.id} className="absolute" style={{ left: node.x, top: node.y, width: node.width, height: node.type === "text" || node.type === "heading" ? "auto" : node.height, minHeight: node.height }}>
+          {node.type === "text" && <div className="p-2 text-sm text-stone-300 whitespace-pre-wrap">{node.content}</div>}
+          {node.type === "heading" && <h2 className="text-lg font-bold text-stone-100 p-1">{node.content}</h2>}
+          {node.type === "image" && node.content && <img src={node.content} alt="" className="w-full h-full object-cover rounded" />}
+          {node.type === "shape" && <div className={`w-full h-full ${node.shapeType === "ellipse" ? "rounded-full" : "rounded"}`} style={{ backgroundColor: (node.color || "#64748b") + "30", border: `2px solid ${node.color || "#64748b"}` }} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
   maps: SharedWorldMap[];
   mapPins: Record<string, SharedWorldMapPin[]>;
@@ -1154,9 +1174,13 @@ export default function SharedWorldView() {
                       );
                     })()}
                     {selectedEntity.articleContent && (
-                      <div className="prose prose-invert prose-sm max-w-none">
-                        {renderArticleContent(selectedEntity.articleContent)}
-                      </div>
+                      selectedEntity.entityType === "canvas" ? (
+                        <CanvasReadOnlyView content={selectedEntity.articleContent} />
+                      ) : (
+                        <div className="prose prose-invert prose-sm max-w-none">
+                          {renderArticleContent(selectedEntity.articleContent)}
+                        </div>
+                      )
                     )}
                     {entityLinks.filter(l => l.fromEntityId === selectedEntity.id || l.toEntityId === selectedEntity.id).length > 0 && (
                       <div className="mt-6 pt-4 border-t border-stone-800">
