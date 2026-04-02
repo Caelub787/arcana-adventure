@@ -338,10 +338,11 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                 const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
                 const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
                 return (
-                  <button
+                  <div
                     key={entity.id}
+                    role="listitem"
                     onClick={(e) => handleEntityClick(entity.id, e)}
-                    className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
+                    className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 cursor-pointer ${
                       selectedEntityId === entity.id
                         ? 'bg-stone-800 border-l-2 border-amber-400'
                         : 'hover:bg-stone-800/60'
@@ -372,19 +373,17 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                       )}
                     </div>
                     {onOpenEntityNewTab && (
-                      <span
-                        role="button"
-                        tabIndex={0}
+                      <button
+                        type="button"
                         title="Open in new tab"
                         className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-stone-700 text-stone-500 hover:text-amber-400 flex-shrink-0"
                         onClick={(e) => { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); } }}
                         data-testid={`open-new-tab-${entity.id}`}
                       >
                         <ExternalLink className="h-2.5 w-2.5" />
-                      </span>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 );
               })
             )}
