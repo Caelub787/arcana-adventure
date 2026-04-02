@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Globe, User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Filter, ChevronDown, X, FileText, Layout, Tag } from "lucide-react";
+import { Search, Plus, Globe, User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Filter, ChevronDown, X, FileText, Layout, Tag, ExternalLink } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, FileText, Layout,
@@ -371,6 +371,19 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
                         </div>
                       )}
                     </div>
+                    {onOpenEntityNewTab && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title="Open in new tab"
+                        className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-stone-700 text-stone-500 hover:text-amber-400 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); } }}
+                        data-testid={`open-new-tab-${entity.id}`}
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </span>
+                    )}
                   </button>
                 );
               })
