@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { useUpdateEntity, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity } from "@/lib/worldbuilding-api";
+import { useUpdateEntity, useWikiSearch, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, type WikiSearchResult } from "@/lib/worldbuilding-api";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Move, Square, Type, Minus, Circle } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Move, Square, Type, Minus, Circle, Search, BookOpen, Map, Swords, Sparkles, User, FileText } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -28,6 +28,7 @@ function renderMarkdownPreview(content: string): string {
     .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-stone-100 mt-6 mb-3">$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-200 font-semibold">$1</strong>')
     .replace(/\*(.+?)\*/g, '<em class="text-stone-300 italic">$1</em>')
+    .replace(/\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline font-medium">$3</span>')
     .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline">$1</span>')
     .replace(/^- (.+)$/gm, '<li class="text-stone-300 ml-4 list-disc">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="text-stone-300 ml-4 list-decimal">$1</li>')
@@ -219,6 +220,166 @@ function CanvasArticleEditor({ content, onChange, isEditing }: { content: string
   );
 }
 
+function WikiArticlePreview({ content, onEntityClick }: { content: string; onEntityClick?: (type: string, id: string) => void }) {
+  if (!content) return <p className="text-stone-500 italic" data-testid="article-preview">No content yet. Click Edit to start writing.</p>;
+
+  const wikiLinkRegex = /\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g;
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = wikiLinkRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const plainSegment = content.slice(lastIndex, match.index);
+      parts.push(
+        <span key={`plain-${lastIndex}`} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(plainSegment) }} />
+      );
+    }
+    const [, refType, refId, refLabel] = match;
+    const colorMap: Record<string, string> = {
+      entity: "text-amber-400 hover:text-amber-300",
+      map: "text-emerald-400 hover:text-emerald-300",
+      character: "text-blue-400 hover:text-blue-300",
+      item: "text-orange-400 hover:text-orange-300",
+      spell: "text-purple-400 hover:text-purple-300",
+    };
+    parts.push(
+      <span
+        key={`ref-${match.index}`}
+        className={`${colorMap[refType] || "text-amber-400 hover:text-amber-300"} cursor-pointer font-medium bg-stone-800/50 px-1 rounded hover:underline`}
+        onClick={() => onEntityClick?.(refType, refId)}
+        data-testid={`wiki-link-${refType}-${refId}`}
+      >
+        {refLabel}
+      </span>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    parts.push(
+      <span key={`plain-end`} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(content.slice(lastIndex)) }} />
+    );
+  }
+
+  if (parts.length === 0) {
+    return (
+      <div
+        className="prose prose-invert max-w-none"
+        dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(content) }}
+        data-testid="article-preview"
+      />
+    );
+  }
+
+  return <div className="prose prose-invert max-w-none" data-testid="article-preview">{parts}</div>;
+}
+
+const WIKI_CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  Encyclopedia: <BookOpen className="h-3.5 w-3.5 text-amber-400" />,
+  Maps: <Map className="h-3.5 w-3.5 text-emerald-400" />,
+  Characters: <User className="h-3.5 w-3.5 text-blue-400" />,
+  Items: <Swords className="h-3.5 w-3.5 text-orange-400" />,
+  Spells: <Sparkles className="h-3.5 w-3.5 text-purple-400" />,
+};
+
+function WikiReferencePicker({ worldId, onSelect, onClose, position }: {
+  worldId: string;
+  onSelect: (result: WikiSearchResult) => void;
+  onClose: () => void;
+  position: { top: number; left: number };
+}) {
+  const [search, setSearch] = useState("");
+  const { data: results = [] } = useWikiSearch(worldId, search);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => { setSelectedIndex(0); }, [results]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [onClose]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, results.length - 1)); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); return; }
+    if (e.key === "Enter" && results[selectedIndex]) { e.preventDefault(); onSelect(results[selectedIndex]); return; }
+  };
+
+  const grouped = results.reduce<Record<string, WikiSearchResult[]>>((acc, r) => {
+    (acc[r.category] = acc[r.category] || []).push(r);
+    return acc;
+  }, {});
+
+  let flatIndex = 0;
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute z-50 w-72 bg-stone-900 border border-stone-700 rounded-lg shadow-xl overflow-hidden"
+      style={{ top: position.top, left: position.left }}
+      data-testid="wiki-reference-picker"
+    >
+      <div className="p-2 border-b border-stone-800">
+        <div className="flex items-center gap-2 bg-stone-800 rounded px-2">
+          <Search className="h-3.5 w-3.5 text-stone-500" />
+          <input
+            ref={inputRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search articles, maps, items..."
+            className="w-full bg-transparent text-sm text-stone-200 py-1.5 outline-none placeholder-stone-500"
+            data-testid="wiki-search-input"
+          />
+        </div>
+      </div>
+      <div className="max-h-56 overflow-y-auto">
+        {results.length === 0 && search.length > 0 && (
+          <div className="px-3 py-4 text-center text-xs text-stone-500">No results found</div>
+        )}
+        {results.length === 0 && search.length === 0 && (
+          <div className="px-3 py-4 text-center text-xs text-stone-500">Type to search...</div>
+        )}
+        {Object.entries(grouped).map(([category, items]) => (
+          <div key={category}>
+            <div className="px-3 py-1 text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-900/50 flex items-center gap-1.5">
+              {WIKI_CATEGORY_ICONS[category] || <BookOpen className="h-3 w-3" />}
+              {category}
+            </div>
+            {items.map((item) => {
+              const thisIndex = flatIndex++;
+              return (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 transition-colors ${
+                    thisIndex === selectedIndex ? "bg-amber-600/20 text-amber-300" : "text-stone-300 hover:bg-stone-800"
+                  }`}
+                  onClick={() => onSelect(item)}
+                  data-testid={`wiki-result-${item.type}-${item.id}`}
+                >
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, shareToken, customTags = [] }: WikiArticleEditorProps) {
   const resolvedId = worldId || campaignId;
   const scope = worldId ? "worlds" as const : "campaigns" as const;
@@ -234,8 +395,13 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
   const [isSaving, setIsSaving] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState("");
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [wikiPickerOpen, setWikiPickerOpen] = useState(false);
+  const [wikiPickerPos, setWikiPickerPos] = useState({ top: 0, left: 0 });
+  const [wikiPickerTriggeredByTyping, setWikiPickerTriggeredByTyping] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState(0);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setArticleContent(entity.articleContent || "");
@@ -284,6 +450,50 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     setTimeout(() => {
       ta.focus();
       ta.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+    }, 0);
+  };
+
+  const handleArticleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    const pos = e.target.selectionStart;
+    setArticleContent(newContent);
+    setCursorPosition(pos);
+    autoSave();
+
+    if (pos >= 2 && newContent.slice(pos - 2, pos) === "[[") {
+      const ta = textareaRef.current;
+      if (ta && editorContainerRef.current) {
+        const containerRect = editorContainerRef.current.getBoundingClientRect();
+        const taRect = ta.getBoundingClientRect();
+        const lineHeight = parseInt(getComputedStyle(ta).lineHeight) || 20;
+        const lines = newContent.substring(0, pos).split("\n");
+        const currentLineIndex = lines.length - 1;
+        const topOffset = taRect.top - containerRect.top + (currentLineIndex * lineHeight) + lineHeight + ta.scrollTop * -1;
+        setWikiPickerPos({ top: Math.min(topOffset, taRect.height - 50), left: 20 });
+      } else {
+        setWikiPickerPos({ top: 80, left: 20 });
+      }
+      setWikiPickerTriggeredByTyping(true);
+      setWikiPickerOpen(true);
+    }
+  };
+
+  const handleWikiSelect = (result: WikiSearchResult) => {
+    const referenceText = `[[${result.type}:${result.id}|${result.name}]]`;
+    const charsToRemove = wikiPickerTriggeredByTyping ? 2 : 0;
+    const beforeCursor = articleContent.slice(0, cursorPosition - charsToRemove);
+    const afterCursor = articleContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    setArticleContent(newContent);
+    setWikiPickerOpen(false);
+    setWikiPickerTriggeredByTyping(false);
+    autoSave();
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newPos = beforeCursor.length + referenceText.length;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newPos, newPos);
+      }
     }, 0);
   };
 
@@ -469,7 +679,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
             isEditing={mode === "edit"}
           />
         ) : (
-          <div className="p-3 md:p-4">
+          <div className="p-3 md:p-4 relative" ref={editorContainerRef}>
             {mode === "edit" ? (
               <>
                 <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap">
@@ -486,23 +696,27 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("[", "](url)")} data-testid="button-md-link"><Link2 className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("![alt](", ")")} data-testid="button-md-image"><Image className="h-3.5 w-3.5" /></Button>
                   <div className="w-px h-4 bg-stone-700 mx-1" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => insertMarkdown("[[", "]]")} title="Wiki Link" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => { if (textareaRef.current) setCursorPosition(textareaRef.current.selectionStart); setWikiPickerTriggeredByTyping(false); setWikiPickerPos({ top: 80, left: 20 }); setWikiPickerOpen(true); }} title="Wiki Link [[" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
                 </div>
                 <Textarea
                   ref={textareaRef}
                   value={articleContent}
-                  onChange={(e) => { setArticleContent(e.target.value); autoSave(); }}
-                  placeholder="Write your article here... Use [[Entity Name]] to create wiki links."
+                  onChange={handleArticleContentChange}
+                  placeholder="Write your article here... Type [[ to insert a wiki link."
                   className="bg-stone-950 border-stone-800 text-stone-300 min-h-[250px] md:min-h-[400px] font-mono text-sm resize-none leading-relaxed"
                   data-testid="textarea-article-content"
                 />
+                {wikiPickerOpen && worldId && (
+                  <WikiReferencePicker
+                    worldId={worldId}
+                    onSelect={handleWikiSelect}
+                    onClose={() => setWikiPickerOpen(false)}
+                    position={wikiPickerPos}
+                  />
+                )}
               </>
             ) : (
-              <div
-                className="prose prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(articleContent) }}
-                data-testid="article-preview"
-              />
+              <WikiArticlePreview content={articleContent} />
             )}
           </div>
         )}

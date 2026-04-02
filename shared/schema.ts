@@ -1460,6 +1460,7 @@ export const worlds = pgTable("worlds", {
   image: text("image"),
   homeContent: text("home_content"),
   customTags: text("custom_tags").array().default(sql`ARRAY[]::text[]`),
+  system: text("system").default("arcana-adventure"),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),

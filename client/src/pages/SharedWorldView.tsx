@@ -158,7 +158,9 @@ function renderArticleContent(content: string) {
     if (line.trim() === "") return <div key={i} className="h-3" />;
     const formatted = line
       .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>');
+      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>')
+      .replace(/\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded font-medium">$3</span>')
+      .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded">$1</span>');
     return <p key={i} className="text-stone-300 text-[15px] leading-[1.8]" dangerouslySetInnerHTML={{ __html: formatted }} />;
   });
 }

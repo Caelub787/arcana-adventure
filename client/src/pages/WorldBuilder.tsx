@@ -107,6 +107,7 @@ export default function WorldBuilder() {
   const [editWorldName, setEditWorldName] = useState("");
   const [editWorldDescription, setEditWorldDescription] = useState("");
   const [editCustomTags, setEditCustomTags] = useState<string[]>([]);
+  const [editWorldSystem, setEditWorldSystem] = useState("arcana-adventure");
   const [newCustomTag, setNewCustomTag] = useState("");
   const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
   const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
@@ -163,7 +164,7 @@ export default function WorldBuilder() {
   });
 
   const updateWorldMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; homeContent?: string; customTags?: string[] }) => {
+    mutationFn: async (data: { name: string; description?: string; homeContent?: string; customTags?: string[]; system?: string }) => {
       const res = await fetch(`/api/worlds/${selectedWorldId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -347,6 +348,7 @@ export default function WorldBuilder() {
       setEditWorldName(selectedWorld.name);
       setEditWorldDescription(selectedWorld.description || "");
       setEditCustomTags((selectedWorld.customTags as string[]) || []);
+      setEditWorldSystem(selectedWorld.system || "arcana-adventure");
       setNewCustomTag("");
       setShowWorldSettingsDialog(true);
     }
@@ -1300,6 +1302,18 @@ export default function WorldBuilder() {
               />
             </div>
             <div>
+              <Label className="text-xs text-stone-400">Game System</Label>
+              <select
+                value={editWorldSystem}
+                onChange={(e) => setEditWorldSystem(e.target.value)}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 rounded-md text-stone-200 text-sm px-3 py-2"
+                data-testid="select-world-system"
+              >
+                <option value="arcana-adventure">Arcana Adventure</option>
+                <option value="aa-v2">AA V2</option>
+              </select>
+            </div>
+            <div>
               <Label className="text-xs text-stone-400">Custom Tags</Label>
               <p className="text-[10px] text-stone-500 mt-0.5 mb-1.5">Add custom tags beyond the 25 built-in ones. These will be available when tagging articles in this world.</p>
               <div className="flex gap-1.5 mb-2">
@@ -1361,7 +1375,7 @@ export default function WorldBuilder() {
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setShowWorldSettingsDialog(false)} className="text-stone-400">Cancel</Button>
               <Button
-                onClick={() => updateWorldMutation.mutate({ name: editWorldName.trim(), description: editWorldDescription.trim() || undefined, customTags: editCustomTags })}
+                onClick={() => updateWorldMutation.mutate({ name: editWorldName.trim(), description: editWorldDescription.trim() || undefined, customTags: editCustomTags, system: editWorldSystem })}
                 disabled={!editWorldName.trim() || updateWorldMutation.isPending}
                 className="bg-amber-600 hover:bg-amber-500 text-white"
                 data-testid="button-save-world-settings"

@@ -621,6 +621,22 @@ export function useWorldbuildingSync(worldId: string | undefined) {
   }, [worldId, qc]);
 }
 
+export interface WikiSearchResult {
+  id: string;
+  type: string;
+  name: string;
+  category: string;
+}
+
+export function useWikiSearch(worldId: string | undefined, query: string) {
+  return useQuery<WikiSearchResult[]>({
+    queryKey: ["/api/worlds", worldId, "wiki-search", query],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/wiki-search?q=${encodeURIComponent(query)}`),
+    enabled: !!worldId && query.length >= 1,
+    staleTime: 5000,
+  });
+}
+
 export const LINK_TYPE_LABELS: Record<string, string> = {
   ally: "Ally",
   enemy: "Enemy",

@@ -34,6 +34,7 @@ declare module "express-session" {
 async function migrateEntityTypesToTags() {
   try {
     await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS custom_tags text[] DEFAULT ARRAY[]::text[]`);
+    await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS system text DEFAULT 'arcana-adventure'`);
     
     const oldEntities = await db.select().from(entities).where(
       sql`entity_type NOT IN ('article', 'canvas')`
@@ -10956,6 +10957,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
       if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const VALID_SYSTEMS = ["arcana-adventure", "aa-v2"];
+      if (req.body.system && !VALID_SYSTEMS.includes(req.body.system)) {
+        return res.status(400).json({ error: "Invalid system value" });
+      }
       const updated = await storage.updateWorld(req.params.worldId, req.body);
       res.json(updated);
     } catch (e) {
@@ -11003,6 +11008,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to search world entities:", e);
       res.status(500).json({ error: "Failed to search entities" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/wiki-search", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const q = ((req.query.q as string) || "").toLowerCase().trim();
+      if (!q) return res.json([]);
+
+      const results: Array<{ id: string; type: string; name: string; category: string }> = [];
+
+      const worldEntities = await storage.searchEntitiesByWorld(req.params.worldId, q);
+      for (const e of worldEntities) {
+        results.push({ id: e.id, type: "entity", name: e.displayName, category: "Encyclopedia" });
+      }
+
+      const worldMapsResult = await storage.getWorldMapsByWorld(req.params.worldId);
+      for (const m of worldMapsResult) {
+        if (m.title.toLowerCase().includes(q)) {
+          results.push({ id: m.id, type: "map", name: m.title, category: "Maps" });
+        }
+      }
+
+      if (world.campaignId) {
+        const chars = await storage.getCampaignCharacters(world.campaignId);
+        for (const c of chars) {
+          if (c.name.toLowerCase().includes(q)) {
+            results.push({ id: c.id, type: "character", name: c.name, category: "Characters" });
+          }
+        }
+      }
+
+      const systemName = world.system || "arcana-adventure";
+      const sysItems = await storage.getSystemItems(systemName);
+      for (const it of sysItems) {
+        if (it.name.toLowerCase().includes(q)) {
+          results.push({ id: it.id, type: "item", name: it.name, category: "Items" });
+        }
+      }
+
+      const sysSpells = await storage.getSystemSpells(systemName);
+      for (const sp of sysSpells) {
+        if (sp.name.toLowerCase().includes(q)) {
+          results.push({ id: sp.id, type: "spell", name: sp.name, category: "Spells" });
+        }
+      }
+
+      res.json(results.slice(0, 30));
+    } catch (e) {
+      console.error("Failed wiki-search:", e);
+      res.status(500).json({ error: "Failed wiki-search" });
     }
   });
 
