@@ -322,10 +322,18 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                 </div>
               </div>
               {isGM && (
-                <Button onClick={openCreateEvent} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Add Event
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button onClick={() => openEditTimeline(selectedTimeline)} variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-stone-200" data-testid="button-edit-timeline">
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button onClick={() => setDeleteTimelineConfirm(selectedTimeline.id)} variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-red-400" data-testid="button-delete-timeline">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button onClick={openCreateEvent} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Add Event
+                  </Button>
+                </div>
               )}
             </div>
 
