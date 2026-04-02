@@ -590,9 +590,11 @@ export function useWorldbuildingSync(worldId: string | undefined) {
     const unsubscribe = gameWs.onMessage((data: any) => {
       if (['entity_created', 'entity_updated', 'entity_deleted', 'entity_restored'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entities"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "graph-data"] });
       }
       if (['entity_link_created', 'entity_link_updated', 'entity_link_deleted'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entity-links"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "graph-data"] });
       }
       if (['world_map_created', 'world_map_updated', 'world_map_deleted'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps"] });
@@ -634,6 +636,25 @@ export function useWikiSearch(worldId: string | undefined, query: string) {
     queryFn: () => fetchJSON(`/api/worlds/${worldId}/wiki-search?q=${encodeURIComponent(query)}`),
     enabled: !!worldId && query.length >= 1,
     staleTime: 5000,
+  });
+}
+
+export interface WorldGraphData {
+  entities: Entity[];
+  entityLinks: EntityLink[];
+  items: { id: string; name: string; itemType: string; rarity: string; description?: string | null }[];
+  spells: { id: string; name: string; description?: string | null }[];
+  traits: { id: string; name: string; description?: string | null }[];
+  skills: { id: string; name: string; description?: string | null }[];
+  characters: { id: string; name: string; portrait?: string | null; biography?: string | null }[];
+}
+
+export function useWorldGraphData(worldId: string | undefined) {
+  return useQuery<WorldGraphData>({
+    queryKey: ["/api/worlds", worldId, "graph-data"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/graph-data`),
+    enabled: !!worldId,
+    staleTime: 30000,
   });
 }
 

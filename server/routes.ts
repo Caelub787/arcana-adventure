@@ -10982,6 +10982,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== WORLD GRAPH DATA ENDPOINT ====================
+
+  app.get("/api/worlds/:worldId/graph-data", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+
+      const worldSystem = (world as any).system || "arcana-adventure";
+      const [allEntities, entityLinks, systemItems, systemSpells, systemTraits, systemSkills] = await Promise.all([
+        storage.getEntitiesByWorld(req.params.worldId),
+        storage.getEntityLinksByWorld(req.params.worldId),
+        storage.getSystemItems(worldSystem),
+        storage.getSystemSpells(worldSystem),
+        storage.getSystemTraits(worldSystem),
+        storage.getSystemSkills(worldSystem),
+      ]);
+
+      let campaignCharacters: any[] = [];
+      if (world.campaignId) {
+        campaignCharacters = await storage.getCampaignCharacters(world.campaignId);
+      }
+
+      res.json({
+        entities: allEntities.filter((e: any) => !e.isDeleted),
+        entityLinks,
+        items: systemItems.map((i: any) => ({ id: i.id, name: i.name, itemType: i.itemType || "misc", rarity: i.rarity || "common", description: i.description })),
+        spells: systemSpells.map((s: any) => ({ id: s.id, name: s.name, description: s.description })),
+        traits: systemTraits.map((t: any) => ({ id: t.id, name: t.name, description: t.description })),
+        skills: systemSkills.map((s: any) => ({ id: s.id, name: s.name, description: s.description })),
+        characters: campaignCharacters.map((c: any) => ({ id: c.id, name: c.name, portrait: c.portrait, biography: c.biography })),
+      });
+    } catch (e) {
+      console.error("Failed to get world graph data:", e);
+      res.status(500).json({ error: "Failed to get graph data" });
+    }
+  });
+
   // ==================== WORLD-SCOPED ENTITY ROUTES ====================
 
   app.get("/api/worlds/:worldId/entities", requireAuth, async (req, res) => {

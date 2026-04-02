@@ -6803,11 +6803,10 @@ function WorldBuilderContent({
                   </div>
                 )}
 
-                {activeSection === "graph" && (
+                {activeSection === "graph" && selectedWorldId && (
                   <div className="h-full">
                     <RelationshipGraph
-                      entities={entities}
-                      links={links}
+                      worldId={selectedWorldId}
                       onSelectEntity={handleSelectEntity}
                       selectedEntityId={selectedEntityId}
                     />

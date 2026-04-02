@@ -1215,11 +1215,10 @@ export default function WorldBuilder() {
               </div>
             )}
 
-            {activeSection === "graph" && (
+            {activeSection === "graph" && selectedWorldId && (
               <div className="flex-1">
                 <RelationshipGraph
-                  entities={entities}
-                  links={links}
+                  worldId={selectedWorldId}
                   onSelectEntity={handleSelectEntity}
                   selectedEntityId={selectedEntityId}
                 />
