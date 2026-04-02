@@ -1094,9 +1094,13 @@ export default function WorldBuilder() {
                         </div>
                       )}
 
-                      {entities.length > 0 ? (
+                      {(() => {
+                        const displayEntities = filterType
+                          ? entities.filter(e => ((e.tags as string[]) || []).includes(filterType))
+                          : entities;
+                        return displayEntities.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {[...entities].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 12).map(entity => {
+                          {[...displayEntities].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map(entity => {
                             const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
                             const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
                             const entityTags = (entity.tags as string[]) || [];
@@ -1135,9 +1139,10 @@ export default function WorldBuilder() {
                         </div>
                       ) : (
                         <div className="text-center py-8">
-                          <p className="text-stone-600 text-sm">No articles yet. Create one to start building your encyclopedia.</p>
+                          <p className="text-stone-600 text-sm">{filterType ? `No articles tagged "${filterType}".` : "No articles yet. Create one to start building your encyclopedia."}</p>
                         </div>
-                      )}
+                      );
+                      })()}
                     </div>
                   </div>
                 )}

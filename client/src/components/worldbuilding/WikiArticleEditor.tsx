@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Move, Square, Type, Minus, Circle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -35,6 +35,188 @@ function renderMarkdownPreview(content: string): string {
     .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline">$1</a>')
     .replace(/^(?!<[hlu]|<li|<hr|<p)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
   return html;
+}
+
+interface CanvasNode {
+  id: string;
+  type: "text" | "heading" | "image" | "shape";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  color?: string;
+  shapeType?: "rectangle" | "ellipse" | "line";
+}
+
+function CanvasArticleEditor({ content, onChange, isEditing }: { content: string; onChange: (c: string) => void; isEditing: boolean }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => {
+    try { return JSON.parse(content || "[]"); } catch { return []; }
+  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
+
+  const syncNodes = useCallback((newNodes: CanvasNode[]) => {
+    setNodes(newNodes);
+    onChange(JSON.stringify(newNodes));
+  }, [onChange]);
+
+  const addNode = (type: CanvasNode["type"]) => {
+    const id = `node-${Date.now()}`;
+    const defaults: Record<string, Partial<CanvasNode>> = {
+      text: { width: 200, height: 60, content: "New text block" },
+      heading: { width: 300, height: 40, content: "Heading" },
+      image: { width: 200, height: 150, content: "" },
+      shape: { width: 100, height: 100, content: "", shapeType: "rectangle", color: "#64748b" },
+    };
+    const d = defaults[type] || defaults.text;
+    syncNodes([...nodes, { id, type, x: 50 + Math.random() * 100, y: 50 + Math.random() * 100, ...d } as CanvasNode]);
+    setSelectedId(id);
+  };
+
+  const updateNode = (id: string, updates: Partial<CanvasNode>) => {
+    syncNodes(nodes.map(n => n.id === id ? { ...n, ...updates } : n));
+  };
+
+  const deleteNode = (id: string) => {
+    syncNodes(nodes.filter(n => n.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+    if (!isEditing) return;
+    e.stopPropagation();
+    setSelectedId(id);
+    const node = nodes.find(n => n.id === id);
+    if (!node) return;
+    setDragging({ id, startX: e.clientX, startY: e.clientY, nodeX: node.x, nodeY: node.y });
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragging) return;
+    const dx = e.clientX - dragging.startX;
+    const dy = e.clientY - dragging.startY;
+    updateNode(dragging.id, { x: dragging.nodeX + dx, y: dragging.nodeY + dy });
+  }, [dragging]);
+
+  const handleMouseUp = useCallback(() => { setDragging(null); }, []);
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
+    }
+  }, [dragging, handleMouseMove, handleMouseUp]);
+
+  const selectedNode = nodes.find(n => n.id === selectedId);
+
+  return (
+    <div className="flex flex-col h-full" data-testid="canvas-article-editor">
+      {isEditing && (
+        <div className="flex items-center gap-1 p-2 border-b border-stone-800 bg-stone-900/80">
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("text")} data-testid="canvas-add-text"><Type className="h-3.5 w-3.5 mr-1" /> Text</Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("heading")} data-testid="canvas-add-heading"><Heading1 className="h-3.5 w-3.5 mr-1" /> Heading</Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("image")} data-testid="canvas-add-image"><Image className="h-3.5 w-3.5 mr-1" /> Image</Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("shape")} data-testid="canvas-add-shape"><Square className="h-3.5 w-3.5 mr-1" /> Shape</Button>
+          {selectedNode && (
+            <>
+              <div className="w-px h-4 bg-stone-700 mx-1" />
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-red-400 hover:text-red-300" onClick={() => deleteNode(selectedNode.id)} data-testid="canvas-delete-node"><X className="h-3.5 w-3.5 mr-1" /> Delete</Button>
+            </>
+          )}
+        </div>
+      )}
+      <div
+        ref={canvasRef}
+        className="relative flex-1 bg-stone-950 overflow-auto min-h-[400px]"
+        style={{ backgroundImage: "radial-gradient(circle, #374151 1px, transparent 1px)", backgroundSize: "20px 20px" }}
+        onClick={() => setSelectedId(null)}
+        data-testid="canvas-surface"
+      >
+        {nodes.map(node => (
+          <div
+            key={node.id}
+            className={`absolute cursor-${isEditing ? "move" : "default"} ${selectedId === node.id && isEditing ? "ring-2 ring-amber-400" : ""}`}
+            style={{ left: node.x, top: node.y, width: node.width, height: node.type === "text" || node.type === "heading" ? "auto" : node.height, minHeight: node.height }}
+            onMouseDown={(e) => handleMouseDown(e, node.id)}
+            data-testid={`canvas-node-${node.id}`}
+          >
+            {node.type === "text" && (
+              isEditing && selectedId === node.id ? (
+                <textarea
+                  value={node.content}
+                  onChange={(e) => updateNode(node.id, { content: e.target.value })}
+                  className="w-full bg-stone-900/80 border border-stone-700 rounded p-2 text-sm text-stone-300 resize-none"
+                  style={{ minHeight: node.height }}
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`canvas-text-input-${node.id}`}
+                />
+              ) : (
+                <div className="p-2 text-sm text-stone-300 whitespace-pre-wrap">{node.content || "Empty text"}</div>
+              )
+            )}
+            {node.type === "heading" && (
+              isEditing && selectedId === node.id ? (
+                <input
+                  value={node.content}
+                  onChange={(e) => updateNode(node.id, { content: e.target.value })}
+                  className="w-full bg-transparent border-b-2 border-amber-500/50 text-lg font-bold text-stone-100 p-1"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`canvas-heading-input-${node.id}`}
+                />
+              ) : (
+                <h2 className="text-lg font-bold text-stone-100 p-1">{node.content || "Untitled"}</h2>
+              )
+            )}
+            {node.type === "image" && (
+              isEditing && selectedId === node.id && !node.content ? (
+                <div className="w-full h-full bg-stone-900/80 border border-dashed border-stone-700 rounded flex flex-col items-center justify-center p-2">
+                  <Image className="h-6 w-6 text-stone-600 mb-1" />
+                  <input
+                    placeholder="Paste image URL..."
+                    className="w-full bg-stone-800 border border-stone-700 rounded text-xs text-stone-300 p-1 mt-1"
+                    onBlur={(e) => { if (e.target.value) updateNode(node.id, { content: e.target.value }); }}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`canvas-image-input-${node.id}`}
+                  />
+                </div>
+              ) : (
+                node.content ? <img src={node.content} alt="" className="w-full h-full object-cover rounded" /> : <div className="w-full h-full bg-stone-900/50 border border-stone-800 rounded flex items-center justify-center"><Image className="h-8 w-8 text-stone-700" /></div>
+              )
+            )}
+            {node.type === "shape" && (
+              <div
+                className={`w-full h-full ${node.shapeType === "ellipse" ? "rounded-full" : "rounded"}`}
+                style={{ backgroundColor: (node.color || "#64748b") + "30", border: `2px solid ${node.color || "#64748b"}` }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      {isEditing && selectedNode && (
+        <div className="p-2 border-t border-stone-800 bg-stone-900/80 flex items-center gap-2 text-xs">
+          <span className="text-stone-500">Selected: {selectedNode.type}</span>
+          <span className="text-stone-600">|</span>
+          <label className="text-stone-500">W:</label>
+          <input type="number" value={selectedNode.width} onChange={(e) => updateNode(selectedNode.id, { width: parseInt(e.target.value) || 100 })} className="w-14 bg-stone-800 border border-stone-700 rounded text-stone-300 px-1 text-xs" data-testid="canvas-node-width" />
+          <label className="text-stone-500">H:</label>
+          <input type="number" value={selectedNode.height} onChange={(e) => updateNode(selectedNode.id, { height: parseInt(e.target.value) || 60 })} className="w-14 bg-stone-800 border border-stone-700 rounded text-stone-300 px-1 text-xs" data-testid="canvas-node-height" />
+          {selectedNode.type === "shape" && (
+            <>
+              <label className="text-stone-500">Color:</label>
+              <input type="color" value={selectedNode.color || "#64748b"} onChange={(e) => updateNode(selectedNode.id, { color: e.target.value })} className="w-6 h-5 bg-transparent border-0 cursor-pointer" data-testid="canvas-node-color" />
+              <select value={selectedNode.shapeType || "rectangle"} onChange={(e) => updateNode(selectedNode.id, { shapeType: e.target.value as CanvasNode["shapeType"] })} className="bg-stone-800 border border-stone-700 rounded text-stone-300 text-xs px-1" data-testid="canvas-shape-type">
+                <option value="rectangle">Rectangle</option>
+                <option value="ellipse">Ellipse</option>
+              </select>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, shareToken, customTags = [] }: WikiArticleEditorProps) {
@@ -110,7 +292,8 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     autoSave();
   };
 
-  const allAvailableTags = [...PREDEFINED_TAGS, ...customTags.filter(t => !PREDEFINED_TAGS.includes(t as any))];
+  const predefinedSet = new Set<string>(PREDEFINED_TAGS);
+  const allAvailableTags: string[] = [...PREDEFINED_TAGS, ...customTags.filter(t => !predefinedSet.has(t))];
   const filteredAvailableTags = tagSearchQuery
     ? allAvailableTags.filter(t => t.toLowerCase().includes(tagSearchQuery.toLowerCase()))
     : allAvailableTags;
@@ -258,42 +441,50 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
           </div>
         )}
 
-        <div className="p-3 md:p-4">
-          {mode === "edit" ? (
-            <>
-              <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap">
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
-                <div className="w-px h-4 bg-stone-700 mx-1" />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("# ")} data-testid="button-md-h1"><Heading1 className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("## ")} data-testid="button-md-h2"><Heading2 className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("### ")} data-testid="button-md-h3"><Heading3 className="h-3.5 w-3.5" /></Button>
-                <div className="w-px h-4 bg-stone-700 mx-1" />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("- ")} data-testid="button-md-ul"><List className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("1. ")} data-testid="button-md-ol"><ListOrdered className="h-3.5 w-3.5" /></Button>
-                <div className="w-px h-4 bg-stone-700 mx-1" />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("[", "](url)")} data-testid="button-md-link"><Link2 className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("![alt](", ")")} data-testid="button-md-image"><Image className="h-3.5 w-3.5" /></Button>
-                <div className="w-px h-4 bg-stone-700 mx-1" />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => insertMarkdown("[[", "]]")} title="Wiki Link" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
-              </div>
-              <Textarea
-                ref={textareaRef}
-                value={articleContent}
-                onChange={(e) => { setArticleContent(e.target.value); autoSave(); }}
-                placeholder="Write your article here... Use [[Entity Name]] to create wiki links."
-                className="bg-stone-950 border-stone-800 text-stone-300 min-h-[250px] md:min-h-[400px] font-mono text-sm resize-none leading-relaxed"
-                data-testid="textarea-article-content"
+        {entity.entityType === "canvas" ? (
+          <CanvasArticleEditor
+            content={articleContent}
+            onChange={(c) => { setArticleContent(c); autoSave(); }}
+            isEditing={mode === "edit"}
+          />
+        ) : (
+          <div className="p-3 md:p-4">
+            {mode === "edit" ? (
+              <>
+                <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
+                  <div className="w-px h-4 bg-stone-700 mx-1" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("# ")} data-testid="button-md-h1"><Heading1 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("## ")} data-testid="button-md-h2"><Heading2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("### ")} data-testid="button-md-h3"><Heading3 className="h-3.5 w-3.5" /></Button>
+                  <div className="w-px h-4 bg-stone-700 mx-1" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("- ")} data-testid="button-md-ul"><List className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("1. ")} data-testid="button-md-ol"><ListOrdered className="h-3.5 w-3.5" /></Button>
+                  <div className="w-px h-4 bg-stone-700 mx-1" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("[", "](url)")} data-testid="button-md-link"><Link2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("![alt](", ")")} data-testid="button-md-image"><Image className="h-3.5 w-3.5" /></Button>
+                  <div className="w-px h-4 bg-stone-700 mx-1" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => insertMarkdown("[[", "]]")} title="Wiki Link" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
+                </div>
+                <Textarea
+                  ref={textareaRef}
+                  value={articleContent}
+                  onChange={(e) => { setArticleContent(e.target.value); autoSave(); }}
+                  placeholder="Write your article here... Use [[Entity Name]] to create wiki links."
+                  className="bg-stone-950 border-stone-800 text-stone-300 min-h-[250px] md:min-h-[400px] font-mono text-sm resize-none leading-relaxed"
+                  data-testid="textarea-article-content"
+                />
+              </>
+            ) : (
+              <div
+                className="prose prose-invert max-w-none"
+                dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(articleContent) }}
+                data-testid="article-preview"
               />
-            </>
-          ) : (
-            <div
-              className="prose prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(articleContent) }}
-              data-testid="article-preview"
-            />
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

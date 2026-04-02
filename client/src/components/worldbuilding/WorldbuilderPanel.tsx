@@ -50,7 +50,8 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
 
   const [createTagSearch, setCreateTagSearch] = useState("");
 
-  const allAvailableTags = [...PREDEFINED_TAGS, ...customTags.filter(t => !PREDEFINED_TAGS.includes(t as any))];
+  const predefinedSet = new Set<string>(PREDEFINED_TAGS);
+  const allAvailableTags: string[] = [...PREDEFINED_TAGS, ...customTags.filter(t => !predefinedSet.has(t))];
   const filteredCreateTags = createTagSearch
     ? allAvailableTags.filter(t => t.toLowerCase().includes(createTagSearch.toLowerCase()))
     : allAvailableTags;
@@ -90,7 +91,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
       visibility: newEntity.visibility,
       sheetId: newEntity.sheetId || undefined,
       tags: newEntity.selectedTags,
-    } as any);
+    });
     setShowCreateDialog(false);
     setNewEntity({ displayName: "", entityType: "article", description: "", visibility: "gm_only", sheetId: "", selectedTags: [] });
     setCreateTagSearch("");

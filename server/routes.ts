@@ -54,6 +54,18 @@ async function migrateEntityTypesToTags() {
       }
       console.log(`[Migration] Converted ${oldEntities.length} entities to tag-based system.`);
     }
+
+    const untaggedArticles = await db.select().from(entities).where(
+      sql`entity_type = 'article' AND (tags IS NULL OR tags = '{}')`
+    );
+    if (untaggedArticles.length > 0) {
+      console.log(`[Migration] Found ${untaggedArticles.length} article entities without tags, adding "Article" tag...`);
+      for (const entity of untaggedArticles) {
+        await db.update(entities)
+          .set({ tags: ["Article"] })
+          .where(eq(entities.id, entity.id));
+      }
+    }
   } catch (err) {
     console.error("[Migration] Error migrating entity types:", err);
   }
