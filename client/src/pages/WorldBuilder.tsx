@@ -328,6 +328,19 @@ export default function WorldBuilder() {
     }
   };
 
+  const handleWikiLinkClick = (type: string, id: string) => {
+    switch (type) {
+      case "entity":
+        handleSelectEntity(id);
+        break;
+      case "map":
+        setActiveSection("maps");
+        break;
+      default:
+        break;
+    }
+  };
+
   const handleBack = () => {
     if (entityHistory.length > 0) {
       const prev = entityHistory[entityHistory.length - 1];
@@ -1053,6 +1066,7 @@ export default function WorldBuilder() {
                           entity={selectedEntity}
                           worldId={selectedWorldId}
                           isGM={true}
+                          onWikiLinkClick={handleWikiLinkClick}
                           shareToken={shareLink?.token}
                           customTags={selectedWorld?.customTags || []}
                         />

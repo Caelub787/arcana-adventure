@@ -16,6 +16,7 @@ interface WikiArticleEditorProps {
   worldId?: string;
   isGM: boolean;
   onEntityUpdated?: () => void;
+  onWikiLinkClick?: (type: string, id: string) => void;
   shareToken?: string;
   customTags?: string[];
 }
@@ -380,7 +381,7 @@ function WikiReferencePicker({ worldId, onSelect, onClose, position }: {
   );
 }
 
-export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, shareToken, customTags = [] }: WikiArticleEditorProps) {
+export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, onWikiLinkClick, shareToken, customTags = [] }: WikiArticleEditorProps) {
   const resolvedId = worldId || campaignId;
   const scope = worldId ? "worlds" as const : "campaigns" as const;
   const updateEntity = useUpdateEntity(resolvedId, scope);
@@ -716,7 +717,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                 )}
               </>
             ) : (
-              <WikiArticlePreview content={articleContent} />
+              <WikiArticlePreview content={articleContent} onEntityClick={onWikiLinkClick} />
             )}
           </div>
         )}

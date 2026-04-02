@@ -2712,6 +2712,9 @@ export function CampaignNotesPanel({
                         campaignId={campaignId}
                         isGM={isGMForWorld}
                         onEntityUpdated={() => {}}
+                        onWikiLinkClick={(type, id) => {
+                          if (type === "entity") setSelectedWorldEntityId(id);
+                        }}
                       />
                     </div>
                   </div>
