@@ -14,7 +14,7 @@
 @theme inline {
   --font-display: 'LeagueSpartan', 'Cinzel', serif;
   --font-medieval: 'MedievalSharp', cursive;
-  --font-sans: 'Inter', sans-serif;
+  --font-sans: 'Source Sans 3', sans-serif;
 
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
