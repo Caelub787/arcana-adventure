@@ -335,6 +335,16 @@ export default function WorldBuilder() {
         break;
       case "map":
         setActiveSection("maps");
+        setEditingMapId(id);
+        break;
+      case "character":
+        toast({ title: "Character Reference", description: "Character links are viewable in the campaign view." });
+        break;
+      case "item":
+        toast({ title: "Item Reference", description: "Item details are available in the admin panel." });
+        break;
+      case "spell":
+        toast({ title: "Spell Reference", description: "Spell details are available in the admin panel." });
         break;
       default:
         break;
