@@ -6408,14 +6408,13 @@ function WorldBuilderContent({
   characters: any[];
   compact?: boolean;
 }) {
-  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "timeline" | "calendar" | "graph";
+  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph";
   interface WbTab {
     id: string;
     type: WbTabType;
     title: string;
     entityId?: string;
-    editingMapId?: string | null;
-    creatingMap?: boolean;
+    mapId?: string | null;
     selectedTimelineId?: string | null;
   }
   const [wbTabs, setWbTabs] = useState<WbTab[]>([]);
@@ -6426,6 +6425,7 @@ function WorldBuilderContent({
     const tab = wbTabs.find(t => t.id === activeWbTabId);
     if (!tab) return "home";
     if (tab.type === "article" || tab.type === "encyclopedia") return "encyclopedia";
+    if (tab.type === "map-edit") return "maps";
     return tab.type as WorldBuilderSection;
   })();
   const [homeContent, setHomeContent] = useState("");
@@ -6615,6 +6615,7 @@ function WorldBuilderContent({
     encyclopedia: { icon: BookOpen, label: "Encyclopedia" },
     article: { icon: FileText, label: "Article" },
     maps: { icon: MapIcon, label: "Maps" },
+    "map-edit": { icon: Pencil, label: "Map Editor" },
     timeline: { icon: Clock, label: "Timeline" },
     calendar: { icon: Calendar, label: "Calendar" },
     graph: { icon: Network, label: "Graph" },
@@ -6680,6 +6681,8 @@ function WorldBuilderContent({
           setActiveWbTabId(nextTab.id);
           if (nextTab.type === "article" && nextTab.entityId) {
             setSelectedEntityId(nextTab.entityId);
+          } else {
+            setSelectedEntityId(null);
           }
         }
       }
@@ -6956,22 +6959,37 @@ function WorldBuilderContent({
 
                       {tab.type === "maps" && (
                         <div className="h-full">
-                          {isGM && (tab.editingMapId || tab.creatingMap) ? (
-                            <WorldMapEditor
-                              worldId={selectedWorldId}
-                              mapId={tab.editingMapId || undefined}
-                              onBack={() => { setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, editingMapId: null, creatingMap: false } : t)); }}
-                              onMapCreated={(newId) => { setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, creatingMap: false, editingMapId: newId } : t)); }}
-                            />
-                          ) : (
-                            <WorldMapViewer
-                              worldId={selectedWorldId}
-                              isGM={isGM}
-                              onEditMap={isGM ? (mapId) => setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, editingMapId: mapId } : t)) : undefined}
-                              onCreateMap={isGM ? () => setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, creatingMap: true } : t)) : undefined}
-                              onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
-                            />
-                          )}
+                          <WorldMapViewer
+                            worldId={selectedWorldId}
+                            isGM={isGM}
+                            onEditMap={isGM ? (mapId) => {
+                              const existingEditTab = wbTabs.find(t => t.type === "map-edit" && t.mapId === mapId);
+                              if (existingEditTab) {
+                                setActiveWbTabId(existingEditTab.id);
+                              } else {
+                                const newTabId = makeTabId();
+                                setWbTabs(prev => [...prev, { id: newTabId, type: "map-edit", title: "Map Editor", mapId }]);
+                                setActiveWbTabId(newTabId);
+                              }
+                            } : undefined}
+                            onCreateMap={isGM ? () => {
+                              const newTabId = makeTabId();
+                              setWbTabs(prev => [...prev, { id: newTabId, type: "map-edit", title: "New Map", mapId: null }]);
+                              setActiveWbTabId(newTabId);
+                            } : undefined}
+                            onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
+                          />
+                        </div>
+                      )}
+
+                      {tab.type === "map-edit" && (
+                        <div className="h-full">
+                          <WorldMapEditor
+                            worldId={selectedWorldId}
+                            mapId={tab.mapId || undefined}
+                            onBack={() => handleCloseWbTab(tab.id)}
+                            onMapCreated={(newId) => { setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, mapId: newId, title: "Map Editor" } : t)); }}
+                          />
                         </div>
                       )}
 
