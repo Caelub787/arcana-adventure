@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { TAG_COLORS, useWorldGraphData, type WorldGraphData } from "@/lib/worldbuilding-api";
 import { Button } from "@/components/ui/button";
-import { Filter, Tag, Loader2, FileText, Sparkles, Package, Shield, Zap, UserCircle } from "lucide-react";
+import { PREDEFINED_TAGS } from "@shared/schema";
+import { Filter, Tag, Loader2, FileText, Sparkles, Package, Shield, Zap, UserCircle, X, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 
 type NodeCategory = "article" | "canvas" | "spell" | "item" | "trait" | "skill" | "character";
 
@@ -159,7 +160,10 @@ function buildGraphData(
         case "entity": targetId = `entity-${ref.id}`; break;
         case "item": targetId = `item-${ref.id}`; break;
         case "spell": targetId = `spell-${ref.id}`; break;
+        case "trait": targetId = `trait-${ref.id}`; break;
+        case "skill": targetId = `skill-${ref.id}`; break;
         case "character": targetId = `character-${ref.id}`; break;
+        case "map": targetId = `map-${ref.id}`; break;
         default: continue;
       }
       addEdge(`entity-${entity.id}`, targetId);
@@ -789,25 +793,24 @@ export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }:
               <span className={`text-xs ${categoryFilters[key] !== false ? "text-stone-300" : "text-stone-600 line-through"}`}>{label}</span>
             </button>
           ))}
-          {usedTags.length > 0 && (
-            <>
-              <div className="text-xs text-stone-500 mt-2 mb-1">Article Tags</div>
-              {usedTags.map(tag => {
-                const isEnabled = tagFilters[tag] !== false;
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTagFilter(tag)}
-                    className={`flex items-center gap-2 px-2 py-0.5 rounded text-left transition-all ${isEnabled ? "bg-stone-800/50 hover:bg-stone-700/50" : "bg-stone-900/30 opacity-40 hover:opacity-60"}`}
-                    data-testid={`filter-toggle-tag-${tag}`}
-                  >
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c", opacity: isEnabled ? 1 : 0.4 }} />
-                    <span className={`text-[10px] ${isEnabled ? "text-stone-300" : "text-stone-600 line-through"}`}>{tag}</span>
-                  </button>
-                );
-              })}
-            </>
-          )}
+          <div className="text-xs text-stone-500 mt-2 mb-1">Article Tags</div>
+          <div className="max-h-48 overflow-y-auto space-y-0.5">
+            {PREDEFINED_TAGS.map(tag => {
+              const isEnabled = tagFilters[tag] !== false;
+              const hasNodes = usedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  onClick={() => toggleTagFilter(tag)}
+                  className={`flex items-center gap-2 px-2 py-0.5 rounded text-left transition-all w-full ${isEnabled ? "bg-stone-800/50 hover:bg-stone-700/50" : "bg-stone-900/30 opacity-40 hover:opacity-60"} ${!hasNodes ? "opacity-30" : ""}`}
+                  data-testid={`filter-toggle-tag-${tag}`}
+                >
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c", opacity: isEnabled ? 1 : 0.4 }} />
+                  <span className={`text-[10px] ${isEnabled ? "text-stone-300" : "text-stone-600 line-through"}`}>{tag}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
