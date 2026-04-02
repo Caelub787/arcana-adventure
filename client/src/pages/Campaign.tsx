@@ -6652,6 +6652,7 @@ function WorldBuilderContent({
     setActiveWbTabId(tabId);
     const tab = wbTabs.find(t => t.id === tabId);
     if (tab) setSelectedEntityId(tab.entityId);
+    setActiveSection("encyclopedia");
   };
 
   const handleEntityBack = () => {
@@ -6667,6 +6668,7 @@ function WorldBuilderContent({
   const handleWbGoHome = () => {
     setSelectedEntityId(null);
     setActiveWbTabId(null);
+    setActiveSection("encyclopedia");
   };
 
   const handleSelectTimeline = (timelineId: string | null) => {
@@ -6742,6 +6744,56 @@ function WorldBuilderContent({
         )}
       </div>
 
+      {wbTabs.length > 0 && (
+        <div className="border-b border-stone-800 bg-stone-900/80 py-1 shrink-0">
+          <div className="flex items-center gap-1 px-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleWbGoHome}
+              className={`h-6 px-2 text-xs flex-shrink-0 ${!activeWbTabId ? 'text-amber-400 bg-stone-800' : 'text-stone-400 hover:text-white'}`}
+              data-testid="button-wb-home"
+            >
+              <Home className="h-3 w-3 mr-1" />
+              Home
+            </Button>
+            <div className="h-4 w-px bg-stone-700 flex-shrink-0" />
+            <div className="flex gap-1 overflow-x-auto flex-1">
+              {wbTabs.map((tab) => {
+                const isActive = tab.id === activeWbTabId;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleSwitchWbTab(tab.id)}
+                    className={`group flex items-center gap-1.5 px-2 py-1 rounded-t flex-shrink-0 text-xs max-w-[180px] ${
+                      isActive
+                        ? "bg-stone-800 text-amber-400 border-b-2 border-amber-500"
+                        : "bg-stone-900/50 text-stone-400 hover:bg-stone-800/70 hover:text-stone-300 border-b-2 border-transparent"
+                    } transition-all duration-150`}
+                    data-testid={`wb-tab-${tab.id}`}
+                  >
+                    <FileText className={`flex-shrink-0 h-3 w-3 ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
+                    <span className="truncate flex-1 text-left">{tab.title || "Article"}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCloseWbTab(tab.id);
+                      }}
+                      className={`flex-shrink-0 p-0.5 rounded hover:bg-stone-700 transition-colors ${
+                        isActive ? 'text-stone-400 hover:text-stone-200' : 'text-stone-500 hover:text-stone-300 opacity-0 group-hover:opacity-100'
+                      }`}
+                      data-testid={`wb-tab-close-${tab.id}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-hidden flex">
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           {!selectedWorldId ? (
@@ -6809,69 +6861,6 @@ function WorldBuilderContent({
 
                 {activeSection === "encyclopedia" && (
                   <div className="flex flex-col h-full">
-                    {wbTabs.length > 0 && (
-                      <div className="border-b border-stone-800 bg-stone-900/80 py-1 shrink-0">
-                        <div className="flex items-center gap-1 px-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleWbGoHome}
-                            className={`h-6 px-2 text-xs flex-shrink-0 ${!activeWbTabId ? 'text-amber-400 bg-stone-800' : 'text-stone-400 hover:text-white'}`}
-                            data-testid="button-wb-home"
-                          >
-                            <Home className="h-3 w-3 mr-1" />
-                            Home
-                          </Button>
-                          <div className="h-4 w-px bg-stone-700 flex-shrink-0" />
-                          <div className="flex gap-1 overflow-x-auto flex-1">
-                            {wbTabs.map((tab) => {
-                              const isActive = tab.id === activeWbTabId;
-                              return (
-                                <button
-                                  key={tab.id}
-                                  onClick={() => handleSwitchWbTab(tab.id)}
-                                  className={`group flex items-center gap-1.5 px-2 py-1 rounded-t flex-shrink-0 text-xs max-w-[160px] ${
-                                    isActive
-                                      ? "bg-stone-800 text-amber-400 border-b-2 border-amber-500"
-                                      : "bg-stone-900/50 text-stone-400 hover:bg-stone-800/70 hover:text-stone-300 border-b-2 border-transparent"
-                                  } transition-all duration-150`}
-                                  data-testid={`wb-tab-${tab.id}`}
-                                >
-                                  <FileText className={`flex-shrink-0 h-3 w-3 ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
-                                  <span className="truncate flex-1 text-left">{tab.title || "Article"}</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCloseWbTab(tab.id);
-                                    }}
-                                    className={`flex-shrink-0 p-0.5 rounded hover:bg-stone-700 transition-colors ${
-                                      isActive ? 'text-stone-400 hover:text-stone-200' : 'text-stone-500 hover:text-stone-300 opacity-0 group-hover:opacity-100'
-                                    }`}
-                                    data-testid={`wb-tab-close-${tab.id}`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {selectedEntityId && activeWbTabId && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-stone-700 bg-stone-800/30 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleWbGoHome}
-                          className="h-7 text-stone-400 hover:text-white text-xs"
-                          data-testid="button-entity-home"
-                        >
-                          <Home className="h-3.5 w-3.5 mr-1" />
-                          Encyclopedia
-                        </Button>
-                      </div>
-                    )}
                     <div className="flex flex-1 overflow-hidden">
                       {(!activeWbTabId || !selectedEntityId) ? (
                         <div className="w-full overflow-hidden">

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { gameWs } from "@/lib/api";
 
@@ -75,6 +75,8 @@ export function useEntity(worldId: string | undefined, entityId: string | undefi
     queryKey: ["/api/worlds", worldId, "entities", entityId],
     queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}`),
     enabled: !!worldId && !!entityId,
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -97,6 +99,8 @@ export function useEntityLinks(worldId: string | undefined, entityId?: string) {
     queryKey: ["/api/worlds", worldId, "entity-links", entityId || "all"],
     queryFn: () => fetchJSON(url),
     enabled: !!worldId,
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -105,6 +109,8 @@ export function useEntityReferences(worldId: string | undefined, entityId: strin
     queryKey: ["/api/worlds", worldId, "entities", entityId, "references"],
     queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}/references`),
     enabled: !!worldId && !!entityId,
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 }
 
