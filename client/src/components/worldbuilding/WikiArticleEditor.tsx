@@ -353,6 +353,8 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const latestStateRef = useRef({ articleContent, description, displayName, image, visibility, entityType, tags, entityId: entity.id });
+  latestStateRef.current = { articleContent, description, displayName, image, visibility, entityType, tags, entityId: entity.id };
 
   useEffect(() => {
     setArticleContent(entity.articleContent || "");
@@ -364,30 +366,70 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     setTags((entity.tags as string[]) || []);
   }, [entity.id]);
 
-  const saveChanges = useCallback(async () => {
+  const doSave = useCallback(async () => {
+    const s = latestStateRef.current;
     setIsSaving(true);
-    const updateData: Partial<Entity> & { id: string } = {
-      id: entity.id,
-      articleContent,
-      description,
-      displayName,
-      image: image || undefined,
-      visibility,
-      entityType,
-      tags,
-    };
     try {
-      await updateEntity.mutateAsync(updateData);
+      await updateEntity.mutateAsync({
+        id: s.entityId,
+        articleContent: s.articleContent,
+        description: s.description,
+        displayName: s.displayName,
+        image: s.image || undefined,
+        visibility: s.visibility,
+        entityType: s.entityType,
+        tags: s.tags,
+      });
       onEntityUpdated?.();
     } finally {
       setIsSaving(false);
     }
-  }, [entity.id, articleContent, description, displayName, image, visibility, entityType, tags, updateEntity, onEntityUpdated]);
+  }, [updateEntity, onEntityUpdated]);
 
-  const autoSave = useCallback(() => {
+  const saveChanges = useCallback(async () => {
+    if (saveTimeoutRef.current) { clearTimeout(saveTimeoutRef.current); saveTimeoutRef.current = null; }
+    await doSave();
+  }, [doSave]);
+
+  const debouncedSave = useCallback(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => saveChanges(), 2000);
-  }, [saveChanges]);
+    saveTimeoutRef.current = setTimeout(() => { saveTimeoutRef.current = null; doSave(); }, 800);
+  }, [doSave]);
+
+  const saveImmediately = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+    doSave();
+  }, [doSave]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+        const s = latestStateRef.current;
+        const sid = resolvedId;
+        const sc = scope;
+        fetch(`/api/${sc}/${sid}/entities/${s.entityId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            articleContent: s.articleContent,
+            description: s.description,
+            displayName: s.displayName,
+            image: s.image || undefined,
+            visibility: s.visibility,
+            entityType: s.entityType,
+            tags: s.tags,
+          }),
+          keepalive: true,
+        });
+      }
+    };
+  }, [resolvedId, scope]);
+
+  const autoSave = debouncedSave;
 
   const insertMarkdown = (prefix: string, suffix: string = "") => {
     const ta = textareaRef.current;
@@ -453,7 +495,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
       const next = prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
       return next;
     });
-    autoSave();
+    setTimeout(() => saveImmediately(), 0);
   };
 
   const predefinedSet = new Set<string>(PREDEFINED_TAGS);
@@ -484,21 +526,21 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                   <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
                     <button
                       className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
-                      onClick={() => { setEntityType("article"); autoSave(); }}
+                      onClick={() => { setEntityType("article"); setTimeout(() => saveImmediately(), 0); }}
                       data-testid="toggle-type-article"
                     >
                       <FileText className="h-3 w-3" /> Article
                     </button>
                     <button
                       className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
-                      onClick={() => { setEntityType("canvas"); autoSave(); }}
+                      onClick={() => { setEntityType("canvas"); setTimeout(() => saveImmediately(), 0); }}
                       data-testid="toggle-type-canvas"
                     >
                       <Layout className="h-3 w-3" /> Canvas
                     </button>
                   </div>
                 )}
-                <Select value={visibility} onValueChange={(val) => { setVisibility(val); autoSave(); }}>
+                <Select value={visibility} onValueChange={(val) => { setVisibility(val); setTimeout(() => saveImmediately(), 0); }}>
                   <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
                     <div className="flex items-center gap-1.5">
                       {visibility === "gm_only" ? <EyeOff className="h-3 w-3 text-stone-500" /> : <Eye className="h-3 w-3 text-amber-400" />}
