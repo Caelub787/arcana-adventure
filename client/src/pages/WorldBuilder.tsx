@@ -76,6 +76,7 @@ interface World {
   campaignId?: string | null;
   homeContent?: string | null;
   customTags?: string[] | null;
+  system?: string | null;
   createdAt: string;
   updatedAt: string;
 }
