@@ -581,6 +581,28 @@ export function useDeleteCalendarSync(worldId: string | undefined) {
   });
 }
 
+export interface LinkedWorld {
+  id: string;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  homeContent?: string | null;
+  customTags?: string[] | null;
+  system?: string | null;
+  userId: string;
+  campaignId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useLinkedWorld(campaignId: string | undefined) {
+  return useQuery<LinkedWorld | null>({
+    queryKey: ["/api/campaigns", campaignId, "linked-world"],
+    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/linked-world`),
+    enabled: !!campaignId,
+  });
+}
+
 export function useWorldbuildingSync(worldId: string | undefined) {
   const qc = useQueryClient();
 

@@ -10917,6 +10917,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== WORLD ACCESS HELPER ====================
+
+  async function checkWorldAccess(userId: string, worldId: string): Promise<{ allowed: boolean; isOwner: boolean }> {
+    const world = await storage.getWorld(worldId);
+    if (!world) return { allowed: false, isOwner: false };
+    if (world.userId === userId) return { allowed: true, isOwner: true };
+    if (world.campaignId) {
+      const campaign = await storage.getCampaign(world.campaignId);
+      if (campaign) {
+        const isGM = await hasGmAccess(userId, world.campaignId, campaign.gmUserId);
+        if (isGM) return { allowed: true, isOwner: true };
+        const isMember = await storage.isCampaignMember(world.campaignId, userId);
+        if (isMember) return { allowed: true, isOwner: false };
+      }
+    }
+    return { allowed: false, isOwner: false };
+  }
+
+  // ==================== CAMPAIGN LINKED WORLD ROUTE ====================
+
+  app.get("/api/campaigns/:campaignId/linked-world", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const worlds = await storage.getWorldsByCampaign(campaignId);
+      const linkedWorld = worlds.length > 0 ? worlds[0] : null;
+      res.json(linkedWorld);
+    } catch (e) {
+      console.error("Failed to get linked world:", e);
+      res.status(500).json({ error: "Failed to get linked world" });
+    }
+  });
+
   // ==================== WORLD CRUD ROUTES ====================
 
   app.get("/api/worlds", requireAuth, async (req, res) => {
@@ -10944,7 +10981,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       res.json(world);
     } catch (e) {
       console.error("Failed to get world:", e);
@@ -10986,9 +11024,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/graph-data", requireAuth, async (req, res) => {
     try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
 
       const worldSystem = (world as any).system || "arcana-adventure";
       const [allEntities, entityLinks, systemItems, systemSpells, systemTraits, systemSkills] = await Promise.all([
@@ -11005,8 +11045,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignCharacters = await storage.getCampaignCharacters(world.campaignId);
       }
 
+      const filteredEntities = allEntities.filter((e: any) => !e.isDeleted && (access.isOwner || e.visibility !== 'gm_only'));
+
       res.json({
-        entities: allEntities.filter((e: any) => !e.isDeleted),
+        entities: filteredEntities,
         entityLinks,
         items: systemItems.map((i: any) => ({ id: i.id, name: i.name, itemType: i.itemType || "misc", rarity: i.rarity || "common", description: i.description })),
         spells: systemSpells.map((s: any) => ({ id: s.id, name: s.name, description: s.description })),
@@ -11024,11 +11066,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entities", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const allEntities = await storage.getEntitiesByWorld(req.params.worldId);
-      res.json(allEntities);
+      const filtered = access.isOwner ? allEntities : allEntities.filter(e => e.visibility !== 'gm_only');
+      res.json(filtered);
     } catch (e) {
       console.error("Failed to get world entities:", e);
       res.status(500).json({ error: "Failed to get entities" });
@@ -11037,12 +11079,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entities/search", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const { q, type } = req.query;
       const allEntities = await storage.searchEntitiesByWorld(req.params.worldId, (q as string) || "", type as string | undefined);
-      res.json(allEntities);
+      const filtered = access.isOwner ? allEntities : allEntities.filter(e => e.visibility !== 'gm_only');
+      res.json(filtered);
     } catch (e) {
       console.error("Failed to search world entities:", e);
       res.status(500).json({ error: "Failed to search entities" });
@@ -11051,21 +11093,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/wiki-search", requireAuth, async (req, res) => {
     try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+
       const q = ((req.query.q as string) || "").toLowerCase().trim();
       if (!q) return res.json([]);
 
       const results: Array<{ id: string; type: string; name: string; category: string }> = [];
 
       const worldEntities = await storage.searchEntitiesByWorld(req.params.worldId, q);
-      for (const e of worldEntities) {
+      const filteredEntities = access.isOwner ? worldEntities : worldEntities.filter(e => e.visibility !== 'gm_only');
+      for (const e of filteredEntities) {
         results.push({ id: e.id, type: "entity", name: e.displayName, category: "Encyclopedia" });
       }
 
       const worldMapsResult = await storage.getWorldMapsByWorld(req.params.worldId);
-      for (const m of worldMapsResult) {
+      const filteredMaps = access.isOwner ? worldMapsResult : worldMapsResult.filter((m: any) => m.visibility !== 'gm_only');
+      for (const m of filteredMaps) {
         if (m.title.toLowerCase().includes(q)) {
           results.push({ id: m.id, type: "map", name: m.title, category: "Maps" });
         }
@@ -11080,7 +11127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const systemName = world.system || "arcana-adventure";
+      const systemName = (world as any).system || "arcana-adventure";
       const sysItems = await storage.getSystemItems(systemName);
       for (const it of sysItems) {
         if (it.name.toLowerCase().includes(q)) {
@@ -11104,9 +11151,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/wiki-link-preview/:type/:id", requireAuth, async (req, res) => {
     try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
 
       const { type, id } = req.params;
       if (type === "character") {
@@ -11148,11 +11196,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entities/:entityId", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const entity = await storage.getEntity(req.params.entityId);
       if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      if (!access.isOwner && entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
       res.json(entity);
     } catch (e) {
       console.error("Failed to get world entity:", e);
@@ -11220,9 +11268,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entities/:entityId/references", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const references = await storage.getEntityReferences(req.params.entityId);
       res.json(references);
     } catch (e) {
@@ -11235,9 +11282,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entity-links", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const links = await storage.getEntityLinksByWorld(req.params.worldId);
       res.json(links);
     } catch (e) {
@@ -11248,9 +11294,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/entity-links/entity/:entityId", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const links = await storage.getEntityLinks(req.params.entityId);
       res.json(links);
     } catch (e) {
@@ -11364,11 +11409,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/world-maps", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const maps = await storage.getWorldMapsByWorld(req.params.worldId);
-      res.json(maps);
+      const filtered = access.isOwner ? maps : maps.filter(m => m.visibility !== 'gm_only');
+      res.json(filtered);
     } catch (e) {
       console.error("Failed to get world maps:", e);
       res.status(500).json({ error: "Failed to get world maps" });
@@ -11377,11 +11422,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/world-maps/:mapId", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const map = await storage.getWorldMap(req.params.mapId);
       if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      if (!access.isOwner && map.visibility === 'gm_only') return res.status(404).json({ error: "Map not found" });
       res.json(map);
     } catch (e) {
       console.error("Failed to get world map:", e);
@@ -11437,9 +11482,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/world-maps/:mapId/pins", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const map = await storage.getWorldMap(req.params.mapId);
       if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       const pins = await storage.getWorldMapPins(req.params.mapId);
@@ -11500,9 +11544,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/calendars", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const calendars = await storage.getWorldCalendarsByWorld(req.params.worldId);
       res.json(calendars);
     } catch (e) {
@@ -11513,9 +11556,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/calendars/:calendarId", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const calendar = await storage.getWorldCalendar(req.params.calendarId);
       if (!calendar || calendar.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
       res.json(calendar);
@@ -11573,9 +11615,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/timeline-events", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const events = await storage.getWorldTimelineEventsByWorld(req.params.worldId);
       res.json(events);
     } catch (e) {
@@ -11586,9 +11627,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/timeline-events/:eventId", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const event = await storage.getWorldTimelineEvent(req.params.eventId);
       if (!event || event.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
       res.json(event);
@@ -11646,9 +11686,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds/:worldId/calendar-syncs", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const syncs = await storage.getCalendarSyncsByWorld(req.params.worldId);
       res.json(syncs);
     } catch (e) {
@@ -11689,8 +11728,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // World Timeline CRUD (world-scoped)
   app.get("/api/worlds/:worldId/timelines", requireAuth, async (req, res) => {
     try {
-      const world = await storage.getWorld(req.params.worldId);
-      if (!world) return res.status(404).json({ error: "World not found" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const timelines = await storage.getTimelinesByWorld(req.params.worldId);
       res.json(timelines);
     } catch (e) {

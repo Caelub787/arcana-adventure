@@ -1,7 +1,7 @@
 # Arcana Adventure - Mobile RPG Manager & Tabletop Hub
 
 ## Overview
-Arcana Adventure is a full-stack web application designed as a comprehensive hub for real-time tabletop RPG gameplay. It offers Game Masters (GMs) and players collaborative tools for campaign management, including an interactive battle map, character creation, real-time chat, and campaign administration. The project aims to streamline the TTRPG experience with a dark fantasy aesthetic, distinct GM and player perspectives, and robust role-based access control.
+Arcana Adventure is a full-stack web application designed to be a comprehensive hub for real-time tabletop RPG gameplay. It provides Game Masters (GMs) and players with collaborative tools for campaign management, character creation, and real-time interaction, all within a dark fantasy aesthetic. The project aims to streamline the TTRPG experience with distinct GM and player perspectives, robust role-based access control, and extensive worldbuilding capabilities. Key capabilities include interactive battle maps, dynamic character sheets, real-time chat with dice rolls, and a sophisticated world wiki system.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -10,67 +10,41 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend
 -   **Technology Stack**: React 18 with TypeScript, Vite, Wouter, TanStack Query.
--   **UI/UX**: Tailwind CSS v4 with a dark fantasy theme, `shadcn/ui` components (Radix UI), and Lucide React for iconography.
+-   **UI/UX**: Tailwind CSS v4 with a dark fantasy theme, `shadcn/ui` components (Radix UI), and Lucide React for iconography. Floating panels are used for various interactive elements, adapting to full-screen overlays on mobile.
 -   **State Management**: React Context for authentication, TanStack Query for server state.
 -   **Real-time Communication**: WebSockets for live updates.
 -   **Key Features**:
-    -   **Battle Map**: Interactive map with token management (draggable, HP/energy, initiative glow, GM viewport tracking), scene management, custom backgrounds, and a dynamic Fog of War system with walls, doors, windows, lighting, and vision calculation.
+    -   **Battle Map**: Interactive map with token management (draggable, HP/energy, initiative, GM viewport tracking), scene management, custom backgrounds, dynamic Fog of War with vision calculations (walls, doors, lighting), and GM-drawn Vision Zones.
     -   **Character Management**: Mobile-optimized character sheets with real-time updates, custom species/races, dynamic HP/energy, templates, and embedded items/spells.
-    -   **Game Mechanics**: Real-time chat with dice rolls, attributes/skills, traits, rest mechanics, exhaustion, inventory with hotbars, initiative tracker, roll notifications, targeting with range/hit detection (including AOE), armor damage reduction, combat status effects, and a customizable player hotbar.
-    -   **Feat System**: Interactive feat tree editor with draggable nodes, tier-based styling, prerequisites, and dynamic effects. In AA V2, feat trees serve as species-specific progression (1 point per character level, separate from class skill points). Both systems can create and assign feat trees to species.
+    -   **Game Mechanics**: Real-time chat with dice rolls, attributes/skills, traits, rest mechanics, exhaustion, inventory with hotbars, initiative tracker, roll notifications, targeting with range/hit detection (including AOE), armor damage reduction, and combat status effects.
+    -   **Progression Systems**: Interactive feat tree editor for species progression and a class-based system (AA V2) with skill trees, mana resources, and class-specific progression. Both systems support dynamic effects.
     -   **Spell Management**: System for defining spells with properties like damage, type, range, cost, and attribute.
-    -   **Notes System**: Obsidian-like note-taking with nested folders, markdown, rich text, entity references, collaborative editing, Canvas editor, and Graph View. Integrated with Worldbuilding — notes support [[Entity Name]] wiki-links that resolve to worldbuilding entities, and campaign Notes panel includes a "World" section for browsing/editing world entities inline.
-    -   **Floating Panels**: Campaign view uses draggable/resizable floating panels (FloatingPanel component) for character sheets, notes editor, map pin editor, and world builder. On mobile, panels render as fullscreen overlays inside Radix Dialog DOM tree.
-    -   **Campaign World Builder**: Globe button in campaign toolbar opens a FloatingWorldBuilder panel with all 6 worldbuilding sections (Home, Encyclopedia, Maps, Timeline, Calendar, Graph) using campaign-scoped API hooks.
-    -   **Vision Zones**: GM-drawn freeform polygons to define indoor/outdoor areas, overriding scene day/night settings for vision calculations.
-    -   **AA V2 System**: Alternate campaign system (`aa-v2` slug) with mana resource (mana/maxMana on characters), class-based progression with class skill points (3 at level 1, +2 per level up, +3 on levels divisible by 5), and mana costs on rolls/spells. Species feat tree points: 1 per level. Mana bar on character sheet matches HP/energy bar design (violet). Token mana bar is purple/pink (fuchsia-500). Full classes system with admin class CRUD (including class icon/image), per-class skill tree editor (draggable nodes, connections, tier-based styling, effects). Classes shown on character sheet Overview tab as icon grid (not a separate tab). Edit button opens a Class Browser floating panel showing ALL system classes; clicking a class opens its skill tree. Unlocking a node in a class the character doesn't have yet auto-adds the class. Unlocked classes display as profile images with hover/long-press tooltip showing name and level. Class points formula: `3 + 2 * (level - 1) + Math.floor(level / 5)` (3 at level 1, +2 per level, +3 on levels divisible by 5). Node effects: hp_bonus, energy_increase, mana_increase, attribute_bonus, skill_bonus. WebSocket real-time sync for class changes.
-    -   **System-Scoped Admin Content**: All admin content (items, spells, skills, traits) is scoped per system (`arcana-adventure` or `aa-v2`). Admin panel has system selector dropdown. Dashboard conditionally shows feat trees (Arcana Adventure only) and classes card (AA V2 only). Copy-to-system buttons (Send icon) on items and spells allow copying content between systems. Species editor shows mana fields (startingMana, startingMaxMana, manaPerLevel) only for AA V2.
-    -   **Token Bar Toggles**: Per-character toggles (showHpBar, showEnergyBar, showManaBar) on Background tab control which resource bars appear on battle map tokens. Defaults to all visible. Mana toggle only shows for AA V2 campaigns.
-    -   **Worldbuilding Wiki System**: Unified worldbuilding platform with independent "Worlds" as the organizing unit (not tied to campaigns). Users create worlds, each with its own articles, maps, timelines, calendars, and relationship graph. Each world has a `system` setting ("arcana-adventure" or "aa-v2") to scope admin content (items, spells) shown in wiki-link search. Six sidebar sections: Home (wiki-style landing page editor with world name, description, and markdown home content), Encyclopedia (tag-based wiki articles with 25 predefined tags + custom tags, Article/Canvas type toggle, simplified markdown editor, CanvasArticleEditor for freeform visual articles, 22 link types), Maps (interactive world maps with clickable pins — text reveals, map drill-downs, entity links), Timeline (dynamic events grouped by era with calendar integration, structured calendar-aware date picker with month/day/year inputs), Calendar (custom calendar systems with custom months/days/weekdays, day annotations, and cross-calendar sync — epoch-offset-based date mapping between calendars so events from synced calendars appear on correct dates), and Graph (force-directed relationship visualization). Features: wiki-link autocomplete (type `[[` in article editor to search and insert references to encyclopedia articles, world maps, linked campaign characters, and system-scoped items/spells as `[[type:id|label]]` format — rendered as color-coded clickable links in view mode), public share links for players (/world/:slug with human-readable world-name + username URLs, no auth required; legacy /shared/:token also supported), visibility controls (GM-only/shared/player-visible), entity deletion, world settings (name, description, system, custom tags), breadcrumb map navigation, pin placement editor, WebSocket live sync for all changes. Worlds can optionally be linked to campaigns.
-    -   **Share System**: GMs can generate public share links for their world. Unauthenticated visitors see all player-visible content (articles, maps, timeline, calendar) in a read-only view.
-    -   **Campaign Map Pins**: New map pin system on the battlemap with percentage-based coordinates. Pin types: text_reveal (popover with content) and scene_link (navigate to another scene). Pins can be marked as shops. GM FloatingPanel editor for pin CRUD, color picker, WebSocket real-time sync.
-    -   **Shop System**: Map pins marked as shops allow GMs to manage shop inventories (items with name, description, price, currency, stock). GM shop editor has Inventory tab (inline editable price/currency/stock/durability per item) and Import tab (multi-select from campaign/system item templates with LazyItemImage profile pictures, type/rarity filters, and search — bulk adding via parallel fetch). Shopkeeper gold tracking (auto-adjusted on buy/sell). GM clicking shop pin on map opens the player shop view (with character picker and "Manage" button); shop editor accessed from pin list or Manage button. Players can buy items (with automatic copper/silver/gold/platinum currency conversion and change-making) and sell items with a charisma-based haggling d20 roll (Nat 1=0%, Nat 20=120%, GM-configurable default sell percentage without rolling). Currency denominations: 10 copper=1 silver, 10 silver=1 gold, 10 gold=1 platinum.
-    -   **Shopkeeper Characters**: Each shop pin can optionally link to a shopkeeper character (`shopkeeperCharacterId`). When linked, buy/sell transactions automatically add/remove currency items from the shopkeeper's character sheet. The shopkeeper's wallet is shown in the manage shop panel.
-    -   **Haggle Roll**: Uses d20 + character's `skillCharisma` modifier. Nat 1 and Nat 20 are always preserved. Toast shows the d20 roll, charisma modifier, and final total. Rolls are persisted per character per shop in `shop_haggle_rolls` table. GM can view all rolls in the Manage panel "Rolls" tab and reset individual rolls to let players re-roll.
-    -   **Pin Move Mode**: Campaign map pins are not freely draggable. To reposition a pin, GM opens the pin editor and clicks "Move Pin" to enable drag mode, then drags the pin on the map to a new position. The new position is only saved when clicking "Save".
+    -   **Notes System**: Obsidian-like note-taking with nested folders, markdown, rich text, entity references, collaborative editing, Canvas editor, and Graph View, integrated with the Worldbuilding system.
+    -   **Worldbuilding Wiki System**: Unified platform for creating independent "Worlds" with articles, maps, timelines, calendars, and relationship graphs. Features include wiki-link autocomplete, public share links, visibility controls, and WebSocket live sync. Worlds can be linked to campaigns.
+    -   **Campaign Map Pins**: Interactive pins on the battlemap with percentage-based coordinates, supporting text reveals and scene links. Pins can be marked as shops.
+    -   **Shop System**: GMs manage shop inventories (items, prices, stock, currency) linked to map pins. Players can buy/sell items with automatic currency conversion and a charisma-based haggling d20 roll. Shops can be linked to shopkeeper characters for automated currency tracking.
 
 ### Backend
 -   **Technology Stack**: Express.js with TypeScript, `express-session`.
 -   **API Design**: RESTful endpoints, WebSocket server, session-based authentication, and role-based access control.
--   **API Scoping**: Worldbuilding data accessible via both `/api/worlds/:worldId/*` (world-scoped) and `/api/campaigns/:campaignId/*` (campaign-scoped) routes.
+-   **API Scoping**: Worldbuilding data is accessible via both world-scoped and campaign-scoped routes.
 
 ### Data Storage
 -   **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM.
--   **Schema**: Comprehensive schema covering all application entities.
--   **Worlds Table**: `worlds` (id, name, description, image, userId, optional campaignId) — independent worldbuilding containers.
--   **Worldbuilding Tables**: `entities`, `entity_links`, `world_share_links`, `world_maps`, `world_map_pins`, `world_calendars`, `world_timelines`, `world_timeline_events`, `world_calendar_syncs` — all have both `worldId` and `campaignId` (nullable) for flexible scoping. Timeline events reference a `timelineId` to support multiple timelines per world.
--   **Campaign Map Tables**: `campaign_map_pins` (percentage-based coords, pin types, isShop flag, shopkeeperMoney, shopkeeperCharacterId, defaultSellPercentage), `shop_items` (attached to pins, with name/price/currency/stock/itemData), `shop_haggle_rolls` (per character per shop, with roll/d20/charisma/sellPercentage, unique on pinId+characterId).
+-   **Schema**: Comprehensive schema covering all application entities, including `worlds`, `entities`, `campaign_map_pins`, `shop_items`, and `shop_haggle_rolls`. Worldbuilding tables feature `worldId` and `campaignId` (nullable) for flexible scoping.
 -   **Validation**: Zod schemas for input validation.
 
 ### Authentication & Authorization
--   **Authentication**: `bcryptjs` for password hashing, session-based authentication with "Remember Me" support (30-day persistent vs session-only cookies).
+-   **Authentication**: `bcryptjs` for password hashing, session-based authentication with "Remember Me" support.
 -   **Authorization**: Three-tier role system (Owner, Assistant GM, Player) and a four-tier character access permission system.
 -   **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
-
-## Key Worldbuilding Components
--   `client/src/pages/WorldBuilder.tsx` — Main unified world builder with worlds selector and sidebar section navigation
--   `client/src/pages/SharedWorldView.tsx` — Public read-only world viewer (no auth)
--   `client/src/components/worldbuilding/WikiArticleEditor.tsx` — Markdown article editor with template fields
--   `client/src/components/worldbuilding/WorldMapViewer.tsx` — Interactive map viewer with clickable pins
--   `client/src/components/worldbuilding/WorldMapEditor.tsx` — GM map editor (place pins, set images)
--   `client/src/components/worldbuilding/TimelineView.tsx` — Multi-timeline system with era grouping, per-timeline event management; timeline selection controlled externally from WorldBuilder sidebar
--   `client/src/components/worldbuilding/WorldCalendar.tsx` — Custom calendar system
--   `client/src/components/worldbuilding/RelationshipGraph.tsx` — Force-directed entity graph
--   `client/src/components/worldbuilding/EntitySidePanel.tsx` — Entity detail panel (6 tabs)
--   `client/src/components/worldbuilding/WorldbuilderPanel.tsx` — Entity creation dialog
--   `client/src/lib/worldbuilding-api.ts` — All worldbuilding API hooks and WebSocket sync (world-scoped + campaign-scoped variants)
 
 ## External Dependencies
 
 ### Third-Party Services
 -   **Neon Database**: Serverless PostgreSQL hosting.
--   **Google Drive Integration (Replit Connector)**: GM's image library browser for character/item images. Uses server-side Replit connector tied to the developer's Google account — this is intentional for the asset library.
--   **Google OAuth (Per-User)**: Each user connects their own Google account for Google Docs import/export in the Notes system. Uses `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` env vars. OAuth flow: `/api/google/auth-url` → Google consent → `/api/google/callback` → tokens stored per-user in `users` table (`googleAccessToken`, `googleRefreshToken`, `googleTokenExpiry`, `googleEmail`). Helper module: `server/googleUserAuth.ts`.
+-   **Google Drive Integration**: Used for GM's image library browser for character/item images.
+-   **Google OAuth**: For per-user Google Docs import/export in the Notes system. Users connect their own Google accounts, with tokens stored securely.
 
 ### Key NPM Dependencies
 -   **UI & Styling**: Radix UI components, `tailwindcss`.

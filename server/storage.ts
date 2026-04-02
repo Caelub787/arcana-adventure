@@ -561,6 +561,7 @@ export interface IStorage {
 
   // World operations
   getWorldsByUser(userId: string): Promise<World[]>;
+  getWorldsByCampaign(campaignId: string): Promise<World[]>;
   getWorld(id: string): Promise<World | undefined>;
   createWorld(world: InsertWorld): Promise<World>;
   updateWorld(id: string, data: Partial<World>): Promise<World | undefined>;
@@ -4037,6 +4038,12 @@ export class DatabaseStorage implements IStorage {
   async getWorldsByUser(userId: string): Promise<World[]> {
     return await db.select().from(worlds)
       .where(eq(worlds.userId, userId))
+      .orderBy(desc(worlds.updatedAt));
+  }
+
+  async getWorldsByCampaign(campaignId: string): Promise<World[]> {
+    return await db.select().from(worlds)
+      .where(eq(worlds.campaignId, campaignId))
       .orderBy(desc(worlds.updatedAt));
   }
 

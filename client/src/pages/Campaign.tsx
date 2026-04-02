@@ -44,7 +44,7 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
-import { useEntities, useWorldbuildingSync } from "@/lib/worldbuilding-api";
+import { useEntities, useWorldbuildingSync, useLinkedWorld } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
 
 // Scene Settings Form Component
@@ -6429,6 +6429,8 @@ function WorldBuilderContent({
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const { data: linkedWorld, isLoading: linkedWorldLoading } = useLinkedWorld(campaignId);
+
   const { data: worlds = [], isLoading: worldsLoading } = useQuery<any[]>({
     queryKey: ['/api/worlds'],
     queryFn: async () => {
@@ -6436,16 +6438,21 @@ function WorldBuilderContent({
       if (!res.ok) return [];
       return res.json();
     },
+    enabled: isGM,
   });
 
   useEffect(() => {
-    if (worlds.length > 0 && !selectedWorldId) {
+    if (!isGM && linkedWorld?.id) {
+      setSelectedWorldId(linkedWorld.id);
+    } else if (isGM && worlds.length > 0 && !selectedWorldId) {
       const campaignWorld = worlds.find((w: any) => w.campaignId === campaignId);
       setSelectedWorldId(campaignWorld?.id || worlds[0].id);
     }
-  }, [worlds, selectedWorldId, campaignId]);
+  }, [worlds, selectedWorldId, campaignId, isGM, linkedWorld]);
 
-  const selectedWorld = worlds.find((w: any) => w.id === selectedWorldId);
+  const selectedWorld = isGM
+    ? worlds.find((w: any) => w.id === selectedWorldId)
+    : linkedWorld && linkedWorld.id === selectedWorldId ? linkedWorld : null;
 
   useEffect(() => {
     if (selectedWorld?.homeContent !== undefined) {
@@ -6480,7 +6487,7 @@ function WorldBuilderContent({
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!selectedWorldId,
+    enabled: !!selectedWorldId && isGM,
   });
 
   const createWorldMutation = useMutation({
@@ -6608,28 +6615,32 @@ function WorldBuilderContent({
     <>
     <div className="flex flex-col h-full" data-testid="worldbuilder-content">
       <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-stone-700 bg-stone-800/50 shrink-0 ${compact ? 'flex-wrap' : 'overflow-x-auto'}`}>
-        <select
-          value={selectedWorldId}
-          onChange={(e) => {
-            setSelectedWorldId(e.target.value);
-            setSelectedEntityId(null);
-            setEntityHistory([]);
-            setEditingMapId(null);
-            setCreatingMap(false);
-            setSelectedTimelineId(null);
-            setHomeEditing(false);
-            setHomeContentDirty(false);
-          }}
-          className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-1 max-w-[140px] truncate shrink-0"
-          data-testid="worldbuilder-world-selector"
-        >
-          {worldsLoading && <option>Loading...</option>}
-          {worlds.map((w: any) => (
-            <option key={w.id} value={w.id}>
-              {w.name}{w.campaignId === campaignId ? ' ★' : ''}
-            </option>
-          ))}
-        </select>
+        {isGM ? (
+          <select
+            value={selectedWorldId}
+            onChange={(e) => {
+              setSelectedWorldId(e.target.value);
+              setSelectedEntityId(null);
+              setEntityHistory([]);
+              setEditingMapId(null);
+              setCreatingMap(false);
+              setSelectedTimelineId(null);
+              setHomeEditing(false);
+              setHomeContentDirty(false);
+            }}
+            className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-1 max-w-[140px] truncate shrink-0"
+            data-testid="worldbuilder-world-selector"
+          >
+            {worldsLoading && <option>Loading...</option>}
+            {worlds.map((w: any) => (
+              <option key={w.id} value={w.id}>
+                {w.name}{w.campaignId === campaignId ? ' ★' : ''}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-xs text-stone-300 px-2 py-1.5 mr-1 font-medium truncate shrink-0">{selectedWorld?.name || "World Wiki"}</span>
+        )}
         {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -6645,26 +6656,28 @@ function WorldBuilderContent({
             {!compact && label}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => setShowCreateWorldDialog(true)}
-            className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
-            title="Create new world"
-            data-testid="worldbuilder-create-world"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-          {selectedWorldId && (
+        {isGM && (
+          <div className="ml-auto flex items-center gap-1 shrink-0">
             <button
-              onClick={() => setShowWorldSettingsDialog(true)}
+              onClick={() => setShowCreateWorldDialog(true)}
               className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
-              title="World settings"
-              data-testid="worldbuilder-world-settings"
+              title="Create new world"
+              data-testid="worldbuilder-create-world"
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" />
             </button>
-          )}
-        </div>
+            {selectedWorldId && (
+              <button
+                onClick={() => setShowWorldSettingsDialog(true)}
+                className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
+                title="World settings"
+                data-testid="worldbuilder-world-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden flex">
@@ -6672,16 +6685,25 @@ function WorldBuilderContent({
           {!selectedWorldId ? (
               <div className="text-center py-12 text-stone-500">
                 <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No worlds found.</p>
-                <p className="text-sm mt-2">Get started by creating your first world.</p>
-                <Button
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setShowCreateWorldDialog(true)}
-                  data-testid="button-create-first-world"
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Create World
-                </Button>
+                {isGM ? (
+                  <>
+                    <p>No worlds found.</p>
+                    <p className="text-sm mt-2">Get started by creating your first world.</p>
+                    <Button
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => setShowCreateWorldDialog(true)}
+                      data-testid="button-create-first-world"
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Create World
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>No world wiki linked to this campaign.</p>
+                    <p className="text-sm mt-2">Ask your GM to link a world to this campaign.</p>
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -6766,7 +6788,7 @@ function WorldBuilderContent({
 
                 {activeSection === "maps" && (
                   <div className="h-full">
-                    {editingMapId || creatingMap ? (
+                    {isGM && (editingMapId || creatingMap) ? (
                       <WorldMapEditor
                         worldId={selectedWorldId}
                         mapId={editingMapId || undefined}
@@ -6777,8 +6799,8 @@ function WorldBuilderContent({
                       <WorldMapViewer
                         worldId={selectedWorldId}
                         isGM={isGM}
-                        onEditMap={(mapId) => setEditingMapId(mapId)}
-                        onCreateMap={() => setCreatingMap(true)}
+                        onEditMap={isGM ? (mapId) => setEditingMapId(mapId) : undefined}
+                        onCreateMap={isGM ? () => setCreatingMap(true) : undefined}
                         onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
                       />
                     )}
