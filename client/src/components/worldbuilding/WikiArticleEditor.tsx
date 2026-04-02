@@ -364,6 +364,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     setVisibility(entity.visibility || "gm_only");
     setEntityType(entity.entityType || "article");
     setTags((entity.tags as string[]) || []);
+    setMode("view");
   }, [entity.id]);
 
   const doSave = useCallback(async () => {
