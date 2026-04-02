@@ -1450,10 +1450,11 @@ export default function WorldBuilder() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {wikiLinkPreview && (
+      {wikiLinkPreview && selectedWorldId && (
         <WikiLinkPreviewDialog
           type={wikiLinkPreview.type}
           id={wikiLinkPreview.id}
+          worldId={selectedWorldId}
           onClose={() => setWikiLinkPreview(null)}
         />
       )}
@@ -1461,11 +1462,11 @@ export default function WorldBuilder() {
   );
 }
 
-function WikiLinkPreviewDialog({ type, id, onClose }: { type: string; id: string; onClose: () => void }) {
+function WikiLinkPreviewDialog({ type, id, worldId, onClose }: { type: string; id: string; worldId: string; onClose: () => void }) {
   const { data, isLoading } = useQuery<{ name: string; description?: string; details?: Record<string, string | number | null> }>({
-    queryKey: ["/api/wiki-link-preview", type, id],
+    queryKey: ["/api/worlds", worldId, "wiki-link-preview", type, id],
     queryFn: async () => {
-      const res = await fetch(`/api/wiki-link-preview/${type}/${id}`, { credentials: "include" });
+      const res = await fetch(`/api/worlds/${worldId}/wiki-link-preview/${type}/${id}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load preview");
       return res.json();
     },

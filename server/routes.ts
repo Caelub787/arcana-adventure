@@ -11064,16 +11064,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/wiki-link-preview/:type/:id", requireAuth, async (req, res) => {
+  app.get("/api/worlds/:worldId/wiki-link-preview/:type/:id", requireAuth, async (req, res) => {
     try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+
       const { type, id } = req.params;
       if (type === "character") {
+        if (!world.campaignId) return res.status(404).json({ error: "No linked campaign" });
         const char = await storage.getCharacter(id);
-        if (!char) return res.status(404).json({ error: "Not found" });
+        if (!char || char.campaignId !== world.campaignId) return res.status(404).json({ error: "Not found" });
         res.json({
           name: char.name,
-          description: char.backstory || undefined,
-          details: { level: char.level, species: char.species, hp: `${char.currentHp}/${char.maxHp}` },
+          details: { level: char.level, race: char.race, hp: `${char.hp}/${char.maxHp}` },
         });
       } else if (type === "item") {
         const item = await storage.getItem(id);
@@ -11081,7 +11085,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({
           name: item.name,
           description: item.description || undefined,
-          details: { type: item.type, rarity: item.rarity, weight: item.weight },
+          details: { type: item.itemType, rarity: item.rarity, damage: item.damage },
         });
       } else if (type === "spell") {
         const spell = await storage.getSystemSpell(id);
@@ -11089,7 +11093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({
           name: spell.name,
           description: spell.description || undefined,
-          details: { type: spell.type, damage: spell.damage, range: spell.range, cost: spell.cost },
+          details: { school: spell.school, range: spell.range, damageDice: spell.damageDice, energyCost: spell.energyCost },
         });
       } else {
         return res.status(400).json({ error: "Unknown type" });
