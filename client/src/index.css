@@ -102,6 +102,21 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-display tracking-tight;
   }
+
+  [data-testid="worldbuilder-page"] h1,
+  [data-testid="worldbuilder-page"] h2,
+  [data-testid="worldbuilder-page"] h3,
+  [data-testid="worldbuilder-page"] h4,
+  [data-testid="worldbuilder-page"] h5,
+  [data-testid="worldbuilder-page"] h6,
+  [data-testid="worldbuilder-content"] h1,
+  [data-testid="worldbuilder-content"] h2,
+  [data-testid="worldbuilder-content"] h3,
+  [data-testid="worldbuilder-content"] h4,
+  [data-testid="worldbuilder-content"] h5,
+  [data-testid="worldbuilder-content"] h6 {
+    font-family: var(--font-sans);
+  }
 }
 
 @layer utilities {
