@@ -177,18 +177,36 @@ export function useDeleteEntityLink(worldId: string | undefined) {
 }
 
 export const ENTITY_TYPE_CONFIG: Record<string, { label: string; pluralLabel: string; color: string; icon: string }> = {
-  character: { label: "Character", pluralLabel: "Characters", color: "#e57373", icon: "User" },
-  location: { label: "Location", pluralLabel: "Locations", color: "#81c784", icon: "MapPin" },
-  faction: { label: "Faction", pluralLabel: "Factions", color: "#64b5f6", icon: "Shield" },
-  quest: { label: "Quest", pluralLabel: "Quests", color: "#ffb74d", icon: "Scroll" },
-  event: { label: "Event", pluralLabel: "Events", color: "#ce93d8", icon: "Calendar" },
-  lore: { label: "Lore", pluralLabel: "Lore", color: "#a1887f", icon: "BookOpen" },
-  item: { label: "Item", pluralLabel: "Items", color: "#4db6ac", icon: "Package" },
-  encounter: { label: "Encounter", pluralLabel: "Encounters", color: "#ef5350", icon: "Swords" },
-  clue: { label: "Clue", pluralLabel: "Clues", color: "#7986cb", icon: "Search" },
-  magic: { label: "Magic", pluralLabel: "Magic", color: "#ba68c8", icon: "Sparkles" },
-  timeline: { label: "Timeline", pluralLabel: "Timelines", color: "#90a4ae", icon: "Clock" },
   article: { label: "Article", pluralLabel: "Articles", color: "#fff176", icon: "FileText" },
+  canvas: { label: "Canvas", pluralLabel: "Canvas Articles", color: "#90caf9", icon: "Layout" },
+};
+
+export const TAG_COLORS: Record<string, string> = {
+  "Building/Landmark": "#a1887f",
+  "Character": "#e57373",
+  "God/Deity": "#ce93d8",
+  "Condition": "#ef9a9a",
+  "Conflict": "#ef5350",
+  "Article": "#fff176",
+  "Ethnicity/Species": "#ffcc80",
+  "Geographic Location": "#81c784",
+  "Item": "#4db6ac",
+  "Language": "#90a4ae",
+  "Material": "#bcaaa4",
+  "Military": "#e57373",
+  "Myth/Legend": "#ba68c8",
+  "Natural Law": "#80cbc4",
+  "Organization": "#64b5f6",
+  "Faction/Sect": "#7986cb",
+  "Plot": "#ffb74d",
+  "Profession": "#a5d6a7",
+  "Session Report": "#b0bec5",
+  "Settlement": "#81c784",
+  "Spell": "#ba68c8",
+  "Technology": "#90a4ae",
+  "Title/Rank": "#ce93d8",
+  "Tradition/Ritual": "#f48fb1",
+  "Vehicle": "#78909c",
 };
 
 export interface WorldMap {

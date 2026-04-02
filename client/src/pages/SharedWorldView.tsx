@@ -1,29 +1,47 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home } from "lucide-react";
+import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home, Layout } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const ENTITY_TYPE_CONFIG: Record<string, { label: string; pluralLabel: string; color: string; icon: string }> = {
-  character: { label: "Character", pluralLabel: "Characters", color: "#e57373", icon: "User" },
-  location: { label: "Location", pluralLabel: "Locations", color: "#81c784", icon: "MapPin" },
-  faction: { label: "Faction", pluralLabel: "Factions", color: "#64b5f6", icon: "Shield" },
-  quest: { label: "Quest", pluralLabel: "Quests", color: "#ffb74d", icon: "Scroll" },
-  event: { label: "Event", pluralLabel: "Events", color: "#ce93d8", icon: "Calendar" },
-  lore: { label: "Lore", pluralLabel: "Lore", color: "#a1887f", icon: "BookOpen" },
-  item: { label: "Item", pluralLabel: "Items", color: "#4db6ac", icon: "Package" },
-  encounter: { label: "Encounter", pluralLabel: "Encounters", color: "#ef5350", icon: "Swords" },
-  clue: { label: "Clue", pluralLabel: "Clues", color: "#7986cb", icon: "Search" },
-  magic: { label: "Magic", pluralLabel: "Magic", color: "#ba68c8", icon: "Sparkles" },
-  timeline: { label: "Timeline", pluralLabel: "Timelines", color: "#90a4ae", icon: "Clock" },
   article: { label: "Article", pluralLabel: "Articles", color: "#fff176", icon: "FileText" },
+  canvas: { label: "Canvas", pluralLabel: "Canvas Articles", color: "#90caf9", icon: "Layout" },
+};
+
+const TAG_COLORS: Record<string, string> = {
+  "Building/Landmark": "#a1887f",
+  "Character": "#e57373",
+  "God/Deity": "#ce93d8",
+  "Condition": "#ef9a9a",
+  "Conflict": "#ef5350",
+  "Article": "#fff176",
+  "Ethnicity/Species": "#ffcc80",
+  "Geographic Location": "#81c784",
+  "Item": "#4db6ac",
+  "Language": "#90a4ae",
+  "Material": "#bcaaa4",
+  "Military": "#e57373",
+  "Myth/Legend": "#ba68c8",
+  "Natural Law": "#80cbc4",
+  "Organization": "#64b5f6",
+  "Faction/Sect": "#7986cb",
+  "Plot": "#ffb74d",
+  "Profession": "#a5d6a7",
+  "Session Report": "#b0bec5",
+  "Settlement": "#81c784",
+  "Spell": "#ba68c8",
+  "Technology": "#90a4ae",
+  "Title/Rank": "#ce93d8",
+  "Tradition/Ritual": "#f48fb1",
+  "Vehicle": "#78909c",
 };
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText,
+  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText, Layout,
 };
 
 const ERA_COLORS: Record<string, string> = {
@@ -611,13 +629,19 @@ export default function SharedWorldView() {
       const q = searchQuery.toLowerCase();
       result = result.filter(e => e.displayName.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q));
     }
-    if (filterType) result = result.filter(e => e.entityType === filterType);
+    if (filterType) result = result.filter(e => {
+      const entityTags = (e.tags as string[]) || [];
+      return entityTags.includes(filterType);
+    });
     return result.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [entities, searchQuery, filterType]);
 
-  const typeCounts = useMemo(() => {
+  const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    entities.forEach(e => { counts[e.entityType] = (counts[e.entityType] || 0) + 1; });
+    entities.forEach(e => {
+      const entityTags = (e.tags as string[]) || [];
+      entityTags.forEach(tag => { counts[tag] = (counts[tag] || 0) + 1; });
+    });
     return counts;
   }, [entities]);
 
@@ -734,19 +758,15 @@ export default function SharedWorldView() {
                 className={`text-[8px] cursor-pointer px-1 py-0 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500"}`}
                 onClick={() => setFilterType("")}
               >All ({entities.length})</Badge>
-              {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
-                const count = typeCounts[key] || 0;
-                if (count === 0) return null;
-                return (
-                  <Badge
-                    key={key}
-                    variant={filterType === key ? "default" : "outline"}
-                    className={`text-[8px] cursor-pointer px-1 py-0 ${filterType === key ? "text-white" : "border-stone-700 text-stone-500"}`}
-                    style={filterType === key ? { backgroundColor: cfg.color + "33", color: cfg.color, borderColor: cfg.color + "55" } : {}}
-                    onClick={() => setFilterType(filterType === key ? "" : key)}
-                  >{cfg.label} ({count})</Badge>
-                );
-              })}
+              {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+                <Badge
+                  key={tag}
+                  variant={filterType === tag ? "default" : "outline"}
+                  className={`text-[8px] cursor-pointer px-1 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500"}`}
+                  style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+                  onClick={() => setFilterType(filterType === tag ? "" : tag)}
+                >{tag} ({count})</Badge>
+              ))}
             </div>
           </div>
           <ScrollArea className="flex-1">
@@ -756,8 +776,10 @@ export default function SharedWorldView() {
                   {searchQuery ? "No matching articles" : "No articles available"}
                 </div>
               ) : filteredEntities.map(entity => {
+                const entityTags = (entity.tags as string[]) || [];
+                const firstTagColor = entityTags.length > 0 ? (TAG_COLORS[entityTags[0]] || "#78909c") : "#78909c";
                 const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
-                const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : FileText;
                 return (
                   <button
                     key={entity.id}
@@ -767,14 +789,18 @@ export default function SharedWorldView() {
                     }`}
                     data-testid={`entity-list-item-${entity.id}`}
                   >
-                    <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg?.color + "18" }}>
-                      <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color }} />
+                    <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: firstTagColor + "18" }}>
+                      <IconComp className="h-2.5 w-2.5" style={{ color: firstTagColor }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-[11px] font-medium truncate ${selectedEntityId === entity.id ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
                         {entity.displayName}
                       </div>
-                      {entity.description && <div className="text-[9px] text-stone-500 truncate">{entity.description}</div>}
+                      {entityTags.length > 0 && (
+                        <div className="flex gap-0.5 mt-0.5">{entityTags.slice(0, 2).map(t => (
+                          <span key={t} className="text-[7px] px-1 rounded" style={{ backgroundColor: (TAG_COLORS[t] || "#78909c") + "20", color: TAG_COLORS[t] || "#78909c" }}>{t}</span>
+                        ))}</div>
+                      )}
                     </div>
                   </button>
                 );
@@ -920,17 +946,12 @@ export default function SharedWorldView() {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                              {Object.entries(typeCounts).slice(0, 5).map(([type, count]) => {
-                                const cfg = ENTITY_TYPE_CONFIG[type];
-                                if (!cfg) return null;
-                                const TypeIcon = ICON_MAP[cfg.icon] || Search;
-                                return (
-                                  <span key={type} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-stone-800/80 border border-stone-700/50">
-                                    <TypeIcon className="h-2.5 w-2.5" style={{ color: cfg.color }} />
-                                    <span className="text-stone-400">{count}</span>
-                                  </span>
-                                );
-                              })}
+                              {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).slice(0, 5).map(([tag, count]) => (
+                                <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-stone-800/80 border border-stone-700/50">
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
+                                  <span className="text-stone-400">{tag} {count}</span>
+                                </span>
+                              ))}
                             </div>
                           </div>
                           <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
@@ -1180,25 +1201,20 @@ export default function SharedWorldView() {
                       <p className="text-sm text-stone-500">Select an article from the sidebar to begin reading, or browse by category below.</p>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
-                        const IconComp = ICON_MAP[cfg.icon] || Search;
-                        const count = typeCounts[key] || 0;
-                        if (count === 0) return null;
-                        return (
+                      {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
                           <button
-                            key={key}
-                            onClick={() => { setFilterType(key); }}
+                            key={tag}
+                            onClick={() => { setFilterType(tag); }}
                             className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-stone-900/50 border border-stone-800/50 hover:border-amber-500/30 transition-all duration-200 cursor-pointer hover:shadow-md hover:shadow-black/20"
-                            data-testid={`home-category-${key}`}
+                            data-testid={`home-category-${tag}`}
                           >
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ backgroundColor: cfg.color + '15' }}>
-                              <IconComp className="h-5 w-5 transition-transform group-hover:scale-110" style={{ color: cfg.color }} />
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ backgroundColor: (TAG_COLORS[tag] || "#78909c") + '15' }}>
+                              <span className="w-4 h-4 rounded-full" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
                             </div>
-                            <span className="text-xs font-medium text-stone-300 group-hover:text-stone-200">{cfg.pluralLabel}</span>
+                            <span className="text-xs font-medium text-stone-300 group-hover:text-stone-200">{tag}</span>
                             <span className="text-lg font-bold text-stone-100">{count}</span>
                           </button>
-                        );
-                      })}
+                      ))}
                     </div>
                   </div>
                 </div>

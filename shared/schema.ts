@@ -1459,6 +1459,7 @@ export const worlds = pgTable("worlds", {
   description: text("description"),
   image: text("image"),
   homeContent: text("home_content"),
+  customTags: text("custom_tags").array().default(sql`ARRAY[]::text[]`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1474,9 +1475,31 @@ export type InsertWorld = z.infer<typeof insertWorldSchema>;
 export type World = typeof worlds.$inferSelect;
 
 export const ENTITY_TYPES = [
-  "character", "location", "faction", "quest", "event", "lore", "item", "encounter", "clue", "magic", "timeline", "article"
+  "article", "canvas"
 ] as const;
 export type EntityType = typeof ENTITY_TYPES[number];
+
+export const PREDEFINED_TAGS = [
+  "Building/Landmark", "Character", "God/Deity", "Condition", "Conflict",
+  "Article", "Ethnicity/Species", "Geographic Location", "Item", "Language",
+  "Material", "Military", "Myth/Legend", "Natural Law", "Organization",
+  "Faction/Sect", "Plot", "Profession", "Session Report", "Settlement",
+  "Spell", "Technology", "Title/Rank", "Tradition/Ritual", "Vehicle"
+] as const;
+
+export const OLD_ENTITY_TYPE_TO_TAG: Record<string, string> = {
+  character: "Character",
+  location: "Geographic Location",
+  faction: "Faction/Sect",
+  quest: "Plot",
+  event: "Conflict",
+  lore: "Article",
+  item: "Item",
+  encounter: "Conflict",
+  clue: "Plot",
+  magic: "Spell",
+  timeline: "Article",
+};
 
 export const VISIBILITY_LEVELS = ["gm_only", "shared", "player_visible"] as const;
 export type VisibilityLevel = typeof VISIBILITY_LEVELS[number];

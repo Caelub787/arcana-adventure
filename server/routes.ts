@@ -1,13 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import multer from "multer";
@@ -31,8 +31,38 @@ declare module "express-session" {
   }
 }
 
+async function migrateEntityTypesToTags() {
+  try {
+    await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS custom_tags text[] DEFAULT ARRAY[]::text[]`);
+    
+    const oldEntities = await db.select().from(entities).where(
+      sql`entity_type NOT IN ('article', 'canvas')`
+    );
+    
+    if (oldEntities.length > 0) {
+      console.log(`[Migration] Found ${oldEntities.length} entities with old entity types, converting to tags...`);
+      for (const entity of oldEntities) {
+        const tagFromType = OLD_ENTITY_TYPE_TO_TAG[entity.entityType];
+        const existingTags = (entity.tags as string[]) || [];
+        const newTags = tagFromType && !existingTags.includes(tagFromType)
+          ? [...existingTags, tagFromType]
+          : existingTags;
+        
+        await db.update(entities)
+          .set({ entityType: "article", tags: newTags })
+          .where(eq(entities.id, entity.id));
+      }
+      console.log(`[Migration] Converted ${oldEntities.length} entities to tag-based system.`);
+    }
+  } catch (err) {
+    console.error("[Migration] Error migrating entity types:", err);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  await migrateEntityTypesToTags();
   
   // Get session middleware from app
   const sessionMiddleware = (app as any)._router.stack.find(

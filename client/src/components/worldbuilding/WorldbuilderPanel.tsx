@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { useEntities, useCreateEntity, useDeleteEntity, useUpdateEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity } from "@/lib/worldbuilding-api";
+import { useEntities, useCreateEntity, useDeleteEntity, useUpdateEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity } from "@/lib/worldbuilding-api";
+import { PREDEFINED_TAGS } from "@shared/schema";
 import { EntityPreviewPanel } from "./EntityPreviewPanel";
 import { EntitySidePanel } from "./EntitySidePanel";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Globe, User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Filter, ChevronDown, X } from "lucide-react";
+import { Search, Plus, Globe, User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Filter, ChevronDown, X, FileText, Layout, Tag } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search,
+  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, FileText, Layout,
 };
 
 interface WorldbuilderPanelProps {
@@ -23,9 +24,10 @@ interface WorldbuilderPanelProps {
   onOpenEntity?: (entityId: string) => void;
   createOnly?: boolean;
   onCloseCreate?: () => void;
+  customTags?: string[];
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate, customTags = [] }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
   useWorldbuildingSync(resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
@@ -39,12 +41,19 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
 
   const [newEntity, setNewEntity] = useState({
     displayName: "",
-    entityType: "character",
+    entityType: "article",
     description: "",
     visibility: "gm_only",
     sheetId: "",
-    tags: "",
+    selectedTags: [] as string[],
   });
+
+  const [createTagSearch, setCreateTagSearch] = useState("");
+
+  const allAvailableTags = [...PREDEFINED_TAGS, ...customTags.filter(t => !PREDEFINED_TAGS.includes(t as any))];
+  const filteredCreateTags = createTagSearch
+    ? allAvailableTags.filter(t => t.toLowerCase().includes(createTagSearch.toLowerCase()))
+    : allAvailableTags;
 
   const filteredEntities = useMemo(() => {
     let result = entities;
@@ -53,14 +62,20 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
       result = result.filter(e => e.displayName.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q));
     }
     if (filterType) {
-      result = result.filter(e => e.entityType === filterType);
+      result = result.filter(e => {
+        const entityTags = (e.tags as string[]) || [];
+        return entityTags.includes(filterType);
+      });
     }
     return result.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [entities, searchQuery, filterType]);
 
-  const typeCounts = useMemo(() => {
+  const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    entities.forEach(e => { counts[e.entityType] = (counts[e.entityType] || 0) + 1; });
+    entities.forEach(e => {
+      const entityTags = (e.tags as string[]) || [];
+      entityTags.forEach(tag => { counts[tag] = (counts[tag] || 0) + 1; });
+    });
     return counts;
   }, [entities]);
 
@@ -74,10 +89,11 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
       description: newEntity.description.trim() || undefined,
       visibility: newEntity.visibility,
       sheetId: newEntity.sheetId || undefined,
-      tags: newEntity.tags ? newEntity.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+      tags: newEntity.selectedTags,
     } as any);
     setShowCreateDialog(false);
-    setNewEntity({ displayName: "", entityType: "character", description: "", visibility: "gm_only", sheetId: "", tags: "" });
+    setNewEntity({ displayName: "", entityType: "article", description: "", visibility: "gm_only", sheetId: "", selectedTags: [] });
+    setCreateTagSearch("");
     if (createOnly && onCloseCreate) onCloseCreate();
   };
 
@@ -89,101 +105,148 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
     }
   };
 
-  if (createOnly) {
-    return (
-      <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && onCloseCreate) onCloseCreate(); }}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
-          <DialogHeader>
-            <DialogTitle className="text-stone-100">Create New Article</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs text-stone-400">Type</Label>
-              <select
-                value={newEntity.entityType}
-                onChange={(e) => setNewEntity(p => ({ ...p, entityType: e.target.value }))}
-                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                data-testid="select-entity-type"
+  const toggleCreateTag = (tag: string) => {
+    setNewEntity(prev => ({
+      ...prev,
+      selectedTags: prev.selectedTags.includes(tag)
+        ? prev.selectedTags.filter(t => t !== tag)
+        : [...prev.selectedTags, tag]
+    }));
+  };
+
+  const createDialog = (
+    <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && onCloseCreate) onCloseCreate(); }}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
+        <DialogHeader>
+          <DialogTitle className="text-stone-100">Create New Article</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs text-stone-400">Article Type</Label>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => setNewEntity(p => ({ ...p, entityType: "article" }))}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                  newEntity.entityType === "article"
+                    ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                    : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
+                }`}
+                data-testid="button-type-article"
               >
-                {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Name</Label>
-              <Input
-                value={newEntity.displayName}
-                onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
-                placeholder="Entity name..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-entity-name"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Description</Label>
-              <Textarea
-                value={newEntity.description}
-                onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
-                placeholder="Brief description..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-                data-testid="input-entity-description"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Visibility</Label>
-              <select
-                value={newEntity.visibility}
-                onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
-                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                data-testid="select-entity-visibility"
+                <FileText className="h-4 w-4" />
+                Article
+              </button>
+              <button
+                onClick={() => setNewEntity(p => ({ ...p, entityType: "canvas" }))}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                  newEntity.entityType === "canvas"
+                    ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
+                    : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
+                }`}
+                data-testid="button-type-canvas"
               >
-                <option value="gm_only">GM Only</option>
-                <option value="shared">Shared</option>
-                <option value="player_visible">Player Visible</option>
-              </select>
-            </div>
-            {newEntity.entityType === "character" && characters.length > 0 && (
-              <div>
-                <Label className="text-xs text-stone-400">Link to Existing Character Sheet</Label>
-                <select
-                  value={newEntity.sheetId}
-                  onChange={(e) => setNewEntity(p => ({ ...p, sheetId: e.target.value }))}
-                  className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                  data-testid="select-link-sheet"
-                >
-                  <option value="">None (create without sheet)</option>
-                  {characters.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} (Lv.{c.level})</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div>
-              <Label className="text-xs text-stone-400">Tags (comma separated)</Label>
-              <Input
-                value={newEntity.tags}
-                onChange={(e) => setNewEntity(p => ({ ...p, tags: e.target.value }))}
-                placeholder="npc, quest-giver, important..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-entity-tags"
-              />
+                <Layout className="h-4 w-4" />
+                Canvas
+              </button>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setShowCreateDialog(false); onCloseCreate?.(); }} className="text-stone-400" data-testid="button-cancel-create">Cancel</Button>
-            <Button
-              onClick={handleCreate}
-              disabled={!newEntity.displayName.trim() || createEntity.isPending}
-              className="bg-amber-600 hover:bg-amber-500 text-white"
-              data-testid="button-confirm-create"
+          <div>
+            <Label className="text-xs text-stone-400">Name</Label>
+            <Input
+              value={newEntity.displayName}
+              onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
+              placeholder="Article name..."
+              className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+              data-testid="input-entity-name"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-stone-400">Description</Label>
+            <Textarea
+              value={newEntity.description}
+              onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
+              placeholder="Brief description..."
+              className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+              data-testid="input-entity-description"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-stone-400">Visibility</Label>
+            <select
+              value={newEntity.visibility}
+              onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
+              className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
+              data-testid="select-entity-visibility"
             >
-              {createEntity.isPending ? "Creating..." : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
+              <option value="gm_only">GM Only</option>
+              <option value="shared">Shared</option>
+              <option value="player_visible">Player Visible</option>
+            </select>
+          </div>
+          <div>
+            <Label className="text-xs text-stone-400 flex items-center gap-1">
+              <Tag className="h-3 w-3" /> Tags
+            </Label>
+            {newEntity.selectedTags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1 mb-1.5">
+                {newEntity.selectedTags.map(tag => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 cursor-pointer"
+                    style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}
+                    onClick={() => toggleCreateTag(tag)}
+                    data-testid={`create-tag-selected-${tag}`}
+                  >
+                    {tag} <X className="h-2.5 w-2.5 ml-1" />
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <Input
+              value={createTagSearch}
+              onChange={(e) => setCreateTagSearch(e.target.value)}
+              placeholder="Search tags..."
+              className="mt-1 bg-stone-800 border-stone-700 text-stone-200 text-xs h-7"
+              data-testid="input-create-tag-search"
+            />
+            <div className="mt-1 max-h-32 overflow-y-auto border border-stone-700 rounded bg-stone-800/50">
+              {filteredCreateTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => toggleCreateTag(tag)}
+                  className={`w-full text-left px-2 py-1 text-xs transition-colors flex items-center justify-between ${
+                    newEntity.selectedTags.includes(tag) ? 'bg-stone-700/50 text-amber-400' : 'text-stone-300 hover:bg-stone-700/30'
+                  }`}
+                  data-testid={`create-tag-option-${tag}`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
+                    {tag}
+                  </span>
+                  {newEntity.selectedTags.includes(tag) && <span className="text-[10px]">&#10003;</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => { setShowCreateDialog(false); onCloseCreate?.(); }} className="text-stone-400" data-testid="button-cancel-create">Cancel</Button>
+          <Button
+            onClick={handleCreate}
+            disabled={!newEntity.displayName.trim() || createEntity.isPending}
+            className="bg-amber-600 hover:bg-amber-500 text-white"
+            data-testid="button-confirm-create"
+          >
+            {createEntity.isPending ? "Creating..." : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (createOnly) {
+    return createDialog;
   }
 
   return (
@@ -222,7 +285,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
               variant="ghost"
               size="icon"
               onClick={() => setShowFilters(!showFilters)}
-              className={`h-8 w-8 ${showFilters ? 'text-amber-400' : 'text-stone-500'}`}
+              className={`h-8 w-8 ${showFilters ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
               data-testid="button-toggle-filters"
             >
               <Filter className="h-3.5 w-3.5" />
@@ -232,182 +295,96 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
             <div className="flex flex-wrap gap-1">
               <Badge
                 variant={filterType === "" ? "default" : "outline"}
-                className={`text-[10px] cursor-pointer ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
                 onClick={() => setFilterType("")}
               >
                 All ({entities.length})
               </Badge>
-              {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
-                const count = typeCounts[key] || 0;
-                if (count === 0 && !isGM) return null;
-                return (
-                  <Badge
-                    key={key}
-                    variant={filterType === key ? "default" : "outline"}
-                    className={`text-[10px] cursor-pointer ${filterType === key ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
-                    style={filterType === key ? { backgroundColor: cfg.color + "33", color: cfg.color, borderColor: cfg.color + "55" } : {}}
-                    onClick={() => setFilterType(filterType === key ? "" : key)}
-                  >
-                    {cfg.label} ({count})
-                  </Badge>
-                );
-              })}
+              {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+                <Badge
+                  key={tag}
+                  variant={filterType === tag ? "default" : "outline"}
+                  className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                  style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+                  onClick={() => setFilterType(filterType === tag ? "" : tag)}
+                >
+                  {tag} ({count})
+                </Badge>
+              ))}
             </div>
           )}
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {isLoading && (
-              <div className="space-y-2 p-2">
-                {[1,2,3].map(i => <div key={i} className="h-14 bg-stone-800 rounded animate-pulse" />)}
+          <div className="p-2 space-y-0.5">
+            {isLoading ? (
+              <div className="text-center py-8 text-stone-600 text-xs">Loading...</div>
+            ) : filteredEntities.length === 0 ? (
+              <div className="text-center py-6 text-stone-600 text-xs">
+                {searchQuery || filterType ? "No matching articles" : "No articles yet."}
               </div>
-            )}
-            {!isLoading && filteredEntities.length === 0 && (
-              <div className="text-center py-8 text-stone-500">
-                <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-xs">{searchQuery ? "No entities match your search" : "No entities yet"}</p>
-                {isGM && !searchQuery && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCreateDialog(true)}
-                    className="text-xs text-amber-400 mt-2"
+            ) : (
+              filteredEntities.map(entity => {
+                const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+                return (
+                  <button
+                    key={entity.id}
+                    onClick={() => handleEntityClick(entity.id)}
+                    className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
+                      selectedEntityId === entity.id
+                        ? 'bg-stone-800 border-l-2 border-amber-400'
+                        : 'hover:bg-stone-800/60'
+                    }`}
+                    data-testid={`entity-list-item-${entity.id}`}
                   >
-                    <Plus className="h-3 w-3 mr-1" /> Create your first entity
-                  </Button>
-                )}
-              </div>
+                    <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "18" }}>
+                      <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color || "#78909c" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[11px] font-medium truncate ${selectedEntityId === entity.id ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
+                        {entity.displayName}
+                      </div>
+                      {entity.description && (
+                        <div className="text-[9px] text-stone-500 truncate">{entity.description}</div>
+                      )}
+                      {((entity.tags as string[]) || []).length > 0 && (
+                        <div className="flex flex-wrap gap-0.5 mt-0.5">
+                          {((entity.tags as string[]) || []).slice(0, 3).map(tag => (
+                            <span key={tag} className="text-[8px] px-1 rounded" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                              {tag}
+                            </span>
+                          ))}
+                          {((entity.tags as string[]) || []).length > 3 && (
+                            <span className="text-[8px] text-stone-500">+{((entity.tags as string[]) || []).length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
             )}
-            {filteredEntities.map((entity) => {
-              const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
-              const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
-              return (
-                <button
-                  key={entity.id}
-                  onClick={() => handleEntityClick(entity.id)}
-                  className="w-full text-left px-2.5 py-2 rounded-md hover:bg-stone-800/60 transition-colors group flex items-center gap-2.5"
-                  data-testid={`entity-list-item-${entity.id}`}
-                >
-                  <div className="w-7 h-7 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg?.color + "18" }}>
-                    <IconComp className="h-3.5 w-3.5" style={{ color: cfg?.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-stone-300 truncate group-hover:text-stone-100">{entity.displayName}</div>
-                    {entity.description && (
-                      <div className="text-[10px] text-stone-500 truncate">{entity.description}</div>
-                    )}
-                  </div>
-                  {entity.sheetId && <User className="h-3 w-3 text-stone-600" />}
-                </button>
-              );
-            })}
           </div>
         </ScrollArea>
       </div>
 
-      <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && createOnly && onCloseCreate) onCloseCreate(); }}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
-          <DialogHeader>
-            <DialogTitle className="text-stone-100">Create Entity</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs text-stone-400">Type</Label>
-              <select
-                value={newEntity.entityType}
-                onChange={(e) => setNewEntity(p => ({ ...p, entityType: e.target.value }))}
-                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                data-testid="select-entity-type"
-              >
-                {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Name</Label>
-              <Input
-                value={newEntity.displayName}
-                onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
-                placeholder="Entity name..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-entity-name"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Description</Label>
-              <Textarea
-                value={newEntity.description}
-                onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
-                placeholder="Brief description..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-                data-testid="input-entity-description"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-stone-400">Visibility</Label>
-              <select
-                value={newEntity.visibility}
-                onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
-                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                data-testid="select-entity-visibility"
-              >
-                <option value="gm_only">GM Only</option>
-                <option value="shared">Shared</option>
-                <option value="player_visible">Player Visible</option>
-              </select>
-            </div>
-            {newEntity.entityType === "character" && characters.length > 0 && (
-              <div>
-                <Label className="text-xs text-stone-400">Link to Existing Character Sheet</Label>
-                <select
-                  value={newEntity.sheetId}
-                  onChange={(e) => setNewEntity(p => ({ ...p, sheetId: e.target.value }))}
-                  className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-                  data-testid="select-link-sheet"
-                >
-                  <option value="">None (create without sheet)</option>
-                  {characters.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} (Lv.{c.level})</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div>
-              <Label className="text-xs text-stone-400">Tags (comma separated)</Label>
-              <Input
-                value={newEntity.tags}
-                onChange={(e) => setNewEntity(p => ({ ...p, tags: e.target.value }))}
-                placeholder="npc, quest-giver, important..."
-                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-entity-tags"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowCreateDialog(false)} className="text-stone-400" data-testid="button-cancel-create">Cancel</Button>
-            <Button
-              onClick={handleCreate}
-              disabled={!newEntity.displayName.trim() || createEntity.isPending}
-              className="bg-amber-600 hover:bg-amber-500 text-white"
-              data-testid="button-confirm-create"
-            >
-              {createEntity.isPending ? "Creating..." : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {selectedEntityId && (
-        <EntitySidePanel
-          worldId={resolvedId}
-          entityId={selectedEntityId}
-          onClose={() => setSelectedEntityId(null)}
-          onNavigateToEntity={(id) => setSelectedEntityId(id)}
-          isGM={isGM}
-        />
+        <Dialog open={!!selectedEntityId} onOpenChange={() => setSelectedEntityId(null)}>
+          <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-3xl max-h-[80vh] overflow-hidden p-0">
+            <EntitySidePanel
+              worldId={worldId}
+              campaignId={campaignId}
+              entityId={selectedEntityId}
+              onClose={() => setSelectedEntityId(null)}
+              onNavigateToEntity={(id) => setSelectedEntityId(id)}
+              isGM={isGM}
+            />
+          </DialogContent>
+        </Dialog>
       )}
+
+      {createDialog}
     </>
   );
 }

@@ -10,7 +10,8 @@ import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
-import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline } from "@/lib/worldbuilding-api";
+import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline } from "@/lib/worldbuilding-api";
+import { PREDEFINED_TAGS } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText,
+  User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText, Layout,
 };
 
 function renderHomeContent(content: string) {
@@ -74,6 +75,7 @@ interface World {
   userId: string;
   campaignId?: string | null;
   homeContent?: string | null;
+  customTags?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +106,8 @@ export default function WorldBuilder() {
   const [showWorldSettingsDialog, setShowWorldSettingsDialog] = useState(false);
   const [editWorldName, setEditWorldName] = useState("");
   const [editWorldDescription, setEditWorldDescription] = useState("");
+  const [editCustomTags, setEditCustomTags] = useState<string[]>([]);
+  const [newCustomTag, setNewCustomTag] = useState("");
   const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
   const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
   const [homeContentDraft, setHomeContentDraft] = useState("");
@@ -159,7 +163,7 @@ export default function WorldBuilder() {
   });
 
   const updateWorldMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; homeContent?: string }) => {
+    mutationFn: async (data: { name: string; description?: string; homeContent?: string; customTags?: string[] }) => {
       const res = await fetch(`/api/worlds/${selectedWorldId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -268,14 +272,20 @@ export default function WorldBuilder() {
       result = result.filter(e => e.displayName.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q));
     }
     if (filterType) {
-      result = result.filter(e => e.entityType === filterType);
+      result = result.filter(e => {
+        const entityTags = (e.tags as string[]) || [];
+        return entityTags.includes(filterType);
+      });
     }
     return result.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [entities, searchQuery, filterType]);
 
-  const typeCounts = useMemo(() => {
+  const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    entities.forEach(e => { counts[e.entityType] = (counts[e.entityType] || 0) + 1; });
+    entities.forEach(e => {
+      const entityTags = (e.tags as string[]) || [];
+      entityTags.forEach(tag => { counts[tag] = (counts[tag] || 0) + 1; });
+    });
     return counts;
   }, [entities]);
 
@@ -336,6 +346,8 @@ export default function WorldBuilder() {
     if (selectedWorld) {
       setEditWorldName(selectedWorld.name);
       setEditWorldDescription(selectedWorld.description || "");
+      setEditCustomTags((selectedWorld.customTags as string[]) || []);
+      setNewCustomTag("");
       setShowWorldSettingsDialog(true);
     }
   };
@@ -435,21 +447,17 @@ export default function WorldBuilder() {
               >
                 All ({entities.length})
               </Badge>
-              {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
-                const count = typeCounts[key] || 0;
-                if (count === 0) return null;
-                return (
-                  <Badge
-                    key={key}
-                    variant={filterType === key ? "default" : "outline"}
-                    className={`text-[8px] cursor-pointer px-1 py-0 ${filterType === key ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
-                    style={filterType === key ? { backgroundColor: cfg.color + "33", color: cfg.color, borderColor: cfg.color + "55" } : {}}
-                    onClick={() => setFilterType(filterType === key ? "" : key)}
-                  >
-                    {cfg.label} ({count})
-                  </Badge>
-                );
-              })}
+              {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+                <Badge
+                  key={tag}
+                  variant={filterType === tag ? "default" : "outline"}
+                  className={`text-[8px] cursor-pointer px-1 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                  style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+                  onClick={() => setFilterType(filterType === tag ? "" : tag)}
+                >
+                  {tag} ({count})
+                </Badge>
+              ))}
             </div>
           </div>
 
@@ -459,7 +467,7 @@ export default function WorldBuilder() {
                 <h3 className="text-[9px] font-medium text-stone-500 uppercase tracking-wider mb-1">Recently Edited</h3>
                 {recentEntities.slice(0, 5).map(e => {
                   const cfg = ENTITY_TYPE_CONFIG[e.entityType];
-                  const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                  const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
                   return (
                     <button
                       key={e.id}
@@ -467,7 +475,7 @@ export default function WorldBuilder() {
                       className={`w-full text-left px-2 py-1 rounded text-[11px] flex items-center gap-2 transition-colors ${selectedEntityId === e.id ? 'bg-stone-800 text-amber-400' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'}`}
                       data-testid={`recent-entity-${e.id}`}
                     >
-                      <IconComp className="h-3 w-3 flex-shrink-0" style={{ color: cfg?.color }} />
+                      <IconComp className="h-3 w-3 flex-shrink-0" style={{ color: cfg?.color || "#78909c" }} />
                       <span className="truncate">{e.displayName}</span>
                     </button>
                   );
@@ -485,7 +493,8 @@ export default function WorldBuilder() {
               ) : (
                 filteredEntities.map(entity => {
                   const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
-                  const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                  const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+                  const entityTags = (entity.tags as string[]) || [];
                   return (
                     <button
                       key={entity.id}
@@ -497,8 +506,8 @@ export default function WorldBuilder() {
                       }`}
                       data-testid={`entity-list-item-${entity.id}`}
                     >
-                      <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg?.color + "18" }}>
-                        <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color }} />
+                      <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "18" }}>
+                        <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color || "#78909c" }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className={`text-[11px] font-medium truncate ${selectedEntityId === entity.id ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
@@ -506,6 +515,16 @@ export default function WorldBuilder() {
                         </div>
                         {entity.description && (
                           <div className="text-[9px] text-stone-500 truncate">{entity.description}</div>
+                        )}
+                        {entityTags.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5 mt-0.5">
+                            {entityTags.slice(0, 2).map(tag => (
+                              <span key={tag} className="text-[7px] px-0.5 rounded" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                                {tag}
+                              </span>
+                            ))}
+                            {entityTags.length > 2 && <span className="text-[7px] text-stone-500">+{entityTags.length - 2}</span>}
+                          </div>
                         )}
                       </div>
                       {entity.visibility === "gm_only" && (
@@ -894,23 +913,18 @@ export default function WorldBuilder() {
                             <h3 className="text-sm font-bold text-amber-400/80 uppercase tracking-[0.2em]">Explore This World</h3>
                             <div className="h-px flex-1 bg-gradient-to-l from-amber-500/30 to-transparent" />
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {Object.entries(ENTITY_TYPE_CONFIG).slice(0, 6).map(([key, cfg]) => {
-                              const count = typeCounts[key] || 0;
-                              if (count === 0) return null;
-                              const TypeIcon = ICON_MAP[cfg.icon] || Search;
-                              return (
-                                <div key={key} className="flex items-center gap-3 p-3 rounded-lg bg-stone-900/50 border border-stone-800/50">
-                                  <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: cfg.color + '15' }}>
-                                    <TypeIcon className="h-4 w-4" style={{ color: cfg.color }} />
-                                  </div>
-                                  <div>
-                                    <div className="text-sm font-medium text-stone-200">{cfg.pluralLabel}</div>
-                                    <div className="text-xs text-stone-500">{count} {count === 1 ? 'entry' : 'entries'}</div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                          <div className="flex flex-wrap justify-center gap-2">
+                            {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).slice(0, 8).map(([tag, count]) => (
+                              <button
+                                key={tag}
+                                onClick={() => { setActiveSection("encyclopedia"); setFilterType(tag); }}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-900/50 border border-stone-800/50 hover:border-stone-700 transition-colors"
+                              >
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
+                                <span className="text-sm font-medium text-stone-200">{tag}</span>
+                                <span className="text-xs text-stone-500">{count}</span>
+                              </button>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -1000,14 +1014,19 @@ export default function WorldBuilder() {
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {(() => {
                             const cfg = ENTITY_TYPE_CONFIG[selectedEntity.entityType];
-                            const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                            const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
                             return (
                               <>
-                                <IconComp className="h-4 w-4 flex-shrink-0" style={{ color: cfg?.color }} />
-                                <Badge variant="outline" className="text-[10px] border-stone-600 text-stone-400 flex-shrink-0">{cfg?.label}</Badge>
+                                <IconComp className="h-4 w-4 flex-shrink-0" style={{ color: cfg?.color || "#78909c" }} />
+                                <Badge variant="outline" className="text-[10px] border-stone-600 text-stone-400 flex-shrink-0">{cfg?.label || "Article"}</Badge>
                               </>
                             );
                           })()}
+                          {((selectedEntity.tags as string[]) || []).slice(0, 3).map(tag => (
+                            <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 flex-shrink-0" style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c" }}>
+                              {tag}
+                            </Badge>
+                          ))}
                           <span className="text-[10px] text-stone-600 hidden md:inline">
                             {selectedEntity.visibility === "gm_only" ? "GM Only" : selectedEntity.visibility === "player_visible" ? "Players" : "Shared"}
                           </span>
@@ -1033,6 +1052,7 @@ export default function WorldBuilder() {
                           worldId={selectedWorldId}
                           isGM={true}
                           shareToken={shareLink?.token}
+                          customTags={selectedWorld?.customTags || []}
                         />
                       </div>
                     </div>
@@ -1050,22 +1070,74 @@ export default function WorldBuilder() {
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center p-4 md:p-8">
-                      <Globe className="h-12 md:h-16 w-12 md:w-16 text-stone-800 mx-auto mb-4" />
-                      <h2 className="text-lg md:text-xl font-semibold text-stone-600 mb-2">Your World Awaits</h2>
-                      <p className="text-stone-600 text-xs md:text-sm mb-6">Select an article from the sidebar or create a new one to start building your world's encyclopedia.</p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 max-w-sm mx-auto">
-                        {Object.entries(ENTITY_TYPE_CONFIG).slice(0, 6).map(([key, cfg]) => {
-                          const IconComp = ICON_MAP[cfg.icon] || Search;
-                          return (
-                            <div key={key} className="flex flex-col items-center gap-1 p-2 md:p-3 rounded-lg bg-stone-900/50 border border-stone-800">
-                              <IconComp className="h-5 w-5" style={{ color: cfg.color }} />
-                              <span className="text-[10px] text-stone-500">{cfg.label}</span>
-                              <span className="text-[10px] text-stone-600">{typeCounts[key] || 0}</span>
-                            </div>
-                          );
-                        })}
+                    <div className="p-4 md:p-8 max-w-4xl mx-auto w-full">
+                      <div className="text-center mb-8">
+                        <BookOpen className="h-10 w-10 text-amber-500/30 mx-auto mb-3" />
+                        <h2 className="text-lg font-semibold text-stone-300 mb-1">Encyclopedia</h2>
+                        <p className="text-stone-500 text-xs">{entities.length} article{entities.length !== 1 ? 's' : ''}</p>
                       </div>
+
+                      {Object.keys(tagCounts).length > 0 && (
+                        <div className="flex flex-wrap justify-center gap-1.5 mb-6">
+                          {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+                            <button
+                              key={tag}
+                              onClick={() => { setFilterType(tag); }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-stone-700/50 bg-stone-900/50 hover:bg-stone-800/60 transition-colors"
+                              data-testid={`front-tag-${tag}`}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
+                              <span className="text-[11px] text-stone-300">{tag}</span>
+                              <span className="text-[10px] text-stone-500">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {entities.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {[...entities].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 12).map(entity => {
+                            const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                            const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+                            const entityTags = (entity.tags as string[]) || [];
+                            return (
+                              <button
+                                key={entity.id}
+                                onClick={() => handleSelectEntity(entity.id)}
+                                className="text-left p-3 rounded-lg bg-stone-900/50 border border-stone-800/50 hover:border-stone-700 hover:bg-stone-800/50 transition-all group"
+                                data-testid={`front-article-${entity.id}`}
+                              >
+                                <div className="flex items-start gap-2.5">
+                                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: (cfg?.color || "#78909c") + "15" }}>
+                                    <IconComp className="h-4 w-4" style={{ color: cfg?.color || "#78909c" }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-stone-200 group-hover:text-amber-300 truncate transition-colors">
+                                      {entity.displayName}
+                                    </div>
+                                    {entity.description && (
+                                      <div className="text-[11px] text-stone-500 line-clamp-2 mt-0.5">{entity.description}</div>
+                                    )}
+                                    {entityTags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {entityTags.slice(0, 3).map(tag => (
+                                          <span key={tag} className="text-[9px] px-1.5 py-0 rounded-full" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                                            {tag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-stone-600 text-sm">No articles yet. Create one to start building your encyclopedia.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1151,6 +1223,7 @@ export default function WorldBuilder() {
           onOpenEntity={handleSelectEntity}
           createOnly={true}
           onCloseCreate={() => setShowCreateInline(false)}
+          customTags={(selectedWorld?.customTags as string[]) || []}
         />
       )}
 
@@ -1221,6 +1294,53 @@ export default function WorldBuilder() {
                 data-testid="input-edit-world-description"
               />
             </div>
+            <div>
+              <Label className="text-xs text-stone-400">Custom Tags</Label>
+              <p className="text-[10px] text-stone-500 mt-0.5 mb-1.5">Add custom tags beyond the 25 built-in ones. These will be available when tagging articles in this world.</p>
+              <div className="flex gap-1.5 mb-2">
+                <Input
+                  value={newCustomTag}
+                  onChange={(e) => setNewCustomTag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newCustomTag.trim()) {
+                      e.preventDefault();
+                      const tag = newCustomTag.trim();
+                      if (!editCustomTags.includes(tag)) setEditCustomTags([...editCustomTags, tag]);
+                      setNewCustomTag("");
+                    }
+                  }}
+                  placeholder="New tag name..."
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7"
+                  data-testid="input-new-custom-tag"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-stone-700 text-stone-300 h-7 px-2 text-xs"
+                  onClick={() => {
+                    const tag = newCustomTag.trim();
+                    if (tag && !editCustomTags.includes(tag)) setEditCustomTags([...editCustomTags, tag]);
+                    setNewCustomTag("");
+                  }}
+                  disabled={!newCustomTag.trim()}
+                  data-testid="button-add-custom-tag"
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              {editCustomTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {editCustomTags.map(tag => (
+                    <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                      {tag}
+                      <button onClick={() => setEditCustomTags(editCustomTags.filter(t => t !== tag))} className="hover:text-red-400 transition-colors" data-testid={`button-remove-tag-${tag}`}>
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter className="flex justify-between items-center">
             <Button
@@ -1236,7 +1356,7 @@ export default function WorldBuilder() {
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setShowWorldSettingsDialog(false)} className="text-stone-400">Cancel</Button>
               <Button
-                onClick={() => updateWorldMutation.mutate({ name: editWorldName.trim(), description: editWorldDescription.trim() || undefined })}
+                onClick={() => updateWorldMutation.mutate({ name: editWorldName.trim(), description: editWorldDescription.trim() || undefined, customTags: editCustomTags })}
                 disabled={!editWorldName.trim() || updateWorldMutation.isPending}
                 className="bg-amber-600 hover:bg-amber-500 text-white"
                 data-testid="button-save-world-settings"
