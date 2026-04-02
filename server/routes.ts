@@ -11064,6 +11064,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/wiki-link-preview/:type/:id", requireAuth, async (req, res) => {
+    try {
+      const { type, id } = req.params;
+      if (type === "character") {
+        const char = await storage.getCharacter(id);
+        if (!char) return res.status(404).json({ error: "Not found" });
+        res.json({
+          name: char.name,
+          description: char.backstory || undefined,
+          details: { level: char.level, species: char.species, hp: `${char.currentHp}/${char.maxHp}` },
+        });
+      } else if (type === "item") {
+        const item = await storage.getItem(id);
+        if (!item) return res.status(404).json({ error: "Not found" });
+        res.json({
+          name: item.name,
+          description: item.description || undefined,
+          details: { type: item.type, rarity: item.rarity, weight: item.weight },
+        });
+      } else if (type === "spell") {
+        const spell = await storage.getSystemSpell(id);
+        if (!spell) return res.status(404).json({ error: "Not found" });
+        res.json({
+          name: spell.name,
+          description: spell.description || undefined,
+          details: { type: spell.type, damage: spell.damage, range: spell.range, cost: spell.cost },
+        });
+      } else {
+        return res.status(400).json({ error: "Unknown type" });
+      }
+    } catch (e) {
+      console.error("Failed wiki-link-preview:", e);
+      res.status(500).json({ error: "Failed to load preview" });
+    }
+  });
+
   app.get("/api/worlds/:worldId/entities/:entityId", requireAuth, async (req, res) => {
     try {
       const world = await storage.getWorld(req.params.worldId);

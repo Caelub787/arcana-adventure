@@ -110,6 +110,7 @@ export default function WorldBuilder() {
   const [editWorldSystem, setEditWorldSystem] = useState("arcana-adventure");
   const [newCustomTag, setNewCustomTag] = useState("");
   const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
+  const [wikiLinkPreview, setWikiLinkPreview] = useState<{ type: string; id: string } | null>(null);
   const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
   const [homeContentDraft, setHomeContentDraft] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
@@ -338,13 +339,9 @@ export default function WorldBuilder() {
         setEditingMapId(id);
         break;
       case "character":
-        toast({ title: "Character Reference", description: "Character links are viewable in the campaign view." });
-        break;
       case "item":
-        toast({ title: "Item Reference", description: "Item details are available in the admin panel." });
-        break;
       case "spell":
-        toast({ title: "Spell Reference", description: "Spell details are available in the admin panel." });
+        setWikiLinkPreview({ type, id });
         break;
       default:
         break;
@@ -1452,6 +1449,75 @@ export default function WorldBuilder() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {wikiLinkPreview && (
+        <WikiLinkPreviewDialog
+          type={wikiLinkPreview.type}
+          id={wikiLinkPreview.id}
+          onClose={() => setWikiLinkPreview(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function WikiLinkPreviewDialog({ type, id, onClose }: { type: string; id: string; onClose: () => void }) {
+  const { data, isLoading } = useQuery<{ name: string; description?: string; details?: Record<string, string | number | null> }>({
+    queryKey: ["/api/wiki-link-preview", type, id],
+    queryFn: async () => {
+      const res = await fetch(`/api/wiki-link-preview/${type}/${id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load preview");
+      return res.json();
+    },
+  });
+
+  const typeLabels: Record<string, string> = { character: "Character", item: "Item", spell: "Spell" };
+  const typeColors: Record<string, string> = { character: "text-blue-400", item: "text-orange-400", spell: "text-purple-400" };
+  const typeIcons: Record<string, React.ReactNode> = {
+    character: <User className="h-5 w-5" />,
+    item: <Package className="h-5 w-5" />,
+    spell: <Sparkles className="h-5 w-5" />,
+  };
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-wiki-link-preview">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-stone-100">
+            <span className={typeColors[type] || "text-stone-400"}>{typeIcons[type]}</span>
+            {isLoading ? "Loading..." : data?.name || "Unknown"}
+          </DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+          </div>
+        ) : data ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-800 border border-stone-700 text-stone-400">{typeLabels[type] || type}</span>
+            </div>
+            {data.description && (
+              <p className="text-sm text-stone-400">{data.description}</p>
+            )}
+            {data.details && Object.keys(data.details).length > 0 && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs border-t border-stone-800 pt-3">
+                {Object.entries(data.details).map(([key, value]) => value != null ? (
+                  <div key={key} className="flex justify-between col-span-1">
+                    <span className="text-stone-500 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                    <span className="text-stone-300">{String(value)}</span>
+                  </div>
+                ) : null)}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-stone-500 text-sm">Could not load preview.</p>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} className="text-stone-400" data-testid="button-close-wiki-preview">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
