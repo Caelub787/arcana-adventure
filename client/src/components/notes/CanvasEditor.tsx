@@ -111,6 +111,22 @@ export interface CanvasData {
   connections: CanvasConnection[];
 }
 
+export interface NoteSearchProvider {
+  search: (query: string) => Promise<{ id: string; title: string }[]>;
+  create?: (title: string) => Promise<{ id: string; title: string }>;
+  onNodeClick?: (id: string) => void;
+  label?: string;
+}
+
+export interface EntitySearchProvider {
+  component: React.ComponentType<{
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onSelect: (entity: SearchableEntity | { id: string; name: string; type: string }) => void;
+    triggerElement?: React.ReactNode;
+  }>;
+}
+
 interface CanvasEditorProps {
   canvasData: CanvasData;
   onChange: (data: CanvasData) => void;
@@ -118,6 +134,9 @@ interface CanvasEditorProps {
   onClose?: () => void;
   title?: string;
   onTitleChange?: (title: string) => void;
+  noteSearchProvider?: NoteSearchProvider;
+  entitySearchProvider?: EntitySearchProvider;
+  hideNoteNodes?: boolean;
 }
 
 const MIN_ZOOM = 0.25;
@@ -131,6 +150,9 @@ export function CanvasEditor({
   onClose,
   title,
   onTitleChange,
+  noteSearchProvider,
+  entitySearchProvider,
+  hideNoteNodes = false,
 }: CanvasEditorProps) {
   const [, setLocation] = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -241,12 +263,13 @@ export function CanvasEditor({
     }
   }, [canvasData]);
 
-  // Get user's notes when search is empty, otherwise search
   const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
-    queryKey: ["/api/notes/search", noteSearchQuery],
-    queryFn: () => noteSearchQuery.length > 0 
-      ? api.searchNotes(noteSearchQuery) 
-      : api.getNotes(), // Show all notes when empty
+    queryKey: noteSearchProvider
+      ? ["/canvas/custom-note-search", noteSearchQuery]
+      : ["/api/notes/search", noteSearchQuery],
+    queryFn: () => noteSearchProvider
+      ? noteSearchProvider.search(noteSearchQuery)
+      : (noteSearchQuery.length > 0 ? api.searchNotes(noteSearchQuery) : api.getNotes()),
     enabled: noteSearchOpen,
     staleTime: 30000,
   });
@@ -1185,14 +1208,19 @@ export function CanvasEditor({
     
     setIsCreatingNote(true);
     try {
-      const newNote = await api.createNote({
-        title: title.trim(),
-        content: "",
-        type: "document",
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/search"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      let newNote: { id: string; title: string };
+      if (noteSearchProvider?.create) {
+        newNote = await noteSearchProvider.create(title.trim());
+        queryClient.invalidateQueries({ queryKey: ["/canvas/custom-note-search"] });
+      } else {
+        newNote = await api.createNote({
+          title: title.trim(),
+          content: "",
+          type: "document",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/search"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      }
       
       setNoteSearchOpen(false);
       setNoteSearchQuery("");
@@ -1571,12 +1599,18 @@ export function CanvasEditor({
                 className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-sm w-full text-left"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (node.noteId) setLocation(`/notes/${node.noteId}`);
+                  if (node.noteId) {
+                    if (noteSearchProvider?.onNodeClick) {
+                      noteSearchProvider.onNodeClick(node.noteId);
+                    } else {
+                      setLocation(`/notes/${node.noteId}`);
+                    }
+                  }
                 }}
                 data-testid={`note-link-${node.id}`}
               >
                 <Link2 className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{node.noteTitle || "Linked Note"}</span>
+                <span className="truncate">{node.noteTitle || (noteSearchProvider?.label ? `Linked ${noteSearchProvider.label}` : "Linked Note")}</span>
               </button>
             ) : node.type === "entity" ? (
               <div className="flex items-center gap-2">
@@ -1844,6 +1878,7 @@ export function CanvasEditor({
                 </TooltipContent>
               </Tooltip>
 
+              {!hideNoteNodes && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -1857,33 +1892,59 @@ export function CanvasEditor({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p>Add Note Link</p>
+                  <p>{noteSearchProvider?.label ? `Add ${noteSearchProvider.label} Link` : "Add Note Link"}</p>
                 </TooltipContent>
               </Tooltip>
+              )}
 
               <Tooltip>
-                <ReferencePicker
-                  open={entityPickerOpen}
-                  onOpenChange={(open) => {
-                    setEntityPickerOpen(open);
-                    if (!open) {
-                      setPendingConnection(null);
+                {entitySearchProvider ? (
+                  <entitySearchProvider.component
+                    open={entityPickerOpen}
+                    onOpenChange={(open) => {
+                      setEntityPickerOpen(open);
+                      if (!open) {
+                        setPendingConnection(null);
+                      }
+                    }}
+                    onSelect={handleEntitySelect}
+                    triggerElement={
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-stone-400 hover:text-white"
+                          data-testid="button-add-entity"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
                     }
-                  }}
-                  onSelect={handleEntitySelect}
-                  triggerElement={
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-stone-400 hover:text-white"
-                        data-testid="button-add-entity"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                  }
-                />
+                  />
+                ) : (
+                  <ReferencePicker
+                    open={entityPickerOpen}
+                    onOpenChange={(open) => {
+                      setEntityPickerOpen(open);
+                      if (!open) {
+                        setPendingConnection(null);
+                      }
+                    }}
+                    onSelect={handleEntitySelect}
+                    triggerElement={
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-stone-400 hover:text-white"
+                          data-testid="button-add-entity"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                    }
+                  />
+                )}
                 <TooltipContent side="right">
                   <p>Add Entity</p>
                 </TooltipContent>
@@ -2330,14 +2391,16 @@ export function CanvasEditor({
                     <Type className="h-4 w-4 text-stone-400" />
                     <span className="text-sm text-stone-200">Text</span>
                   </button>
+                  {!hideNoteNodes && (
                   <button
                     className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
                     onClick={() => handleConnectionDropMenuSelect("note")}
                     data-testid="drop-menu-note"
                   >
                     <FileText className="h-4 w-4 text-amber-400" />
-                    <span className="text-sm text-stone-200">Note Reference</span>
+                    <span className="text-sm text-stone-200">{noteSearchProvider?.label ? `${noteSearchProvider.label} Reference` : "Note Reference"}</span>
                   </button>
+                  )}
                   <button
                     className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
                     onClick={() => handleConnectionDropMenuSelect("entity")}
@@ -2371,7 +2434,7 @@ export function CanvasEditor({
         }}>
           <DialogContent className="bg-stone-950 border-stone-800">
             <DialogHeader>
-              <DialogTitle className="text-stone-200">Link to Note</DialogTitle>
+              <DialogTitle className="text-stone-200">{noteSearchProvider?.label ? `Link to ${noteSearchProvider.label}` : "Link to Note"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="relative">

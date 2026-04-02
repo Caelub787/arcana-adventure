@@ -1,14 +1,16 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { useUpdateEntity, useWikiSearch, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, type WikiSearchResult } from "@/lib/worldbuilding-api";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useUpdateEntity, useEntities, useWikiSearch, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, type WikiSearchResult } from "@/lib/worldbuilding-api";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Move, Square, Type, Minus, Circle, Search, BookOpen, Map, Swords, Sparkles, User, FileText } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Search, BookOpen, Map, Swords, Sparkles, User, FileText } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { CanvasEditor, type CanvasData } from "@/components/notes/CanvasEditor";
 
 interface WikiArticleEditorProps {
   entity: Entity;
@@ -39,184 +41,130 @@ function renderMarkdownPreview(content: string): string {
   return html;
 }
 
-interface CanvasNode {
-  id: string;
-  type: "text" | "heading" | "image" | "shape";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  content: string;
-  color?: string;
-  shapeType?: "rectangle" | "ellipse" | "line";
+function migrateLegacyNode(n: any): any {
+  const node = { ...n };
+  if (node.type === "heading") {
+    node.type = "text";
+    node.content = node.content || "";
+  } else if (node.type === "shape") {
+    node.type = "text";
+    node.content = node.content || "";
+  } else if (node.type === "image" && node.content && !node.mediaUrl) {
+    node.mediaUrl = node.content;
+    delete node.content;
+  }
+  return node;
 }
 
-function CanvasArticleEditor({ content, onChange, isEditing }: { content: string; onChange: (c: string) => void; isEditing: boolean }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes] = useState<CanvasNode[]>(() => {
-    try { return JSON.parse(content || "[]"); } catch { return []; }
-  });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
-
-  const syncNodes = useCallback((newNodes: CanvasNode[]) => {
-    setNodes(newNodes);
-    onChange(JSON.stringify(newNodes));
-  }, [onChange]);
-
-  const addNode = (type: CanvasNode["type"]) => {
-    const id = `node-${Date.now()}`;
-    const defaults: Record<string, Partial<CanvasNode>> = {
-      text: { width: 200, height: 60, content: "New text block" },
-      heading: { width: 300, height: 40, content: "Heading" },
-      image: { width: 200, height: 150, content: "" },
-      shape: { width: 100, height: 100, content: "", shapeType: "rectangle", color: "#64748b" },
-    };
-    const d = defaults[type] || defaults.text;
-    syncNodes([...nodes, { id, type, x: 50 + Math.random() * 100, y: 50 + Math.random() * 100, ...d } as CanvasNode]);
-    setSelectedId(id);
-  };
-
-  const updateNode = (id: string, updates: Partial<CanvasNode>) => {
-    syncNodes(nodes.map(n => n.id === id ? { ...n, ...updates } : n));
-  };
-
-  const deleteNode = (id: string) => {
-    syncNodes(nodes.filter(n => n.id !== id));
-    if (selectedId === id) setSelectedId(null);
-  };
-
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
-    if (!isEditing) return;
-    e.stopPropagation();
-    setSelectedId(id);
-    const node = nodes.find(n => n.id === id);
-    if (!node) return;
-    setDragging({ id, startX: e.clientX, startY: e.clientY, nodeX: node.x, nodeY: node.y });
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragging) return;
-    const dx = e.clientX - dragging.startX;
-    const dy = e.clientY - dragging.startY;
-    updateNode(dragging.id, { x: dragging.nodeX + dx, y: dragging.nodeY + dy });
-  }, [dragging]);
-
-  const handleMouseUp = useCallback(() => { setDragging(null); }, []);
-
-  useEffect(() => {
-    if (dragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
+function parseCanvasData(content: string): CanvasData {
+  if (!content) return { nodes: [], connections: [] };
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed)) {
+      return { nodes: parsed.map(migrateLegacyNode), connections: [] };
     }
-  }, [dragging, handleMouseMove, handleMouseUp]);
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.nodes)) {
+      return { nodes: parsed.nodes, connections: parsed.connections || [] };
+    }
+    return { nodes: [], connections: [] };
+  } catch {
+    return { nodes: [], connections: [] };
+  }
+}
 
-  const selectedNode = nodes.find(n => n.id === selectedId);
+function WbEntityPicker({ worldId, open, onOpenChange, onSelect, triggerElement }: {
+  worldId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (entity: any) => void;
+  triggerElement?: React.ReactNode;
+}) {
+  const [search, setSearch] = useState("");
+  const { data: entities = [] } = useEntities(worldId);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return entities
+      .filter((e: Entity) => !q || e.displayName.toLowerCase().includes(q))
+      .slice(0, 30);
+  }, [entities, search]);
 
   return (
-    <div className="flex flex-col h-full" data-testid="canvas-article-editor">
-      {isEditing && (
-        <div className="flex items-center gap-1 p-2 border-b border-stone-800 bg-stone-900/80">
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("text")} data-testid="canvas-add-text"><Type className="h-3.5 w-3.5 mr-1" /> Text</Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("heading")} data-testid="canvas-add-heading"><Heading1 className="h-3.5 w-3.5 mr-1" /> Heading</Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("image")} data-testid="canvas-add-image"><Image className="h-3.5 w-3.5 mr-1" /> Image</Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-stone-200" onClick={() => addNode("shape")} data-testid="canvas-add-shape"><Square className="h-3.5 w-3.5 mr-1" /> Shape</Button>
-          {selectedNode && (
-            <>
-              <div className="w-px h-4 bg-stone-700 mx-1" />
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-red-400 hover:text-red-300" onClick={() => deleteNode(selectedNode.id)} data-testid="canvas-delete-node"><X className="h-3.5 w-3.5 mr-1" /> Delete</Button>
-            </>
-          )}
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
+      <PopoverContent className="w-72 p-0 bg-stone-950 border-stone-700" align="start" side="right">
+        <div className="p-2 border-b border-stone-800">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search entities..."
+              className="pl-7 h-8 text-xs bg-stone-900 border-stone-700"
+              data-testid="wb-entity-picker-search"
+            />
+          </div>
         </div>
-      )}
-      <div
-        ref={canvasRef}
-        className="relative flex-1 bg-stone-950 overflow-auto min-h-[400px]"
-        style={{ backgroundImage: "radial-gradient(circle, #374151 1px, transparent 1px)", backgroundSize: "20px 20px" }}
-        onClick={() => setSelectedId(null)}
-        data-testid="canvas-surface"
-      >
-        {nodes.map(node => (
-          <div
-            key={node.id}
-            className={`absolute cursor-${isEditing ? "move" : "default"} ${selectedId === node.id && isEditing ? "ring-2 ring-amber-400" : ""}`}
-            style={{ left: node.x, top: node.y, width: node.width, height: node.type === "text" || node.type === "heading" ? "auto" : node.height, minHeight: node.height }}
-            onMouseDown={(e) => handleMouseDown(e, node.id)}
-            data-testid={`canvas-node-${node.id}`}
-          >
-            {node.type === "text" && (
-              isEditing && selectedId === node.id ? (
-                <textarea
-                  value={node.content}
-                  onChange={(e) => updateNode(node.id, { content: e.target.value })}
-                  className="w-full bg-stone-900/80 border border-stone-700 rounded p-2 text-sm text-stone-300 resize-none"
-                  style={{ minHeight: node.height }}
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid={`canvas-text-input-${node.id}`}
-                />
-              ) : (
-                <div className="p-2 text-sm text-stone-300 whitespace-pre-wrap">{node.content || "Empty text"}</div>
-              )
-            )}
-            {node.type === "heading" && (
-              isEditing && selectedId === node.id ? (
-                <input
-                  value={node.content}
-                  onChange={(e) => updateNode(node.id, { content: e.target.value })}
-                  className="w-full bg-transparent border-b-2 border-amber-500/50 text-lg font-bold text-stone-100 p-1"
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid={`canvas-heading-input-${node.id}`}
-                />
-              ) : (
-                <h2 className="text-lg font-bold text-stone-100 p-1">{node.content || "Untitled"}</h2>
-              )
-            )}
-            {node.type === "image" && (
-              isEditing && selectedId === node.id && !node.content ? (
-                <div className="w-full h-full bg-stone-900/80 border border-dashed border-stone-700 rounded flex flex-col items-center justify-center p-2">
-                  <Image className="h-6 w-6 text-stone-600 mb-1" />
-                  <input
-                    placeholder="Paste image URL..."
-                    className="w-full bg-stone-800 border border-stone-700 rounded text-xs text-stone-300 p-1 mt-1"
-                    onBlur={(e) => { if (e.target.value) updateNode(node.id, { content: e.target.value }); }}
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid={`canvas-image-input-${node.id}`}
-                  />
-                </div>
-              ) : (
-                node.content ? <img src={node.content} alt="" className="w-full h-full object-cover rounded" /> : <div className="w-full h-full bg-stone-900/50 border border-stone-800 rounded flex items-center justify-center"><Image className="h-8 w-8 text-stone-700" /></div>
-              )
-            )}
-            {node.type === "shape" && (
-              <div
-                className={`w-full h-full ${node.shapeType === "ellipse" ? "rounded-full" : "rounded"}`}
-                style={{ backgroundColor: (node.color || "#64748b") + "30", border: `2px solid ${node.color || "#64748b"}` }}
-              />
+        <ScrollArea className="h-60">
+          <div className="p-1 space-y-0.5">
+            {filtered.length === 0 ? (
+              <div className="text-center py-6 text-stone-500 text-xs">No entities found</div>
+            ) : (
+              filtered.map((entity: Entity) => {
+                const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                return (
+                  <button
+                    key={entity.id}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-stone-800/50 text-left"
+                    onClick={() => {
+                      onSelect({
+                        id: entity.id,
+                        name: entity.displayName,
+                        type: entity.entityType || "article",
+                      });
+                      onOpenChange(false);
+                      setSearch("");
+                    }}
+                    data-testid={`wb-entity-result-${entity.id}`}
+                  >
+                    <Badge variant="outline" className="text-[9px]" style={{ color: cfg?.color || "#78909c", borderColor: (cfg?.color || "#78909c") + "40" }}>
+                      {entity.entityType || "article"}
+                    </Badge>
+                    <span className="text-xs text-stone-200 truncate">{entity.displayName}</span>
+                  </button>
+                );
+              })
             )}
           </div>
-        ))}
-      </div>
-      {isEditing && selectedNode && (
-        <div className="p-2 border-t border-stone-800 bg-stone-900/80 flex items-center gap-2 text-xs">
-          <span className="text-stone-500">Selected: {selectedNode.type}</span>
-          <span className="text-stone-600">|</span>
-          <label className="text-stone-500">W:</label>
-          <input type="number" value={selectedNode.width} onChange={(e) => updateNode(selectedNode.id, { width: parseInt(e.target.value) || 100 })} className="w-14 bg-stone-800 border border-stone-700 rounded text-stone-300 px-1 text-xs" data-testid="canvas-node-width" />
-          <label className="text-stone-500">H:</label>
-          <input type="number" value={selectedNode.height} onChange={(e) => updateNode(selectedNode.id, { height: parseInt(e.target.value) || 60 })} className="w-14 bg-stone-800 border border-stone-700 rounded text-stone-300 px-1 text-xs" data-testid="canvas-node-height" />
-          {selectedNode.type === "shape" && (
-            <>
-              <label className="text-stone-500">Color:</label>
-              <input type="color" value={selectedNode.color || "#64748b"} onChange={(e) => updateNode(selectedNode.id, { color: e.target.value })} className="w-6 h-5 bg-transparent border-0 cursor-pointer" data-testid="canvas-node-color" />
-              <select value={selectedNode.shapeType || "rectangle"} onChange={(e) => updateNode(selectedNode.id, { shapeType: e.target.value as CanvasNode["shapeType"] })} className="bg-stone-800 border border-stone-700 rounded text-stone-300 text-xs px-1" data-testid="canvas-shape-type">
-                <option value="rectangle">Rectangle</option>
-                <option value="ellipse">Ellipse</option>
-              </select>
-            </>
-          )}
-        </div>
-      )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function WbCanvasWrapper({ content, onChange, isEditing, worldId }: {
+  content: string;
+  onChange: (c: string) => void;
+  isEditing: boolean;
+  worldId: string;
+}) {
+  const canvasData = useMemo(() => parseCanvasData(content), [content]);
+  const handleChange = useCallback((data: CanvasData) => {
+    onChange(JSON.stringify(data));
+  }, [onChange]);
+
+  const entitySearchProvider = useMemo(() => ({
+    component: (props: any) => <WbEntityPicker worldId={worldId} {...props} />,
+  }), [worldId]);
+
+  return (
+    <div className="flex-1 h-full min-h-[400px]" data-testid="canvas-article-editor">
+      <CanvasEditor
+        canvasData={canvasData}
+        onChange={handleChange}
+        readOnly={!isEditing}
+        hideNoteNodes
+        entitySearchProvider={entitySearchProvider}
+      />
     </div>
   );
 }
@@ -676,10 +624,11 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
         )}
 
         {entityType === "canvas" ? (
-          <CanvasArticleEditor
+          <WbCanvasWrapper
             content={articleContent}
             onChange={(c) => { setArticleContent(c); autoSave(); }}
             isEditing={mode === "edit"}
+            worldId={worldId || ""}
           />
         ) : (
           <div className="p-3 md:p-4 relative" ref={editorContainerRef}>
