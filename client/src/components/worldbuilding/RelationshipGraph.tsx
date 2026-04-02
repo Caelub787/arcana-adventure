@@ -191,6 +191,7 @@ function buildGraphData(
 interface RelationshipGraphProps {
   worldId: string;
   onSelectEntity: (entityId: string) => void;
+  onSelectNode?: (category: NodeCategory, id: string) => void;
   selectedEntityId?: string | null;
 }
 
@@ -209,7 +210,7 @@ function saveFilters(filters: { tags: Record<string, boolean>; categories: Recor
   try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters)); } catch {}
 }
 
-export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }: RelationshipGraphProps) {
+export function RelationshipGraph({ worldId, onSelectEntity, onSelectNode, selectedEntityId }: RelationshipGraphProps) {
   const { data: graphData, isLoading } = useWorldGraphData(worldId);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -479,11 +480,14 @@ export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }:
       if (clickedNode.category === "article" || clickedNode.category === "canvas") {
         const entityId = clickedNode.id.replace("entity-", "");
         onSelectEntity(entityId);
+      } else if (onSelectNode) {
+        const rawId = clickedNode.id.replace(/^(item|spell|trait|skill|character)-/, "");
+        onSelectNode(clickedNode.category, rawId);
       } else {
         setSelectedNode(clickedNode);
       }
     }
-  }, [onSelectEntity]);
+  }, [onSelectEntity, onSelectNode]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -703,7 +707,14 @@ export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }:
                       />
                     </>
                   ) : (
-                    <circle cx={0} cy={0} r={radius} fill={colors.fill} stroke={colors.stroke} strokeWidth={1.5 / zoom} />
+                    <>
+                      <circle cx={0} cy={0} r={radius} fill={colors.fill} stroke={colors.stroke} strokeWidth={1.5 / zoom} />
+                      {radius >= 6 && (
+                        <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fill={node.category === "article" || node.category === "canvas" ? "#1c1917" : "#fff"} fontSize={radius * 0.9} fontFamily="system-ui" className="pointer-events-none select-none">
+                          {node.category === "spell" ? "\u2728" : node.category === "item" ? "\u2692" : node.category === "trait" ? "\u2694" : node.category === "skill" ? "\u26A1" : node.category === "character" ? "\u263A" : node.category === "canvas" ? "\u25A1" : "\u270E"}
+                        </text>
+                      )}
+                    </>
                   )}
                   {showLabels && !isHovered && (
                     <g className="pointer-events-none">
