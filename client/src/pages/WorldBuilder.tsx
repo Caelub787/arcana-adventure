@@ -180,37 +180,59 @@ export default function WorldBuilder() {
 
   const activeTab = wbTabs.find(t => t.id === activeWbTabId);
 
-  const handleOpenSectionTab = (sectionType: WbTabType, e?: React.MouseEvent) => {
-    const ctrlClick = e && (e.ctrlKey || e.metaKey);
-    if (!ctrlClick) {
-      const existing = wbTabs.find(t => t.type === sectionType && !t.entityId && !t.mapId);
-      if (existing) {
-        setActiveWbTabId(existing.id);
-        setActiveSection(sectionType as ActiveSection);
-        return;
-      }
+  const handleNavigateCurrentTab = (sectionType: WbTabType) => {
+    if (activeWbTabId) {
+      const label = TAB_TYPE_ICONS[sectionType]?.label || sectionType;
+      setWbTabs(prev => prev.map(t =>
+        t.id === activeWbTabId
+          ? { ...t, type: sectionType, title: label, entityId: undefined, mapId: undefined }
+          : t
+      ));
+      setActiveSection(sectionType as ActiveSection);
+      setSelectedEntityId(null);
+    } else {
+      const tabId = makeTabId();
+      const label = TAB_TYPE_ICONS[sectionType]?.label || sectionType;
+      setWbTabs(prev => [...prev, { id: tabId, type: sectionType, title: label }]);
+      setActiveWbTabId(tabId);
+      setActiveSection(sectionType as ActiveSection);
     }
-    const tabId = makeTabId();
-    const label = TAB_TYPE_ICONS[sectionType]?.label || sectionType;
-    const newTab: WbTab = { id: tabId, type: sectionType, title: label };
-    setWbTabs(prev => [...prev, newTab]);
-    setActiveWbTabId(tabId);
-    setActiveSection(sectionType as ActiveSection);
   };
 
-  const handleOpenArticleTab = (entityId: string, entityName: string, e?: React.MouseEvent) => {
-    const ctrlClick = e && (e.ctrlKey || e.metaKey);
-    if (!ctrlClick) {
-      const existing = wbTabs.find(t => t.type === "article" && t.entityId === entityId);
-      if (existing) {
-        setActiveWbTabId(existing.id);
-        setSelectedEntityId(entityId);
-        return;
-      }
+  const handleAddNewTab = () => {
+    const tabId = makeTabId();
+    setWbTabs(prev => [...prev, { id: tabId, type: "home", title: "Home" }]);
+    setActiveWbTabId(tabId);
+    setActiveSection("home");
+  };
+
+  const handleOpenEntityInCurrentTab = (entityId: string, entityName: string) => {
+    if (activeWbTabId) {
+      setWbTabs(prev => prev.map(t =>
+        t.id === activeWbTabId
+          ? { ...t, type: "article", title: entityName, entityId }
+          : t
+      ));
+      setSelectedEntityId(entityId);
+      setActiveSection("encyclopedia");
+    } else {
+      const tabId = makeTabId();
+      setWbTabs(prev => [...prev, { id: tabId, type: "article", title: entityName, entityId }]);
+      setActiveWbTabId(tabId);
+      setSelectedEntityId(entityId);
+      setActiveSection("encyclopedia");
+    }
+  };
+
+  const handleOpenEntityInNewTab = (entityId: string, entityName: string) => {
+    const existing = wbTabs.find(t => t.type === "article" && t.entityId === entityId);
+    if (existing) {
+      setActiveWbTabId(existing.id);
+      setSelectedEntityId(entityId);
+      return;
     }
     const tabId = makeTabId();
-    const newTab: WbTab = { id: tabId, type: "article", title: entityName, entityId };
-    setWbTabs(prev => [...prev, newTab]);
+    setWbTabs(prev => [...prev, { id: tabId, type: "article", title: entityName, entityId }]);
     setActiveWbTabId(tabId);
     setSelectedEntityId(entityId);
     setActiveSection("encyclopedia");
@@ -450,7 +472,12 @@ export default function WorldBuilder() {
     }
     const entity = entities.find((ent: any) => ent.id === entityId);
     const name = entity?.displayName || "Article";
-    handleOpenArticleTab(entityId, name, e);
+    const ctrlClick = e && (e.ctrlKey || e.metaKey);
+    if (ctrlClick) {
+      handleOpenEntityInNewTab(entityId, name);
+    } else {
+      handleOpenEntityInCurrentTab(entityId, name);
+    }
     if (isMobile) {
       setMobileSidebarOpen(false);
     }
@@ -551,8 +578,8 @@ export default function WorldBuilder() {
           return (
             <button
               key={key}
-              onClick={(e) => {
-                handleOpenSectionTab(key as WbTabType, e);
+              onClick={() => {
+                handleNavigateCurrentTab(key as WbTabType);
                 if (key === "home" && selectedWorld) {
                   setEditWorldName(selectedWorld.name);
                   setEditWorldDescription(selectedWorld.description || "");
@@ -909,7 +936,7 @@ export default function WorldBuilder() {
                         variant="ghost"
                         size="icon"
                         className={`h-8 w-8 ${isActiveSection ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
-                        onClick={(e) => { handleOpenSectionTab(key as WbTabType, e); if (key === "home" && selectedWorld) { setEditWorldName(selectedWorld.name); setEditWorldDescription(selectedWorld.description || ""); } }}
+                        onClick={() => { handleNavigateCurrentTab(key as WbTabType); if (key === "home" && selectedWorld) { setEditWorldName(selectedWorld.name); setEditWorldDescription(selectedWorld.description || ""); } }}
                         data-testid={`nav-section-collapsed-${key}`}
                       >
                         <Icon className="h-4 w-4" />
@@ -971,6 +998,14 @@ export default function WorldBuilder() {
                     </div>
                   );
                 })}
+                <button
+                  onClick={handleAddNewTab}
+                  className="flex-shrink-0 p-1.5 text-stone-500 hover:text-amber-400 hover:bg-stone-800 rounded transition-colors mx-0.5"
+                  title="Open new tab"
+                  data-testid="wb-tab-add"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
 

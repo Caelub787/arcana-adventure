@@ -6621,17 +6621,27 @@ function WorldBuilderContent({
     graph: { icon: Network, label: "Graph" },
   };
 
-  const handleOpenSectionTab = (sectionType: WbTabType) => {
+  const handleNavigateCurrentTab = (sectionType: WbTabType) => {
     if (sectionType === "article") return;
-    const existing = wbTabs.find(t => t.type === sectionType);
-    if (existing) {
-      setActiveWbTabId(existing.id);
+    if (activeWbTabId) {
+      const label = TAB_TYPE_ICONS[sectionType]?.label || sectionType;
+      setWbTabs(prev => prev.map(t =>
+        t.id === activeWbTabId
+          ? { ...t, type: sectionType, title: label, entityId: undefined, mapId: undefined }
+          : t
+      ));
     } else {
       const tabId = makeTabId();
       const label = TAB_TYPE_ICONS[sectionType]?.label || sectionType;
       setWbTabs(prev => [...prev, { id: tabId, type: sectionType, title: label }]);
       setActiveWbTabId(tabId);
     }
+  };
+
+  const handleAddNewTab = () => {
+    const tabId = makeTabId();
+    setWbTabs(prev => [...prev, { id: tabId, type: "home", title: "Home" }]);
+    setActiveWbTabId(tabId);
   };
 
   const handleOpenEntityInNewTab = (entityId: string, title?: string) => {
@@ -6650,8 +6660,7 @@ function WorldBuilderContent({
 
   const handleOpenEntityInCurrentTab = (entityId: string, title?: string) => {
     const resolvedTitle = title || getEntityTitle(entityId);
-    const activeTab = wbTabs.find(t => t.id === activeWbTabId);
-    if (activeTab && (activeTab.type === "article" || activeTab.type === "encyclopedia")) {
+    if (activeWbTabId) {
       setWbTabs(prev => prev.map(t => t.id === activeWbTabId ? { ...t, type: "article", entityId, title: resolvedTitle } : t));
       setSelectedEntityId(entityId);
     } else {
@@ -6660,12 +6669,7 @@ function WorldBuilderContent({
   };
 
   const handleSelectEntity = (entityId: string) => {
-    const activeTab = wbTabs.find(t => t.id === activeWbTabId);
-    if (activeTab && (activeTab.type === "article" || activeTab.type === "encyclopedia")) {
-      handleOpenEntityInCurrentTab(entityId);
-    } else {
-      handleOpenEntityInNewTab(entityId);
-    }
+    handleOpenEntityInCurrentTab(entityId);
   };
 
   const handleCloseWbTab = (tabId: string) => {
@@ -6735,7 +6739,7 @@ function WorldBuilderContent({
           return (
             <button
               key={key}
-              onClick={() => handleOpenSectionTab(sectionTabType)}
+              onClick={() => handleNavigateCurrentTab(sectionTabType)}
               className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                 isActiveSection
                   ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
@@ -6812,6 +6816,14 @@ function WorldBuilderContent({
                 </div>
               );
             })}
+            <button
+              onClick={handleAddNewTab}
+              className="flex-shrink-0 p-1.5 text-stone-500 hover:text-amber-400 hover:bg-stone-800 rounded transition-colors mx-0.5"
+              title="Open new tab"
+              data-testid="wb-tab-add"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           </div>
       </div>
 
