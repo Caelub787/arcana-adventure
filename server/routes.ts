@@ -11082,6 +11082,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (type === "item") {
         const item = await storage.getItem(id);
         if (!item) return res.status(404).json({ error: "Not found" });
+        const worldSystem = world.system || "arcana-adventure";
+        if (item.system !== worldSystem) return res.status(404).json({ error: "Not found" });
         res.json({
           name: item.name,
           description: item.description || undefined,
@@ -11090,6 +11092,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (type === "spell") {
         const spell = await storage.getSystemSpell(id);
         if (!spell) return res.status(404).json({ error: "Not found" });
+        const worldSystem = world.system || "arcana-adventure";
+        if (spell.system !== worldSystem) return res.status(404).json({ error: "Not found" });
         res.json({
           name: spell.name,
           description: spell.description || undefined,
