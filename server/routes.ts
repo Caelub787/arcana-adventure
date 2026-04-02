@@ -11083,7 +11083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const item = await storage.getItem(id);
         if (!item) return res.status(404).json({ error: "Not found" });
         const worldSystem = world.system || "arcana-adventure";
-        if (item.system !== worldSystem) return res.status(404).json({ error: "Not found" });
+        if (item.system !== worldSystem || !item.isTemplate || item.characterId || item.campaignId) return res.status(404).json({ error: "Not found" });
         res.json({
           name: item.name,
           description: item.description || undefined,
