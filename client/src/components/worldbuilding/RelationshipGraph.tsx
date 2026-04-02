@@ -174,15 +174,15 @@ function buildGraphData(
   }
 
   const isNodeVisible = (node: GraphNode): boolean => {
+    if (categoryFilters[node.category] === false) return false;
     if (node.category === "article" || node.category === "canvas") {
       const nodeTags = node.tags || (node.tag ? [node.tag] : []);
       if (nodeTags.length > 0) {
         const allTagsDisabled = nodeTags.every(t => tagFilters[t] === false);
         if (allTagsDisabled) return false;
       }
-      return true;
     }
-    return categoryFilters[node.category] !== false;
+    return true;
   };
 
   const visibleNodes = nodes.filter(isNodeVisible);
@@ -198,7 +198,6 @@ function buildGraphData(
 interface RelationshipGraphProps {
   worldId: string;
   onSelectEntity: (entityId: string) => void;
-  onSelectNode?: (category: NodeCategory, id: string) => void;
   selectedEntityId?: string | null;
 }
 
@@ -217,7 +216,7 @@ function saveFilters(filters: { tags: Record<string, boolean>; categories: Recor
   try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters)); } catch {}
 }
 
-export function RelationshipGraph({ worldId, onSelectEntity, onSelectNode, selectedEntityId }: RelationshipGraphProps) {
+export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }: RelationshipGraphProps) {
   const { data: graphData, isLoading } = useWorldGraphData(worldId);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -487,14 +486,11 @@ export function RelationshipGraph({ worldId, onSelectEntity, onSelectNode, selec
       if (clickedNode.category === "article" || clickedNode.category === "canvas") {
         const entityId = clickedNode.id.replace("entity-", "");
         onSelectEntity(entityId);
-      } else if (onSelectNode) {
-        const rawId = clickedNode.id.replace(/^(item|spell|trait|skill|character)-/, "");
-        onSelectNode(clickedNode.category, rawId);
       } else {
         setSelectedNode(clickedNode);
       }
     }
-  }, [onSelectEntity, onSelectNode]);
+  }, [onSelectEntity]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
