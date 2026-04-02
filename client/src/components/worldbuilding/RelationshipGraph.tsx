@@ -10,6 +10,7 @@ interface GraphNode {
   id: string;
   category: NodeCategory;
   tag?: string;
+  tags?: string[];
   name: string;
   description?: string;
   portrait?: string;
@@ -99,13 +100,14 @@ function buildGraphData(
   const nodes: GraphNode[] = [];
   const nodeIdSet = new Set<string>();
 
-  const addNode = (id: string, category: NodeCategory, name: string, description?: string | null, tag?: string, portrait?: string | null) => {
+  const addNode = (id: string, category: NodeCategory, name: string, description?: string | null, tag?: string, portrait?: string | null, allTags?: string[]) => {
     if (nodeIdSet.has(id)) return;
     nodeIdSet.add(id);
     nodes.push({
       id,
       category,
       tag,
+      tags: allTags,
       name,
       description: description || undefined,
       portrait: portrait || undefined,
@@ -115,8 +117,9 @@ function buildGraphData(
 
   for (const entity of data.entities) {
     const cat: NodeCategory = entity.entityType === "canvas" ? "canvas" : "article";
-    const primaryTag = ((entity.tags as string[]) || [])[0];
-    addNode(`entity-${entity.id}`, cat, entity.displayName, entity.description, primaryTag);
+    const entityTags = (entity.tags as string[]) || [];
+    const primaryTag = entityTags[0];
+    addNode(`entity-${entity.id}`, cat, entity.displayName, entity.description, primaryTag, undefined, entityTags);
   }
 
   for (const item of data.items) {
@@ -172,7 +175,11 @@ function buildGraphData(
 
   const isNodeVisible = (node: GraphNode): boolean => {
     if (node.category === "article" || node.category === "canvas") {
-      if (node.tag && tagFilters[node.tag] === false) return false;
+      const nodeTags = node.tags || (node.tag ? [node.tag] : []);
+      if (nodeTags.length > 0) {
+        const allTagsDisabled = nodeTags.every(t => tagFilters[t] === false);
+        if (allTagsDisabled) return false;
+      }
       return true;
     }
     return categoryFilters[node.category] !== false;
