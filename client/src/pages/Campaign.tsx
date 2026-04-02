@@ -6420,14 +6420,6 @@ function WorldBuilderContent({
   const [wbTabs, setWbTabs] = useState<WbTab[]>([]);
   const [activeWbTabId, setActiveWbTabId] = useState<string | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [entityHistory, setEntityHistory] = useState<string[]>([]);
-  const activeSection: WorldBuilderSection = (() => {
-    const tab = wbTabs.find(t => t.id === activeWbTabId);
-    if (!tab) return "home";
-    if (tab.type === "article" || tab.type === "encyclopedia") return "encyclopedia";
-    if (tab.type === "map-edit") return "maps";
-    return tab.type as WorldBuilderSection;
-  })();
   const [homeContent, setHomeContent] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
   const [homeEditing, setHomeEditing] = useState(false);
@@ -6463,6 +6455,14 @@ function WorldBuilderContent({
       setSelectedWorldId(campaignWorld?.id || worlds[0].id);
     }
   }, [worlds, selectedWorldId, campaignId, isGM, linkedWorld]);
+
+  useEffect(() => {
+    if (selectedWorldId && wbTabs.length === 0) {
+      const tabId = makeTabId();
+      setWbTabs([{ id: tabId, type: "home", title: "Home" }]);
+      setActiveWbTabId(tabId);
+    }
+  }, [selectedWorldId]);
 
   const selectedWorld = isGM
     ? worlds.find((w: any) => w.id === selectedWorldId)
@@ -6700,22 +6700,6 @@ function WorldBuilderContent({
     }
   };
 
-  const handleEntityBack = () => {
-    if (entityHistory.length > 0) {
-      const prev = entityHistory[entityHistory.length - 1];
-      setEntityHistory(h => h.slice(0, -1));
-      setSelectedEntityId(prev);
-    } else {
-      setSelectedEntityId(null);
-    }
-  };
-
-  const handleSelectTimeline = (timelineId: string | null) => {
-    if (activeWbTabId) {
-      setWbTabs(prev => prev.map(t => t.id === activeWbTabId ? { ...t, selectedTimelineId: timelineId } : t));
-    }
-  };
-
   return (
     <>
     <div className="flex flex-col h-full" data-testid="worldbuilder-content">
@@ -6726,7 +6710,6 @@ function WorldBuilderContent({
             onChange={(e) => {
               setSelectedWorldId(e.target.value);
               setSelectedEntityId(null);
-              setEntityHistory([]);
               setWbTabs([]);
               setActiveWbTabId(null);
               setHomeEditing(false);
