@@ -6860,40 +6860,47 @@ function WorldBuilderContent({
                 )}
 
                 {activeSection === "encyclopedia" && (
-                  <div className="flex flex-col h-full">
-                    <div className="flex flex-1 overflow-hidden">
-                      {(!activeWbTabId || !selectedEntityId) ? (
-                        <div className="w-full overflow-hidden">
-                          <WorldbuilderPanel
-                            worldId={selectedWorldId}
-                            isGM={isGM}
-                            characters={characters}
-                            onOpenEntity={(entityId, title) => handleSelectEntity(entityId)}
-                            onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
-                          />
+                  <div className="flex h-full overflow-hidden">
+                    <div className="w-56 flex-shrink-0 border-r border-stone-700 overflow-hidden">
+                      <WorldbuilderPanel
+                        worldId={selectedWorldId}
+                        isGM={isGM}
+                        characters={characters}
+                        onOpenEntity={(entityId, title) => handleOpenEntityInCurrentTab(entityId, title)}
+                        onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
+                      />
+                    </div>
+                    <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+                      {wbTabs.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center text-stone-500">
+                          <div className="text-center">
+                            <BookOpen className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                            <p className="text-sm">Select an article to view</p>
+                          </div>
                         </div>
                       ) : (
-                        <>
-                          <div className="w-1/3 border-r border-stone-700 overflow-hidden">
-                            <WorldbuilderPanel
-                              worldId={selectedWorldId}
-                              isGM={isGM}
-                              characters={characters}
-                              onOpenEntity={(entityId, title) => handleOpenEntityInCurrentTab(entityId, title)}
-                              onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
-                            />
-                          </div>
-                          <div className="w-2/3 overflow-y-auto">
-                            <EntitySidePanel
-                              worldId={selectedWorldId}
-                              entityId={selectedEntityId}
-                              onClose={() => { if (activeWbTabId) handleCloseWbTab(activeWbTabId); }}
-                              onNavigateToEntity={(entityId) => handleOpenEntityInCurrentTab(entityId)}
-                              isGM={isGM}
-                              embedded={true}
-                            />
-                          </div>
-                        </>
+                        <div className="flex-1 overflow-hidden relative">
+                          {wbTabs.map((tab) => (
+                            <div
+                              key={tab.id}
+                              className="absolute inset-0 overflow-y-auto"
+                              style={{ display: tab.id === activeWbTabId ? 'block' : 'none' }}
+                            >
+                              <EntitySidePanel
+                                worldId={selectedWorldId}
+                                entityId={tab.entityId}
+                                onClose={() => handleCloseWbTab(tab.id)}
+                                onNavigateToEntity={(entityId) => {
+                                  const title = getEntityTitle(entityId);
+                                  setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId, title } : t));
+                                  if (tab.id === activeWbTabId) setSelectedEntityId(entityId);
+                                }}
+                                isGM={isGM}
+                                embedded={true}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
