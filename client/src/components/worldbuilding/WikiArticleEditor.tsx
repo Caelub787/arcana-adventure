@@ -249,7 +249,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
 
   const saveChanges = useCallback(async () => {
     setIsSaving(true);
-    const updateData: any = {
+    const updateData: Partial<Entity> & { id: string } = {
       id: entity.id,
       articleContent,
       description,
@@ -265,7 +265,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
     } finally {
       setIsSaving(false);
     }
-  }, [entity.id, articleContent, description, displayName, image, visibility, tags, updateEntity, onEntityUpdated]);
+  }, [entity.id, articleContent, description, displayName, image, visibility, entityType, tags, updateEntity, onEntityUpdated]);
 
   const autoSave = useCallback(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
