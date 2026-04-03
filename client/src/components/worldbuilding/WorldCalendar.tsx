@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink, PartyPopper } from "lucide-react";
+import { Calendar, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink, PartyPopper } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface WorldCalendarProps {
@@ -107,6 +107,10 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   const [eventFormColor, setEventFormColor] = useState("#ffb74d");
   const [eventFormDescription, setEventFormDescription] = useState("");
   const [eventFormRecurring, setEventFormRecurring] = useState(true);
+
+  const [showJumpDialog, setShowJumpDialog] = useState(false);
+  const [jumpMonth, setJumpMonth] = useState(0);
+  const [jumpYear, setJumpYear] = useState(1);
 
   const selectedCalendar = calendars.find(c => c.id === selectedCalendarId) || calendars[0];
 
@@ -459,7 +463,6 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   };
 
   const handleDayClick = (day: number) => {
-    if (!isGM) return;
     const note = getDayNote(currentMonth, day);
     setSelectedDay({ month: currentMonth, day });
     setDayNoteText(note);
@@ -643,10 +646,15 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
         <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200" onClick={() => navigateMonth(-1)} data-testid="button-prev-month">
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <div className="text-center">
-          <h3 className="text-base font-semibold text-stone-200" data-testid="text-current-month">{currentMonthName}</h3>
-          <p className="text-xs text-stone-500" data-testid="text-current-year">Year {currentYear}{yearSuffix ? ` ${yearSuffix}` : ""}</p>
-        </div>
+        <button
+          className="text-center cursor-pointer hover:bg-stone-800/50 rounded-lg px-3 py-1 transition-colors group"
+          onClick={() => { setJumpMonth(currentMonth); setJumpYear(currentYear); setShowJumpDialog(true); }}
+          title="Jump to a specific month/year"
+          data-testid="button-jump-date"
+        >
+          <h3 className="text-base font-semibold text-stone-200 group-hover:text-amber-300 transition-colors" data-testid="text-current-month">{currentMonthName}</h3>
+          <p className="text-xs text-stone-500 group-hover:text-stone-400 transition-colors" data-testid="text-current-year">Year {currentYear}{yearSuffix ? ` ${yearSuffix}` : ""}</p>
+        </button>
         <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200" onClick={() => navigateMonth(1)} data-testid="button-next-month">
           <ChevronRight className="h-4 w-4" />
         </Button>
@@ -693,9 +701,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
               return (
                 <div
                   key={`day-${day}`}
-                  className={`bg-stone-950/80 min-h-[60px] md:min-h-[80px] p-1 relative transition-colors ${
-                    isGM ? "cursor-pointer hover:bg-stone-900/80" : ""
-                  } ${isCurrent ? "ring-1 ring-amber-500/50 bg-amber-500/5" : ""}`}
+                  className={`bg-stone-950/80 min-h-[60px] md:min-h-[80px] p-1 relative transition-colors cursor-pointer hover:bg-stone-900/80 ${isCurrent ? "ring-1 ring-amber-500/50 bg-amber-500/5" : ""}`}
                   onClick={() => handleDayClick(day)}
                   data-testid={`calendar-day-${day}`}
                 >
@@ -845,22 +851,38 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                 <Plus className="h-3 w-3 mr-1" /> Add Holiday/Event
               </Button>
             )}
-            <div>
-              <label className="text-xs text-stone-400 block mb-1">Note</label>
-              <Textarea
-                value={dayNoteText}
-                onChange={e => setDayNoteText(e.target.value)}
-                className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[80px]"
-                placeholder="Add a note for this day..."
-                data-testid="input-day-note"
-              />
-            </div>
+            {isGM ? (
+              <div>
+                <label className="text-xs text-stone-400 block mb-1">Note</label>
+                <Textarea
+                  value={dayNoteText}
+                  onChange={e => setDayNoteText(e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[80px]"
+                  placeholder="Add a note for this day..."
+                  data-testid="input-day-note"
+                />
+              </div>
+            ) : dayNoteText.trim() ? (
+              <div>
+                <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Note</h4>
+                <p className="text-xs text-stone-300 bg-stone-800/50 rounded px-2 py-1.5 whitespace-pre-wrap">{dayNoteText}</p>
+              </div>
+            ) : null}
+            {!isGM && selectedDay && holidaysForDay(selectedDay.month, selectedDay.day).length === 0 && eventsForDay(selectedDay.month, selectedDay.day).length === 0 && !dayNoteText.trim() && (
+              <p className="text-xs text-stone-500 py-2">Nothing recorded for this day.</p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" className="text-stone-400" onClick={() => setShowDayNoteDialog(false)}>Cancel</Button>
-            <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={saveDayNote} disabled={updateCalendar.isPending} data-testid="button-save-day-note">
-              Save
-            </Button>
+            {isGM ? (
+              <>
+                <Button variant="ghost" className="text-stone-400" onClick={() => setShowDayNoteDialog(false)}>Cancel</Button>
+                <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={saveDayNote} disabled={updateCalendar.isPending} data-testid="button-save-day-note">
+                  Save
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" className="text-stone-400" onClick={() => setShowDayNoteDialog(false)}>Close</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -963,6 +985,65 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
             >
               {updateCalendar.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
               {editingEventIdx !== null ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showJumpDialog} onOpenChange={setShowJumpDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-xs" data-testid="jump-date-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Jump to Date</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Month</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {monthNames.map((m, i) => (
+                  <button
+                    key={i}
+                    className={`text-xs px-2 py-1.5 rounded border transition-colors ${jumpMonth === i ? 'bg-amber-600/30 border-amber-500/50 text-amber-300' : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'}`}
+                    onClick={() => setJumpMonth(i)}
+                    data-testid={`button-jump-month-${i}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Year</label>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y - 10)}>
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y - 1)}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Input
+                  type="number"
+                  value={jumpYear}
+                  onChange={(e) => setJumpYear(parseInt(e.target.value, 10) || 1)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-center flex-1"
+                  data-testid="input-jump-year"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y + 1)}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y + 10)}>
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowJumpDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              onClick={() => { setViewMonth(jumpMonth); setViewYear(jumpYear); setShowJumpDialog(false); }}
+              data-testid="button-confirm-jump"
+            >
+              Go
             </Button>
           </DialogFooter>
         </DialogContent>

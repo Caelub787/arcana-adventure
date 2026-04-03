@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home, Layout } from "lucide-react";
+import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home, Layout } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 const ENTITY_TYPE_CONFIG: Record<string, { label: string; pluralLabel: string; color: string; icon: string }> = {
   article: { label: "Article", pluralLabel: "Articles", color: "#fff176", icon: "FileText" },
@@ -504,6 +505,13 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
   const [viewMonth, setViewMonth] = useState<number | null>(null);
   const [viewYear, setViewYear] = useState<number | null>(null);
+  const [showJumpDialog, setShowJumpDialog] = useState(false);
+  const [jumpMonth, setJumpMonth] = useState(0);
+  const [jumpYear, setJumpYear] = useState(1);
+  const [selectedDay, setSelectedDay] = useState<{ month: number; day: number } | null>(null);
+  const [showDayDialog, setShowDayDialog] = useState(false);
+
+  type CalendarEvent = { name: string; month: number; day: number; color?: string; description?: string; recurring?: boolean };
 
   const calendar = calendars.find(c => c.id === selectedCalendarId) || calendars[0];
   if (!calendar) {
@@ -526,6 +534,10 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
 
   const notes = calendar.notes || {};
   const dayKey = (day: number) => `${currentYear}-${currentMonth}-${day}`;
+
+  const calendarHolidays: CalendarEvent[] = ((calendar as any)?.events as CalendarEvent[]) || [];
+  const holidaysForDay = (month: number, day: number) =>
+    calendarHolidays.filter(h => h.month === month && h.day === day);
 
   const firstDayOffset = 0;
   const totalCells = Math.ceil((daysInMonth + firstDayOffset) / weekDays.length) * weekDays.length;
@@ -553,6 +565,11 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
     }
   };
 
+  const handleDayClick = (day: number) => {
+    setSelectedDay({ month: currentMonth, day });
+    setShowDayDialog(true);
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
       {calendars.length > 1 && (
@@ -573,9 +590,16 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
         <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200" onClick={handlePrevMonth} data-testid="button-prev-month">
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <h2 className="text-lg font-semibold text-stone-200" data-testid="text-calendar-month">
-          {monthName} {currentYear} {yearSuffix}
-        </h2>
+        <button
+          className="text-center cursor-pointer hover:bg-stone-800/50 rounded-lg px-3 py-1 transition-colors group"
+          onClick={() => { setJumpMonth(currentMonth); setJumpYear(currentYear); setShowJumpDialog(true); }}
+          title="Jump to a specific month/year"
+          data-testid="button-jump-date"
+        >
+          <h2 className="text-lg font-semibold text-stone-200 group-hover:text-amber-300 transition-colors" data-testid="text-calendar-month">
+            {monthName} {currentYear} {yearSuffix}
+          </h2>
+        </button>
         <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200" onClick={handleNextMonth} data-testid="button-next-month">
           <ChevronRight className="h-4 w-4" />
         </Button>
@@ -591,16 +615,28 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
           const isValid = dayNum >= 1 && dayNum <= daysInMonth;
           const isCurrent = isValid && isCurrentDay(dayNum);
           const note = isValid ? notes[dayKey(dayNum)] : null;
+          const dayHolidays = isValid ? holidaysForDay(currentMonth, dayNum) : [];
+          const hasContent = !!note || dayHolidays.length > 0;
           return (
             <div
               key={i}
-              className={`bg-stone-950 min-h-[60px] p-1.5 ${isCurrent ? 'ring-1 ring-amber-500/50 bg-amber-500/5' : ''} ${!isValid ? 'opacity-30' : ''}`}
+              className={`bg-stone-950 min-h-[60px] p-1.5 transition-colors ${isValid ? 'cursor-pointer hover:bg-stone-900/80' : 'opacity-30'} ${isCurrent ? 'ring-1 ring-amber-500/50 bg-amber-500/5' : ''}`}
+              onClick={() => isValid && handleDayClick(dayNum)}
               data-testid={isValid ? `calendar-day-${dayNum}` : undefined}
             >
               {isValid && (
                 <>
-                  <span className={`text-xs font-medium ${isCurrent ? 'text-amber-400' : 'text-stone-400'}`}>{dayNum}</span>
-                  {note && <p className="text-[9px] text-stone-500 mt-0.5 line-clamp-2">{typeof note === 'string' ? note : note.text || ''}</p>}
+                  <div className="flex items-start justify-between">
+                    <span className={`text-xs font-medium ${isCurrent ? 'text-amber-400' : 'text-stone-400'}`}>{dayNum}</span>
+                    {hasContent && !isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-amber-500/40 mt-0.5" />}
+                    {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5" />}
+                  </div>
+                  {dayHolidays.map((h, hi) => (
+                    <div key={`h-${hi}`} className="mt-0.5 text-[8px] leading-tight px-0.5 py-px rounded truncate" style={{ backgroundColor: (h.color || "#ffb74d") + "22", color: h.color || "#ffb74d" }}>
+                      {h.name}
+                    </div>
+                  ))}
+                  {note && <p className="text-[9px] text-stone-500 mt-0.5 line-clamp-2">{typeof note === 'string' ? note : (note as any).text || ''}</p>}
                 </>
               )}
             </div>
@@ -612,6 +648,107 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
           Current Date: {calendar.monthNames[calendar.currentMonth ?? 0]} {calendar.currentDay ?? 1}, {calendar.currentYear ?? 1} {yearSuffix}
         </p>
       </div>
+
+      <Dialog open={showJumpDialog} onOpenChange={setShowJumpDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Jump to Date</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Month</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {calendar.monthNames.map((m, i) => (
+                  <button
+                    key={i}
+                    className={`text-xs px-2 py-1.5 rounded border transition-colors ${jumpMonth === i ? 'bg-amber-600/30 border-amber-500/50 text-amber-300' : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'}`}
+                    onClick={() => setJumpMonth(i)}
+                    data-testid={`button-jump-month-${i}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Year</label>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y - 10)}>
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y - 1)}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Input
+                  type="number"
+                  value={jumpYear}
+                  onChange={(e) => setJumpYear(parseInt(e.target.value, 10) || 1)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-center flex-1"
+                  data-testid="input-jump-year"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y + 1)}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y + 10)}>
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowJumpDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              onClick={() => { setViewMonth(jumpMonth); setViewYear(jumpYear); setShowJumpDialog(false); }}
+              data-testid="button-confirm-jump"
+            >
+              Go
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDayDialog} onOpenChange={setShowDayDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">
+              {selectedDay ? `${calendar.monthNames[selectedDay.month] || `Month ${selectedDay.month + 1}`}, Day ${selectedDay.day}` : "Day Details"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {selectedDay && holidaysForDay(selectedDay.month, selectedDay.day).length > 0 && (
+              <div>
+                <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Events & Holidays</h4>
+                {holidaysForDay(selectedDay.month, selectedDay.day).map((h, hi) => (
+                  <div key={`hol-${hi}`} className="flex items-center gap-2 px-2 py-1.5 rounded bg-stone-800/50 mb-1">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: h.color || "#ffb74d" }} />
+                    <span className="text-xs text-stone-300 flex-1">{h.name}</span>
+                    {h.recurring !== false && <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400 px-1">Yearly</Badge>}
+                  </div>
+                ))}
+                {holidaysForDay(selectedDay.month, selectedDay.day).filter(h => h.description).map((h, hi) => (
+                  <p key={`desc-${hi}`} className="text-xs text-stone-400 pl-4 mt-0.5">{h.description}</p>
+                ))}
+              </div>
+            )}
+            {selectedDay && (() => {
+              const note = notes[dayKey(selectedDay.day)];
+              return note ? (
+                <div>
+                  <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Note</h4>
+                  <p className="text-xs text-stone-300 bg-stone-800/50 rounded px-2 py-1.5 whitespace-pre-wrap">{typeof note === 'string' ? note : (note as any).text || ''}</p>
+                </div>
+              ) : null;
+            })()}
+            {selectedDay && holidaysForDay(selectedDay.month, selectedDay.day).length === 0 && !notes[dayKey(selectedDay.day)] && (
+              <p className="text-xs text-stone-500 py-2">Nothing recorded for this day.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowDayDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
