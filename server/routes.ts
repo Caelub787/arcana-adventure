@@ -11142,6 +11142,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can link worlds" });
       const { worldId } = req.body;
+      if (worldId) {
+        const world = await storage.getWorld(worldId);
+        if (!world) return res.status(404).json({ error: "World not found" });
+        if (world.userId !== req.session.userId!) return res.status(403).json({ error: "You can only link worlds you own" });
+      }
       const existingWorlds = await storage.getWorldsByCampaign(campaignId);
       for (const w of existingWorlds) {
         if (w.id !== worldId) {
@@ -11149,9 +11154,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       if (worldId) {
-        const world = await storage.getWorld(worldId);
-        if (!world) return res.status(404).json({ error: "World not found" });
-        if (world.userId !== req.session.userId!) return res.status(403).json({ error: "You can only link worlds you own" });
         await storage.updateWorld(worldId, { campaignId });
       }
       res.json({ success: true });
@@ -11186,7 +11188,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignCharacters = await storage.getCampaignCharacters(world.campaignId);
       }
 
-      const filteredEntities = allEntities.filter((e: any) => !e.isDeleted && (access.isOwner || e.visibility !== 'gm_only'));
+      let filteredEntities = allEntities.filter((e: any) => !e.isDeleted);
+      if (!access.isOwner) {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          filteredEntities.map(async (e: any) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const entityAccess = await storage.getUserEntityAccess(e.id, userId);
+              return !!entityAccess;
+            }
+            return true;
+          })
+        );
+        filteredEntities = filteredEntities.filter((_: any, i: number) => accessChecks[i]);
+      }
 
       res.json({
         entities: filteredEntities,
@@ -11280,7 +11297,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const results: Array<{ id: string; type: string; name: string; category: string }> = [];
 
       const worldEntities = await storage.searchEntitiesByWorld(req.params.worldId, q);
-      const filteredEntities = access.isOwner ? worldEntities : worldEntities.filter(e => e.visibility !== 'gm_only');
+      let filteredEntities;
+      if (access.isOwner) {
+        filteredEntities = worldEntities;
+      } else {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          worldEntities.map(async (e) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const entityAccess = await storage.getUserEntityAccess(e.id, userId);
+              return !!entityAccess;
+            }
+            return true;
+          })
+        );
+        filteredEntities = worldEntities.filter((_, i) => accessChecks[i]);
+      }
       for (const e of filteredEntities) {
         results.push({ id: e.id, type: "entity", name: e.displayName, category: "Encyclopedia" });
       }
