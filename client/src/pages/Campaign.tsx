@@ -7018,18 +7018,32 @@ function WorldBuilderContent({
                           </div>
                           <div className="flex-1 overflow-hidden min-w-0 flex">
                             <div className="flex-1 overflow-y-auto min-w-0">
-                              <WikiArticleEditor
-                                entity={entities.find((e: any) => e.id === tab.entityId)}
-                                worldId={selectedWorldId}
-                                isGM={isGM}
-                                onWikiLinkClick={(type, id) => {
-                                  if (type === "entity") {
-                                    const title = getEntityTitle(id);
-                                    setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId: id, title } : t));
-                                    setSelectedEntityId(id);
-                                  }
-                                }}
-                              />
+                              {(() => {
+                                const articleEntity = entities.find((e: any) => e.id === tab.entityId);
+                                if (!articleEntity) return (
+                                  <div className="flex items-center justify-center h-full">
+                                    <div className="animate-pulse space-y-3 p-6 w-full max-w-md">
+                                      <div className="h-6 bg-stone-800 rounded w-3/4" />
+                                      <div className="h-4 bg-stone-800 rounded w-1/2" />
+                                      <div className="h-32 bg-stone-800 rounded" />
+                                    </div>
+                                  </div>
+                                );
+                                return (
+                                  <WikiArticleEditor
+                                    entity={articleEntity}
+                                    worldId={selectedWorldId}
+                                    isGM={isGM}
+                                    onWikiLinkClick={(type, id) => {
+                                      if (type === "entity") {
+                                        const title = getEntityTitle(id);
+                                        setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId: id, title } : t));
+                                        setSelectedEntityId(id);
+                                      }
+                                    }}
+                                  />
+                                );
+                              })()}
                             </div>
                             <div className="hidden md:block w-64 border-l border-stone-800 bg-stone-900/30 flex-shrink-0 overflow-y-auto">
                               <EntitySidePanel
