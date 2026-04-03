@@ -7019,7 +7019,7 @@ function WorldBuilderContent({
                           <div className="flex-1 overflow-hidden min-w-0 flex">
                             <div className="flex-1 overflow-y-auto min-w-0">
                               {(() => {
-                                const articleEntity = entities.find((e: any) => e.id === tab.entityId);
+                                const articleEntity = entities.find(e => e.id === tab.entityId);
                                 if (!articleEntity) return (
                                   <div className="flex items-center justify-center h-full">
                                     <div className="animate-pulse space-y-3 p-6 w-full max-w-md">
