@@ -404,7 +404,14 @@ function ArticleAccessControl({ worldId, entityId, campaignId }: { worldId: stri
                 <div className="flex items-center gap-1.5">
                   <User className="h-3 w-3 text-stone-500" />
                   <span className="text-stone-300">{a.displayName || a.username || 'User'}</span>
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-stone-600 text-stone-500">{a.accessLevel}</Badge>
+                  <button
+                    onClick={() => grantMutation.mutate({ userId: a.userId, accessLevel: a.accessLevel === 'view' ? 'edit' : 'view' })}
+                    className="cursor-pointer"
+                    data-testid={`button-toggle-access-${a.userId}`}
+                    title={`Click to switch to ${a.accessLevel === 'view' ? 'edit' : 'view'}`}
+                  >
+                    <Badge variant="outline" className={`text-[9px] px-1 py-0 border-stone-600 hover:border-amber-500/50 ${a.accessLevel === 'edit' ? 'text-amber-400' : 'text-stone-500'}`}>{a.accessLevel}</Badge>
+                  </button>
                 </div>
                 <button
                   onClick={() => revokeMutation.mutate(a.userId)}

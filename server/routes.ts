@@ -11412,7 +11412,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const entity = await storage.getEntity(req.params.entityId);
       if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
-      if (!access.isOwner && entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
+      if (!access.isOwner) {
+        if (entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
+        if (entity.visibility === 'player_visible') {
+          const entityAccess = await storage.getUserEntityAccess(req.params.entityId, req.session.userId!);
+          if (!entityAccess) return res.status(404).json({ error: "Entity not found" });
+        }
+      }
       res.json(entity);
     } catch (e) {
       console.error("Failed to get world entity:", e);
@@ -11424,7 +11430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertEntitySchema.parse({ ...req.body, worldId: req.params.worldId, createdBy: req.session.userId });
       const entity = await storage.createEntity(parsed);
       res.status(201).json(entity);
@@ -11438,7 +11444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getEntity(req.params.entityId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
       const entity = await storage.updateEntity(req.params.entityId, req.body);
@@ -11453,7 +11459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getEntity(req.params.entityId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
       await storage.softDeleteEntity(req.params.entityId);
@@ -11468,7 +11474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const entity = await storage.restoreEntity(req.params.entityId);
       if (!entity) return res.status(404).json({ error: "Entity not found" });
       res.json(entity);
@@ -11520,7 +11526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertEntityLinkSchema.parse({ ...req.body, worldId: req.params.worldId });
       const link = await storage.createEntityLink(parsed);
       res.status(201).json(link);
@@ -11534,7 +11540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       const link = await storage.updateEntityLink(req.params.linkId, req.body);
@@ -11549,7 +11555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       await storage.deleteEntityLink(req.params.linkId);
@@ -11566,7 +11572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldShareLinkByWorld(req.params.worldId);
       if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
       const user = await storage.getUser(req.session.userId!);
@@ -11595,7 +11601,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const link = await storage.getWorldShareLinkByWorld(req.params.worldId);
       res.json(link || null);
     } catch (e) {
@@ -11608,7 +11614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       await storage.deleteWorldShareLink(req.params.linkId);
       res.json({ success: true });
     } catch (e) {
@@ -11650,7 +11656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldMapSchema.parse({ ...req.body, worldId: req.params.worldId });
       const map = await storage.createWorldMap(parsed);
       res.status(201).json(map);
@@ -11664,7 +11670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldMap(req.params.mapId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       const map = await storage.updateWorldMap(req.params.mapId, req.body);
@@ -11679,7 +11685,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldMap(req.params.mapId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       await storage.deleteWorldMap(req.params.mapId);
@@ -11710,7 +11716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const map = await storage.getWorldMap(req.params.mapId);
       if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       const parsed = insertWorldMapPinSchema.parse({ ...req.body, mapId: req.params.mapId });
@@ -11726,7 +11732,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldMapPin(req.params.pinId);
       if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
       const pin = await storage.updateWorldMapPin(req.params.pinId, req.body);
@@ -11741,7 +11747,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldMapPin(req.params.pinId);
       if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
       await storage.deleteWorldMapPin(req.params.pinId);
@@ -11783,7 +11789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldCalendarSchema.parse({ ...req.body, worldId: req.params.worldId });
       const calendar = await storage.createWorldCalendar(parsed);
       res.status(201).json(calendar);
@@ -11797,7 +11803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldCalendar(req.params.calendarId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
       const calendar = await storage.updateWorldCalendar(req.params.calendarId, req.body);
@@ -11812,7 +11818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldCalendar(req.params.calendarId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
       await storage.deleteWorldCalendar(req.params.calendarId);
@@ -11854,7 +11860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldTimelineEventSchema.parse({ ...req.body, worldId: req.params.worldId });
       const event = await storage.createWorldTimelineEvent(parsed);
       res.status(201).json(event);
@@ -11868,7 +11874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldTimelineEvent(req.params.eventId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
       const event = await storage.updateWorldTimelineEvent(req.params.eventId, req.body);
@@ -11883,7 +11889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getWorldTimelineEvent(req.params.eventId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
       await storage.deleteWorldTimelineEvent(req.params.eventId);
@@ -11912,7 +11918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldCalendarSyncSchema.parse({ ...req.body, worldId: req.params.worldId });
       const sync = await storage.createCalendarSync(parsed);
       res.status(201).json(sync);
@@ -11926,7 +11932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getCalendarSync(req.params.syncId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar sync not found" });
       await storage.deleteCalendarSync(req.params.syncId);
@@ -11954,7 +11960,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldTimelineSchema.parse({ ...req.body, worldId: req.params.worldId });
       const timeline = await storage.createTimeline(parsed);
       if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_created", timeline });
@@ -11969,7 +11975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getTimeline(req.params.timelineId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
       const timeline = await storage.updateTimeline(req.params.timelineId, req.body);
@@ -11985,7 +11991,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getTimeline(req.params.timelineId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
       await storage.deleteTimeline(req.params.timelineId);
