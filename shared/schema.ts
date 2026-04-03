@@ -1485,7 +1485,7 @@ export const PREDEFINED_TAGS = [
   "Article", "Ethnicity/Species", "Geographic Location", "Item", "Language",
   "Material", "Military", "Myth/Legend", "Natural Law", "Organization",
   "Faction/Sect", "Plot", "Profession", "Session Report", "Settlement",
-  "Spell", "Technology", "Title/Rank", "Tradition/Ritual", "Vehicle"
+  "Spell", "Technology", "Title/Rank", "Tradition/Ritual", "Religions/Cults", "Vehicle"
 ] as const;
 
 export const OLD_ENTITY_TYPE_TO_TAG: Record<string, string> = {
