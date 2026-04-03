@@ -687,6 +687,22 @@ export function useWorldGraphData(worldId: string | undefined) {
   });
 }
 
+export function useWorldCollaborators(worldId: string | undefined) {
+  return useQuery<any[]>({
+    queryKey: ["/api/worlds", worldId, "collaborators"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/collaborators`),
+    enabled: !!worldId,
+  });
+}
+
+export function useEntityAccessList(worldId: string | undefined, entityId: string | undefined) {
+  return useQuery<any[]>({
+    queryKey: ["/api/worlds", worldId, "entities", entityId, "access"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}/access`),
+    enabled: !!worldId && !!entityId,
+  });
+}
+
 export const LINK_TYPE_LABELS: Record<string, string> = {
   ally: "Ally",
   enemy: "Enemy",

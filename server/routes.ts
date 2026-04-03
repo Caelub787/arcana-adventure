@@ -10210,7 +10210,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entities = await storage.getEntitiesByCampaign(campaignId);
-      const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
+      let filtered;
+      if (isGM) {
+        filtered = entities;
+      } else {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          entities.map(async (e) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const access = await storage.getUserEntityAccess(e.id, userId);
+              return !!access;
+            }
+            return true;
+          })
+        );
+        filtered = entities.filter((_, i) => accessChecks[i]);
+      }
       res.json(filtered);
     } catch (e) {
       console.error("Failed to get entities:", e);
@@ -10228,7 +10245,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entities = await storage.searchEntitiesByCampaign(campaignId, (q as string) || "", type as string | undefined);
-      const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
+      let filtered;
+      if (isGM) {
+        filtered = entities;
+      } else {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          entities.map(async (e) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const access = await storage.getUserEntityAccess(e.id, userId);
+              return !!access;
+            }
+            return true;
+          })
+        );
+        filtered = entities.filter((_, i) => accessChecks[i]);
+      }
       res.json(filtered);
     } catch (e) {
       console.error("Failed to search entities:", e);
@@ -10246,7 +10280,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entity = await storage.getEntity(entityId);
       if (!entity || entity.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
-      if (!isGM && entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
+      if (!isGM) {
+        if (entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
+        if (entity.visibility === 'player_visible') {
+          const access = await storage.getUserEntityAccess(entityId, req.session.userId!);
+          if (!access) return res.status(404).json({ error: "Entity not found" });
+        }
+      }
       res.json(entity);
     } catch (e) {
       console.error("Failed to get entity:", e);
@@ -10923,6 +10963,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const world = await storage.getWorld(worldId);
     if (!world) return { allowed: false, isOwner: false };
     if (world.userId === userId) return { allowed: true, isOwner: true };
+    const isCollab = await storage.isWorldCollaborator(worldId, userId);
+    if (isCollab) return { allowed: true, isOwner: true };
     if (world.campaignId) {
       const campaign = await storage.getCampaign(world.campaignId);
       if (campaign) {
@@ -10958,8 +11000,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/worlds", requireAuth, async (req, res) => {
     try {
-      const worldsList = await storage.getWorldsByUser(req.session.userId!);
-      res.json(worldsList);
+      const ownedWorlds = await storage.getWorldsByUser(req.session.userId!);
+      const collabWorlds = await storage.getWorldsByCollaborator(req.session.userId!);
+      const ownedIds = new Set(ownedWorlds.map(w => w.id));
+      const combined = [...ownedWorlds, ...collabWorlds.filter(w => !ownedIds.has(w.id))];
+      res.json(combined);
     } catch (e) {
       console.error("Failed to get worlds:", e);
       res.status(500).json({ error: "Failed to get worlds" });
@@ -10994,7 +11039,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed || !access.isOwner) return res.status(403).json({ error: "Not authorized to edit this world" });
+      if (req.body.campaignId !== undefined && world.userId !== req.session.userId!) {
+        return res.status(403).json({ error: "Only the world owner can change campaign linking" });
+      }
       const VALID_SYSTEMS = ["arcana-adventure", "aa-v2"];
       if (req.body.system && !VALID_SYSTEMS.includes(req.body.system)) {
         return res.status(400).json({ error: "Invalid system value" });
@@ -11017,6 +11066,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete world:", e);
       res.status(500).json({ error: "Failed to delete world" });
+    }
+  });
+
+  // ==================== WORLD COLLABORATORS ROUTES ====================
+
+  app.get("/api/worlds/:worldId/collaborators", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+      const collabs = await storage.getWorldCollaborators(req.params.worldId);
+      const enriched = await Promise.all(collabs.map(async (c) => {
+        const user = await storage.getUser(c.userId);
+        return { ...c, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl };
+      }));
+      res.json(enriched);
+    } catch (e) {
+      console.error("Failed to get world collaborators:", e);
+      res.status(500).json({ error: "Failed to get world collaborators" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/collaborators", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Only the world owner can add collaborators" });
+      const { userId, role } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      if (userId === world.userId) return res.status(400).json({ error: "Cannot add the owner as a collaborator" });
+      const collab = await storage.addWorldCollaborator(req.params.worldId, userId, role || "editor");
+      const user = await storage.getUser(userId);
+      res.status(201).json({ ...collab, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl });
+    } catch (e) {
+      console.error("Failed to add world collaborator:", e);
+      res.status(500).json({ error: "Failed to add collaborator" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/collaborators/:userId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Only the world owner can remove collaborators" });
+      await storage.removeWorldCollaborator(req.params.worldId, req.params.userId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to remove world collaborator:", e);
+      res.status(500).json({ error: "Failed to remove collaborator" });
+    }
+  });
+
+  // ==================== ENTITY ACCESS ROUTES ====================
+
+  app.get("/api/worlds/:worldId/entities/:entityId/access", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed || !access.isOwner) return res.status(403).json({ error: "Not authorized" });
+      const entity = await storage.getEntity(req.params.entityId);
+      if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found in this world" });
+      const accessList = await storage.getEntityAccessList(req.params.entityId);
+      const enriched = await Promise.all(accessList.map(async (a) => {
+        const user = await storage.getUser(a.userId);
+        return { ...a, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl };
+      }));
+      res.json(enriched);
+    } catch (e) {
+      console.error("Failed to get entity access list:", e);
+      res.status(500).json({ error: "Failed to get entity access list" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/entities/:entityId/access", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed || !access.isOwner) return res.status(403).json({ error: "Not authorized" });
+      const entity = await storage.getEntity(req.params.entityId);
+      if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found in this world" });
+      const { userId, accessLevel } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      if (!accessLevel || !["view", "edit"].includes(accessLevel)) return res.status(400).json({ error: "accessLevel must be 'view' or 'edit'" });
+      const entry = await storage.setEntityAccess(req.params.entityId, userId, accessLevel);
+      const user = await storage.getUser(userId);
+      res.status(201).json({ ...entry, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl });
+    } catch (e) {
+      console.error("Failed to set entity access:", e);
+      res.status(500).json({ error: "Failed to set entity access" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/entities/:entityId/access/:userId", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed || !access.isOwner) return res.status(403).json({ error: "Not authorized" });
+      const entity = await storage.getEntity(req.params.entityId);
+      if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found in this world" });
+      await storage.removeEntityAccess(req.params.entityId, req.params.userId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to remove entity access:", e);
+      res.status(500).json({ error: "Failed to remove entity access" });
+    }
+  });
+
+  // ==================== CAMPAIGN WIKI LINK ROUTE ====================
+
+  app.post("/api/campaigns/:campaignId/link-world", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can link worlds" });
+      const { worldId } = req.body;
+      const existingWorlds = await storage.getWorldsByCampaign(campaignId);
+      for (const w of existingWorlds) {
+        if (w.id !== worldId) {
+          await storage.updateWorld(w.id, { campaignId: null } as any);
+        }
+      }
+      if (worldId) {
+        const world = await storage.getWorld(worldId);
+        if (!world) return res.status(404).json({ error: "World not found" });
+        if (world.userId !== req.session.userId!) return res.status(403).json({ error: "You can only link worlds you own" });
+        await storage.updateWorld(worldId, { campaignId } as any);
+      }
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to link world:", e);
+      res.status(500).json({ error: "Failed to link world" });
     }
   });
 
@@ -11069,7 +11247,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
       if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const allEntities = await storage.getEntitiesByWorld(req.params.worldId);
-      const filtered = access.isOwner ? allEntities : allEntities.filter(e => e.visibility !== 'gm_only');
+      let filtered;
+      if (access.isOwner) {
+        filtered = allEntities;
+      } else {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          allEntities.map(async (e) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const entityAccess = await storage.getUserEntityAccess(e.id, userId);
+              return !!entityAccess;
+            }
+            return true;
+          })
+        );
+        filtered = allEntities.filter((_, i) => accessChecks[i]);
+      }
       res.json(filtered);
     } catch (e) {
       console.error("Failed to get world entities:", e);
@@ -11083,7 +11278,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
       const { q, type } = req.query;
       const allEntities = await storage.searchEntitiesByWorld(req.params.worldId, (q as string) || "", type as string | undefined);
-      const filtered = access.isOwner ? allEntities : allEntities.filter(e => e.visibility !== 'gm_only');
+      let filtered;
+      if (access.isOwner) {
+        filtered = allEntities;
+      } else {
+        const userId = req.session.userId!;
+        const accessChecks = await Promise.all(
+          allEntities.map(async (e) => {
+            if (e.visibility === 'gm_only') return false;
+            if (e.visibility === 'shared') return true;
+            if (e.visibility === 'player_visible') {
+              const entityAccess = await storage.getUserEntityAccess(e.id, userId);
+              return !!entityAccess;
+            }
+            return true;
+          })
+        );
+        filtered = allEntities.filter((_, i) => accessChecks[i]);
+      }
       res.json(filtered);
     } catch (e) {
       console.error("Failed to search world entities:", e);

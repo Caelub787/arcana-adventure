@@ -70,7 +70,9 @@ import {
   type ClassSkillConnection, type InsertClassSkillConnection,
   type CharacterClass, type InsertCharacterClass,
   type CharacterClassSkill, type InsertCharacterClassSkill,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills
+  type WorldCollaborator, type InsertWorldCollaborator,
+  type EntityAccess, type InsertEntityAccess,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -566,6 +568,17 @@ export interface IStorage {
   createWorld(world: InsertWorld): Promise<World>;
   updateWorld(id: string, data: Partial<World>): Promise<World | undefined>;
   deleteWorld(id: string): Promise<void>;
+
+  getWorldCollaborators(worldId: string): Promise<WorldCollaborator[]>;
+  addWorldCollaborator(worldId: string, userId: string, role?: string): Promise<WorldCollaborator>;
+  removeWorldCollaborator(worldId: string, userId: string): Promise<void>;
+  isWorldCollaborator(worldId: string, userId: string): Promise<boolean>;
+  getWorldsByCollaborator(userId: string): Promise<World[]>;
+
+  getEntityAccessList(entityId: string): Promise<EntityAccess[]>;
+  setEntityAccess(entityId: string, userId: string, accessLevel: string): Promise<EntityAccess>;
+  removeEntityAccess(entityId: string, userId: string): Promise<void>;
+  getUserEntityAccess(entityId: string, userId: string): Promise<EntityAccess | undefined>;
 
   // World-scoped query operations (query by worldId instead of campaignId)
   getEntitiesByWorld(worldId: string, includeDeleted?: boolean): Promise<Entity[]>;
@@ -4067,6 +4080,55 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorld(id: string): Promise<void> {
     await db.delete(worlds).where(eq(worlds.id, id));
+  }
+
+  async getWorldCollaborators(worldId: string): Promise<WorldCollaborator[]> {
+    return await db.select().from(worldCollaborators).where(eq(worldCollaborators.worldId, worldId));
+  }
+
+  async addWorldCollaborator(worldId: string, userId: string, role = "editor"): Promise<WorldCollaborator> {
+    const [collab] = await db.insert(worldCollaborators).values({ worldId, userId, role }).onConflictDoUpdate({
+      target: [worldCollaborators.worldId, worldCollaborators.userId],
+      set: { role },
+    }).returning();
+    return collab;
+  }
+
+  async removeWorldCollaborator(worldId: string, userId: string): Promise<void> {
+    await db.delete(worldCollaborators).where(and(eq(worldCollaborators.worldId, worldId), eq(worldCollaborators.userId, userId)));
+  }
+
+  async isWorldCollaborator(worldId: string, userId: string): Promise<boolean> {
+    const [row] = await db.select().from(worldCollaborators).where(and(eq(worldCollaborators.worldId, worldId), eq(worldCollaborators.userId, userId))).limit(1);
+    return !!row;
+  }
+
+  async getWorldsByCollaborator(userId: string): Promise<World[]> {
+    const collabs = await db.select().from(worldCollaborators).where(eq(worldCollaborators.userId, userId));
+    if (collabs.length === 0) return [];
+    const worldIds = collabs.map(c => c.worldId);
+    return await db.select().from(worlds).where(inArray(worlds.id, worldIds));
+  }
+
+  async getEntityAccessList(entityId: string): Promise<EntityAccess[]> {
+    return await db.select().from(entityAccess).where(eq(entityAccess.entityId, entityId));
+  }
+
+  async setEntityAccess(entityId: string, userId: string, accessLevel: string): Promise<EntityAccess> {
+    const [access] = await db.insert(entityAccess).values({ entityId, userId, accessLevel }).onConflictDoUpdate({
+      target: [entityAccess.entityId, entityAccess.userId],
+      set: { accessLevel },
+    }).returning();
+    return access;
+  }
+
+  async removeEntityAccess(entityId: string, userId: string): Promise<void> {
+    await db.delete(entityAccess).where(and(eq(entityAccess.entityId, entityId), eq(entityAccess.userId, userId)));
+  }
+
+  async getUserEntityAccess(entityId: string, userId: string): Promise<EntityAccess | undefined> {
+    const [row] = await db.select().from(entityAccess).where(and(eq(entityAccess.entityId, entityId), eq(entityAccess.userId, userId))).limit(1);
+    return row;
   }
 
   // ============================================

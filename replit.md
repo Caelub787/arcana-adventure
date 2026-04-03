@@ -24,6 +24,7 @@ Preferred communication style: Simple, everyday language.
     -   **Worldbuilding Wiki System**: Unified platform for creating independent "Worlds" with articles, maps, timelines, calendars, and relationship graphs. Features include wiki-link autocomplete, public share links, visibility controls, and WebSocket live sync. Worlds can be linked to campaigns.
     -   **Campaign Map Pins**: Interactive pins on the battlemap with percentage-based coordinates, supporting text reveals and scene links. Pins can be marked as shops.
     -   **Shop System**: GMs manage shop inventories (items, prices, stock, currency) linked to map pins. Players can buy/sell items with automatic currency conversion and a charisma-based haggling d20 roll. Shops can be linked to shopkeeper characters for automated currency tracking.
+    -   **World Collaboration**: World owners can add friends as collaborators (editors) via World Settings. Collaborators get full read/write access to all world content. Campaign wiki linking lets GMs assign a world wiki to a campaign. Per-article player access control lets GMs grant view/edit access to specific players for `player_visible` articles.
 
 ### Backend
 -   **Technology Stack**: Express.js with TypeScript, `express-session`.

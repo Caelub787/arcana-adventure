@@ -7073,6 +7073,7 @@ function WorldBuilderContent({
                                   <WikiArticleEditor
                                     entity={articleEntity}
                                     worldId={selectedWorldId}
+                                    campaignId={campaignId}
                                     isGM={isGM}
                                     onWikiLinkClick={(type, id) => {
                                       if (type === "entity") {

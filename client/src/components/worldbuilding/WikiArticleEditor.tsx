@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { useUpdateEntity, useEntities, useWikiSearch, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, type WikiSearchResult } from "@/lib/worldbuilding-api";
+import { useUpdateEntity, useEntities, useWikiSearch, useEntityAccessList, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, type WikiSearchResult } from "@/lib/worldbuilding-api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Search, BookOpen, Map, Swords, Sparkles, User, FileText } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Search, BookOpen, Map, Swords, Sparkles, User, Users, UserPlus, FileText } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -331,6 +332,117 @@ function WikiReferencePicker({ worldId, onSelect, onClose, position }: {
   );
 }
 
+function ArticleAccessControl({ worldId, entityId, campaignId }: { worldId: string; entityId: string; campaignId?: string }) {
+  const queryClient = useQueryClient();
+  const { data: accessList = [] } = useEntityAccessList(worldId, entityId);
+  const { data: campaignMembers = [] } = useQuery<any[]>({
+    queryKey: ['/api/campaigns', campaignId, 'members-for-access'],
+    queryFn: async () => {
+      if (!campaignId) return [];
+      const res = await fetch(`/api/campaigns/${campaignId}/members`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+  const [showPicker, setShowPicker] = useState(false);
+
+  const grantMutation = useMutation({
+    mutationFn: async ({ userId, accessLevel }: { userId: string; accessLevel: string }) => {
+      const res = await fetch(`/api/worlds/${worldId}/entities/${entityId}/access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userId, accessLevel }),
+      });
+      if (!res.ok) throw new Error('Failed to set access');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'entities', entityId, 'access'] });
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch(`/api/worlds/${worldId}/entities/${entityId}/access/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to revoke access');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'entities', entityId, 'access'] });
+    },
+  });
+
+  const accessUserIds = new Set(accessList.map((a: any) => a.userId));
+  const players = campaignMembers.filter((m: any) => m.role === 'player' || m.role === 'assistant_gm');
+  const availablePlayers = players.filter((p: any) => !accessUserIds.has(p.userId));
+
+  return (
+    <Popover open={showPicker} onOpenChange={setShowPicker}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-stone-400 hover:text-blue-400 h-7 text-xs gap-1"
+          data-testid="button-article-access"
+        >
+          <Users className="h-3 w-3" />
+          {accessList.length > 0 ? `${accessList.length} player${accessList.length !== 1 ? 's' : ''}` : 'Access'}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="bg-stone-900 border-stone-700 w-64 p-3" align="start">
+        <h4 className="text-xs font-semibold text-stone-300 mb-2 flex items-center gap-1.5">
+          <Users className="h-3 w-3 text-blue-400" /> Player Access
+        </h4>
+        {accessList.length > 0 && (
+          <div className="space-y-1 mb-2">
+            {accessList.map((a: any) => (
+              <div key={a.userId} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded text-xs">
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3 w-3 text-stone-500" />
+                  <span className="text-stone-300">{a.displayName || a.username || 'User'}</span>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-stone-600 text-stone-500">{a.accessLevel}</Badge>
+                </div>
+                <button
+                  onClick={() => revokeMutation.mutate(a.userId)}
+                  className="text-stone-500 hover:text-red-400 p-0.5"
+                  data-testid={`button-revoke-access-${a.userId}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!campaignId ? (
+          <p className="text-[10px] text-stone-500 text-center py-1">Link this world to a campaign to manage player access</p>
+        ) : availablePlayers.length === 0 && accessList.length === 0 ? (
+          <p className="text-[10px] text-stone-500 text-center py-1">No players in this campaign</p>
+        ) : availablePlayers.length > 0 ? (
+          <div className="space-y-1 border-t border-stone-800 pt-2 mt-1">
+            <p className="text-[10px] text-stone-500 mb-1">Grant access:</p>
+            {availablePlayers.map((p: any) => (
+              <button
+                key={p.userId}
+                onClick={() => grantMutation.mutate({ userId: p.userId, accessLevel: 'view' })}
+                className="w-full flex items-center gap-2 px-2 py-1 bg-stone-800/30 hover:bg-stone-800/60 rounded text-left text-xs transition-colors"
+                disabled={grantMutation.isPending}
+                data-testid={`button-grant-access-${p.userId}`}
+              >
+                <UserPlus className="h-3 w-3 text-stone-500" />
+                <span className="text-stone-300">{p.displayName || p.username}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, onWikiLinkClick, shareToken, customTags = [] }: WikiArticleEditorProps) {
   const resolvedId = worldId || campaignId;
   const scope = worldId ? "worlds" as const : "campaigns" as const;
@@ -554,6 +666,9 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                     <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
                   </SelectContent>
                 </Select>
+                {visibility === "player_visible" && isGM && worldId && (
+                  <ArticleAccessControl worldId={worldId} entityId={entity.id} campaignId={campaignId} />
+                )}
                 {shareToken && visibility !== "gm_only" && (
                   <Button
                     size="sm"

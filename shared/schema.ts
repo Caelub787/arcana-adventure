@@ -1898,3 +1898,37 @@ export const insertCharacterClassSkillSchema = createInsertSchema(characterClass
 });
 export type InsertCharacterClassSkill = z.infer<typeof insertCharacterClassSkillSchema>;
 export type CharacterClassSkill = typeof characterClassSkills.$inferSelect;
+
+export const worldCollaborators = pgTable("world_collaborators", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  worldId: varchar("world_id").notNull().references(() => worlds.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("editor"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueWorldUser: uniqueIndex("world_collaborators_unique").on(table.worldId, table.userId),
+}));
+
+export const insertWorldCollaboratorSchema = createInsertSchema(worldCollaborators).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldCollaborator = z.infer<typeof insertWorldCollaboratorSchema>;
+export type WorldCollaborator = typeof worldCollaborators.$inferSelect;
+
+export const entityAccess = pgTable("entity_access", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityId: varchar("entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  accessLevel: text("access_level").notNull().default("view"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueEntityUser: uniqueIndex("entity_access_unique").on(table.entityId, table.userId),
+}));
+
+export const insertEntityAccessSchema = createInsertSchema(entityAccess).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEntityAccess = z.infer<typeof insertEntityAccessSchema>;
+export type EntityAccess = typeof entityAccess.$inferSelect;

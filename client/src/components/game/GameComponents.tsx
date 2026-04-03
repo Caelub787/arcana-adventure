@@ -9242,7 +9242,64 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   );
 }
 
-// Invite Code Section with hide/reveal and copy functionality
+function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
+  const queryClient = useQueryClient();
+  const { data: myWorlds = [] } = useQuery<any[]>({
+    queryKey: ['/api/worlds'],
+    queryFn: async () => {
+      const res = await fetch('/api/worlds', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const { data: linkedWorld } = useQuery<any>({
+    queryKey: ['/api/campaigns', campaignId, 'linked-world'],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/linked-world`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+  const linkWorldMutation = useMutation({
+    mutationFn: async (worldId: string | null) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/link-world`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ worldId }),
+      });
+      if (!res.ok) throw new Error('Failed to link world');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'linked-world'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      toast({ title: "Campaign wiki updated", duration: 2000 });
+    },
+  });
+  return (
+    <div className="mb-4 p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
+      <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
+        <BookOpen className="h-3 w-3 text-blue-400" /> Campaign Wiki
+      </h3>
+      <select
+        value={linkedWorld?.id || ""}
+        onChange={(e) => linkWorldMutation.mutate(e.target.value || null)}
+        className="w-full bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded px-2 py-1.5"
+        disabled={linkWorldMutation.isPending}
+        data-testid="select-campaign-wiki"
+      >
+        <option value="">None</option>
+        {myWorlds.map((w: any) => (
+          <option key={w.id} value={w.id}>{w.name}</option>
+        ))}
+      </select>
+      <p className="text-[10px] text-stone-500 mt-1">Link a world wiki to this campaign so players can access it</p>
+    </div>
+  );
+}
+
 function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -10315,6 +10372,8 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             </div>
           )}
           
+          {role === 'gm' && <CampaignWikiSelector campaignId={campaignId!} />}
+
           {/* Invite Code Section */}
           <InviteCodeSection inviteCode={inviteCode} />
 

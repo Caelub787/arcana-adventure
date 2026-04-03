@@ -10,7 +10,7 @@ import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
-import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap } from "@/lib/worldbuilding-api";
+import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap, useWorldCollaborators } from "@/lib/worldbuilding-api";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, Users, UserPlus, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -100,6 +100,126 @@ interface World {
   system?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+function WorldCollaboratorsSection({ worldId }: { worldId: string }) {
+  const queryClient = useQueryClient();
+  const { data: collaborators = [] } = useWorldCollaborators(worldId || undefined);
+  const { data: friends = [] } = useQuery<any[]>({
+    queryKey: ['/api/friends'],
+    queryFn: async () => {
+      const res = await fetch('/api/friends', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const [adding, setAdding] = useState(false);
+
+  const addMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch(`/api/worlds/${worldId}/collaborators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userId, role: 'editor' }),
+      });
+      if (!res.ok) throw new Error('Failed to add collaborator');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'collaborators'] });
+      setAdding(false);
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch(`/api/worlds/${worldId}/collaborators/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to remove collaborator');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'collaborators'] });
+    },
+  });
+
+  const collabUserIds = new Set(collaborators.map((c: any) => c.userId));
+  const availableFriends = friends.filter((f: any) => !collabUserIds.has(f.id));
+
+  return (
+    <div>
+      <Label className="text-xs text-stone-400 flex items-center gap-1.5">
+        <Users className="h-3 w-3" /> Collaborators
+      </Label>
+      <p className="text-[10px] text-stone-500 mt-0.5 mb-2">Add friends as collaborators who can edit all content in this world.</p>
+      {collaborators.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {collaborators.map((c: any) => (
+            <div key={c.id} className="flex items-center justify-between px-2 py-1.5 bg-stone-800/50 rounded-md border border-stone-700/50">
+              <div className="flex items-center gap-2">
+                {c.avatarUrl ? (
+                  <img src={c.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center">
+                    <User className="h-3 w-3 text-stone-400" />
+                  </div>
+                )}
+                <span className="text-xs text-stone-200">{c.displayName || c.username}</span>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 border-stone-600 text-stone-500">Editor</Badge>
+              </div>
+              <button
+                onClick={() => removeMutation.mutate(c.userId)}
+                className="text-stone-500 hover:text-red-400 transition-colors p-0.5"
+                disabled={removeMutation.isPending}
+                data-testid={`button-remove-collaborator-${c.userId}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {adding ? (
+        <div className="space-y-1">
+          {availableFriends.length === 0 ? (
+            <p className="text-[10px] text-stone-500 text-center py-2">No friends available to add</p>
+          ) : (
+            availableFriends.map((f: any) => (
+              <button
+                key={f.id}
+                onClick={() => addMutation.mutate(f.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 bg-stone-800/30 hover:bg-stone-800/60 rounded-md text-left transition-colors"
+                disabled={addMutation.isPending}
+                data-testid={`button-add-collaborator-${f.id}`}
+              >
+                {f.avatarUrl ? (
+                  <img src={f.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center">
+                    <User className="h-3 w-3 text-stone-400" />
+                  </div>
+                )}
+                <span className="text-xs text-stone-300">{f.name || f.username}</span>
+              </button>
+            ))
+          )}
+          <Button variant="ghost" size="sm" className="text-xs text-stone-500 h-6 w-full" onClick={() => setAdding(false)}>Cancel</Button>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs border-stone-700 text-stone-400 hover:text-amber-400 h-7"
+          onClick={() => setAdding(true)}
+          data-testid="button-add-collaborator"
+        >
+          <UserPlus className="h-3 w-3 mr-1" /> Add Collaborator
+        </Button>
+      )}
+    </div>
+  );
 }
 
 export default function WorldBuilder() {
@@ -1384,6 +1504,7 @@ export default function WorldBuilder() {
                         <WikiArticleEditor
                           entity={selectedEntity}
                           worldId={selectedWorldId}
+                          campaignId={selectedWorld?.campaignId || undefined}
                           isGM={true}
                           onWikiLinkClick={handleWikiLinkClick}
                           shareToken={shareLink?.token}
@@ -1705,6 +1826,7 @@ export default function WorldBuilder() {
                 </div>
               )}
             </div>
+            <WorldCollaboratorsSection worldId={selectedWorldId} />
           </div>
           <DialogFooter className="flex justify-between items-center">
             <Button
