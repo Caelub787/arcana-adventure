@@ -212,6 +212,7 @@ export const TAG_COLORS: Record<string, string> = {
   "Technology": "#90a4ae",
   "Title/Rank": "#ce93d8",
   "Tradition/Ritual": "#f48fb1",
+  "Religions/Cults": "#7e57c2",
   "Vehicle": "#78909c",
 };
 
