@@ -2073,7 +2073,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/register", async (req, res) => {
     try {
-      const { email, password, username, name } = insertUserSchema.parse(req.body);
+      const parsed = insertUserSchema.parse(req.body);
+      const email = parsed.email.toLowerCase().trim();
+      const { password, username, name } = parsed;
       
       const existingEmail = await storage.getUserByEmail(email);
       if (existingEmail) {
@@ -2106,7 +2108,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/login", async (req, res) => {
     try {
-      const { email, password, rememberMe } = req.body;
+      const { email: rawEmail, password, rememberMe } = req.body;
+      const email = rawEmail?.toLowerCase?.().trim();
       console.log(`[LOGIN] Attempt for email: ${email}`);
       
       const user = await storage.getUserByEmail(email);
