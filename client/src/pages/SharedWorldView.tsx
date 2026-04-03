@@ -1161,28 +1161,6 @@ export default function SharedWorldView() {
                           <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
                         </button>
                       )}
-                      {calendars.length > 0 && (
-                        <button
-                          onClick={() => { setActiveSection("calendar"); setSelectedEntityId(null); }}
-                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-blue-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-blue-500/5"
-                          data-testid="home-card-calendar"
-                        >
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-bl-full" />
-                          <div className="relative z-10">
-                            <div className="flex items-center gap-3 mb-3">
-                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center border border-blue-500/20">
-                                <Calendar className="h-5 w-5 text-blue-400" />
-                              </div>
-                              <div>
-                                <div className="text-base font-semibold text-stone-100 group-hover:text-blue-300 transition-colors">Calendars</div>
-                                <div className="text-xs text-stone-500">{calendars.length} {calendars.length === 1 ? 'calendar system' : 'calendar systems'}</div>
-                              </div>
-                            </div>
-                            <p className="text-xs text-stone-500 leading-relaxed">Explore the unique ways time is measured and celebrated in this world.</p>
-                          </div>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}

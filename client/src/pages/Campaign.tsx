@@ -42,6 +42,7 @@ import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
 import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
+import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity } from "@/lib/worldbuilding-api";
@@ -7012,22 +7013,38 @@ function WorldBuilderContent({
                               }}
                               onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
                               onEntityContextMenu={handleWbEntityContextMenu}
-                            />
                               onEntityCreated={(id, name) => { const resolvedTitle = name || "Article"; setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId: id, title: resolvedTitle } : t)); setSelectedEntityId(id); }}
-                          </div>
-                          <div className="flex-1 overflow-y-auto min-w-0">
-                            <EntitySidePanel
-                              worldId={selectedWorldId}
-                              entityId={tab.entityId}
-                              onClose={() => handleCloseWbTab(tab.id)}
-                              onNavigateToEntity={(entityId) => {
-                                const title = getEntityTitle(entityId);
-                                setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId, title } : t));
-                                setSelectedEntityId(entityId);
-                              }}
-                              isGM={isGM}
-                              embedded={true}
                             />
+                          </div>
+                          <div className="flex-1 overflow-hidden min-w-0 flex">
+                            <div className="flex-1 overflow-y-auto min-w-0">
+                              <WikiArticleEditor
+                                entity={entities.find((e: any) => e.id === tab.entityId)}
+                                worldId={selectedWorldId}
+                                isGM={isGM}
+                                onWikiLinkClick={(type, id) => {
+                                  if (type === "entity") {
+                                    const title = getEntityTitle(id);
+                                    setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId: id, title } : t));
+                                    setSelectedEntityId(id);
+                                  }
+                                }}
+                              />
+                            </div>
+                            <div className="hidden md:block w-64 border-l border-stone-800 bg-stone-900/30 flex-shrink-0 overflow-y-auto">
+                              <EntitySidePanel
+                                worldId={selectedWorldId}
+                                entityId={tab.entityId}
+                                onClose={() => handleCloseWbTab(tab.id)}
+                                onNavigateToEntity={(entityId) => {
+                                  const title = getEntityTitle(entityId);
+                                  setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId, title } : t));
+                                  setSelectedEntityId(entityId);
+                                }}
+                                isGM={isGM}
+                                embedded={true}
+                              />
+                            </div>
                           </div>
                         </div>
                       )}
