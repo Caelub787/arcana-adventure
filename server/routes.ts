@@ -10317,9 +10317,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
-      if (!isGM) return res.status(403).json({ error: "Only GMs can update entities" });
       const existing = await storage.getEntity(entityId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
+      if (!isGM) {
+        const entityAccess = await storage.getUserEntityAccess(entityId, req.session.userId!);
+        if (!entityAccess || entityAccess.accessLevel !== 'edit') return res.status(403).json({ error: "Not authorized to edit this entity" });
+      }
       const entity = await storage.updateEntity(entityId, req.body);
       broadcastToCampaign(campaignId, { type: "entity_updated", entity });
       res.json(entity);
@@ -11182,14 +11185,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingWorlds = await storage.getWorldsByCampaign(campaignId);
       for (const w of existingWorlds) {
         if (w.id !== worldId) {
-          await storage.updateWorld(w.id, { campaignId: null } as any);
+          await storage.updateWorld(w.id, { campaignId: null });
         }
       }
       if (worldId) {
         const world = await storage.getWorld(worldId);
         if (!world) return res.status(404).json({ error: "World not found" });
         if (world.userId !== req.session.userId!) return res.status(403).json({ error: "You can only link worlds you own" });
-        await storage.updateWorld(worldId, { campaignId } as any);
+        await storage.updateWorld(worldId, { campaignId });
       }
       res.json({ success: true });
     } catch (e) {
@@ -11444,9 +11447,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const world = await storage.getWorld(req.params.worldId);
       if (!world) return res.status(404).json({ error: "World not found" });
-      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId); if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
+      const _waccess = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!_waccess.allowed) return res.status(403).json({ error: "Not authorized" });
       const existing = await storage.getEntity(req.params.entityId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      if (!_waccess.isOwner) {
+        const entityAccess = await storage.getUserEntityAccess(req.params.entityId, req.session.userId!);
+        if (!entityAccess || entityAccess.accessLevel !== 'edit') return res.status(403).json({ error: "Not authorized to edit this entity" });
+      }
       const entity = await storage.updateEntity(req.params.entityId, req.body);
       res.json(entity);
     } catch (e) {

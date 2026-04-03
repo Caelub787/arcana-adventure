@@ -673,7 +673,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                     <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
                   </SelectContent>
                 </Select>
-                {visibility === "player_visible" && isGM && worldId && (
+                {(visibility === "player_visible" || visibility === "shared") && isGM && worldId && (
                   <ArticleAccessControl worldId={worldId} entityId={entity.id} campaignId={campaignId} />
                 )}
                 {shareToken && visibility !== "gm_only" && (
