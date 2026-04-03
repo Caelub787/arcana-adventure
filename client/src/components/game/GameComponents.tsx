@@ -9243,6 +9243,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
 }
 
 function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: myWorlds = [] } = useQuery<any[]>({
     queryKey: ['/api/worlds'],
@@ -9291,7 +9292,7 @@ function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
         data-testid="select-campaign-wiki"
       >
         <option value="">None</option>
-        {myWorlds.map((w: any) => (
+        {myWorlds.filter((w: any) => w.userId === user?.id).map((w: any) => (
           <option key={w.id} value={w.id}>{w.name}</option>
         ))}
       </select>
