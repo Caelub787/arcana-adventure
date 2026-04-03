@@ -11058,6 +11058,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId, role } = req.body;
       if (!userId) return res.status(400).json({ error: "userId is required" });
       if (userId === world.userId) return res.status(400).json({ error: "Cannot add the owner as a collaborator" });
+      const friends = await storage.areFriends(req.session.userId!, userId);
+      if (!friends) return res.status(400).json({ error: "Can only add friends as collaborators" });
       const collab = await storage.addWorldCollaborator(req.params.worldId, userId, role || "editor");
       const user = await storage.getUser(userId);
       res.status(201).json({ ...collab, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl });
@@ -11109,6 +11111,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId, accessLevel } = req.body;
       if (!userId) return res.status(400).json({ error: "userId is required" });
       if (!accessLevel || !["view", "edit"].includes(accessLevel)) return res.status(400).json({ error: "accessLevel must be 'view' or 'edit'" });
+      const world = await storage.getWorld(req.params.worldId);
+      if (world?.campaignId) {
+        const isMember = await storage.isCampaignMember(world.campaignId, userId);
+        if (!isMember) return res.status(400).json({ error: "User must be a campaign member" });
+      }
       const entry = await storage.setEntityAccess(req.params.entityId, userId, accessLevel);
       const user = await storage.getUser(userId);
       res.status(201).json({ ...entry, username: user?.username, displayName: user?.name || user?.username, avatarUrl: user?.avatarUrl });
