@@ -6444,6 +6444,7 @@ function WorldBuilderContent({
   const [editWorldDescription, setEditWorldDescription] = useState("");
   const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [wbSidebarCollapsed, setWbSidebarCollapsed] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -6726,9 +6727,11 @@ function WorldBuilderContent({
     if (existingTab) {
       setActiveWbTabId(existingTab.id);
       setSelectedEntityId(entityId);
+      setWbSidebarCollapsed(true);
     } else {
       const resolvedTitle = title || getEntityTitle(entityId);
       const tabId = makeTabId();
+      setWbSidebarCollapsed(true);
       setWbTabs(prev => [...prev, { id: tabId, type: "article", entityId, title: resolvedTitle }]);
       setActiveWbTabId(tabId);
       setSelectedEntityId(entityId);
@@ -6740,6 +6743,7 @@ function WorldBuilderContent({
     if (activeWbTabId) {
       setWbTabs(prev => prev.map(t => t.id === activeWbTabId ? { ...t, type: "article", entityId, title: resolvedTitle } : t));
       setSelectedEntityId(entityId);
+      setWbSidebarCollapsed(true);
     } else {
       handleOpenEntityInNewTab(entityId, resolvedTitle);
     }
@@ -7000,21 +7004,57 @@ function WorldBuilderContent({
 
                       {tab.type === "article" && tab.entityId && (
                         <div className="flex h-full overflow-hidden">
-                          <div className="w-56 flex-shrink-0 border-r border-stone-700 overflow-hidden">
-                            <WorldbuilderPanel
-                              worldId={selectedWorldId}
-                              isGM={isGM}
-                              characters={characters}
-                              skipSync
-                              onOpenEntity={(entityId, title) => {
-                                const resolvedTitle = title || getEntityTitle(entityId);
-                                setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId, title: resolvedTitle } : t));
-                                setSelectedEntityId(entityId);
-                              }}
-                              onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
-                              onEntityContextMenu={handleWbEntityContextMenu}
-                              onEntityCreated={(id, name) => { const resolvedTitle = name || "Article"; setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId: id, title: resolvedTitle } : t)); setSelectedEntityId(id); }}
-                            />
+                          <div className={`${wbSidebarCollapsed ? 'w-10' : 'w-56'} flex-shrink-0 border-r border-stone-700 overflow-hidden transition-all duration-200 flex flex-col`}>
+                            {wbSidebarCollapsed ? (
+                              <div className="flex flex-col items-center pt-2">
+                                <button
+                                  onClick={() => setWbSidebarCollapsed(false)}
+                                  className="h-8 w-8 flex items-center justify-center rounded-md text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 transition-colors"
+                                  data-testid="button-expand-wb-sidebar"
+                                  title="Expand article list"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => { setWbSidebarCollapsed(false); }}
+                                  className="h-8 w-8 flex items-center justify-center rounded-md text-stone-500 hover:text-stone-300 hover:bg-stone-800/60 transition-colors mt-1"
+                                  title="Articles"
+                                  data-testid="button-wb-sidebar-articles-icon"
+                                >
+                                  <BookOpen className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-end px-1 py-1 border-b border-stone-800/60">
+                                  <button
+                                    onClick={() => setWbSidebarCollapsed(true)}
+                                    className="h-6 w-6 flex items-center justify-center rounded text-stone-500 hover:text-stone-300 hover:bg-stone-800/60 transition-colors"
+                                    data-testid="button-collapse-wb-sidebar"
+                                    title="Collapse sidebar"
+                                  >
+                                    <ChevronLeft className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                  <WorldbuilderPanel
+                                    worldId={selectedWorldId}
+                                    isGM={isGM}
+                                    characters={characters}
+                                    skipSync
+                                    onOpenEntity={(entityId, title) => {
+                                      const resolvedTitle = title || getEntityTitle(entityId);
+                                      setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId, title: resolvedTitle } : t));
+                                      setSelectedEntityId(entityId);
+                                      setWbSidebarCollapsed(true);
+                                    }}
+                                    onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
+                                    onEntityContextMenu={handleWbEntityContextMenu}
+                                    onEntityCreated={(id, name) => { const resolvedTitle = name || "Article"; setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId: id, title: resolvedTitle } : t)); setSelectedEntityId(id); setWbSidebarCollapsed(true); }}
+                                  />
+                                </div>
+                              </>
+                            )}
                           </div>
                           <div className="flex-1 overflow-hidden min-w-0 flex">
                             <div className="flex-1 overflow-y-auto min-w-0">
