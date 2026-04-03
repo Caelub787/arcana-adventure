@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink } from "lucide-react";
+import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink, PartyPopper } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface WorldCalendarProps {
@@ -98,6 +98,16 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   const [formDaysPerMonth, setFormDaysPerMonth] = useState<number[]>(DEFAULT_DAYS_PER_MONTH);
   const [formWeekDayNames, setFormWeekDayNames] = useState<string[]>(DEFAULT_WEEKDAY_NAMES);
 
+  const [showEventDialog, setShowEventDialog] = useState(false);
+  const [showEventsPanel, setShowEventsPanel] = useState(false);
+  const [editingEventIdx, setEditingEventIdx] = useState<number | null>(null);
+  const [eventFormName, setEventFormName] = useState("");
+  const [eventFormMonth, setEventFormMonth] = useState(0);
+  const [eventFormDay, setEventFormDay] = useState(1);
+  const [eventFormColor, setEventFormColor] = useState("#ffb74d");
+  const [eventFormDescription, setEventFormDescription] = useState("");
+  const [eventFormRecurring, setEventFormRecurring] = useState(true);
+
   const selectedCalendar = calendars.find(c => c.id === selectedCalendarId) || calendars[0];
 
   const currentMonth = viewMonth ?? (selectedCalendar?.currentMonth ?? 0);
@@ -163,6 +173,74 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
     const key = `${month}-${day}`;
     return (selectedCalendar.notes as Record<string, string>)[key] || "";
   }, [selectedCalendar]);
+
+  type CalendarEvent = { name: string; month: number; day: number; color?: string; description?: string; recurring?: boolean };
+  const calendarHolidays = useMemo<CalendarEvent[]>(() => {
+    return ((selectedCalendar as any)?.events as CalendarEvent[]) || [];
+  }, [selectedCalendar]);
+
+  const holidaysForDay = useCallback((month: number, day: number) => {
+    return calendarHolidays.filter(h => h.month === month && h.day === day);
+  }, [calendarHolidays]);
+
+  const openCreateEvent = (prefillMonth?: number, prefillDay?: number) => {
+    setEditingEventIdx(null);
+    setEventFormName("");
+    setEventFormMonth(prefillMonth ?? currentMonth);
+    setEventFormDay(prefillDay ?? 1);
+    setEventFormColor("#ffb74d");
+    setEventFormDescription("");
+    setEventFormRecurring(true);
+    setShowEventDialog(true);
+  };
+
+  const openEditEvent = (idx: number) => {
+    const ev = calendarHolidays[idx];
+    setEditingEventIdx(idx);
+    setEventFormName(ev.name);
+    setEventFormMonth(ev.month);
+    setEventFormDay(ev.day);
+    setEventFormColor(ev.color || "#ffb74d");
+    setEventFormDescription(ev.description || "");
+    setEventFormRecurring(ev.recurring !== false);
+    setShowEventDialog(true);
+  };
+
+  const handleSaveEvent = async () => {
+    if (!eventFormName.trim() || !selectedCalendar) return;
+    const newEvent: CalendarEvent = {
+      name: eventFormName.trim(),
+      month: eventFormMonth,
+      day: eventFormDay,
+      color: eventFormColor || undefined,
+      description: eventFormDescription.trim() || undefined,
+      recurring: eventFormRecurring,
+    };
+    let updated: CalendarEvent[];
+    if (editingEventIdx !== null) {
+      updated = calendarHolidays.map((e, i) => i === editingEventIdx ? newEvent : e);
+    } else {
+      updated = [...calendarHolidays, newEvent];
+    }
+    try {
+      await updateCalendar.mutateAsync({ id: selectedCalendar.id, events: updated });
+      setShowEventDialog(false);
+      toast({ title: editingEventIdx !== null ? "Event updated" : "Event created" });
+    } catch (e: any) {
+      toast({ title: "Failed to save event", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCalEvent = async (idx: number) => {
+    if (!selectedCalendar) return;
+    const updated = calendarHolidays.filter((_, i) => i !== idx);
+    try {
+      await updateCalendar.mutateAsync({ id: selectedCalendar.id, events: updated });
+      toast({ title: "Event deleted" });
+    } catch (e: any) {
+      toast({ title: "Failed to delete event", description: e.message, variant: "destructive" });
+    }
+  };
 
   const calendarGrid = useMemo(() => {
     if (!selectedCalendar) return [];
@@ -508,6 +586,10 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                   <Link2 className="h-3.5 w-3.5" />
                 </Button>
               )}
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-stone-400 hover:text-amber-400" onClick={() => setShowEventsPanel(!showEventsPanel)} title="Events & Holidays" data-testid="button-toggle-events">
+                <PartyPopper className="h-3.5 w-3.5 mr-1" />
+                Events {calendarHolidays.length > 0 && `(${calendarHolidays.length})`}
+              </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-amber-400" onClick={openSettings} title="Calendar Settings" data-testid="button-calendar-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
@@ -518,6 +600,44 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
           )}
         </div>
       </div>
+
+      {showEventsPanel && isGM && (
+        <div className="border-b border-stone-800 px-4 py-3 bg-stone-900/50" data-testid="events-panel">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-stone-400 uppercase tracking-wider">Events & Holidays</h4>
+            <Button onClick={() => openCreateEvent()} variant="ghost" size="sm" className="h-6 text-xs text-amber-400 hover:text-amber-300" data-testid="button-add-calendar-event">
+              <Plus className="h-3 w-3 mr-1" /> Add
+            </Button>
+          </div>
+          {calendarHolidays.length === 0 ? (
+            <p className="text-xs text-stone-500 py-1">No events or holidays defined yet.</p>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {calendarHolidays.map((h, idx) => {
+                const monthName = (selectedCalendar?.monthNames as string[])?.[h.month] || `Month ${h.month + 1}`;
+                return (
+                  <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded bg-stone-800/60 border border-stone-700/50 group" data-testid={`calendar-event-item-${idx}`}>
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: h.color || "#ffb74d" }} />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-medium text-stone-200">{h.name}</span>
+                      <span className="text-[10px] text-stone-500 ml-1.5">{monthName}, Day {h.day}</span>
+                      {h.recurring !== false && <Badge variant="outline" className="text-[8px] border-amber-500/20 text-amber-500 px-1 ml-1">Yearly</Badge>}
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-5 w-5 text-stone-500 hover:text-stone-200" onClick={() => openEditEvent(idx)} data-testid={`button-edit-cal-event-${idx}`}>
+                        <Edit2 className="h-2.5 w-2.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 text-stone-500 hover:text-red-400" onClick={() => handleDeleteCalEvent(idx)} data-testid={`button-delete-cal-event-${idx}`}>
+                        <Trash2 className="h-2.5 w-2.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800">
         <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200" onClick={() => navigateMonth(-1)} data-testid="button-prev-month">
@@ -567,7 +687,8 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
               const isCurrent = isCurrentDay(day);
               const dayEvents = eventsForDay(currentMonth, day);
               const dayNote = getDayNote(currentMonth, day);
-              const hasContent = dayEvents.length > 0 || !!dayNote;
+              const dayHolidays = holidaysForDay(currentMonth, day);
+              const hasContent = dayEvents.length > 0 || !!dayNote || dayHolidays.length > 0;
 
               return (
                 <div
@@ -589,6 +710,11 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5" />
                     )}
                   </div>
+                  {dayHolidays.map((h, hi) => (
+                    <div key={`h-${hi}`} className="mt-0.5 text-[8px] leading-tight px-0.5 py-px rounded truncate" style={{ backgroundColor: (h.color || "#ffb74d") + "22", color: h.color || "#ffb74d" }}>
+                      {h.name}
+                    </div>
+                  ))}
                   {dayNote && (
                     <p className="text-[8px] text-stone-500 mt-0.5 line-clamp-2 leading-tight">{dayNote}</p>
                   )}
@@ -681,9 +807,22 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {selectedDay && holidaysForDay(selectedDay.month, selectedDay.day).length > 0 && (
+              <div>
+                <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Holidays / Events</h4>
+                {holidaysForDay(selectedDay.month, selectedDay.day).map((h, hi) => (
+                  <div key={`hol-${hi}`} className="flex items-center gap-2 px-2 py-1 rounded bg-stone-800/50 mb-1">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: h.color || "#ffb74d" }} />
+                    <span className="text-xs text-stone-300 flex-1">{h.name}</span>
+                    {h.recurring !== false && <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400 px-1">Yearly</Badge>}
+                    {h.description && <span className="text-[10px] text-stone-500 truncate max-w-[100px]">{h.description}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
             {selectedDay && eventsForDay(selectedDay.month, selectedDay.day).length > 0 && (
               <div>
-                <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Events</h4>
+                <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Timeline Events</h4>
                 {eventsForDay(selectedDay.month, selectedDay.day).map(ev => (
                   <div key={ev.id + ((ev as any)._fromCalendarName ? '-s' : '')} className="flex items-center gap-2 px-2 py-1 rounded bg-stone-800/50 mb-1">
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ev.color || "#64b5f6" }} />
@@ -694,6 +833,17 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                   </div>
                 ))}
               </div>
+            )}
+            {isGM && selectedDay && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-amber-400 hover:text-amber-300 h-6 px-2"
+                onClick={() => { setShowDayNoteDialog(false); openCreateEvent(selectedDay.month, selectedDay.day); }}
+                data-testid="button-add-day-event"
+              >
+                <Plus className="h-3 w-3 mr-1" /> Add Holiday/Event
+              </Button>
             )}
             <div>
               <label className="text-xs text-stone-400 block mb-1">Note</label>
@@ -710,6 +860,109 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
             <Button variant="ghost" className="text-stone-400" onClick={() => setShowDayNoteDialog(false)}>Cancel</Button>
             <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={saveDayNote} disabled={updateCalendar.isPending} data-testid="button-save-day-note">
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEventDialog} onOpenChange={setShowEventDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm" data-testid="calendar-event-form">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">
+              {editingEventIdx !== null ? "Edit Event/Holiday" : "Create Event/Holiday"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Name *</label>
+              <Input
+                value={eventFormName}
+                onChange={(e) => setEventFormName(e.target.value)}
+                placeholder="e.g. Midsummer Festival"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-cal-event-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-stone-400 mb-1 block">Month</label>
+                <Select value={String(eventFormMonth)} onValueChange={(v) => setEventFormMonth(parseInt(v, 10))}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 text-xs" data-testid="select-cal-event-month">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700 max-h-48">
+                    {((selectedCalendar?.monthNames as string[]) || []).map((m, i) => (
+                      <SelectItem key={i} value={String(i)} className="text-stone-200 text-xs">{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-stone-400 mb-1 block">Day</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={((selectedCalendar?.daysPerMonth as number[]) || [])[eventFormMonth] || 30}
+                  value={eventFormDay}
+                  onChange={(e) => setEventFormDay(parseInt(e.target.value, 10) || 1)}
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-cal-event-day"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Description</label>
+              <Textarea
+                value={eventFormDescription}
+                onChange={(e) => setEventFormDescription(e.target.value)}
+                placeholder="Optional description..."
+                className="bg-stone-800 border-stone-700 text-stone-200 min-h-[50px] text-xs"
+                data-testid="input-cal-event-description"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Color</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={eventFormColor}
+                  onChange={(e) => setEventFormColor(e.target.value)}
+                  className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
+                  data-testid="input-cal-event-color"
+                />
+                <div className="flex gap-1 flex-wrap flex-1">
+                  {["#ffb74d", "#e57373", "#81c784", "#64b5f6", "#ce93d8", "#4db6ac", "#fff176", "#a1887f"].map(c => (
+                    <button
+                      key={c}
+                      className={`w-5 h-5 rounded-full border-2 transition-all ${eventFormColor === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setEventFormColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={eventFormRecurring}
+                onChange={(e) => setEventFormRecurring(e.target.checked)}
+                className="rounded border-stone-600 bg-stone-800 text-amber-500"
+                data-testid="checkbox-recurring"
+              />
+              <span className="text-xs text-stone-300">Recurring yearly</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowEventDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              onClick={handleSaveEvent}
+              disabled={!eventFormName.trim() || updateCalendar.isPending}
+              data-testid="button-save-cal-event"
+            >
+              {updateCalendar.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {editingEventIdx !== null ? "Save" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

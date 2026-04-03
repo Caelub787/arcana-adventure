@@ -1650,6 +1650,7 @@ export const worldCalendars = pgTable("world_calendars", {
   currentDay: integer("current_day").default(1),
   yearSuffix: text("year_suffix").default(""),
   notes: jsonb("notes").default(sql`'{}'::jsonb`),
+  events: jsonb("events").default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1671,6 +1672,7 @@ export const worldTimelines = pgTable("world_timelines", {
   color: text("color"),
   sortOrder: integer("sort_order").default(0),
   visibility: text("visibility").notNull().default("gm_only"),
+  eras: jsonb("eras").default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

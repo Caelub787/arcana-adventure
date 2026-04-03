@@ -38,7 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Clock, Calendar, ChevronRight, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings } from "lucide-react";
+import { Clock, Calendar, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings, Layers } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface TimelineViewProps {
@@ -133,6 +133,13 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
   const [formData, setFormData] = useState<EventFormData>(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  const [showEraForm, setShowEraForm] = useState(false);
+  const [editingEraIdx, setEditingEraIdx] = useState<number | null>(null);
+  const [eraFormName, setEraFormName] = useState("");
+  const [eraFormDescription, setEraFormDescription] = useState("");
+  const [eraFormColor, setEraFormColor] = useState("");
+  const [showErasPanel, setShowErasPanel] = useState(false);
+
   const isLoading = timelinesLoading || eventsLoading;
 
   const selectedTimeline = useMemo(() => {
@@ -175,11 +182,15 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
     return map;
   }, [calendars]);
 
+  const timelineEras = useMemo(() => {
+    return ((selectedTimeline as any)?.eras as { name: string; description?: string; color?: string }[]) || [];
+  }, [selectedTimeline]);
+
   const existingEras = useMemo(() => {
-    const eras = new Set<string>();
-    filteredEvents.forEach(e => { if (e.era) eras.add(e.era); });
-    return Array.from(eras);
-  }, [filteredEvents]);
+    const eraNames = new Set<string>(timelineEras.map(e => e.name));
+    filteredEvents.forEach(e => { if (e.era) eraNames.add(e.era); });
+    return Array.from(eraNames);
+  }, [filteredEvents, timelineEras]);
 
   const unassignedCount = useMemo(() => {
     return allEvents.filter(e => !e.timelineId).length;
@@ -276,6 +287,49 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
     setDeleteConfirm(null);
   };
 
+  const openCreateEra = () => {
+    setEditingEraIdx(null);
+    setEraFormName("");
+    setEraFormDescription("");
+    setEraFormColor(DEFAULT_COLORS[timelineEras.length % DEFAULT_COLORS.length]);
+    setShowEraForm(true);
+  };
+
+  const openEditEra = (idx: number) => {
+    const era = timelineEras[idx];
+    setEditingEraIdx(idx);
+    setEraFormName(era.name);
+    setEraFormDescription(era.description || "");
+    setEraFormColor(era.color || "");
+    setShowEraForm(true);
+  };
+
+  const handleSaveEra = async () => {
+    if (!eraFormName.trim() || !selectedTimeline) return;
+    const newEra = { name: eraFormName.trim(), description: eraFormDescription.trim() || undefined, color: eraFormColor || undefined };
+    let updatedEras;
+    if (editingEraIdx !== null) {
+      const oldName = timelineEras[editingEraIdx].name;
+      updatedEras = timelineEras.map((e, i) => i === editingEraIdx ? newEra : e);
+      if (oldName !== newEra.name) {
+        const eventsToUpdate = filteredEvents.filter(ev => ev.era === oldName);
+        for (const ev of eventsToUpdate) {
+          await updateEvent.mutateAsync({ id: ev.id, era: newEra.name });
+        }
+      }
+    } else {
+      updatedEras = [...timelineEras, newEra];
+    }
+    await updateTimeline.mutateAsync({ id: selectedTimeline.id, eras: updatedEras });
+    setShowEraForm(false);
+  };
+
+  const handleDeleteEra = async (idx: number) => {
+    if (!selectedTimeline) return;
+    const updatedEras = timelineEras.filter((_, i) => i !== idx);
+    await updateTimeline.mutateAsync({ id: selectedTimeline.id, eras: updatedEras });
+  };
+
   const formatCalendarDate = (dateStr: string, calendarId?: string | null): string => {
     if (!calendarId || !calendarMap[calendarId]) return dateStr;
     const cal = calendarMap[calendarId];
@@ -329,6 +383,11 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                   <Button onClick={() => setDeleteTimelineConfirm(selectedTimeline.id)} variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-red-400" data-testid="button-delete-timeline">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
+                  <Button onClick={() => setShowErasPanel(!showErasPanel)} variant="ghost" size="sm" className="text-stone-400 hover:text-stone-200 h-7 text-xs" data-testid="button-toggle-eras">
+                    <Layers className="h-3.5 w-3.5 mr-1" />
+                    Eras {timelineEras.length > 0 && `(${timelineEras.length})`}
+                    <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${showErasPanel ? "rotate-180" : ""}`} />
+                  </Button>
                   <Button onClick={openCreateEvent} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
                     Add Event
@@ -336,6 +395,40 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                 </div>
               )}
             </div>
+
+            {showErasPanel && isGM && (
+              <div className="mb-4 border border-stone-700 rounded-lg bg-stone-900/50 p-3" data-testid="eras-panel">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-medium text-stone-400 uppercase tracking-wider">Defined Eras</h4>
+                  <Button onClick={openCreateEra} variant="ghost" size="sm" className="h-6 text-xs text-amber-400 hover:text-amber-300" data-testid="button-add-era">
+                    <Plus className="h-3 w-3 mr-1" /> Add Era
+                  </Button>
+                </div>
+                {timelineEras.length === 0 ? (
+                  <p className="text-xs text-stone-500 py-2">No eras defined yet. Add eras to organize your timeline events into historical periods.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {timelineEras.map((era, idx) => (
+                      <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded bg-stone-800/60 border border-stone-700/50 group" data-testid={`era-item-${idx}`}>
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: era.color || getEraColor(era.name) }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-stone-200">{era.name}</span>
+                          {era.description && <p className="text-[10px] text-stone-500 truncate">{era.description}</p>}
+                        </div>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-5 w-5 text-stone-500 hover:text-stone-200" onClick={() => openEditEra(idx)} data-testid={`button-edit-era-${idx}`}>
+                            <Edit2 className="h-2.5 w-2.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 text-stone-500 hover:text-red-400" onClick={() => handleDeleteEra(idx)} data-testid={`button-delete-era-${idx}`}>
+                            <Trash2 className="h-2.5 w-2.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {filteredEvents.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-stone-500">
@@ -359,6 +452,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                 onEdit={openEditEvent}
                 onDelete={setDeleteConfirm}
                 onSelectEntity={onSelectEntity}
+                eraDefinitions={timelineEras}
               />
             )}
           </div>
@@ -406,6 +500,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                 onEdit={openEditEvent}
                 onDelete={setDeleteConfirm}
                 onSelectEntity={onSelectEntity}
+                eraDefinitions={[]}
               />
             )}
           </div>
@@ -562,6 +657,72 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showEraForm} onOpenChange={setShowEraForm}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm" data-testid="era-form-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">
+              {editingEraIdx !== null ? "Edit Era" : "Create Era"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Name *</label>
+              <Input
+                value={eraFormName}
+                onChange={(e) => setEraFormName(e.target.value)}
+                placeholder="e.g. Age of Heroes"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-era-name"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Description</label>
+              <Textarea
+                value={eraFormDescription}
+                onChange={(e) => setEraFormDescription(e.target.value)}
+                placeholder="Describe this era..."
+                className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-era-description"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Color</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={eraFormColor || "#90a4ae"}
+                  onChange={(e) => setEraFormColor(e.target.value)}
+                  className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
+                  data-testid="input-era-color"
+                />
+                <div className="flex gap-1 flex-wrap flex-1">
+                  {DEFAULT_COLORS.slice(0, 8).map(c => (
+                    <button
+                      key={c}
+                      className={`w-5 h-5 rounded-full border-2 transition-all ${eraFormColor === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setEraFormColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowEraForm(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              onClick={handleSaveEra}
+              disabled={!eraFormName.trim() || updateTimeline.isPending}
+              data-testid="button-save-era"
+            >
+              {updateTimeline.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {editingEraIdx !== null ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -575,6 +736,7 @@ function TimelineEventList({
   onEdit,
   onDelete,
   onSelectEntity,
+  eraDefinitions = [],
 }: {
   groupedByEra: [string, WorldTimelineEvent[]][];
   entityMap: Record<string, Entity>;
@@ -584,11 +746,18 @@ function TimelineEventList({
   onEdit: (event: WorldTimelineEvent) => void;
   onDelete: (eventId: string) => void;
   onSelectEntity?: (entityId: string) => void;
+  eraDefinitions?: { name: string; description?: string; color?: string }[];
 }) {
+  const eraColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    eraDefinitions.forEach(e => { if (e.color) map[e.name] = e.color; });
+    return map;
+  }, [eraDefinitions]);
+
   return (
     <>
       {groupedByEra.map(([era, eraEvents]) => {
-        const eraColor = getEraColor(era, eraEvents[0]?.color);
+        const eraColor = eraColorMap[era] || getEraColor(era, eraEvents[0]?.color);
         return (
           <div key={era} className="mb-8" data-testid={`timeline-era-${era}`}>
             <div className="flex items-center gap-3 mb-4">
