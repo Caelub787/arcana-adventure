@@ -29,9 +29,10 @@ interface WorldbuilderPanelProps {
   onCloseCreate?: () => void;
   customTags?: string[];
   skipSync?: boolean;
+  gridView?: boolean;
 }
 
-export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, onEntityContextMenu, onEntityCreated, createOnly = false, onCloseCreate, customTags = [], skipSync = false }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, onOpenEntityNewTab, onEntityContextMenu, onEntityCreated, createOnly = false, onCloseCreate, customTags = [], skipSync = false, gridView = false }: WorldbuilderPanelProps) {
   const resolvedId = worldId || campaignId;
   useWorldbuildingSync(skipSync ? undefined : resolvedId);
   const { data: entities = [], isLoading } = useEntities(resolvedId);
@@ -265,140 +266,259 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
     return createDialog;
   }
 
-  return (
-    <>
-      <div className="flex flex-col h-full" data-testid="worldbuilder-panel">
-        <div className="p-3 space-y-2 border-b border-stone-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-stone-200 flex items-center gap-2">
-              <Globe className="h-4 w-4 text-amber-400" />
-              World Builder
-            </h2>
-            {isGM && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCreateDialog(true)}
-                className="text-xs text-amber-400 hover:text-amber-300 h-7"
-                data-testid="button-create-entity"
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" /> New
-              </Button>
-            )}
+  const gridContent = (
+    <div className="flex flex-col h-full" data-testid="worldbuilder-panel-grid">
+      <div className="p-3 space-y-2 border-b border-stone-700">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-amber-400" />
+            <h2 className="text-sm font-semibold text-stone-200">Encyclopedia</h2>
+            <span className="text-[10px] text-stone-500">{entities.length} article{entities.length !== 1 ? 's' : ''}</span>
           </div>
-          <div className="flex gap-1.5">
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-stone-500" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search world..."
-                className="pl-7 h-8 text-xs bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-worldbuilder-search"
-              />
-            </div>
+          {isGM && (
             <Button
               variant="ghost"
-              size="icon"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`h-8 w-8 ${showFilters ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
-              data-testid="button-toggle-filters"
+              size="sm"
+              onClick={() => setShowCreateDialog(true)}
+              className="text-xs text-amber-400 hover:text-amber-300 h-7"
+              data-testid="button-grid-create-entity"
             >
-              <Filter className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5 mr-1" /> New
             </Button>
-          </div>
-          {showFilters && (
-            <div className="flex flex-wrap gap-1">
-              <Badge
-                variant={filterType === "" ? "default" : "outline"}
-                className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
-                onClick={() => setFilterType("")}
-              >
-                All ({entities.length})
-              </Badge>
-              {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
-                <Badge
-                  key={tag}
-                  variant={filterType === tag ? "default" : "outline"}
-                  className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
-                  style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
-                  onClick={() => setFilterType(filterType === tag ? "" : tag)}
-                >
-                  {tag} ({count})
-                </Badge>
-              ))}
+          )}
+        </div>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search articles..."
+            className="pl-8 h-8 text-xs bg-stone-800 border-stone-700 text-stone-200"
+            data-testid="input-grid-search"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300" data-testid="button-grid-clear-search">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <Badge
+            variant={filterType === "" ? "default" : "outline"}
+            className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+            onClick={() => setFilterType("")}
+            data-testid="grid-panel-filter-all"
+          >
+            All ({entities.length})
+          </Badge>
+          {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+            <Badge
+              key={tag}
+              variant={filterType === tag ? "default" : "outline"}
+              className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+              style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+              onClick={() => setFilterType(filterType === tag ? "" : tag)}
+              data-testid={`grid-panel-filter-${tag}`}
+            >
+              {tag} ({count})
+            </Badge>
+          ))}
+        </div>
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="p-3">
+          {isLoading ? (
+            <div className="flex justify-center py-12"><div className="text-stone-600 text-xs">Loading...</div></div>
+          ) : filteredEntities.length === 0 ? (
+            <div className="text-center py-10">
+              <BookOpen className="h-8 w-8 text-stone-700 mx-auto mb-2" />
+              <p className="text-stone-500 text-xs">{searchQuery || filterType ? "No matching articles" : "No articles yet."}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {filteredEntities.map(entity => {
+                const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+                const entityTags = (entity.tags as string[]) || [];
+                return (
+                  <button
+                    key={entity.id}
+                    onClick={(e) => handleEntityClick(entity.id, e)}
+                    onContextMenu={onEntityContextMenu ? (e) => onEntityContextMenu(e, entity.id, entity.displayName) : undefined}
+                    className="text-left p-2.5 rounded-lg bg-stone-800/40 border border-stone-800/60 hover:border-amber-500/30 hover:bg-stone-800/60 transition-all group"
+                    data-testid={`grid-entity-${entity.id}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "15" }}>
+                        <IconComp className="h-3.5 w-3.5" style={{ color: cfg?.color || "#78909c" }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-stone-200 group-hover:text-amber-300 truncate transition-colors">
+                          {entity.displayName}
+                        </div>
+                        {entity.description && (
+                          <div className="text-[10px] text-stone-500 line-clamp-2 mt-0.5">{entity.description}</div>
+                        )}
+                        {entityTags.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5 mt-1">
+                            {entityTags.slice(0, 3).map(tag => (
+                              <span key={tag} className="text-[8px] px-1 rounded-full" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                                {tag}
+                              </span>
+                            ))}
+                            {entityTags.length > 3 && <span className="text-[7px] text-stone-500">+{entityTags.length - 3}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
+      </ScrollArea>
+    </div>
+  );
 
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-0.5">
-            {isLoading ? (
-              <div className="text-center py-8 text-stone-600 text-xs">Loading...</div>
-            ) : filteredEntities.length === 0 ? (
-              <div className="text-center py-6 text-stone-600 text-xs">
-                {searchQuery || filterType ? "No matching articles" : "No articles yet."}
-              </div>
-            ) : (
-              filteredEntities.map(entity => {
-                const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
-                const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
-                return (
-                  <div
-                    key={entity.id}
-                    role="listitem"
-                    tabIndex={0}
-                    onClick={(e) => handleEntityClick(entity.id, e)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEntityClick(entity.id); } }}
-                    className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 cursor-pointer ${
-                      selectedEntityId === entity.id
-                        ? 'bg-stone-800 border-l-2 border-amber-400'
-                        : 'hover:bg-stone-800/60'
-                    }`}
-                    onContextMenu={onEntityContextMenu ? (e) => onEntityContextMenu(e, entity.id, entity.displayName) : undefined}
-                    data-testid={`entity-list-item-${entity.id}`}
-                  >
-                    <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "18" }}>
-                      <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color || "#78909c" }} />
+  const listContent = (
+    <div className="flex flex-col h-full" data-testid="worldbuilder-panel">
+      <div className="p-3 space-y-2 border-b border-stone-700">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-stone-200 flex items-center gap-2">
+            <Globe className="h-4 w-4 text-amber-400" />
+            World Builder
+          </h2>
+          {isGM && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCreateDialog(true)}
+              className="text-xs text-amber-400 hover:text-amber-300 h-7"
+              data-testid="button-create-entity"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> New
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-1.5">
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search world..."
+              className="pl-7 h-8 text-xs bg-stone-800 border-stone-700 text-stone-200"
+              data-testid="input-worldbuilder-search"
+            />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`h-8 w-8 ${showFilters ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
+            data-testid="button-toggle-filters"
+          >
+            <Filter className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {showFilters && (
+          <div className="flex flex-wrap gap-1">
+            <Badge
+              variant={filterType === "" ? "default" : "outline"}
+              className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+              onClick={() => setFilterType("")}
+            >
+              All ({entities.length})
+            </Badge>
+            {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+              <Badge
+                key={tag}
+                variant={filterType === tag ? "default" : "outline"}
+                className={`text-[9px] cursor-pointer px-1.5 py-0 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+                onClick={() => setFilterType(filterType === tag ? "" : tag)}
+              >
+                {tag} ({count})
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-2 space-y-0.5">
+          {isLoading ? (
+            <div className="text-center py-8 text-stone-600 text-xs">Loading...</div>
+          ) : filteredEntities.length === 0 ? (
+            <div className="text-center py-6 text-stone-600 text-xs">
+              {searchQuery || filterType ? "No matching articles" : "No articles yet."}
+            </div>
+          ) : (
+            filteredEntities.map(entity => {
+              const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+              const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+              return (
+                <div
+                  key={entity.id}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={(e) => handleEntityClick(entity.id, e)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEntityClick(entity.id); } }}
+                  className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 cursor-pointer ${
+                    selectedEntityId === entity.id
+                      ? 'bg-stone-800 border-l-2 border-amber-400'
+                      : 'hover:bg-stone-800/60'
+                  }`}
+                  onContextMenu={onEntityContextMenu ? (e) => onEntityContextMenu(e, entity.id, entity.displayName) : undefined}
+                  data-testid={`entity-list-item-${entity.id}`}
+                >
+                  <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "18" }}>
+                    <IconComp className="h-2.5 w-2.5" style={{ color: cfg?.color || "#78909c" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[11px] font-medium truncate ${selectedEntityId === entity.id ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
+                      {entity.displayName}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-[11px] font-medium truncate ${selectedEntityId === entity.id ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
-                        {entity.displayName}
+                    {entity.description && (
+                      <div className="text-[9px] text-stone-500 truncate">{entity.description}</div>
+                    )}
+                    {((entity.tags as string[]) || []).length > 0 && (
+                      <div className="flex flex-wrap gap-0.5 mt-0.5">
+                        {((entity.tags as string[]) || []).slice(0, 3).map(tag => (
+                          <span key={tag} className="text-[8px] px-1 rounded" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                            {tag}
+                          </span>
+                        ))}
+                        {((entity.tags as string[]) || []).length > 3 && (
+                          <span className="text-[8px] text-stone-500">+{((entity.tags as string[]) || []).length - 3}</span>
+                        )}
                       </div>
-                      {entity.description && (
-                        <div className="text-[9px] text-stone-500 truncate">{entity.description}</div>
-                      )}
-                      {((entity.tags as string[]) || []).length > 0 && (
-                        <div className="flex flex-wrap gap-0.5 mt-0.5">
-                          {((entity.tags as string[]) || []).slice(0, 3).map(tag => (
-                            <span key={tag} className="text-[8px] px-1 rounded" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
-                              {tag}
-                            </span>
-                          ))}
-                          {((entity.tags as string[]) || []).length > 3 && (
-                            <span className="text-[8px] text-stone-500">+{((entity.tags as string[]) || []).length - 3}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {onOpenEntityNewTab && (
-                      <button
-                        type="button"
-                        title="Open in new tab"
-                        className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-stone-700 text-stone-500 hover:text-amber-400 flex-shrink-0"
-                        onClick={(e) => { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); }}
-                        data-testid={`open-new-tab-${entity.id}`}
-                      >
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </button>
                     )}
                   </div>
-                );
-              })
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+                  {onOpenEntityNewTab && (
+                    <button
+                      type="button"
+                      title="Open in new tab"
+                      className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-stone-700 text-stone-500 hover:text-amber-400 flex-shrink-0"
+                      onClick={(e) => { e.stopPropagation(); const t = entity.displayName || "Article"; onOpenEntityNewTab(entity.id, t); }}
+                      data-testid={`open-new-tab-${entity.id}`}
+                    >
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+
+  return (
+    <>
+      {gridView ? gridContent : listContent}
 
       {selectedEntityId && (
         <Dialog open={!!selectedEntityId} onOpenChange={() => setSelectedEntityId(null)}>

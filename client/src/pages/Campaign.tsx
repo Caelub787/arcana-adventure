@@ -6998,6 +6998,7 @@ function WorldBuilderContent({
                             onEntityContextMenu={handleWbEntityContextMenu}
                             skipSync
                             onEntityCreated={(id, name) => handleOpenEntityInCurrentTab(id, name)}
+                            gridView
                           />
                         </div>
                       )}
