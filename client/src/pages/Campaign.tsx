@@ -6499,7 +6499,9 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
       setSelectedWorldId(linkedWorld.id);
     } else if (isGM && worlds.length > 0 && !selectedWorldId) {
       const campaignWorld = worlds.find((w: any) => w.campaignId === campaignId);
-      setSelectedWorldId(campaignWorld?.id || worlds[0].id);
+      if (campaignWorld) {
+        setSelectedWorldId(campaignWorld.id);
+      }
     }
   }, [worlds, selectedWorldId, campaignId, isGM, linkedWorld]);
 
@@ -6946,7 +6948,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
           {!selectedWorldId ? (
               <div className="text-center py-12 text-stone-500">
                 <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                {isGM ? (
+                {isGM && worlds.length === 0 ? (
                   <>
                     <p>No worlds found.</p>
                     <p className="text-sm mt-2">Get started by creating your first world.</p>
@@ -6958,6 +6960,11 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                     >
                       <Plus className="h-4 w-4 mr-1" /> Create World
                     </Button>
+                  </>
+                ) : isGM ? (
+                  <>
+                    <p>No world wiki linked to this campaign.</p>
+                    <p className="text-sm mt-2">Select a world from the dropdown above, then link it via World Settings.</p>
                   </>
                 ) : (
                   <>
