@@ -45,7 +45,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
-import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity } from "@/lib/worldbuilding-api";
+import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
 
 // Scene Settings Form Component
@@ -6401,16 +6401,47 @@ function renderWorldHomeContent(content: string) {
   });
 }
 
+function WikiArticleWithAccess({ entity, worldId, campaignId, isGM, userId, onWikiLinkClick, shareToken, customTags }: {
+  entity: any;
+  worldId: string;
+  campaignId: string;
+  isGM: boolean;
+  userId?: string;
+  onWikiLinkClick?: (type: string, id: string) => void;
+  shareToken?: string;
+  customTags?: string[];
+}) {
+  const { data: myAccess } = useMyEntityAccess(
+    !isGM ? worldId : undefined,
+    !isGM ? entity.id : undefined
+  );
+  const canEdit = isGM || myAccess?.accessLevel === 'edit';
+  return (
+    <WikiArticleEditor
+      entity={entity}
+      worldId={worldId}
+      campaignId={campaignId}
+      isGM={isGM}
+      canEdit={canEdit}
+      onWikiLinkClick={onWikiLinkClick}
+      shareToken={shareToken}
+      customTags={customTags}
+    />
+  );
+}
+
 const WorldBuilderContent = React.memo(function WorldBuilderContent({
   campaignId,
   isGM,
   characters,
   compact = false,
+  userId,
 }: {
   campaignId: string;
   isGM: boolean;
   characters: any[];
   compact?: boolean;
+  userId?: string;
 }) {
   type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph";
   interface WbTab {
@@ -7074,11 +7105,12 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                                   </div>
                                 );
                                 return (
-                                  <WikiArticleEditor
+                                  <WikiArticleWithAccess
                                     entity={articleEntity}
                                     worldId={selectedWorldId}
                                     campaignId={campaignId}
                                     isGM={isGM}
+                                    userId={userId}
                                     onWikiLinkClick={(type, id) => {
                                       if (type === "entity") {
                                         const title = getEntityTitle(id);
@@ -7376,6 +7408,7 @@ function FloatingWorldBuilder({
   zIndex = 10200,
   onBringToFront,
   panelKey,
+  userId,
 }: {
   campaignId: string;
   isGM: boolean;
@@ -7385,6 +7418,7 @@ function FloatingWorldBuilder({
   zIndex?: number;
   onBringToFront?: () => void;
   panelKey?: string;
+  userId?: string;
 }) {
   if (!open) return null;
   return (
@@ -7399,7 +7433,7 @@ function FloatingWorldBuilder({
       minWidth={600}
       minHeight={400}
     >
-      <WorldBuilderContent campaignId={campaignId} isGM={isGM} characters={characters} />
+      <WorldBuilderContent campaignId={campaignId} isGM={isGM} characters={characters} userId={userId} />
     </FloatingPanel>
   );
 }
@@ -7961,9 +7995,10 @@ export default function Campaign() {
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
 
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
+  const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v2';
 
   const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
-  const showWorldButton = role === 'gm' || !!playerLinkedWorld;
+  const showWorldButton = isAAV2 || role === 'gm' || !!playerLinkedWorld;
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -7977,10 +8012,13 @@ export default function Campaign() {
         if (!isSandbox && dp === 'characters') {
           dp = 'chat';
         }
+        if (isAAV2 && dp === 'notes') {
+          dp = 'world';
+        }
         if (dp === 'none') {
           setActiveSidePanel(null);
           setSidePanelMinimized(true);
-        } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
+        } else if (['characters', 'chat', 'notes', 'world', 'settings', 'scene', 'initiative'].includes(dp)) {
           setActiveSidePanel(dp as SidePanelTab);
           setSidePanelMinimized(false);
         }
@@ -10512,6 +10550,7 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          {!isAAV2 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10547,6 +10586,7 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          )}
 
           {showWorldButton && (
           <TooltipProvider>
@@ -11134,6 +11174,7 @@ export default function Campaign() {
           panelKey="worldbuilder"
           zIndex={floatingZIndicesRef.current['worldbuilder'] || 10200}
           onBringToFront={() => bringToFront('worldbuilder')}
+          userId={user?.id}
         />
       )}
 
@@ -12688,14 +12729,14 @@ export default function Campaign() {
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
-                {activeSidePanel === 'notes' && 'Notes'}
+                {activeSidePanel === 'notes' && !isAAV2 && 'Notes'}
                 {activeSidePanel === 'world' && 'World'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
               <div className="flex items-center gap-1">
-                {activeSidePanel === 'notes' && (
+                {activeSidePanel === 'notes' && !isAAV2 && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -12811,7 +12852,7 @@ export default function Campaign() {
                   )}
                 </div>
               )}
-              {activeSidePanel === 'notes' && effectiveCampaignId && (
+              {activeSidePanel === 'notes' && !isAAV2 && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
                   <CampaignNotesPanel
                     campaignId={effectiveCampaignId}
@@ -12837,6 +12878,7 @@ export default function Campaign() {
                     isGM={role === 'gm'}
                     characters={characters as any[] || []}
                     compact
+                    userId={user?.id}
                   />
                 </div>
               )}

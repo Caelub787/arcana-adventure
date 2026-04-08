@@ -25,6 +25,7 @@ Preferred communication style: Simple, everyday language.
     -   **Campaign Map Pins**: Interactive pins on the battlemap with percentage-based coordinates, supporting text reveals and scene links. Pins can be marked as shops.
     -   **Shop System**: GMs manage shop inventories (items, prices, stock, currency) linked to map pins. Players can buy/sell items with automatic currency conversion and a charisma-based haggling d20 roll. Shops can be linked to shopkeeper characters for automated currency tracking.
     -   **World Collaboration**: World owners can add friends as collaborators (editors) via World Settings. Collaborators get full read/write access to all world content. Campaign wiki linking lets GMs assign a world wiki to a campaign. Per-article player access control lets GMs grant view/edit access to specific players for `player_visible` articles.
+    -   **Campaign Wiki Unification (AA V2)**: In AA V2 campaigns, the World Builder replaces the Notes panel as the unified wiki for all players and GMs. The Notes button is hidden, the World Builder is always visible, and articles default to read-only view with an Edit button for authorized users. Non-GM editors can only modify content fields (articleContent, description, displayName, image, tags) -- visibility and entity type changes are GM-only. A `WikiArticleWithAccess` wrapper component fetches per-user access via `/api/worlds/:worldId/entities/:entityId/my-access` to determine edit permissions.
 
 ### Backend
 -   **Technology Stack**: Express.js with TypeScript, `express-session`.

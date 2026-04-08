@@ -10285,6 +10285,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isGM) {
         const entityAccess = await storage.getUserEntityAccess(entityId, req.session.userId!);
         if (!entityAccess || entityAccess.accessLevel !== 'edit') return res.status(403).json({ error: "Not authorized to edit this entity" });
+        const { articleContent, description, displayName, image, tags } = req.body;
+        const entity = await storage.updateEntity(entityId, { articleContent, description, displayName, image, tags });
+        broadcastToCampaign(campaignId, { type: "entity_updated", entity });
+        return res.json(entity);
       }
       const entity = await storage.updateEntity(entityId, req.body);
       broadcastToCampaign(campaignId, { type: "entity_updated", entity });
@@ -11105,6 +11109,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/worlds/:worldId/entities/:entityId/my-access", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+      const entity = await storage.getEntity(req.params.entityId);
+      if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      if (access.isOwner) return res.json({ accessLevel: "edit" });
+      const accessList = await storage.getEntityAccessList(req.params.entityId);
+      const myAccess = accessList.find((a: any) => a.userId === req.session.userId);
+      res.json({ accessLevel: myAccess?.accessLevel || "view" });
+    } catch (e) {
+      console.error("Failed to check entity access:", e);
+      res.status(500).json({ error: "Failed to check entity access" });
+    }
+  });
+
   app.post("/api/worlds/:worldId/entities/:entityId/access", requireAuth, async (req, res) => {
     try {
       const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
@@ -11459,6 +11479,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.isOwner) {
         const entityAccess = await storage.getUserEntityAccess(req.params.entityId, req.session.userId!);
         if (!entityAccess || entityAccess.accessLevel !== 'edit') return res.status(403).json({ error: "Not authorized to edit this entity" });
+        const { articleContent, description, displayName, image, tags } = req.body;
+        const entity = await storage.updateEntity(req.params.entityId, { articleContent, description, displayName, image, tags });
+        return res.json(entity);
       }
       const entity = await storage.updateEntity(req.params.entityId, req.body);
       res.json(entity);

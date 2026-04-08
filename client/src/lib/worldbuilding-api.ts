@@ -703,6 +703,15 @@ export function useEntityAccessList(worldId: string | undefined, entityId: strin
   });
 }
 
+export function useMyEntityAccess(worldId: string | undefined, entityId: string | undefined) {
+  return useQuery<{ accessLevel: string }>({
+    queryKey: ["/api/worlds", worldId, "entities", entityId, "my-access"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}/my-access`),
+    enabled: !!worldId && !!entityId,
+    staleTime: 60000,
+  });
+}
+
 export const LINK_TYPE_LABELS: Record<string, string> = {
   ally: "Ally",
   enemy: "Enemy",

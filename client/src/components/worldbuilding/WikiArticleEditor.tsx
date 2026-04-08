@@ -18,6 +18,7 @@ interface WikiArticleEditorProps {
   campaignId?: string;
   worldId?: string;
   isGM: boolean;
+  canEdit?: boolean;
   onEntityUpdated?: () => void;
   onWikiLinkClick?: (type: string, id: string) => void;
   shareToken?: string;
@@ -450,7 +451,8 @@ function ArticleAccessControl({ worldId, entityId, campaignId }: { worldId: stri
   );
 }
 
-export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated, onWikiLinkClick, shareToken, customTags = [] }: WikiArticleEditorProps) {
+export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: canEditProp, onEntityUpdated, onWikiLinkClick, shareToken, customTags = [] }: WikiArticleEditorProps) {
+  const canEdit = isGM || canEditProp;
   const resolvedId = worldId || campaignId;
   const scope = worldId ? "worlds" as const : "campaigns" as const;
   const updateEntity = useUpdateEntity(resolvedId, scope);
@@ -640,26 +642,26 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
           )}
           <div className="flex items-center gap-2">
             {isSaving && <span className="text-xs text-stone-500">Saving...</span>}
+            {isGM && mode === "edit" && (
+              <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
+                <button
+                  className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
+                  onClick={() => { setEntityType("article"); setTimeout(() => saveImmediately(), 0); }}
+                  data-testid="toggle-type-article"
+                >
+                  <FileText className="h-3 w-3" /> Article
+                </button>
+                <button
+                  className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
+                  onClick={() => { setEntityType("canvas"); setTimeout(() => saveImmediately(), 0); }}
+                  data-testid="toggle-type-canvas"
+                >
+                  <Layout className="h-3 w-3" /> Canvas
+                </button>
+              </div>
+            )}
             {isGM && (
               <>
-                {mode === "edit" && (
-                  <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
-                    <button
-                      className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
-                      onClick={() => { setEntityType("article"); setTimeout(() => saveImmediately(), 0); }}
-                      data-testid="toggle-type-article"
-                    >
-                      <FileText className="h-3 w-3" /> Article
-                    </button>
-                    <button
-                      className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
-                      onClick={() => { setEntityType("canvas"); setTimeout(() => saveImmediately(), 0); }}
-                      data-testid="toggle-type-canvas"
-                    >
-                      <Layout className="h-3 w-3" /> Canvas
-                    </button>
-                  </div>
-                )}
                 <Select value={visibility} onValueChange={(val) => { setVisibility(val); setTimeout(() => saveImmediately(), 0); }}>
                   <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
                     <div className="flex items-center gap-1.5">
@@ -673,7 +675,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                     <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
                   </SelectContent>
                 </Select>
-                {(visibility === "player_visible" || visibility === "shared") && isGM && worldId && (
+                {(visibility === "player_visible" || visibility === "shared") && worldId && (
                   <ArticleAccessControl worldId={worldId} entityId={entity.id} campaignId={campaignId} />
                 )}
                 {shareToken && visibility !== "gm_only" && (
@@ -688,16 +690,18 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityU
                     <ExternalLink className="h-3 w-3 mr-1" /> Preview
                   </Button>
                 )}
-                {mode === "edit" ? (
-                  <Button size="sm" onClick={() => { saveChanges(); setMode("view"); }} className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" data-testid="button-save-article">
-                    <Save className="h-3 w-3 mr-1" /> Save
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" onClick={() => setMode("edit")} className="text-stone-400 hover:text-amber-400 h-7 text-xs" data-testid="button-edit-article">
-                    <Edit3 className="h-3 w-3 mr-1" /> Edit
-                  </Button>
-                )}
               </>
+            )}
+            {canEdit && (
+              mode === "edit" ? (
+                <Button size="sm" onClick={() => { saveChanges(); setMode("view"); }} className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" data-testid="button-save-article">
+                  <Save className="h-3 w-3 mr-1" /> Save
+                </Button>
+              ) : (
+                <Button size="sm" variant="ghost" onClick={() => setMode("edit")} className="text-stone-400 hover:text-amber-400 h-7 text-xs" data-testid="button-edit-article">
+                  <Edit3 className="h-3 w-3 mr-1" /> Edit
+                </Button>
+              )
             )}
           </div>
         </div>
