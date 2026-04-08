@@ -1090,6 +1090,7 @@ function SandboxSheetEditor({
   isMobile,
   templates,
   role,
+  panelKey,
   zIndex = 45,
   onBringToFront,
   enterAoeMode,
@@ -1103,6 +1104,7 @@ function SandboxSheetEditor({
   isMobile: boolean;
   templates: any[];
   role: string;
+  panelKey?: string;
   zIndex?: number;
   onBringToFront?: () => void;
   enterAoeMode?: (spell: any, casterTokenId: string, pendingRollEntry?: any) => void;
@@ -4315,6 +4317,7 @@ function SandboxSheetEditor({
   return (
     <div
       className="fixed pointer-events-auto"
+      data-panel-key={panelKey}
       style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex }}
       onMouseDown={onBringToFront}
     >
@@ -7372,6 +7375,7 @@ function FloatingWorldBuilder({
   onClose,
   zIndex = 10200,
   onBringToFront,
+  panelKey,
 }: {
   campaignId: string;
   isGM: boolean;
@@ -7380,6 +7384,7 @@ function FloatingWorldBuilder({
   onClose: () => void;
   zIndex?: number;
   onBringToFront?: () => void;
+  panelKey?: string;
 }) {
   if (!open) return null;
   return (
@@ -7389,6 +7394,7 @@ function FloatingWorldBuilder({
       title={<span className="text-amber-500">World Builder</span>}
       zIndex={zIndex}
       onBringToFront={onBringToFront}
+      panelKey={panelKey}
       defaultSize={{ width: 900, height: 650 }}
       minWidth={600}
       minHeight={400}
@@ -7406,6 +7412,7 @@ function FloatingNotesEditor({
   onViewCharacter,
   zIndex = 10500,
   onBringToFront,
+  panelKey,
 }: {
   campaignId: string;
   initialNoteId: string | null;
@@ -7414,6 +7421,7 @@ function FloatingNotesEditor({
   onViewCharacter?: (character: any) => void;
   zIndex?: number;
   onBringToFront?: () => void;
+  panelKey?: string;
 }) {
   return (
     <FloatingPanel
@@ -7422,6 +7430,7 @@ function FloatingNotesEditor({
       title={<span className="text-amber-500">Notes</span>}
       zIndex={zIndex}
       onBringToFront={onBringToFront}
+      panelKey={panelKey}
       defaultSize={{ width: 700, height: 500 }}
       minWidth={400}
       minHeight={300}
@@ -7645,12 +7654,13 @@ export default function Campaign() {
   const [sandboxHotbarVisible, setSandboxHotbarVisible] = useState(true);
   const [hotbarConfigSlot, setHotbarConfigSlot] = useState<number | null>(null);
 
-  // Floating panel z-index management (bring to front on click)
   const floatingZCounterRef = useRef(10600);
-  const [floatingZIndices, setFloatingZIndices] = useState<Record<string, number>>({});
+  const floatingZIndicesRef = useRef<Record<string, number>>({});
   const bringToFront = useCallback((panelKey: string) => {
     floatingZCounterRef.current += 1;
-    setFloatingZIndices(prev => ({ ...prev, [panelKey]: floatingZCounterRef.current }));
+    floatingZIndicesRef.current[panelKey] = floatingZCounterRef.current;
+    const el = document.querySelector(`[data-panel-key="${panelKey}"]`) as HTMLElement;
+    if (el) el.style.zIndex = String(floatingZCounterRef.current);
   }, []);
 
   // Map pin editor state
@@ -11099,7 +11109,8 @@ export default function Campaign() {
           isMobile={isMobile}
           templates={sandboxTemplatesList as any[]}
           role={role}
-          zIndex={floatingZIndices[`sandbox-${sheet.id}`] || 10500}
+          panelKey={`sandbox-${sheet.id}`}
+          zIndex={floatingZIndicesRef.current[`sandbox-${sheet.id}`] || 10500}
           onBringToFront={() => bringToFront(`sandbox-${sheet.id}`)}
           enterAoeMode={enterAoeMode}
           tokens={tokens}
@@ -11120,7 +11131,8 @@ export default function Campaign() {
             setActiveSidePanel('world');
             setSidePanelMinimized(false);
           }}
-          zIndex={floatingZIndices['worldbuilder'] || 10200}
+          panelKey="worldbuilder"
+          zIndex={floatingZIndicesRef.current['worldbuilder'] || 10200}
           onBringToFront={() => bringToFront('worldbuilder')}
         />
       )}
@@ -11131,7 +11143,8 @@ export default function Campaign() {
           open={showMapPinEditor}
           onClose={() => { setShowMapPinEditor(false); setPinPlaceMode(false); setShowPinForm(false); setEditingPin(null); }}
           title={<span className="text-amber-500">Map Pins</span>}
-          zIndex={floatingZIndices['map-pins'] || 10300}
+          panelKey="map-pins"
+          zIndex={floatingZIndicesRef.current['map-pins'] || 10300}
           onBringToFront={() => bringToFront('map-pins')}
           defaultSize={{ width: 360, height: 480 }}
           minWidth={300}
@@ -11384,7 +11397,8 @@ export default function Campaign() {
           open={!!shopEditingPin}
           onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); setSelectedTemplateIds(new Set()); setTemplateSearch(''); setShopEditorTab('inventory'); }}
           title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopEditingPin.label || 'Shop'} - Manage</span>}
-          zIndex={floatingZIndices['shop-editor'] || 10400}
+          panelKey="shop-editor"
+          zIndex={floatingZIndicesRef.current['shop-editor'] || 10400}
           onBringToFront={() => bringToFront('shop-editor')}
           defaultSize={{ width: 460, height: 580 }}
           minWidth={380}
@@ -11776,7 +11790,8 @@ export default function Campaign() {
           open={!!shopPin}
           onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(shopPin?.defaultSellPercentage ?? 80); setShopCharacterId(''); }}
           title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopPin.label || 'Shop'}</span>}
-          zIndex={floatingZIndices['player-shop'] || 10450}
+          panelKey="player-shop"
+          zIndex={floatingZIndicesRef.current['player-shop'] || 10450}
           onBringToFront={() => bringToFront('player-shop')}
           defaultSize={{ width: 440, height: 560 }}
           minWidth={360}
@@ -11974,7 +11989,8 @@ export default function Campaign() {
           open={!!viewingShopItem}
           onClose={() => setViewingShopItem(null)}
           title={<span className="text-amber-500"><Package className="inline h-4 w-4 mr-1" />{viewingShopItem.name}</span>}
-          zIndex={floatingZIndices['shop-item-detail'] || 10500}
+          panelKey="shop-item-detail"
+          zIndex={floatingZIndicesRef.current['shop-item-detail'] || 10500}
           onBringToFront={() => bringToFront('shop-item-detail')}
           defaultSize={{ width: 380, height: 480 }}
           minWidth={300}
@@ -12055,7 +12071,8 @@ export default function Campaign() {
               openCharacterSheet(character);
             }
           }}
-          zIndex={floatingZIndices['notes'] || 10500}
+          panelKey="notes"
+          zIndex={floatingZIndicesRef.current['notes'] || 10500}
           onBringToFront={() => bringToFront('notes')}
         />
       )}
@@ -12598,7 +12615,7 @@ export default function Campaign() {
                 sceneId={activeScene?.id}
                 allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
                 bringToFront={bringToFront}
-                floatingZIndices={floatingZIndices}
+                floatingZIndices={floatingZIndicesRef.current}
                 campaignSystem={(campaign as any)?.system}
               />
             )}
@@ -12615,7 +12632,8 @@ export default function Campaign() {
             defaultPosition={{ x: 100 + (index * 30), y: 50 + (index * 30) }}
             minWidth={400}
             minHeight={400}
-            zIndex={floatingZIndices[`char-${sheet.id}`] || (10500 + index)}
+            panelKey={`char-${sheet.id}`}
+            zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <CharacterSheet
@@ -12637,7 +12655,7 @@ export default function Campaign() {
               sceneId={activeScene?.id}
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
               bringToFront={bringToFront}
-              floatingZIndices={floatingZIndices}
+              floatingZIndices={floatingZIndicesRef.current}
               campaignSystem={(campaign as any)?.system}
             />
           </FloatingPanel>

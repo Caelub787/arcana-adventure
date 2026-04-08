@@ -15,9 +15,10 @@ interface FloatingPanelProps {
   className?: string;
   zIndex?: number;
   onBringToFront?: () => void;
+  panelKey?: string;
 }
 
-export function FloatingPanel({
+export const FloatingPanel = React.memo(function FloatingPanel({
   open,
   onClose,
   title,
@@ -29,6 +30,7 @@ export function FloatingPanel({
   className,
   zIndex = 10500,
   onBringToFront,
+  panelKey,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -44,6 +46,7 @@ export function FloatingPanel({
         style={{ zIndex: Math.max(zIndex, 10500) }}
         data-testid="floating-panel"
         data-floating-panel
+        data-panel-key={panelKey}
       >
         <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
           <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
@@ -80,12 +83,13 @@ export function FloatingPanel({
     className={className}
     zIndex={zIndex}
     onBringToFront={onBringToFront}
+    panelKey={panelKey}
   >
     {children}
   </DesktopFloatingPanel>;
-}
+});
 
-function DesktopFloatingPanel({
+const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   open,
   onClose,
   title,
@@ -97,6 +101,7 @@ function DesktopFloatingPanel({
   className,
   zIndex = 10500,
   onBringToFront,
+  panelKey,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
 
@@ -124,10 +129,17 @@ function DesktopFloatingPanel({
   const resizeStartRef = React.useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
   const rafRef = React.useRef<number | null>(null);
   const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
+  const zIndexRef = React.useRef(zIndex);
 
   const [, forceRender] = React.useState(0);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
+
+  React.useEffect(() => {
+    zIndexRef.current = zIndex;
+    const el = panelRef.current;
+    if (el) el.style.zIndex = String(zIndex);
+  }, [zIndex]);
 
   const applyTransform = React.useCallback(() => {
     const el = panelRef.current;
@@ -155,7 +167,7 @@ function DesktopFloatingPanel({
 
   React.useLayoutEffect(() => {
     applyTransform();
-  });
+  }, [isFullscreen, isMinimized]);
 
   const handleDragStart = React.useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
@@ -166,6 +178,7 @@ function DesktopFloatingPanel({
     const el = panelRef.current;
     if (el) {
       el.classList.add('cursor-grabbing');
+      el.style.willChange = 'transform';
       const content = el.querySelector('[data-panel-content]') as HTMLElement;
       if (content) content.style.pointerEvents = 'none';
     }
@@ -199,6 +212,7 @@ function DesktopFloatingPanel({
     const el = panelRef.current;
     if (el) {
       el.classList.remove('cursor-grabbing');
+      el.style.willChange = '';
       const content = el.querySelector('[data-panel-content]') as HTMLElement;
       if (content) content.style.pointerEvents = '';
     }
@@ -221,6 +235,7 @@ function DesktopFloatingPanel({
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const el = panelRef.current;
     if (el) {
+      el.style.willChange = 'transform, width, height';
       const content = el.querySelector('[data-panel-content]') as HTMLElement;
       if (content) content.style.pointerEvents = 'none';
     }
@@ -267,6 +282,7 @@ function DesktopFloatingPanel({
     try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
     const el = panelRef.current;
     if (el) {
+      el.style.willChange = '';
       const content = el.querySelector('[data-panel-content]') as HTMLElement;
       if (content) content.style.pointerEvents = '';
     }
@@ -313,6 +329,11 @@ function DesktopFloatingPanel({
     };
   }, []);
 
+  const handleBringToFront = React.useCallback((e: React.PointerEvent | React.MouseEvent) => {
+    e.stopPropagation();
+    onBringToFront?.();
+  }, [onBringToFront]);
+
   if (!open) return null;
 
   const resizeHandleBase = "absolute bg-transparent hover:bg-amber-500/30 transition-colors";
@@ -322,7 +343,7 @@ function DesktopFloatingPanel({
   const minimizedMaxWidth = 120;
   const s = sizeRef.current;
 
-  const panelZIndex = isFullscreen ? Math.max(zIndex, 10500) : zIndex;
+  const panelZIndex = isFullscreen ? Math.max(zIndexRef.current, 10500) : zIndexRef.current;
 
   const panelContent = (
     <>
@@ -342,14 +363,8 @@ function DesktopFloatingPanel({
         }}
         data-testid="floating-panel"
         data-floating-panel
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          onBringToFront?.();
-        }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onBringToFront?.();
-        }}
+        data-panel-key={panelKey}
+        onPointerDown={handleBringToFront}
         onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
@@ -492,4 +507,4 @@ function DesktopFloatingPanel({
   );
 
   return createPortal(panelContent, document.body);
-}
+});

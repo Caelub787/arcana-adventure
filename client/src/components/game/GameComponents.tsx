@@ -18991,6 +18991,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               open={showAddCustomSkill}
               onClose={() => setShowAddCustomSkill(false)}
               title={<span className="text-cyan-500">Add Custom Skill</span>}
+              panelKey="skill-add"
               zIndex={floatingZIndices?.['skill-add'] || 10200}
               onBringToFront={() => bringToFront?.('skill-add')}
               defaultSize={{ width: 500, height: 500 }}
@@ -19013,6 +19014,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 open={!!editingCustomSkill}
                 onClose={() => setEditingCustomSkill(null)}
                 title={<span className="text-cyan-500">Edit Custom Skill</span>}
+                panelKey="skill-edit"
                 zIndex={floatingZIndices?.['skill-edit'] || 10200}
                 onBringToFront={() => bringToFront?.('skill-edit')}
                 defaultSize={{ width: 500, height: 500 }}
@@ -19176,6 +19178,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               open={showAddTrait}
               onClose={() => setShowAddTrait(false)}
               title={<span className="text-rose-500">Add Trait</span>}
+              panelKey="trait-add"
               zIndex={floatingZIndices?.['trait-add'] || 10200}
               onBringToFront={() => bringToFront?.('trait-add')}
               defaultSize={{ width: 500, height: 500 }}
@@ -19198,6 +19201,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 open={!!editingTrait}
                 onClose={() => setEditingTrait(null)}
                 title={<span className="text-rose-500">Edit Trait</span>}
+                panelKey="trait-edit"
                 zIndex={floatingZIndices?.['trait-edit'] || 10200}
                 onBringToFront={() => bringToFront?.('trait-edit')}
                 defaultSize={{ width: 500, height: 500 }}
@@ -19592,6 +19596,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               defaultSize={{ width: Math.min(650, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
               minWidth={350}
               minHeight={300}
+              panelKey="add-spell"
               zIndex={floatingZIndices?.['add-spell'] || 10100}
               onBringToFront={() => bringToFront?.('add-spell')}
             >
@@ -20411,6 +20416,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 defaultSize={{ width: 600, height: 500 }}
                 minWidth={350}
                 minHeight={300}
+                panelKey="spell-detail"
                 zIndex={floatingZIndices?.['spell-detail'] || 10050}
                 onBringToFront={() => bringToFront?.('spell-detail')}
               >
@@ -21057,6 +21063,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: 320, height: 340 }}
           minWidth={280}
           minHeight={250}
+          panelKey="roll-modifier"
           zIndex={floatingZIndices?.['roll-modifier'] || 10050}
           onBringToFront={() => bringToFront?.('roll-modifier')}
         >
@@ -21402,6 +21409,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(500, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
           minWidth={300}
           minHeight={250}
+          panelKey="class-browser"
           zIndex={floatingZIndices?.['class-browser'] || 10140}
           onBringToFront={() => bringToFront?.('class-browser')}
         >
@@ -21504,6 +21512,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
           minWidth={350}
           minHeight={300}
+          panelKey="class-skill-tree"
           zIndex={floatingZIndices?.['class-skill-tree'] || 10150}
           onBringToFront={() => bringToFront?.('class-skill-tree')}
         >
@@ -21538,6 +21547,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
           minWidth={350}
           minHeight={300}
+          panelKey="feat-tree-viewer"
           zIndex={floatingZIndices?.['feat-tree-viewer'] || 10100}
           onBringToFront={() => bringToFront?.('feat-tree-viewer')}
         >
@@ -23249,6 +23259,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       defaultSize={{ width: Math.min(700, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
       minWidth={350}
       minHeight={300}
+      panelKey="add-item"
       zIndex={floatingZIndices?.['add-item'] || 10100}
       onBringToFront={() => bringToFront?.('add-item')}
     >
@@ -24755,6 +24766,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       defaultSize={{ width: 600, height: 500 }}
       minWidth={350}
       minHeight={300}
+      panelKey="item-detail"
       zIndex={floatingZIndices?.['item-detail'] || 10050}
       onBringToFront={() => bringToFront?.('item-detail')}
     >
