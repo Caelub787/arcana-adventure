@@ -135,11 +135,20 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
 
-  React.useEffect(() => {
-    zIndexRef.current = zIndex;
+  const applyZIndex = React.useCallback(() => {
     const el = panelRef.current;
-    if (el) el.style.zIndex = String(zIndex);
-  }, [zIndex]);
+    if (!el) return;
+    const current = parseInt(el.style.zIndex || '0', 10);
+    const target = isFullscreen ? Math.max(zIndexRef.current, 10500) : zIndexRef.current;
+    if (current < target) {
+      el.style.zIndex = String(target);
+    }
+  }, [isFullscreen]);
+
+  React.useEffect(() => {
+    zIndexRef.current = Math.max(zIndexRef.current, zIndex);
+    applyZIndex();
+  }, [zIndex, applyZIndex]);
 
   const applyTransform = React.useCallback(() => {
     const el = panelRef.current;
@@ -166,8 +175,13 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   }, []);
 
   React.useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (el && !el.style.zIndex) {
+      el.style.zIndex = String(isFullscreen ? Math.max(zIndexRef.current, 10500) : zIndexRef.current);
+    }
     applyTransform();
-  }, [isFullscreen, isMinimized]);
+    applyZIndex();
+  }, [isFullscreen, isMinimized, applyZIndex]);
 
   const handleDragStart = React.useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
@@ -343,8 +357,6 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const minimizedMaxWidth = 120;
   const s = sizeRef.current;
 
-  const panelZIndex = isFullscreen ? Math.max(zIndexRef.current, 10500) : zIndexRef.current;
-
   const panelContent = (
     <>
       <div
@@ -358,7 +370,6 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           top: 0,
           width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
           height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
-          zIndex: panelZIndex,
           backfaceVisibility: 'hidden' as const,
         }}
         data-testid="floating-panel"

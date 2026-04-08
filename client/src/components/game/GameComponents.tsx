@@ -14517,9 +14517,10 @@ interface InventoryItemRowProps {
   onUpdateQuantity?: (itemId: string, quantityChange: number) => void;
   onDeleteMultiple?: (itemIds: string[]) => void;
   bringToFront?: (panelKey: string) => void;
+  charPanelSuffix?: string;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '' }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -14674,7 +14675,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           
           <div 
             className="flex items-center gap-3 flex-1 cursor-pointer"
-            onClick={() => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.('item-detail'); }}
+            onClick={() => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`); }}
           >
             <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
               {item.image ? (
@@ -14802,7 +14803,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 className={`p-2 bg-stone-800 border ${stackedItemRarityClass} rounded cursor-pointer hover:bg-stone-750 transition-colors`}
                 onDoubleClick={() => {
                   setSelectedItem(stackedItem);
-                  setShowItemDetail(true); bringToFront?.('item-detail');
+                  setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
                 }}
                 data-testid={`stacked-item-${stackedItem.id}`}
               >
@@ -14880,6 +14881,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               onUpdateQuantity={onUpdateQuantity}
               onDeleteMultiple={onDeleteMultiple}
               bringToFront={bringToFront}
+              charPanelSuffix={charPanelSuffix}
             />
           ))}
         </div>
@@ -15722,6 +15724,7 @@ function TraitEditForm({
 }
 
 export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem }: CharacterSheetProps) {
+  const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = campaignSystem === 'aa-v2';
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
@@ -16620,7 +16623,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     setExtraModifier(0);
     setHasAdvantage(false);
     setHasDisadvantage(false);
-    setRollPanelOpen(true); bringToFront?.('roll-modifier');
+    setRollPanelOpen(true); bringToFront?.(`roll-modifier${charPanelSuffix}`);
   };
 
   // Fetch items
@@ -18200,7 +18203,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       variant="outline"
                       size="sm"
                       className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
-                      onClick={() => { setShowFeatTreeViewer(true); bringToFront?.('feat-tree-viewer'); }}
+                      onClick={() => { setShowFeatTreeViewer(true); bringToFront?.(`feat-tree-viewer${charPanelSuffix}`); }}
                       data-testid="button-view-feat-tree"
                     >
                       <GitBranch className="h-4 w-4 mr-2" />
@@ -18242,7 +18245,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div
                               key={cc.id}
                               className="relative group cursor-pointer"
-                              onClick={() => { setShowClassSkillTree(cc.classId); bringToFront?.('class-skill-tree'); }}
+                              onClick={() => { setShowClassSkillTree(cc.classId); bringToFront?.(`class-skill-tree${charPanelSuffix}`); }}
                               onMouseEnter={() => setClassTooltip(cc.classId)}
                               onMouseLeave={() => { setClassTooltip(null); if (classTooltipTimer.current) clearTimeout(classTooltipTimer.current); }}
                               onTouchStart={() => { classTooltipTimer.current = setTimeout(() => setClassTooltip(cc.classId), 500); }}
@@ -18991,9 +18994,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               open={showAddCustomSkill}
               onClose={() => setShowAddCustomSkill(false)}
               title={<span className="text-cyan-500">Add Custom Skill</span>}
-              panelKey="skill-add"
-              zIndex={floatingZIndices?.['skill-add'] || 10200}
-              onBringToFront={() => bringToFront?.('skill-add')}
+              panelKey={`skill-add${charPanelSuffix}`}
+              zIndex={floatingZIndices?.[`skill-add${charPanelSuffix}`] || 10200}
+              onBringToFront={() => bringToFront?.(`skill-add${charPanelSuffix}`)}
               defaultSize={{ width: 500, height: 500 }}
               minWidth={300}
               minHeight={300}
@@ -19014,9 +19017,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 open={!!editingCustomSkill}
                 onClose={() => setEditingCustomSkill(null)}
                 title={<span className="text-cyan-500">Edit Custom Skill</span>}
-                panelKey="skill-edit"
-                zIndex={floatingZIndices?.['skill-edit'] || 10200}
-                onBringToFront={() => bringToFront?.('skill-edit')}
+                panelKey={`skill-edit${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`skill-edit${charPanelSuffix}`] || 10200}
+                onBringToFront={() => bringToFront?.(`skill-edit${charPanelSuffix}`)}
                 defaultSize={{ width: 500, height: 500 }}
                 minWidth={350}
                 minHeight={300}
@@ -19178,9 +19181,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               open={showAddTrait}
               onClose={() => setShowAddTrait(false)}
               title={<span className="text-rose-500">Add Trait</span>}
-              panelKey="trait-add"
-              zIndex={floatingZIndices?.['trait-add'] || 10200}
-              onBringToFront={() => bringToFront?.('trait-add')}
+              panelKey={`trait-add${charPanelSuffix}`}
+              zIndex={floatingZIndices?.[`trait-add${charPanelSuffix}`] || 10200}
+              onBringToFront={() => bringToFront?.(`trait-add${charPanelSuffix}`)}
               defaultSize={{ width: 500, height: 500 }}
               minWidth={350}
               minHeight={300}
@@ -19201,9 +19204,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 open={!!editingTrait}
                 onClose={() => setEditingTrait(null)}
                 title={<span className="text-rose-500">Edit Trait</span>}
-                panelKey="trait-edit"
-                zIndex={floatingZIndices?.['trait-edit'] || 10200}
-                onBringToFront={() => bringToFront?.('trait-edit')}
+                panelKey={`trait-edit${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`trait-edit${charPanelSuffix}`] || 10200}
+                onBringToFront={() => bringToFront?.(`trait-edit${charPanelSuffix}`)}
                 defaultSize={{ width: 500, height: 500 }}
                 minWidth={350}
                 minHeight={300}
@@ -19242,7 +19245,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </Button>
                   )}
                   {isGM && (
-                    <Button size="sm" onClick={() => { setShowAddItem(true); bringToFront?.('add-item'); }} data-testid="button-add-item">
+                    <Button size="sm" onClick={() => { setShowAddItem(true); bringToFront?.(`add-item${charPanelSuffix}`); }} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
                   )}
@@ -19405,6 +19408,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             Promise.all(itemIds.map(id => deleteItemMutation.mutateAsync(id)));
                           }}
                           bringToFront={bringToFront}
+                          charPanelSuffix={charPanelSuffix}
                         />
                       ))}
                     </div>
@@ -19531,7 +19535,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             className="bg-stone-900 rounded-lg p-3 border border-stone-700 hover:border-purple-500 cursor-pointer transition-all"
                             onClick={() => {
                               setSelectedSpell(spell);
-                              setShowSpellDetail(true); bringToFront?.('spell-detail');
+                              setShowSpellDetail(true); bringToFront?.(`spell-detail${charPanelSuffix}`);
                             }}
                             data-testid={`spell-card-${spell.id}`}
                           >
@@ -19596,9 +19600,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               defaultSize={{ width: Math.min(650, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
               minWidth={350}
               minHeight={300}
-              panelKey="add-spell"
-              zIndex={floatingZIndices?.['add-spell'] || 10100}
-              onBringToFront={() => bringToFront?.('add-spell')}
+              panelKey={`add-spell${charPanelSuffix}`}
+              zIndex={floatingZIndices?.[`add-spell${charPanelSuffix}`] || 10100}
+              onBringToFront={() => bringToFront?.(`add-spell${charPanelSuffix}`)}
             >
               <div className="flex flex-col h-full overflow-hidden">
                 
@@ -20416,9 +20420,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 defaultSize={{ width: 600, height: 500 }}
                 minWidth={350}
                 minHeight={300}
-                panelKey="spell-detail"
-                zIndex={floatingZIndices?.['spell-detail'] || 10050}
-                onBringToFront={() => bringToFront?.('spell-detail')}
+                panelKey={`spell-detail${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`spell-detail${charPanelSuffix}`] || 10050}
+                onBringToFront={() => bringToFront?.(`spell-detail${charPanelSuffix}`)}
               >
                     <div className="p-4 space-y-4">
                       <div className="flex gap-2">
@@ -21027,6 +21031,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}
         campaignSystem={campaignSystem}
+        charPanelSuffix={charPanelSuffix}
       />
 
       {/* Add/Edit Item Floating Panel */}
@@ -21039,6 +21044,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         campaignSystem={campaignSystem}
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}
+        charPanelSuffix={charPanelSuffix}
       />
 
       {/* Manage Templates Dialog (GM Only) */}
@@ -21063,9 +21069,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: 320, height: 340 }}
           minWidth={280}
           minHeight={250}
-          panelKey="roll-modifier"
-          zIndex={floatingZIndices?.['roll-modifier'] || 10050}
-          onBringToFront={() => bringToFront?.('roll-modifier')}
+          panelKey={`roll-modifier${charPanelSuffix}`}
+          zIndex={floatingZIndices?.[`roll-modifier${charPanelSuffix}`] || 10050}
+          onBringToFront={() => bringToFront?.(`roll-modifier${charPanelSuffix}`)}
         >
           <div className="p-4 space-y-4">
             <p className="text-sm text-stone-400">
@@ -21409,9 +21415,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(500, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
           minWidth={300}
           minHeight={250}
-          panelKey="class-browser"
-          zIndex={floatingZIndices?.['class-browser'] || 10140}
-          onBringToFront={() => bringToFront?.('class-browser')}
+          panelKey={`class-browser${charPanelSuffix}`}
+          zIndex={floatingZIndices?.[`class-browser${charPanelSuffix}`] || 10140}
+          onBringToFront={() => bringToFront?.(`class-browser${charPanelSuffix}`)}
         >
           <div className="flex-1 min-h-0 overflow-auto p-3 space-y-2">
             {availableClasses.length === 0 ? (
@@ -21455,7 +21461,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0 text-fuchsia-400 hover:text-fuchsia-300 hover:bg-fuchsia-900/30"
-                          onClick={() => { setShowClassSkillTree(cls.id); bringToFront?.('class-skill-tree'); }}
+                          onClick={() => { setShowClassSkillTree(cls.id); bringToFront?.(`class-skill-tree${charPanelSuffix}`); }}
                           data-testid={`class-tree-${cls.id}`}
                         >
                           <GitBranch className="h-4 w-4" />
@@ -21512,9 +21518,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
           minWidth={350}
           minHeight={300}
-          panelKey="class-skill-tree"
-          zIndex={floatingZIndices?.['class-skill-tree'] || 10150}
-          onBringToFront={() => bringToFront?.('class-skill-tree')}
+          panelKey={`class-skill-tree${charPanelSuffix}`}
+          zIndex={floatingZIndices?.[`class-skill-tree${charPanelSuffix}`] || 10150}
+          onBringToFront={() => bringToFront?.(`class-skill-tree${charPanelSuffix}`)}
         >
           <div className="flex-1 min-h-0 overflow-hidden h-full">
             <ClassSkillTreeViewer
@@ -21547,9 +21553,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
           minWidth={350}
           minHeight={300}
-          panelKey="feat-tree-viewer"
-          zIndex={floatingZIndices?.['feat-tree-viewer'] || 10100}
-          onBringToFront={() => bringToFront?.('feat-tree-viewer')}
+          panelKey={`feat-tree-viewer${charPanelSuffix}`}
+          zIndex={floatingZIndices?.[`feat-tree-viewer${charPanelSuffix}`] || 10100}
+          onBringToFront={() => bringToFront?.(`feat-tree-viewer${charPanelSuffix}`)}
         >
           <div className="flex-1 min-h-0 overflow-hidden h-full">
             {featTreeData?.tree?.description && (
@@ -22863,7 +22869,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number> }) {
+function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '' }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string }) {
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
@@ -23259,9 +23265,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       defaultSize={{ width: Math.min(700, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
       minWidth={350}
       minHeight={300}
-      panelKey="add-item"
-      zIndex={floatingZIndices?.['add-item'] || 10100}
-      onBringToFront={() => bringToFront?.('add-item')}
+      panelKey={`add-item${charPanelSuffix}`}
+      zIndex={floatingZIndices?.[`add-item${charPanelSuffix}`] || 10100}
+      onBringToFront={() => bringToFront?.(`add-item${charPanelSuffix}`)}
     >
       <div className="flex flex-col h-full overflow-hidden">
         {/* Tabs */}
@@ -24470,9 +24476,10 @@ interface ItemDetailDialogProps {
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
   campaignSystem?: string;
+  charPanelSuffix?: string;
 }
 
-function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem }: ItemDetailDialogProps) {
+function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '' }: ItemDetailDialogProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
@@ -24766,9 +24773,9 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       defaultSize={{ width: 600, height: 500 }}
       minWidth={350}
       minHeight={300}
-      panelKey="item-detail"
-      zIndex={floatingZIndices?.['item-detail'] || 10050}
-      onBringToFront={() => bringToFront?.('item-detail')}
+      panelKey={`item-detail${charPanelSuffix}`}
+      zIndex={floatingZIndices?.[`item-detail${charPanelSuffix}`] || 10050}
+      onBringToFront={() => bringToFront?.(`item-detail${charPanelSuffix}`)}
     >
       <div className="p-4">
           <div className="flex items-center justify-between mb-4">
