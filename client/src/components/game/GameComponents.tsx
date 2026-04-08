@@ -15723,7 +15723,7 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = campaignSystem === 'aa-v2';
   // Name-only mode: user only has 'name' access (token name only, no stats)
@@ -21590,7 +21590,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       )}
     </div>
   );
-}
+});
 
 // Feat Tree Viewer Grid Component - Pan/zoom navigation
 function FeatTreeViewerGrid({ 

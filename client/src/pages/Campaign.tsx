@@ -6401,7 +6401,7 @@ function renderWorldHomeContent(content: string) {
   });
 }
 
-function WorldBuilderContent({
+const WorldBuilderContent = React.memo(function WorldBuilderContent({
   campaignId,
   isGM,
   characters,
@@ -7365,7 +7365,7 @@ function WorldBuilderContent({
       )}
     </>
   );
-}
+});
 
 function FloatingWorldBuilder({
   campaignId,
