@@ -18200,7 +18200,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       variant="outline"
                       size="sm"
                       className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
-                      onClick={() => setShowFeatTreeViewer(true)}
+                      onClick={() => { setShowFeatTreeViewer(true); bringToFront?.('feat-tree-viewer'); }}
                       data-testid="button-view-feat-tree"
                     >
                       <GitBranch className="h-4 w-4 mr-2" />
@@ -18242,7 +18242,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div
                               key={cc.id}
                               className="relative group cursor-pointer"
-                              onClick={() => setShowClassSkillTree(cc.classId)}
+                              onClick={() => { setShowClassSkillTree(cc.classId); bringToFront?.('class-skill-tree'); }}
                               onMouseEnter={() => setClassTooltip(cc.classId)}
                               onMouseLeave={() => { setClassTooltip(null); if (classTooltipTimer.current) clearTimeout(classTooltipTimer.current); }}
                               onTouchStart={() => { classTooltipTimer.current = setTimeout(() => setClassTooltip(cc.classId), 500); }}
@@ -21447,7 +21447,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0 text-fuchsia-400 hover:text-fuchsia-300 hover:bg-fuchsia-900/30"
-                          onClick={() => setShowClassSkillTree(cls.id)}
+                          onClick={() => { setShowClassSkillTree(cls.id); bringToFront?.('class-skill-tree'); }}
                           data-testid={`class-tree-${cls.id}`}
                         >
                           <GitBranch className="h-4 w-4" />
@@ -22528,12 +22528,27 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         lastTouchDistanceRef.current = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      } else if (e.touches.length === 1) {
+        const target = e.touches[0].target as HTMLElement;
+        if (!target.closest('[data-class-node]')) {
+          e.preventDefault();
+          gestureModeRef.current = 'panning';
+          panStartRef.current = { ...panRef.current };
+          pointerStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault();
-      if (e.touches.length === 2 && gestureModeRef.current === 'pinching') {
+      if (e.touches.length === 1 && gestureModeRef.current === 'panning') {
+        const dx = e.touches[0].clientX - pointerStartRef.current.x;
+        const dy = e.touches[0].clientY - pointerStartRef.current.y;
+        const newPan = { x: panStartRef.current.x + dx, y: panStartRef.current.y + dy };
+        panRef.current = newPan;
+        motionX.set(newPan.x);
+        motionY.set(newPan.y);
+      } else if (e.touches.length === 2 && gestureModeRef.current === 'pinching') {
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
@@ -22572,9 +22587,9 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
     const handleTouchEnd = () => {
       lastTouchDistanceRef.current = null;
       if (gestureModeRef.current === 'pinching') {
-        gestureModeRef.current = 'idle';
         isPinchingRef.current = false;
       }
+      gestureModeRef.current = 'idle';
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: false });
