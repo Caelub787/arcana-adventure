@@ -483,6 +483,7 @@ export const items = pgTable("items", {
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
+  templateItemId: varchar("template_item_id"), // Links to source template item for roll propagation
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -682,7 +683,7 @@ export type CharacterTrait = typeof characterTraits.$inferSelect;
 // Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
 export const spells = pgTable("spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   image: text("image"),
   description: text("description"),
@@ -712,6 +713,9 @@ export const spells = pgTable("spells", {
   saveAttribute: text("save_attribute"),
   saveDc: integer("save_dc"),
   saveSuccessEffect: text("save_success_effect"),
+  isTemplate: boolean("is_template").default(false).notNull(),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  templateSpellId: varchar("template_spell_id"),
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -1315,6 +1319,7 @@ export const rollEntries = pgTable("roll_entries", {
   requiredSkillValue: integer("required_skill_value").default(1),
   hasDcCheck: boolean("has_dc_check").default(false),
   dcToSucceed: integer("dc_to_succeed"),
+  fromTemplateRollId: varchar("from_template_roll_id"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

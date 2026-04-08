@@ -3281,9 +3281,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sourceTemplateId = req.body.sourceTemplateId;
 
+      // Check if source is a campaign template spell (for template linking)
+      let linkToTemplate = false;
+      if (sourceTemplateId) {
+        const sourceSpell = await storage.getSpell(sourceTemplateId);
+        if (sourceSpell && sourceSpell.isTemplate && sourceSpell.campaignId) {
+          linkToTemplate = true;
+        }
+      }
+
       const spellData = insertSpellSchema.parse({
         ...req.body,
-        characterId: req.params.characterId
+        characterId: req.params.characterId,
+        templateSpellId: linkToTemplate ? sourceTemplateId : undefined,
       });
 
       const spell = await storage.createSpell(spellData);
@@ -3331,6 +3341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isHidden: roll.isHidden,
               requiredSkillId: roll.requiredSkillId,
               requiredSkillValue: roll.requiredSkillValue,
+              fromTemplateRollId: linkToTemplate ? roll.id : undefined,
             }));
             await storage.createRollEntriesBulk(rollEntriesToInsert as any);
           }
@@ -3450,6 +3461,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/roll-entries", requireAuth, async (req, res) => {
     try {
       const entry = await storage.createRollEntry(req.body);
+
+      // Roll propagation: if this roll belongs to a template item/spell, propagate to linked items/spells
+      if (entry.ownerType === 'item') {
+        const ownerItem = await storage.getItem(entry.ownerId);
+        if (ownerItem && ownerItem.isTemplate) {
+          const linkedItems = await storage.getItemsLinkedToTemplate(ownerItem.id);
+          for (const linked of linkedItems) {
+            const { id: _id, ...rollData } = entry;
+            await storage.createRollEntry({
+              ...rollData,
+              ownerId: linked.id,
+              fromTemplateRollId: entry.id,
+            });
+          }
+        }
+      } else if (entry.ownerType === 'spell') {
+        const ownerSpell = await storage.getSpell(entry.ownerId);
+        if (ownerSpell && ownerSpell.isTemplate) {
+          const linkedSpells = await storage.getSpellsLinkedToTemplate(ownerSpell.id);
+          for (const linked of linkedSpells) {
+            const { id: _id, ...rollData } = entry;
+            await storage.createRollEntry({
+              ...rollData,
+              ownerId: linked.id,
+              fromTemplateRollId: entry.id,
+            });
+          }
+        }
+      }
+
       res.json(entry);
     } catch (err) {
       res.status(400).json({ error: "Failed to create roll entry" });
@@ -3462,6 +3503,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!entry) {
         return res.status(404).json({ error: "Roll entry not found" });
       }
+
+      // Roll propagation: if this roll belongs to a template, update all inherited copies
+      const isTemplateOwner = await (async () => {
+        if (entry.ownerType === 'item') {
+          const ownerItem = await storage.getItem(entry.ownerId);
+          return ownerItem?.isTemplate === true;
+        } else if (entry.ownerType === 'spell') {
+          const ownerSpell = await storage.getSpell(entry.ownerId);
+          return ownerSpell?.isTemplate === true;
+        }
+        return false;
+      })();
+
+      if (isTemplateOwner) {
+        const inheritedRolls = await storage.getRollEntriesByTemplateRollId(entry.id);
+        const propagateFields = { ...req.body };
+        delete propagateFields.ownerId;
+        delete propagateFields.ownerType;
+        delete propagateFields.fromTemplateRollId;
+        for (const inherited of inheritedRolls) {
+          await storage.updateRollEntry(inherited.id, propagateFields);
+        }
+      }
+
       res.json(entry);
     } catch (err) {
       res.status(400).json({ error: "Failed to update roll entry" });
@@ -3477,6 +3542,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Cannot delete Detonate roll while item is detonatable. Uncheck 'Is Detonatable' first." });
         }
       }
+
+      // Roll propagation: if this roll belongs to a template, delete all inherited copies
+      if (entry) {
+        const isTemplateOwner = await (async () => {
+          if (entry.ownerType === 'item') {
+            const ownerItem = await storage.getItem(entry.ownerId);
+            return ownerItem?.isTemplate === true;
+          } else if (entry.ownerType === 'spell') {
+            const ownerSpell = await storage.getSpell(entry.ownerId);
+            return ownerSpell?.isTemplate === true;
+          }
+          return false;
+        })();
+
+        if (isTemplateOwner) {
+          const inheritedRolls = await storage.getRollEntriesByTemplateRollId(entry.id);
+          for (const inherited of inheritedRolls) {
+            await storage.deleteRollEntry(inherited.id);
+          }
+        }
+      }
+
       await storage.deleteRollEntry(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -7069,11 +7156,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign item not found" });
       }
       
+      // Unlink all items that reference this template (they keep their rolls)
+      const linkedItems = await storage.getItemsLinkedToTemplate(req.params.id);
+      for (const linked of linkedItems) {
+        await storage.updateItem(linked.id, { templateItemId: null } as any);
+      }
+      // Clear fromTemplateRollId on inherited rolls so they become independent
+      const templateRolls = await storage.getRollEntries('item', req.params.id);
+      for (const tRoll of templateRolls) {
+        const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
+        for (const iRoll of inherited) {
+          await storage.updateRollEntry(iRoll.id, { fromTemplateRollId: null } as any);
+        }
+      }
+
       await storage.deleteItem(req.params.id);
       broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-items', campaignId: req.params.campaignId });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete campaign item" });
+    }
+  });
+
+  // Campaign template spell routes
+  app.get("/api/campaigns/:campaignId/template-spells", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(req.params.campaignId, userId);
+      if (!isMember) return res.status(403).json({ error: "Not a campaign member" });
+      const templateSpells = await storage.getCampaignTemplateSpells(req.params.campaignId);
+      res.json(templateSpells);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch template spells" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/template-spells", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can create template spells" });
+
+      const spellData = insertSpellSchema.parse({
+        ...req.body,
+        isTemplate: true,
+        campaignId: req.params.campaignId,
+        characterId: null,
+      });
+      const spell = await storage.createSpell(spellData);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-spells', campaignId: req.params.campaignId });
+      res.json(spell);
+    } catch (err) {
+      console.error("Failed to create template spell:", err);
+      res.status(400).json({ error: "Failed to create template spell" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/template-spells/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can edit template spells" });
+
+      const spell = await storage.getSpell(req.params.id);
+      if (!spell || spell.campaignId !== req.params.campaignId || !spell.isTemplate) {
+        return res.status(404).json({ error: "Template spell not found" });
+      }
+
+      const updated = await storage.updateSpell(req.params.id, req.body);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-spells', campaignId: req.params.campaignId });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update template spell" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/template-spells/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can delete template spells" });
+
+      const spell = await storage.getSpell(req.params.id);
+      if (!spell || spell.campaignId !== req.params.campaignId || !spell.isTemplate) {
+        return res.status(404).json({ error: "Template spell not found" });
+      }
+
+      // Unlink all spells that reference this template (they keep their rolls)
+      const linkedSpells = await storage.getSpellsLinkedToTemplate(req.params.id);
+      for (const linked of linkedSpells) {
+        await storage.updateSpell(linked.id, { templateSpellId: null } as any);
+      }
+      // Clear fromTemplateRollId on inherited rolls so they become independent
+      const templateRolls = await storage.getRollEntries('spell', req.params.id);
+      for (const tRoll of templateRolls) {
+        const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
+        for (const iRoll of inherited) {
+          await storage.updateRollEntry(iRoll.id, { fromTemplateRollId: null } as any);
+        }
+      }
+
+      await storage.deleteRollEntriesByOwner('spell', req.params.id);
+      await storage.deleteSpell(req.params.id);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-spells', campaignId: req.params.campaignId });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete template spell" });
     }
   });
 
@@ -7116,9 +7309,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sourceTemplateId = req.body.sourceTemplateId;
 
+      // Check if source template is a campaign template (for template linking)
+      let linkToTemplate = false;
+      if (sourceTemplateId) {
+        const sourceItem = await storage.getItem(sourceTemplateId);
+        if (sourceItem && sourceItem.isTemplate && sourceItem.campaignId) {
+          linkToTemplate = true;
+        }
+      }
+
       const itemData = insertItemSchema.parse({
         ...req.body,
-        characterId: req.params.characterId
+        characterId: req.params.characterId,
+        templateItemId: linkToTemplate ? sourceTemplateId : undefined,
       });
 
       const item = await storage.createItem(itemData);
@@ -7166,6 +7369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isHidden: roll.isHidden,
               requiredSkillId: roll.requiredSkillId,
               requiredSkillValue: roll.requiredSkillValue,
+              fromTemplateRollId: linkToTemplate ? roll.id : undefined,
             }));
             await storage.createRollEntriesBulk(rollEntriesToInsert as any);
           }

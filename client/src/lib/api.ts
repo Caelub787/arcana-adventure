@@ -1714,6 +1714,28 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/template-items/${id}`, { method: 'DELETE' });
   }
 
+  async getTemplateSpells(campaignId: string): Promise<any[]> {
+    return this.request(`/campaigns/${campaignId}/template-spells`);
+  }
+
+  async createCampaignTemplateSpell(campaignId: string, spell: any): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/template-spells`, {
+      method: 'POST',
+      body: JSON.stringify(spell),
+    });
+  }
+
+  async updateCampaignTemplateSpell(campaignId: string, id: string, data: any): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/template-spells/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCampaignTemplateSpell(campaignId: string, id: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/template-spells/${id}`, { method: 'DELETE' });
+  }
+
   // Character Permissions
   async getCharacterPermissions(characterId: string): Promise<CharacterPermission[]> {
     return this.request(`/characters/${characterId}/permissions`);

@@ -1144,6 +1144,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                       <div className="w-3 h-3 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: roll.primaryColor }} />
                     )}
                     <span className={`text-xs font-medium truncate ${isHiddenRoll ? 'text-stone-500' : 'text-stone-200'}`} data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
+                    {(roll as any).fromTemplateRollId && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/50 shrink-0" data-testid={`badge-template-roll-${roll.id}`}>T</span>
+                    )}
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
                         {roll.diceFormula}{roll.mod && roll.mod !== 0 ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ""}

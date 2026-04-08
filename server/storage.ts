@@ -206,6 +206,10 @@ export interface IStorage {
   createSpell(spell: InsertSpell): Promise<Spell>;
   updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined>;
   deleteSpell(id: string): Promise<void>;
+  getCampaignTemplateSpells(campaignId: string): Promise<Spell[]>;
+  getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]>;
+  getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]>;
+  getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]>;
 
   // Roll Entry operations
   getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
@@ -1972,6 +1976,33 @@ export class DatabaseStorage implements IStorage {
     await db.delete(hotbars).where(eq(hotbars.spellId, id));
     // Then delete the spell
     await db.delete(spells).where(eq(spells.id, id));
+  }
+
+  async getCampaignTemplateSpells(campaignId: string): Promise<Spell[]> {
+    return await db.select()
+      .from(spells)
+      .where(and(
+        eq(spells.isTemplate, true),
+        eq(spells.campaignId, campaignId)
+      ));
+  }
+
+  async getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]> {
+    return await db.select()
+      .from(items)
+      .where(eq(items.templateItemId, templateItemId)) as Item[];
+  }
+
+  async getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]> {
+    return await db.select()
+      .from(spells)
+      .where(eq(spells.templateSpellId, templateSpellId));
+  }
+
+  async getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]> {
+    return await db.select()
+      .from(rollEntries)
+      .where(eq(rollEntries.fromTemplateRollId, fromTemplateRollId));
   }
 
   // Roll Entry operations

@@ -41,6 +41,7 @@ import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
+import { TemplateManager } from './TemplateManager';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay, FogMoveOverlay } from './FogOfWarOverlay';
@@ -11022,6 +11023,18 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 </Button>
               </div>
 
+              {campaignId && (
+                <div className="mt-4 p-3 bg-stone-900/50 border border-stone-700 rounded-lg">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1.5">
+                    <Library className="w-3.5 h-3.5" /> Roll Templates
+                  </h4>
+                  <p className="text-[10px] text-stone-500 mb-2">
+                    Create item/spell templates with rolls. When items/spells are created from these templates, rolls stay linked and update automatically.
+                  </p>
+                  <TemplateManager campaignId={campaignId} campaignSystem={system} />
+                </div>
+              )}
+
               {/* Banned Players Section */}
               {bannedPlayers && bannedPlayers.length > 0 && (
                 <div className="mt-6 p-4 bg-red-950/20 border border-red-900/30 rounded-lg">
@@ -16938,6 +16951,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: campaignTemplateSpells = [] } = useQuery({
+    queryKey: ['template-spells', campaignId],
+    queryFn: () => campaignId ? api.getTemplateSpells(campaignId) : Promise.resolve([]),
+    enabled: !!campaignId,
+  });
+
   // Spell mutations
   const createSpellMutation = useMutation({
     mutationFn: (spellData: any) => api.createSpell(character.id, spellData),
@@ -19847,11 +19866,94 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         }).length === 0 && (
                           <div className="text-center py-8 text-stone-400">
                             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                            <p>No spells found{hasActiveSpellLibraryFilters ? ' matching filters' : ' in the library'}</p>
-                            <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
+                            <p>No system spells found{hasActiveSpellLibraryFilters ? ' matching filters' : ''}</p>
+                            {(campaignTemplateSpells as any[]).length === 0 && (
+                              <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
+                            )}
                           </div>
                         )}
                       </div>
+
+                      {(campaignTemplateSpells as any[]).length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-stone-700">
+                          <h4 className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1.5">
+                            <Library className="w-3.5 h-3.5" /> Campaign Templates
+                          </h4>
+                          <div className="space-y-2">
+                            {(campaignTemplateSpells as any[])
+                              .filter((t: any) => !spellLibrarySearch || t.name?.toLowerCase().includes(spellLibrarySearch.toLowerCase()))
+                              .map((template: any) => (
+                                <div
+                                  key={template.id}
+                                  className="p-3 bg-amber-950/20 rounded-lg border border-amber-900/30 hover:border-amber-500 cursor-pointer"
+                                  onClick={() => {
+                                    let aoeValue = template.aoe;
+                                    if (template.isAoe && template.aoeShape && template.aoeRange) {
+                                      aoeValue = `${template.aoeShape}:${template.aoeRange}`;
+                                    }
+                                    createSpellMutation.mutate({
+                                      name: template.name,
+                                      description: template.description,
+                                      image: template.image || undefined,
+                                      level: template.level || 0,
+                                      school: template.school,
+                                      damage: template.damageDice || template.damage,
+                                      damageDice: template.damageDice || template.damage,
+                                      damageType: template.damageType,
+                                      range: template.range,
+                                      aoe: aoeValue,
+                                      castingTime: template.castingTime,
+                                      duration: template.duration,
+                                      attribute: template.attribute,
+                                      energyCost: template.energyCost,
+                                      isAoe: template.isAoe,
+                                      isAttack: template.isAttack,
+                                      gainEnergy: template.gainEnergy,
+                                      passesThroughWalls: template.passesThroughWalls,
+                                      requiresSave: template.requiresSave,
+                                      saveAttribute: template.saveAttribute || undefined,
+                                      saveDc: template.saveDc || undefined,
+                                      saveSuccessEffect: template.saveSuccessEffect || undefined,
+                                      sourceTemplateId: template.id,
+                                    });
+                                    setShowAddSpell(false);
+                                    setSpellLibrarySearch('');
+                                  }}
+                                  data-testid={`spell-template-item-${template.id}`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-amber-900/30 rounded flex items-center justify-center overflow-hidden">
+                                      {template.image ? (
+                                        <img src={template.image} alt={template.name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <Sparkles className="h-5 w-5 text-amber-400" />
+                                      )}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{template.name}</span>
+                                        <span className="text-[9px] px-1 py-0.5 bg-amber-800/40 text-amber-300 rounded">TEMPLATE</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
+                                        {template.castingTime && (
+                                          <span className={template.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
+                                            {template.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                                          </span>
+                                        )}
+                                        {template.damageDice && <span>| {template.damageDice} {template.damageType}</span>}
+                                        {template.duration && <span>| {template.duration}</span>}
+                                      </div>
+                                      {template.description && (
+                                        <p className="text-xs text-stone-500 mt-1 line-clamp-1">{template.description}</p>
+                                      )}
+                                    </div>
+                                    <Plus className="h-5 w-5 text-amber-400" />
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   
