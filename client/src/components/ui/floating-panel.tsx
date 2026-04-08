@@ -306,7 +306,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     }
     applyTransform();
     applySize();
-    forceRender((n) => n + 1);
+    setTimeout(() => forceRender((n) => n + 1), 50);
   }, [applyTransform, applySize]);
 
   const toggleMinimize = React.useCallback(() => {
