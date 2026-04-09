@@ -483,7 +483,7 @@ export const items = pgTable("items", {
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
-  templateItemId: varchar("template_item_id"), // Links to source template item for roll propagation
+  templateItemId: varchar("template_item_id").references(() => items.id, { onDelete: "set null" }),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -715,7 +715,7 @@ export const spells = pgTable("spells", {
   saveSuccessEffect: text("save_success_effect"),
   isTemplate: boolean("is_template").default(false).notNull(),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
-  templateSpellId: varchar("template_spell_id"),
+  templateSpellId: varchar("template_spell_id").references(() => spells.id, { onDelete: "set null" }),
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -1319,7 +1319,7 @@ export const rollEntries = pgTable("roll_entries", {
   requiredSkillValue: integer("required_skill_value").default(1),
   hasDcCheck: boolean("has_dc_check").default(false),
   dcToSucceed: integer("dc_to_succeed"),
-  fromTemplateRollId: varchar("from_template_roll_id"),
+  fromTemplateRollId: varchar("from_template_roll_id").references(() => rollEntries.id, { onDelete: "set null" }),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

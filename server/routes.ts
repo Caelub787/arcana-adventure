@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -7216,14 +7216,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Unlink all items that reference this template (they keep their rolls)
       const linkedItems = await storage.getItemsLinkedToTemplate(req.params.id);
       for (const linked of linkedItems) {
-        await storage.updateItem(linked.id, { templateItemId: null } as any);
+        await db.update(items).set({ templateItemId: null }).where(eq(items.id, linked.id));
       }
-      // Clear fromTemplateRollId on inherited rolls so they become independent
       const templateRolls = await storage.getRollEntries('item', req.params.id);
       for (const tRoll of templateRolls) {
         const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
         for (const iRoll of inherited) {
-          await storage.updateRollEntry(iRoll.id, { fromTemplateRollId: null } as any);
+          await db.update(rollEntries).set({ fromTemplateRollId: null }).where(eq(rollEntries.id, iRoll.id));
         }
       }
 
@@ -7307,14 +7306,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Unlink all spells that reference this template (they keep their rolls)
       const linkedSpells = await storage.getSpellsLinkedToTemplate(req.params.id);
       for (const linked of linkedSpells) {
-        await storage.updateSpell(linked.id, { templateSpellId: null } as any);
+        await db.update(spells).set({ templateSpellId: null }).where(eq(spells.id, linked.id));
       }
-      // Clear fromTemplateRollId on inherited rolls so they become independent
       const templateRolls = await storage.getRollEntries('spell', req.params.id);
       for (const tRoll of templateRolls) {
         const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
         for (const iRoll of inherited) {
-          await storage.updateRollEntry(iRoll.id, { fromTemplateRollId: null } as any);
+          await db.update(rollEntries).set({ fromTemplateRollId: null }).where(eq(rollEntries.id, iRoll.id));
         }
       }
 
