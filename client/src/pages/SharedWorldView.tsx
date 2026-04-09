@@ -149,22 +149,76 @@ const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementTy
   { key: "calendar", label: "Calendar", icon: Calendar },
 ];
 
-function renderArticleContent(content: string) {
-  const lines = content.split("\n");
-  return lines.map((line, i) => {
-    if (line.startsWith("### ")) return <h3 key={i} className="text-lg font-semibold text-amber-200/90 mt-6 mb-3 flex items-center gap-2"><span className="w-6 h-px bg-amber-500/40" />{line.slice(4)}</h3>;
-    if (line.startsWith("## ")) return <h2 key={i} className="text-xl font-bold text-amber-100 mt-8 mb-3 pb-2 border-b border-amber-500/20">{line.slice(3)}</h2>;
-    if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-bold text-stone-100 mt-8 mb-4 pb-2 border-b border-amber-500/30">{line.slice(2)}</h1>;
-    if (line.startsWith("- ")) return <li key={i} className="ml-5 text-stone-300 text-sm list-disc marker:text-amber-500/50 leading-relaxed">{line.slice(2)}</li>;
-    if (line.startsWith("---")) return <div key={i} className="my-8 flex items-center gap-4"><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /><Sparkles className="h-3 w-3 text-amber-500/40" /><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /></div>;
-    if (line.trim() === "") return <div key={i} className="h-3" />;
-    const formatted = line
-      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>')
-      .replace(/\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded font-medium">$3</span>')
-      .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded">$1</span>');
-    return <p key={i} className="text-stone-300 text-[15px] leading-[1.8]" dangerouslySetInnerHTML={{ __html: formatted }} />;
-  });
+function renderMarkdownPreview(content: string): string {
+  if (!content) return '';
+  let html = content
+    .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-stone-200 mt-4 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-lg font-semibold text-stone-200 mt-5 mb-2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-stone-100 mt-6 mb-3">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-200 font-semibold">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em class="text-stone-300 italic">$1</em>')
+    .replace(/\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline font-medium" data-wiki-type="$1" data-wiki-id="$2">$3</span>')
+    .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline">$1</span>')
+    .replace(/^- (.+)$/gm, '<li class="text-stone-300 ml-4 list-disc">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="text-stone-300 ml-4 list-decimal">$1</li>')
+    .replace(/^---$/gm, '<hr class="border-stone-700 my-4" />')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/^(?!<[hlu]|<li|<hr|<p)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
+  return html;
+}
+
+function SharedArticlePreview({ content, entities, onEntityClick }: { content: string; entities: SharedEntity[]; onEntityClick?: (entityId: string) => void }) {
+  if (!content) return <p className="text-stone-500 italic">No content.</p>;
+
+  const wikiLinkRegex = /\[\[([^:\]]+):([^\|\]]+)\|([^\]]+)\]\]/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = wikiLinkRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const plainSegment = content.slice(lastIndex, match.index);
+      parts.push(
+        <span key={`plain-${lastIndex}`} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(plainSegment) }} />
+      );
+    }
+    const [, refType, refId, refLabel] = match;
+    const colorMap: Record<string, string> = {
+      entity: "text-amber-400 hover:text-amber-300",
+      map: "text-emerald-400 hover:text-emerald-300",
+      character: "text-blue-400 hover:text-blue-300",
+      item: "text-orange-400 hover:text-orange-300",
+      spell: "text-purple-400 hover:text-purple-300",
+    };
+    const linkedEntity = entities.find(e => e.id === refId);
+    parts.push(
+      <span
+        key={`ref-${match.index}`}
+        className={`${colorMap[refType] || "text-amber-400 hover:text-amber-300"} cursor-pointer font-medium bg-stone-800/50 px-1 rounded hover:underline`}
+        onClick={() => linkedEntity && onEntityClick?.(refId)}
+        data-testid={`wiki-link-${refType}-${refId}`}
+      >
+        {refLabel}
+      </span>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    parts.push(
+      <span key={`plain-end`} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(content.slice(lastIndex)) }} />
+    );
+  }
+
+  if (parts.length === 0) {
+    return (
+      <div
+        className="prose prose-invert max-w-none"
+        dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(content) }}
+        data-testid="article-preview"
+      />
+    );
+  }
+
+  return <div className="prose prose-invert max-w-none" data-testid="article-preview">{parts}</div>;
 }
 
 function CanvasReadOnlyView({ content }: { content: string }) {
@@ -1074,7 +1128,7 @@ export default function SharedWorldView() {
                 {data.homeContent && (
                   <div className="mb-12" data-testid="home-article-content">
                     <div className="bg-stone-900/40 rounded-xl border border-stone-800/60 p-6 md:p-10 backdrop-blur-sm shadow-xl shadow-black/20">
-                      {renderArticleContent(data.homeContent)}
+                      <SharedArticlePreview content={data.homeContent} entities={entities} onEntityClick={handleSelectEntity} />
                     </div>
                   </div>
                 )}
@@ -1234,36 +1288,53 @@ export default function SharedWorldView() {
             <>
               {selectedEntity ? (
                 <div className="flex-1 overflow-y-auto">
-                  <div className="max-w-3xl mx-auto p-4 md:p-8">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Button variant="ghost" size="sm" className="text-stone-500 text-xs h-6 px-2" onClick={() => { setSelectedEntityId(null); window.history.replaceState(null, '', window.location.pathname); }} data-testid="button-back-to-list">
-                        <ChevronLeft className="h-3 w-3 mr-1" /> Back
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-3 mb-4">
-                      {(() => {
-                        const cfg = ENTITY_TYPE_CONFIG[selectedEntity.entityType];
-                        const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
-                        return (
-                          <>
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: cfg?.color + "22" }}>
-                              <IconComp className="h-4 w-4" style={{ color: cfg?.color }} />
-                            </div>
-                            <div>
-                              <h1 className="text-xl font-bold text-stone-100" data-testid="text-entity-name">{selectedEntity.displayName}</h1>
-                              <Badge variant="outline" className="text-[9px] mt-0.5" style={{ borderColor: cfg?.color + "55", color: cfg?.color }}>{cfg?.label}</Badge>
-                            </div>
-                          </>
-                        );
-                      })()}
+                  <div className="max-w-3xl mx-auto">
+                    <div className="px-4 md:px-8 pt-4 md:pt-6">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Button variant="ghost" size="sm" className="text-stone-500 text-xs h-6 px-2" onClick={() => { setSelectedEntityId(null); window.history.replaceState(null, '', window.location.pathname); }} data-testid="button-back-to-list">
+                          <ChevronLeft className="h-3 w-3 mr-1" /> Back
+                        </Button>
+                      </div>
                     </div>
                     {selectedEntity.image && (
-                      <div className="mb-4 rounded-lg overflow-hidden border border-stone-800">
-                        <img src={selectedEntity.image} alt={selectedEntity.displayName} className="w-full max-h-[400px] object-cover" />
+                      <div className="relative w-full h-48 md:h-64 mb-6 overflow-hidden">
+                        <img src={selectedEntity.image} alt={selectedEntity.displayName} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0c0a09] via-[#0c0a09]/40 to-transparent" />
+                        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-8">
+                          {(() => {
+                            const cfg = ENTITY_TYPE_CONFIG[selectedEntity.entityType];
+                            return (
+                              <div>
+                                <Badge variant="outline" className="text-[9px] mb-2" style={{ borderColor: cfg?.color + "55", color: cfg?.color }}>{cfg?.label}</Badge>
+                                <h1 className="text-2xl md:text-3xl font-bold text-stone-100" data-testid="text-entity-name">{selectedEntity.displayName}</h1>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                    <div className="px-4 md:px-8 pb-8">
+                    {!selectedEntity.image && (
+                      <div className="flex items-center gap-3 mb-5">
+                        {(() => {
+                          const cfg = ENTITY_TYPE_CONFIG[selectedEntity.entityType];
+                          const IconComp = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                          return (
+                            <>
+                              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: cfg?.color + "22" }}>
+                                <IconComp className="h-5 w-5" style={{ color: cfg?.color }} />
+                              </div>
+                              <div>
+                                <h1 className="text-2xl font-bold text-stone-100" data-testid="text-entity-name">{selectedEntity.displayName}</h1>
+                                <Badge variant="outline" className="text-[9px] mt-0.5" style={{ borderColor: cfg?.color + "55", color: cfg?.color }}>{cfg?.label}</Badge>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                     {selectedEntity.description && (
-                      <p className="text-sm text-stone-400 italic mb-4 border-l-2 border-stone-700 pl-3">{selectedEntity.description}</p>
+                      <p className="text-sm text-stone-400 italic mb-5 border-l-2 border-amber-500/30 pl-3">{selectedEntity.description}</p>
                     )}
                     {selectedEntity.tags && selectedEntity.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-4">
@@ -1295,9 +1366,7 @@ export default function SharedWorldView() {
                       selectedEntity.entityType === "canvas" ? (
                         <CanvasReadOnlyView content={selectedEntity.articleContent} />
                       ) : (
-                        <div className="prose prose-invert prose-sm max-w-none">
-                          {renderArticleContent(selectedEntity.articleContent)}
-                        </div>
+                        <SharedArticlePreview content={selectedEntity.articleContent} entities={entities} onEntityClick={handleSelectEntity} />
                       )
                     )}
                     {entityLinks.filter(l => l.fromEntityId === selectedEntity.id || l.toEntityId === selectedEntity.id).length > 0 && (
@@ -1328,6 +1397,7 @@ export default function SharedWorldView() {
                         </div>
                       </div>
                     )}
+                  </div>
                   </div>
                 </div>
               ) : (
