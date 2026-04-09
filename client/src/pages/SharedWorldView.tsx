@@ -161,9 +161,9 @@ function renderMarkdownPreview(content: string): string {
     .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline">$1</span>')
     .replace(/^- (.+)$/gm, '<li class="text-stone-300 ml-4 list-disc">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="text-stone-300 ml-4 list-decimal">$1</li>')
-    .replace(/^---$/gm, '<hr class="border-stone-700 my-4" />')
+    .replace(/^---$/gm, '<div class="my-6 flex items-center gap-3"><div class="flex-1 h-px" style="background:linear-gradient(to right,transparent,rgba(245,158,11,0.3),transparent)"></div></div>')
     .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/^(?!<[hlu]|<li|<hr|<p)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
+    .replace(/^(?!<[hdhlu]|<li|<hr|<p|<div)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
   return html;
 }
 
@@ -1392,9 +1392,9 @@ export default function SharedWorldView() {
                       <p className="text-sm text-stone-400 italic mb-5 border-l-2 border-amber-500/30 pl-3">{selectedEntity.description}</p>
                     )}
                     {selectedEntity.tags && selectedEntity.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-4">
+                      <div className="flex flex-wrap gap-1 mb-5">
                         {selectedEntity.tags.map((tag, i) => (
-                          <Badge key={i} variant="outline" className="text-[9px] border-stone-700 text-stone-500">{tag}</Badge>
+                          <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0" style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>{tag}</Badge>
                         ))}
                       </div>
                     )}
@@ -1425,7 +1425,8 @@ export default function SharedWorldView() {
                       )
                     )}
                     {entityLinks.filter(l => l.fromEntityId === selectedEntity.id || l.toEntityId === selectedEntity.id).length > 0 && (
-                      <div className="mt-6 pt-4 border-t border-stone-800">
+                      <div className="mt-6 pt-4">
+                        <div className="mb-4 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(245,158,11,0.3), transparent)" }} />
                         <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Related</h3>
                         <div className="space-y-1">
                           {entityLinks

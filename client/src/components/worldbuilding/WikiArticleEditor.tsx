@@ -36,9 +36,9 @@ function renderMarkdownPreview(content: string): string {
     .replace(/\[\[(.+?)\]\]/g, '<span class="text-amber-400 bg-amber-900/20 px-1 rounded cursor-pointer hover:underline">$1</span>')
     .replace(/^- (.+)$/gm, '<li class="text-stone-300 ml-4 list-disc">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="text-stone-300 ml-4 list-decimal">$1</li>')
-    .replace(/^---$/gm, '<hr class="border-stone-700 my-4" />')
+    .replace(/^---$/gm, '<div class="my-6 flex items-center gap-3"><div class="flex-1 h-px" style="background:linear-gradient(to right,transparent,rgba(245,158,11,0.3),transparent)"></div></div>')
     .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/^(?!<[hlu]|<li|<hr|<p)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
+    .replace(/^(?!<[hdhlu]|<li|<hr|<p|<div)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
   return html;
 }
 
