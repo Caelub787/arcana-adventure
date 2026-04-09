@@ -11116,6 +11116,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               )}
             </div>
           )}
+          {!charactersOnly && role === 'gm' && <CampaignWikiSelector campaignId={campaignId!} />}
           {!charactersOnly && <InviteCodeSection inviteCode={inviteCode} />}
           {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (
             <Button
