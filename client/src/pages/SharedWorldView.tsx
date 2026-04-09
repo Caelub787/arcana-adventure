@@ -291,6 +291,8 @@ function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
     return trail;
   };
 
+  const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
       setIsPanning(true);
@@ -306,6 +308,36 @@ function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
 
   const handleMouseUp = () => setIsPanning(false);
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      setLastTouchDist(Math.sqrt(dx * dx + dy * dy));
+    }
+  }, [pan.x, pan.y]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && isPanning) {
+      setPan({ x: e.touches[0].clientX - panStart.x, y: e.touches[0].clientY - panStart.y });
+    } else if (e.touches.length === 2 && lastTouchDist !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / lastTouchDist;
+      setZoom(z => Math.max(0.1, Math.min(5, z * scale)));
+      setLastTouchDist(dist);
+    }
+  }, [isPanning, panStart, lastTouchDist]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsPanning(false);
+    setLastTouchDist(null);
+  }, []);
+
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -319,6 +351,25 @@ function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
       return () => el.removeEventListener("wheel", handleWheel);
     }
   }, [handleWheel]);
+
+  useEffect(() => {
+    if (!selectedMap?.imageUrl || !containerRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+      if (cw === 0 || ch === 0) return;
+      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight, 1);
+      setZoom(scale);
+      setPan({
+        x: (cw - img.naturalWidth * scale) / 2,
+        y: (ch - img.naturalHeight * scale) / 2,
+      });
+    };
+    img.src = selectedMap.imageUrl;
+  }, [selectedMap?.id, selectedMap?.imageUrl]);
 
   const handlePinClick = (pin: SharedWorldMapPin) => {
     if (pin.pinType === "map_link" && pin.targetMapId) {
@@ -406,10 +457,14 @@ function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing bg-stone-950"
+        style={{ touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
@@ -1435,12 +1490,14 @@ export default function SharedWorldView() {
           )}
 
           {activeSection === "maps" && (
-            <SharedMapViewer
-              maps={maps}
-              mapPins={mapPins}
-              entities={entities}
-              onNavigateToEntity={handleSelectEntity}
-            />
+            <div className="flex-1 min-h-0 flex flex-col">
+              <SharedMapViewer
+                maps={maps}
+                mapPins={mapPins}
+                entities={entities}
+                onNavigateToEntity={handleSelectEntity}
+              />
+            </div>
           )}
 
           {activeSection === "timeline" && (
