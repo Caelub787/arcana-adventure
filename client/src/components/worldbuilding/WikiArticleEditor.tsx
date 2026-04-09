@@ -5,9 +5,8 @@ import { PREDEFINED_TAGS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, Share2, ExternalLink, X, Tag, ChevronDown, Layout, Search, BookOpen, Map, Swords, Sparkles, User, Users, UserPlus, FileText } from "lucide-react";
+import { Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Image, Eye, EyeOff, Edit3, Save, Hash, X, Tag, Layout, Search, BookOpen, Map, Swords, Sparkles, User, Users, UserPlus, FileText } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -38,7 +37,7 @@ function renderMarkdownPreview(content: string): string {
     .replace(/^- (.+)$/gm, '<li class="text-stone-300 ml-4 list-disc">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="text-stone-300 ml-4 list-decimal">$1</li>')
     .replace(/^---$/gm, '<hr class="border-stone-700 my-4" />')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline">$1</a>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-amber-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/^(?!<[hlu]|<li|<hr|<p)(.+)$/gm, '<p class="text-stone-300 mb-2 leading-relaxed">$1</p>');
   return html;
 }
@@ -551,52 +550,86 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: 
     };
   }, [resolvedId, scope]);
 
-  const autoSave = debouncedSave;
+  const autoSave = useCallback(() => debouncedSave(), [debouncedSave]);
 
-  const insertMarkdown = (prefix: string, suffix: string = "") => {
+  const insertMarkdown = useCallback((prefix: string, suffix: string = "") => {
     const ta = textareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const selected = articleContent.substring(start, end);
-    const newContent = articleContent.substring(0, start) + prefix + selected + suffix + articleContent.substring(end);
-    setArticleContent(newContent);
-    autoSave();
-    setTimeout(() => {
-      ta.focus();
-      ta.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
-    }, 0);
-  };
+    const selected = articleContent.slice(start, end);
+    const before = articleContent.slice(0, start);
+    const after = articleContent.slice(end);
+    const isLinePrefix = !suffix && (prefix === "# " || prefix === "## " || prefix === "### " || prefix === "- " || prefix === "1. ");
+    if (isLinePrefix) {
+      const lineStart = before.lastIndexOf("\n") + 1;
+      const newContent = articleContent.slice(0, lineStart) + prefix + articleContent.slice(lineStart);
+      setArticleContent(newContent);
+      autoSave();
+      setTimeout(() => { ta.focus(); ta.setSelectionRange(start + prefix.length, end + prefix.length); }, 0);
+    } else {
+      const newContent = before + prefix + selected + suffix + after;
+      setArticleContent(newContent);
+      autoSave();
+      const newStart = start + prefix.length;
+      const newEnd = end + prefix.length;
+      setTimeout(() => { ta.focus(); ta.setSelectionRange(newStart, newEnd); }, 0);
+    }
+  }, [articleContent, autoSave]);
 
   const handleArticleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     const pos = e.target.selectionStart;
     setArticleContent(newContent);
-    setCursorPosition(pos);
     autoSave();
 
-    if (pos >= 2 && newContent.slice(pos - 2, pos) === "[[") {
-      const ta = textareaRef.current;
-      if (ta && editorContainerRef.current) {
-        const containerRect = editorContainerRef.current.getBoundingClientRect();
-        const taRect = ta.getBoundingClientRect();
-        const lineHeight = parseInt(getComputedStyle(ta).lineHeight) || 20;
-        const lines = newContent.substring(0, pos).split("\n");
-        const currentLineIndex = lines.length - 1;
-        const topOffset = taRect.top - containerRect.top + (currentLineIndex * lineHeight) + lineHeight + ta.scrollTop * -1;
-        setWikiPickerPos({ top: Math.min(topOffset, taRect.height - 50), left: 20 });
-      } else {
-        setWikiPickerPos({ top: 80, left: 20 });
-      }
+    const textBefore = newContent.slice(0, pos);
+    const lastOpen = textBefore.lastIndexOf("[[");
+    const lastClose = textBefore.lastIndexOf("]]");
+    if (lastOpen > lastClose && lastOpen >= pos - 3 && worldId) {
+      const ta = e.target;
+      const rect = ta.getBoundingClientRect();
+      const lineHeight = 20;
+      const lines = textBefore.split("\n").length;
+      setWikiPickerPos({
+        top: Math.min(lines * lineHeight, rect.height - 200),
+        left: 20,
+      });
+      setCursorPosition(pos);
       setWikiPickerTriggeredByTyping(true);
       setWikiPickerOpen(true);
+    } else if (wikiPickerTriggeredByTyping) {
+      setWikiPickerOpen(false);
+      setWikiPickerTriggeredByTyping(false);
     }
   };
 
   const handleWikiSelect = (result: WikiSearchResult) => {
-    const referenceText = `[[${result.type}:${result.id}|${result.name}]]`;
-    const charsToRemove = wikiPickerTriggeredByTyping ? 2 : 0;
-    const beforeCursor = articleContent.slice(0, cursorPosition - charsToRemove);
+    const referenceText = wikiPickerTriggeredByTyping
+      ? (() => {
+          const textBefore = articleContent.slice(0, cursorPosition);
+          const lastOpen = textBefore.lastIndexOf("[[");
+          const before = articleContent.slice(0, lastOpen);
+          const after = articleContent.slice(cursorPosition);
+          const ref = `[[${result.type}:${result.id}|${result.name}]]`;
+          setArticleContent(before + ref + after);
+          setWikiPickerOpen(false);
+          setWikiPickerTriggeredByTyping(false);
+          autoSave();
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPos = lastOpen + ref.length;
+              textareaRef.current.focus();
+              textareaRef.current.setSelectionRange(newPos, newPos);
+            }
+          }, 0);
+          return null;
+        })()
+      : `[[${result.type}:${result.id}|${result.name}]]`;
+
+    if (referenceText === null) return;
+
+    const beforeCursor = articleContent.slice(0, cursorPosition);
     const afterCursor = articleContent.slice(cursorPosition);
     const newContent = beforeCursor + referenceText + afterCursor;
     setArticleContent(newContent);
@@ -626,87 +659,65 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: 
     ? allAvailableTags.filter(t => t.toLowerCase().includes(tagSearchQuery.toLowerCase()))
     : allAvailableTags;
 
-  return (
-    <div className="flex flex-col h-full" data-testid="wiki-article-editor">
-      <div className="border-b border-stone-700 bg-stone-900/50 p-3 md:p-4">
-        <div className="flex items-center justify-between mb-3">
-          {mode === "edit" ? (
+  const entityCfg = ENTITY_TYPE_CONFIG[entityType];
+
+  if (mode === "edit") {
+    return (
+      <div className="flex flex-col h-full" data-testid="wiki-article-editor">
+        <div className="border-b border-stone-700 bg-stone-900/50 p-3 md:p-4">
+          <div className="flex items-center justify-between mb-3">
             <Input
               value={displayName}
               onChange={(e) => { setDisplayName(e.target.value); autoSave(); }}
               className="text-xl font-bold bg-transparent border-stone-700 text-stone-100 p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 border-0 border-b"
               data-testid="input-entity-title"
             />
-          ) : (
-            <h1 className="text-xl font-bold text-stone-100">{displayName}</h1>
-          )}
-          <div className="flex items-center gap-2">
-            {isSaving && <span className="text-xs text-stone-500">Saving...</span>}
-            {isGM && mode === "edit" && (
-              <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
-                <button
-                  className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
-                  onClick={() => { setEntityType("article"); setTimeout(() => saveImmediately(), 0); }}
-                  data-testid="toggle-type-article"
-                >
-                  <FileText className="h-3 w-3" /> Article
-                </button>
-                <button
-                  className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
-                  onClick={() => { setEntityType("canvas"); setTimeout(() => saveImmediately(), 0); }}
-                  data-testid="toggle-type-canvas"
-                >
-                  <Layout className="h-3 w-3" /> Canvas
-                </button>
-              </div>
-            )}
-            {isGM && (
-              <>
-                <Select value={visibility} onValueChange={(val) => { setVisibility(val); setTimeout(() => saveImmediately(), 0); }}>
-                  <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
-                    <div className="flex items-center gap-1.5">
-                      {visibility === "gm_only" ? <EyeOff className="h-3 w-3 text-stone-500" /> : <Eye className="h-3 w-3 text-amber-400" />}
-                      <SelectValue />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="gm_only" className="text-xs text-stone-300">GM Only</SelectItem>
-                    <SelectItem value="player_visible" className="text-xs text-stone-300">Players</SelectItem>
-                    <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
-                  </SelectContent>
-                </Select>
-                {(visibility === "player_visible" || visibility === "shared") && worldId && (
-                  <ArticleAccessControl worldId={worldId} entityId={entity.id} campaignId={campaignId} />
-                )}
-                {shareToken && visibility !== "gm_only" && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-stone-400 hover:text-amber-400 h-7 text-xs"
-                    onClick={() => window.open(`${window.location.origin}/world/${shareToken}#entity=${entity.id}`, '_blank')}
-                    title="Preview article in shared view"
-                    data-testid="button-preview-article"
+            <div className="flex items-center gap-2">
+              {isSaving && <span className="text-xs text-stone-500">Saving...</span>}
+              {isGM && (
+                <div className="flex items-center bg-stone-800/50 border border-stone-700 rounded-md h-7 overflow-hidden" data-testid="toggle-entity-type">
+                  <button
+                    className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "article" ? "bg-amber-600/30 text-amber-400" : "text-stone-500 hover:text-stone-300"}`}
+                    onClick={() => { setEntityType("article"); setTimeout(() => saveImmediately(), 0); }}
+                    data-testid="toggle-type-article"
                   >
-                    <ExternalLink className="h-3 w-3 mr-1" /> Preview
-                  </Button>
-                )}
-              </>
-            )}
-            {canEdit && (
-              mode === "edit" ? (
-                <Button size="sm" onClick={() => { saveChanges(); setMode("view"); }} className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" data-testid="button-save-article">
-                  <Save className="h-3 w-3 mr-1" /> Save
-                </Button>
-              ) : (
-                <Button size="sm" variant="ghost" onClick={() => setMode("edit")} className="text-stone-400 hover:text-amber-400 h-7 text-xs" data-testid="button-edit-article">
-                  <Edit3 className="h-3 w-3 mr-1" /> Edit
-                </Button>
-              )
-            )}
+                    <FileText className="h-3 w-3" /> Article
+                  </button>
+                  <button
+                    className={`px-2 h-full text-[10px] flex items-center gap-1 transition-colors ${entityType === "canvas" ? "bg-blue-600/30 text-blue-400" : "text-stone-500 hover:text-stone-300"}`}
+                    onClick={() => { setEntityType("canvas"); setTimeout(() => saveImmediately(), 0); }}
+                    data-testid="toggle-type-canvas"
+                  >
+                    <Layout className="h-3 w-3" /> Canvas
+                  </button>
+                </div>
+              )}
+              {isGM && (
+                <>
+                  <Select value={visibility} onValueChange={(val) => { setVisibility(val); setTimeout(() => saveImmediately(), 0); }}>
+                    <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs bg-stone-800/50 border-stone-700 text-stone-300 gap-1" data-testid="select-visibility">
+                      <div className="flex items-center gap-1.5">
+                        {visibility === "gm_only" ? <EyeOff className="h-3 w-3 text-stone-500" /> : <Eye className="h-3 w-3 text-amber-400" />}
+                        <SelectValue />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-stone-800 border-stone-700">
+                      <SelectItem value="gm_only" className="text-xs text-stone-300">GM Only</SelectItem>
+                      <SelectItem value="player_visible" className="text-xs text-stone-300">Players</SelectItem>
+                      <SelectItem value="shared" className="text-xs text-stone-300">Shared</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(visibility === "player_visible" || visibility === "shared") && worldId && (
+                    <ArticleAccessControl worldId={worldId} entityId={entity.id} campaignId={campaignId} />
+                  )}
+                </>
+              )}
+              <Button size="sm" onClick={() => { saveChanges(); setMode("view"); }} className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" data-testid="button-save-article">
+                <Save className="h-3 w-3 mr-1" /> Done
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {mode === "edit" ? (
           <Textarea
             value={description}
             onChange={(e) => { setDescription(e.target.value); autoSave(); }}
@@ -715,11 +726,7 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: 
             rows={2}
             data-testid="input-entity-subtitle"
           />
-        ) : description ? (
-          <p className="text-sm text-stone-400 italic">{description}</p>
-        ) : null}
 
-        {mode === "edit" && (
           <div className="mt-2">
             <Input
               value={image}
@@ -729,23 +736,21 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: 
               data-testid="input-entity-image"
             />
           </div>
-        )}
 
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          {tags.map(tag => (
-            <Badge
-              key={tag}
-              variant="outline"
-              className="text-[10px] px-1.5 py-0 cursor-pointer hover:opacity-80"
-              style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}
-              onClick={() => mode === "edit" && toggleTag(tag)}
-              data-testid={`tag-badge-${tag}`}
-            >
-              {tag}
-              {mode === "edit" && <X className="h-2.5 w-2.5 ml-1" />}
-            </Badge>
-          ))}
-          {mode === "edit" && (
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            {tags.map(tag => (
+              <Badge
+                key={tag}
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 cursor-pointer hover:opacity-80"
+                style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}
+                onClick={() => toggleTag(tag)}
+                data-testid={`tag-badge-${tag}`}
+              >
+                {tag}
+                <X className="h-2.5 w-2.5 ml-1" />
+              </Badge>
+            ))}
             <Popover open={showTagPicker} onOpenChange={setShowTagPicker}>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-5 text-[10px] text-stone-500 hover:text-amber-400 px-1.5" data-testid="button-add-tag">
@@ -780,67 +785,154 @@ export function WikiArticleEditor({ entity, campaignId, worldId, isGM, canEdit: 
                 </div>
               </PopoverContent>
             </Popover>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+          {entityType === "canvas" ? (
+            <WbCanvasWrapper
+              content={articleContent}
+              onChange={(c) => { setArticleContent(c); autoSave(); }}
+              isEditing={true}
+              worldId={worldId || ""}
+            />
+          ) : (
+            <div className="p-3 md:p-4 relative flex-1 flex flex-col min-h-0" ref={editorContainerRef}>
+              <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap flex-shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
+                <div className="w-px h-4 bg-stone-700 mx-1" />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("# ")} data-testid="button-md-h1"><Heading1 className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("## ")} data-testid="button-md-h2"><Heading2 className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("### ")} data-testid="button-md-h3"><Heading3 className="h-3.5 w-3.5" /></Button>
+                <div className="w-px h-4 bg-stone-700 mx-1" />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("- ")} data-testid="button-md-ul"><List className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("1. ")} data-testid="button-md-ol"><ListOrdered className="h-3.5 w-3.5" /></Button>
+                <div className="w-px h-4 bg-stone-700 mx-1" />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("[", "](url)")} data-testid="button-md-link"><Link2 className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("![alt](", ")")} data-testid="button-md-image"><Image className="h-3.5 w-3.5" /></Button>
+                <div className="w-px h-4 bg-stone-700 mx-1" />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => { if (textareaRef.current) setCursorPosition(textareaRef.current.selectionStart); setWikiPickerTriggeredByTyping(false); setWikiPickerPos({ top: 80, left: 20 }); setWikiPickerOpen(true); }} title="Wiki Link [[" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
+              </div>
+              <Textarea
+                ref={textareaRef}
+                value={articleContent}
+                onChange={handleArticleContentChange}
+                placeholder="Write your article here... Type [[ to insert a wiki link."
+                className="bg-stone-950 border-stone-800 text-stone-300 flex-1 min-h-[200px] font-mono text-sm resize-none leading-relaxed"
+                data-testid="textarea-article-content"
+              />
+              {wikiPickerOpen && worldId && (
+                <WikiReferencePicker
+                  worldId={worldId}
+                  onSelect={handleWikiSelect}
+                  onClose={() => setWikiPickerOpen(false)}
+                  position={wikiPickerPos}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>
+    );
+  }
 
-      <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
-        {image && (
-          <div className="relative h-48 overflow-hidden flex-shrink-0">
-            <img src={image} alt="" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-stone-950 to-transparent" />
-          </div>
-        )}
-
-        {entityType === "canvas" ? (
-          <WbCanvasWrapper
-            content={articleContent}
-            onChange={(c) => { setArticleContent(c); autoSave(); }}
-            isEditing={mode === "edit"}
-            worldId={worldId || ""}
-          />
-        ) : (
-          <div className="p-3 md:p-4 relative flex-1 flex flex-col min-h-0" ref={editorContainerRef}>
-            {mode === "edit" ? (
-              <>
-                <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap flex-shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
-                  <div className="w-px h-4 bg-stone-700 mx-1" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("# ")} data-testid="button-md-h1"><Heading1 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("## ")} data-testid="button-md-h2"><Heading2 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("### ")} data-testid="button-md-h3"><Heading3 className="h-3.5 w-3.5" /></Button>
-                  <div className="w-px h-4 bg-stone-700 mx-1" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("- ")} data-testid="button-md-ul"><List className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("1. ")} data-testid="button-md-ol"><ListOrdered className="h-3.5 w-3.5" /></Button>
-                  <div className="w-px h-4 bg-stone-700 mx-1" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("[", "](url)")} data-testid="button-md-link"><Link2 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("![alt](", ")")} data-testid="button-md-image"><Image className="h-3.5 w-3.5" /></Button>
-                  <div className="w-px h-4 bg-stone-700 mx-1" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500/50 hover:text-amber-400" onClick={() => { if (textareaRef.current) setCursorPosition(textareaRef.current.selectionStart); setWikiPickerTriggeredByTyping(false); setWikiPickerPos({ top: 80, left: 20 }); setWikiPickerOpen(true); }} title="Wiki Link [[" data-testid="button-md-wikilink"><Hash className="h-3.5 w-3.5" /></Button>
+  return (
+    <div className="flex flex-col h-full" data-testid="wiki-article-editor">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto">
+          {image && (
+            <div className="relative w-full h-48 md:h-64 overflow-hidden">
+              <img src={image} alt={displayName} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0c0a09] via-[#0c0a09]/40 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 md:p-8">
+                <div className="flex items-center gap-2 mb-1">
+                  {entityCfg && (
+                    <Badge variant="outline" className="text-[9px]" style={{ borderColor: entityCfg.color + "55", color: entityCfg.color }}>{entityCfg.label}</Badge>
+                  )}
+                  {isGM && (
+                    <span className="text-[10px] text-stone-500">
+                      {visibility === "gm_only" ? "GM Only" : visibility === "player_visible" ? "Players" : "Shared"}
+                    </span>
+                  )}
                 </div>
-                <Textarea
-                  ref={textareaRef}
-                  value={articleContent}
-                  onChange={handleArticleContentChange}
-                  placeholder="Write your article here... Type [[ to insert a wiki link."
-                  className="bg-stone-950 border-stone-800 text-stone-300 flex-1 min-h-[200px] font-mono text-sm resize-none leading-relaxed"
-                  data-testid="textarea-article-content"
-                />
-                {wikiPickerOpen && worldId && (
-                  <WikiReferencePicker
-                    worldId={worldId}
-                    onSelect={handleWikiSelect}
-                    onClose={() => setWikiPickerOpen(false)}
-                    position={wikiPickerPos}
-                  />
+                <h1 className="text-2xl md:text-3xl font-bold text-stone-100" data-testid="text-entity-title">{displayName}</h1>
+              </div>
+              {canEdit && (
+                <div className="absolute top-3 right-3">
+                  <Button size="sm" onClick={() => setMode("edit")} className="bg-stone-900/80 hover:bg-stone-800 text-amber-400 hover:text-amber-300 h-8 text-xs border border-stone-700/50 backdrop-blur-sm" data-testid="button-edit-article">
+                    <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="px-4 md:px-8 pb-8 pt-4">
+            {!image && (
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  {entityCfg && (
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: entityCfg.color + "22" }}>
+                      {entityType === "article" ? <FileText className="h-5 w-5" style={{ color: entityCfg.color }} /> :
+                       entityType === "canvas" ? <Layout className="h-5 w-5" style={{ color: entityCfg.color }} /> :
+                       <BookOpen className="h-5 w-5" style={{ color: entityCfg.color }} />}
+                    </div>
+                  )}
+                  <div>
+                    <h1 className="text-2xl font-bold text-stone-100" data-testid="text-entity-title">{displayName}</h1>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {entityCfg && (
+                        <Badge variant="outline" className="text-[9px]" style={{ borderColor: entityCfg.color + "55", color: entityCfg.color }}>{entityCfg.label}</Badge>
+                      )}
+                      {isGM && (
+                        <span className="text-[10px] text-stone-500">
+                          {visibility === "gm_only" ? "GM Only" : visibility === "player_visible" ? "Players" : "Shared"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {canEdit && (
+                  <Button size="sm" onClick={() => setMode("edit")} className="bg-stone-800 hover:bg-stone-700 text-amber-400 hover:text-amber-300 h-8 text-xs border border-stone-700" data-testid="button-edit-article">
+                    <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit
+                  </Button>
                 )}
-              </>
+              </div>
+            )}
+
+            {description && (
+              <p className="text-sm text-stone-400 italic mb-5 border-l-2 border-amber-500/30 pl-3">{description}</p>
+            )}
+
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-5">
+                {tags.map(tag => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0"
+                    style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}
+                    data-testid={`tag-badge-${tag}`}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {entityType === "canvas" ? (
+              <WbCanvasWrapper
+                content={articleContent}
+                onChange={() => {}}
+                isEditing={false}
+                worldId={worldId || ""}
+              />
             ) : (
               <WikiArticlePreview content={articleContent} onEntityClick={onWikiLinkClick} />
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

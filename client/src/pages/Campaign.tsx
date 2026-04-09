@@ -44,7 +44,6 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
-import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
 
@@ -7128,20 +7127,6 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                                   />
                                 );
                               })()}
-                            </div>
-                            <div className="hidden md:block w-64 border-l border-stone-800 bg-stone-900/30 flex-shrink-0 overflow-y-auto">
-                              <EntitySidePanel
-                                worldId={selectedWorldId}
-                                entityId={tab.entityId}
-                                onClose={() => handleCloseWbTab(tab.id)}
-                                onNavigateToEntity={(entityId) => {
-                                  const title = getEntityTitle(entityId);
-                                  setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId, title } : t));
-                                  setSelectedEntityId(entityId);
-                                }}
-                                isGM={isGM}
-                                embedded={true}
-                              />
                             </div>
                           </div>
                         </div>

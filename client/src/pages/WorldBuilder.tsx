@@ -6,7 +6,6 @@ import { WorldbuilderPanel } from "@/components/worldbuilding/WorldbuilderPanel"
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
-import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
@@ -26,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, Users, UserPlus, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, Users, UserPlus, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -237,7 +236,6 @@ export default function WorldBuilder() {
   const [showCreateInline, setShowCreateInline] = useState(false);
   const [entityHistory, setEntityHistory] = useState<string[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
@@ -1459,32 +1457,13 @@ export default function WorldBuilder() {
                 {selectedEntityId && selectedEntity ? (
                   <div className="flex-1 flex overflow-hidden">
                     <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-                      <div className="flex items-center gap-2 px-2 md:px-4 py-2 border-b border-stone-800 bg-stone-900/30">
+                      <div className="flex items-center gap-2 px-2 md:px-4 py-1.5 border-b border-stone-800/50 bg-stone-900/30">
                         {entityHistory.length > 0 && (
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-stone-200 flex-shrink-0" onClick={handleBack} data-testid="button-back-entity">
                             <ChevronLeft className="h-4 w-4" />
                           </Button>
                         )}
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {(() => {
-                            const cfg = ENTITY_TYPE_CONFIG[selectedEntity.entityType];
-                            const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
-                            return (
-                              <>
-                                <IconComp className="h-4 w-4 flex-shrink-0" style={{ color: cfg?.color || "#78909c" }} />
-                                <Badge variant="outline" className="text-[10px] border-stone-600 text-stone-400 flex-shrink-0">{cfg?.label || "Article"}</Badge>
-                              </>
-                            );
-                          })()}
-                          {((selectedEntity.tags as string[]) || []).slice(0, 3).map(tag => (
-                            <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 flex-shrink-0" style={{ borderColor: (TAG_COLORS[tag] || "#78909c") + "55", color: TAG_COLORS[tag] || "#78909c" }}>
-                              {tag}
-                            </Badge>
-                          ))}
-                          <span className="text-[10px] text-stone-600 hidden md:inline">
-                            {selectedEntity.visibility === "gm_only" ? "GM Only" : selectedEntity.visibility === "player_visible" ? "Players" : "Shared"}
-                          </span>
-                        </div>
+                        <span className="text-xs text-stone-500 truncate flex-1">{selectedEntity.displayName}</span>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1494,11 +1473,6 @@ export default function WorldBuilder() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                        {isMobile && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-amber-400 flex-shrink-0" onClick={() => setMobileDetailOpen(true)} data-testid="button-open-mobile-detail">
-                            <Info className="h-4 w-4" />
-                          </Button>
-                        )}
                       </div>
                       <div className="flex-1 overflow-y-auto">
                         <WikiArticleEditor
@@ -1511,17 +1485,6 @@ export default function WorldBuilder() {
                           customTags={selectedWorld?.customTags || []}
                         />
                       </div>
-                    </div>
-
-                    <div className="hidden md:block w-72 border-l border-stone-800 bg-stone-900/30 flex-shrink-0 overflow-y-auto">
-                      <EntitySidePanel
-                        worldId={selectedWorldId}
-                        entityId={selectedEntityId}
-                        onClose={() => setSelectedEntityId(null)}
-                        onNavigateToEntity={handleSelectEntity}
-                        isGM={true}
-                        embedded={true}
-                      />
                     </div>
                   </div>
                 ) : (
@@ -1706,21 +1669,6 @@ export default function WorldBuilder() {
         </div>
       )}
 
-      {isMobile && mobileDetailOpen && selectedEntityId && (
-        <>
-          <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setMobileDetailOpen(false)} data-testid="mobile-detail-backdrop" />
-          <div className="fixed inset-y-0 right-0 z-[70] w-full max-w-sm bg-stone-900 border-l border-stone-800 shadow-2xl overflow-y-auto" data-testid="mobile-detail-panel">
-            <EntitySidePanel
-              worldId={selectedWorldId}
-              entityId={selectedEntityId}
-              onClose={() => setMobileDetailOpen(false)}
-              onNavigateToEntity={(id) => { setMobileDetailOpen(false); handleSelectEntity(id); }}
-              isGM={true}
-              embedded={false}
-            />
-          </div>
-        </>
-      )}
 
       {showCreateInline && selectedWorldId && (
         <WorldbuilderPanel
