@@ -3300,7 +3300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const spell = await storage.createSpell(spellData);
 
-      if (sourceTemplateId) {
+      if (sourceTemplateId && linkToTemplate) {
         try {
           const templateRolls = await storage.getRollEntries('spell', sourceTemplateId);
           if (templateRolls.length > 0) {
@@ -7235,6 +7235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      await storage.deleteRollEntriesByOwner('item', req.params.id);
       await storage.deleteItem(req.params.id);
       broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-items', campaignId: req.params.campaignId });
       res.json({ success: true });
