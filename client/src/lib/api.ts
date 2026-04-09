@@ -1714,11 +1714,11 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/template-items/${id}`, { method: 'DELETE' });
   }
 
-  async getTemplateSpells(campaignId: string): Promise<any[]> {
+  async getTemplateSpells(campaignId: string): Promise<Spell[]> {
     return this.request(`/campaigns/${campaignId}/template-spells`);
   }
 
-  async createCampaignTemplateSpell(campaignId: string, spell: any): Promise<any> {
+  async createCampaignTemplateSpell(campaignId: string, spell: Partial<Spell>): Promise<Spell> {
     return this.request(`/campaigns/${campaignId}/template-spells`, {
       method: 'POST',
       body: JSON.stringify(spell),

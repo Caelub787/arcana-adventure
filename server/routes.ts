@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -3345,7 +3345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               requiredSkillValue: roll.requiredSkillValue,
               fromTemplateRollId: linkToTemplate ? roll.id : undefined,
             }));
-            await storage.createRollEntriesBulk(rollEntriesToInsert as any);
+            await storage.createRollEntriesBulk(rollEntriesToInsert as InsertRollEntry[]);
           }
         } catch (rollErr) {
           console.error('Failed to copy roll entries from template spell:', rollErr);
@@ -3462,6 +3462,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper: check if user can modify roll entries for a given owner
   const canModifyRollEntries = async (userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
+    const user = await storage.getUser(userId);
+    const isAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+
     if (ownerType === 'item') {
       const item = await storage.getItem(ownerId);
       if (!item) return false;
@@ -3469,6 +3472,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const campaign = await storage.getCampaign(item.campaignId);
         if (!campaign) return false;
         return hasGmAccess(userId, item.campaignId, campaign.gmUserId);
+      }
+      if (item.isTemplate && !item.campaignId) {
+        return isAdmin;
       }
       if (item.characterId) {
         const access = await checkCharacterAccess(item.characterId, userId, 'edit');
@@ -3482,6 +3488,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const campaign = await storage.getCampaign(spell.campaignId);
         if (!campaign) return false;
         return hasGmAccess(userId, spell.campaignId, campaign.gmUserId);
+      }
+      if (spell.isTemplate && !spell.campaignId) {
+        return isAdmin;
       }
       if (spell.characterId) {
         const access = await checkCharacterAccess(spell.characterId, userId, 'edit');
@@ -7429,7 +7438,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               requiredSkillValue: roll.requiredSkillValue,
               fromTemplateRollId: linkToTemplate ? roll.id : undefined,
             }));
-            await storage.createRollEntriesBulk(rollEntriesToInsert as any);
+            await storage.createRollEntriesBulk(rollEntriesToInsert as InsertRollEntry[]);
           }
         } catch (rollErr) {
           console.error('Failed to copy roll entries from template item:', rollErr);

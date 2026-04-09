@@ -19867,20 +19867,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="text-center py-8 text-stone-400">
                             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
                             <p>No system spells found{hasActiveSpellLibraryFilters ? ' matching filters' : ''}</p>
-                            {(campaignTemplateSpells as any[]).length === 0 && (
+                            {campaignTemplateSpells.length === 0 && (
                               <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
                             )}
                           </div>
                         )}
                       </div>
 
-                      {(campaignTemplateSpells as any[]).length > 0 && (
+                      {campaignTemplateSpells.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-stone-700">
                           <h4 className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1.5">
                             <Library className="w-3.5 h-3.5" /> Campaign Templates
                           </h4>
                           <div className="space-y-2">
-                            {(campaignTemplateSpells as any[])
+                            {campaignTemplateSpells
                               .filter((t: any) => !spellLibrarySearch || t.name?.toLowerCase().includes(spellLibrarySearch.toLowerCase()))
                               .map((template: any) => (
                                 <div
