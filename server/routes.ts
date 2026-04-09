@@ -3286,7 +3286,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sourceTemplateId) {
         const sourceSpell = await storage.getSpell(sourceTemplateId);
         if (sourceSpell && sourceSpell.isTemplate && sourceSpell.campaignId) {
-          linkToTemplate = true;
+          if (access.character?.campaignId === sourceSpell.campaignId) {
+            linkToTemplate = true;
+          }
         }
       }
 
@@ -3458,8 +3460,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: check if user can modify roll entries for a given owner
+  const canModifyRollEntries = async (userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
+    if (ownerType === 'item') {
+      const item = await storage.getItem(ownerId);
+      if (!item) return false;
+      if (item.isTemplate && item.campaignId) {
+        const campaign = await storage.getCampaign(item.campaignId);
+        if (!campaign) return false;
+        return hasGmAccess(userId, item.campaignId, campaign.gmUserId);
+      }
+      if (item.characterId) {
+        const access = await checkCharacterAccess(item.characterId, userId, 'edit');
+        return access.isOwner || access.isGM;
+      }
+      return false;
+    } else if (ownerType === 'spell') {
+      const spell = await storage.getSpell(ownerId);
+      if (!spell) return false;
+      if (spell.isTemplate && spell.campaignId) {
+        const campaign = await storage.getCampaign(spell.campaignId);
+        if (!campaign) return false;
+        return hasGmAccess(userId, spell.campaignId, campaign.gmUserId);
+      }
+      if (spell.characterId) {
+        const access = await checkCharacterAccess(spell.characterId, userId, 'edit');
+        return access.isOwner || access.isGM;
+      }
+      return false;
+    } else if (ownerType === 'character') {
+      const access = await checkCharacterAccess(ownerId, userId, 'edit');
+      return access.isOwner || access.isGM;
+    }
+    return false;
+  };
+
   app.post("/api/roll-entries", requireAuth, async (req, res) => {
     try {
+      const userId = (req as any).session?.userId;
+      const canModify = await canModifyRollEntries(userId, req.body.ownerType, req.body.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify roll entries for this entity" });
+      }
+
       const entry = await storage.createRollEntry(req.body);
 
       // Roll propagation: if this roll belongs to a template item/spell, propagate to linked items/spells
@@ -3499,6 +3542,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/roll-entries/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req as any).session?.userId;
+      const existing = await db.select().from(rollEntries).where(eq(rollEntries.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Roll entry not found" });
+      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify this roll entry" });
+      }
+
       const entry = await storage.updateRollEntry(req.params.id, req.body);
       if (!entry) {
         return res.status(404).json({ error: "Roll entry not found" });
@@ -3535,7 +3586,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/roll-entries/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req as any).session?.userId;
       const entry = await db.select().from(rollEntries).where(eq(rollEntries.id, req.params.id)).then(r => r[0]);
+      if (!entry) return res.status(404).json({ error: "Roll entry not found" });
+      const canModify = await canModifyRollEntries(userId, entry.ownerType, entry.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to delete this roll entry" });
+      }
       if (entry && entry.name === 'Detonate') {
         const ownerItems = await db.select().from(items).where(eq(items.id, entry.ownerId)).then(r => r[0]);
         if (ownerItems && ownerItems.isDetonatable) {
@@ -7314,7 +7371,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sourceTemplateId) {
         const sourceItem = await storage.getItem(sourceTemplateId);
         if (sourceItem && sourceItem.isTemplate && sourceItem.campaignId) {
-          linkToTemplate = true;
+          const character = await storage.getCharacter(req.params.characterId);
+          if (character?.campaignId === sourceItem.campaignId) {
+            linkToTemplate = true;
+          }
         }
       }
 
