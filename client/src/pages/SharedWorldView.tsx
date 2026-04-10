@@ -1457,32 +1457,103 @@ export default function SharedWorldView() {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto bg-[#0c0a09]">
-                  <div className="max-w-4xl mx-auto p-6 md:p-10">
-                    <div className="text-center mb-8">
-                      <div className="flex justify-center mb-4">
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
-                          <BookOpen className="h-7 w-7 text-amber-400" />
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="sticky top-0 z-10 bg-[#0c0a09]/95 backdrop-blur-md border-b border-stone-800/60 px-4 md:px-6 py-3">
+                    <div className="max-w-5xl mx-auto">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <BookOpen className="h-5 w-5 text-amber-400" />
+                          <h2 className="text-sm font-semibold text-stone-200">Encyclopedia</h2>
+                          <span className="text-[11px] text-stone-500">{entities.length} article{entities.length !== 1 ? 's' : ''}</span>
                         </div>
                       </div>
-                      <h2 className="text-2xl font-bold text-stone-100 mb-2" data-testid="text-home-title">Encyclopedia</h2>
-                      <p className="text-sm text-stone-500">Select an article from the sidebar to begin reading, or browse by category below.</p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
-                          <button
-                            key={tag}
-                            onClick={() => { setFilterType(tag); }}
-                            className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-stone-900/50 border border-stone-800/50 hover:border-amber-500/30 transition-all duration-200 cursor-pointer hover:shadow-md hover:shadow-black/20"
-                            data-testid={`home-category-${tag}`}
-                          >
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ backgroundColor: (TAG_COLORS[tag] || "#78909c") + '15' }}>
-                              <span className="w-4 h-4 rounded-full" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
-                            </div>
-                            <span className="text-xs font-medium text-stone-300 group-hover:text-stone-200">{tag}</span>
-                            <span className="text-lg font-bold text-stone-100">{count}</span>
+                      <div className="relative mb-2.5">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                        <Input
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search articles..."
+                          className="pl-9 h-9 text-sm bg-stone-800/80 border-stone-700 text-stone-200 rounded-lg"
+                          data-testid="input-encyclopedia-grid-search"
+                        />
+                        {searchQuery && (
+                          <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300" data-testid="button-clear-grid-search">
+                            <X className="h-3.5 w-3.5" />
                           </button>
-                      ))}
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge
+                          variant={filterType === "" ? "default" : "outline"}
+                          className={`text-[10px] cursor-pointer px-2 py-0.5 ${filterType === "" ? "bg-amber-500/20 text-amber-400 border-amber-500/50" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                          onClick={() => setFilterType("")}
+                          data-testid="grid-filter-all"
+                        >
+                          All ({entities.length})
+                        </Badge>
+                        {Object.entries(tagCounts).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+                          <Badge
+                            key={tag}
+                            variant={filterType === tag ? "default" : "outline"}
+                            className={`text-[10px] cursor-pointer px-2 py-0.5 ${filterType === tag ? "text-white" : "border-stone-700 text-stone-500 hover:text-stone-300"}`}
+                            style={filterType === tag ? { backgroundColor: (TAG_COLORS[tag] || "#78909c") + "33", color: TAG_COLORS[tag] || "#78909c", borderColor: (TAG_COLORS[tag] || "#78909c") + "55" } : {}}
+                            onClick={() => setFilterType(filterType === tag ? "" : tag)}
+                            data-testid={`grid-filter-${tag}`}
+                          >
+                            {tag} ({count})
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
+                    <div className="max-w-5xl mx-auto">
+                      {filteredEntities.length === 0 ? (
+                        <div className="text-center py-16">
+                          <BookOpen className="h-10 w-10 text-stone-700 mx-auto mb-3" />
+                          <p className="text-stone-500 text-sm">{searchQuery || filterType ? "No matching articles found." : "No articles available."}</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {filteredEntities.map(entity => {
+                            const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                            const IconComp = cfg ? ICON_MAP[cfg.icon] || FileText : FileText;
+                            const entityTags = (entity.tags as string[]) || [];
+                            return (
+                              <button
+                                key={entity.id}
+                                onClick={() => handleSelectEntity(entity.id)}
+                                className="text-left p-3 rounded-lg bg-stone-900/50 border border-stone-800/50 hover:border-amber-500/30 hover:bg-stone-800/50 transition-all group"
+                                data-testid={`grid-article-${entity.id}`}
+                              >
+                                <div className="flex items-start gap-2.5">
+                                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: (cfg?.color || "#78909c") + "15" }}>
+                                    <IconComp className="h-4 w-4" style={{ color: cfg?.color || "#78909c" }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-stone-200 group-hover:text-amber-300 truncate transition-colors">
+                                      {entity.displayName}
+                                    </div>
+                                    {entity.description && (
+                                      <div className="text-[11px] text-stone-500 line-clamp-2 mt-0.5">{entity.description}</div>
+                                    )}
+                                    {entityTags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {entityTags.slice(0, 3).map(tag => (
+                                          <span key={tag} className="text-[9px] px-1.5 py-0 rounded-full" style={{ color: TAG_COLORS[tag] || "#78909c", backgroundColor: (TAG_COLORS[tag] || "#78909c") + "15" }}>
+                                            {tag}
+                                          </span>
+                                        ))}
+                                        {entityTags.length > 3 && <span className="text-[8px] text-stone-500">+{entityTags.length - 3}</span>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
