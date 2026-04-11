@@ -155,6 +155,10 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
     return allEvents.filter(e => e.timelineId === currentTimelineId);
   }, [allEvents, currentTimelineId]);
 
+  const timelineEras = useMemo(() => {
+    return ((selectedTimeline as any)?.eras as { name: string; description?: string; color?: string }[]) || [];
+  }, [selectedTimeline]);
+
   const groupedByEra = useMemo(() => {
     const groups: Record<string, WorldTimelineEvent[]> = {};
     filteredEvents.forEach(event => {
@@ -189,10 +193,6 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
     calendars.forEach(c => { map[c.id] = c; });
     return map;
   }, [calendars]);
-
-  const timelineEras = useMemo(() => {
-    return ((selectedTimeline as any)?.eras as { name: string; description?: string; color?: string }[]) || [];
-  }, [selectedTimeline]);
 
   const existingEras = useMemo(() => {
     const eraNames = new Set<string>(timelineEras.map(e => e.name));
