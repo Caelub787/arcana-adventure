@@ -38,7 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Clock, Calendar, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings, Layers } from "lucide-react";
+import { Clock, Calendar, ChevronRight, ChevronDown, ChevronUp, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings, Layers } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface TimelineViewProps {
@@ -157,18 +157,26 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
 
   const groupedByEra = useMemo(() => {
     const groups: Record<string, WorldTimelineEvent[]> = {};
-    const sorted = [...filteredEvents].sort((a, b) => {
-      if (a.era !== b.era) return (a.era || "").localeCompare(b.era || "");
-      if (a.date && b.date) return a.date.localeCompare(b.date);
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-    sorted.forEach(event => {
+    filteredEvents.forEach(event => {
       const era = event.era || "Unclassified";
       if (!groups[era]) groups[era] = [];
       groups[era].push(event);
     });
-    return Object.entries(groups);
-  }, [filteredEvents]);
+    Object.values(groups).forEach(events => {
+      events.sort((a, b) => {
+        if (a.date && b.date) return a.date.localeCompare(b.date);
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+    });
+    const eraOrder = new Map<string, number>();
+    timelineEras.forEach((e, i) => eraOrder.set(e.name, i));
+    return Object.entries(groups).sort(([a], [b]) => {
+      const aIdx = eraOrder.has(a) ? eraOrder.get(a)! : Infinity;
+      const bIdx = eraOrder.has(b) ? eraOrder.get(b)! : Infinity;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return a.localeCompare(b);
+    });
+  }, [filteredEvents, timelineEras]);
 
   const entityMap = useMemo(() => {
     const map: Record<string, Entity> = {};
@@ -330,6 +338,15 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
     await updateTimeline.mutateAsync({ id: selectedTimeline.id, eras: updatedEras });
   };
 
+  const handleMoveEra = async (idx: number, direction: "up" | "down") => {
+    if (!selectedTimeline) return;
+    const newIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= timelineEras.length) return;
+    const updatedEras = [...timelineEras];
+    [updatedEras[idx], updatedEras[newIdx]] = [updatedEras[newIdx], updatedEras[idx]];
+    await updateTimeline.mutateAsync({ id: selectedTimeline.id, eras: updatedEras });
+  };
+
   const formatCalendarDate = (dateStr: string, calendarId?: string | null): string => {
     if (!calendarId || !calendarMap[calendarId]) return dateStr;
     const cal = calendarMap[calendarId];
@@ -410,6 +427,28 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
                   <div className="space-y-1.5">
                     {timelineEras.map((era, idx) => (
                       <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded bg-stone-800/60 border border-stone-700/50 group" data-testid={`era-item-${idx}`}>
+                        <div className="flex flex-col gap-0.5 flex-shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 text-stone-600 hover:text-stone-200 disabled:opacity-20 disabled:cursor-not-allowed"
+                            onClick={() => handleMoveEra(idx, "up")}
+                            disabled={idx === 0}
+                            data-testid={`button-move-era-up-${idx}`}
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 text-stone-600 hover:text-stone-200 disabled:opacity-20 disabled:cursor-not-allowed"
+                            onClick={() => handleMoveEra(idx, "down")}
+                            disabled={idx === timelineEras.length - 1}
+                            data-testid={`button-move-era-down-${idx}`}
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </div>
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: era.color || getEraColor(era.name) }} />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-medium text-stone-200">{era.name}</span>

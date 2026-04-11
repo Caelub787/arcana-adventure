@@ -10798,6 +10798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let allMaps: any[];
       let calendars: any[];
       let allTimelineEvents: any[];
+      let allTimelines: any[];
       let entityLinksAll: any[];
       let sourceName: string;
       let worldDescription: string | null = null;
@@ -10815,6 +10816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allMaps = await storage.getWorldMapsByWorld(shareLink.worldId);
         calendars = await storage.getWorldCalendarsByWorld(shareLink.worldId);
         allTimelineEvents = await storage.getWorldTimelineEventsByWorld(shareLink.worldId);
+        allTimelines = await storage.getTimelinesByWorld(shareLink.worldId);
         entityLinksAll = await storage.getEntityLinksByWorld(shareLink.worldId);
       } else if (shareLink.campaignId) {
         const campaign = await storage.getCampaign(shareLink.campaignId);
@@ -10824,6 +10826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allMaps = await storage.getWorldMaps(shareLink.campaignId);
         calendars = await storage.getWorldCalendars(shareLink.campaignId);
         allTimelineEvents = await storage.getWorldTimelineEvents(shareLink.campaignId);
+        allTimelines = await storage.getTimelinesByCampaign(shareLink.campaignId);
         entityLinksAll = await storage.getEntityLinksByCampaign(shareLink.campaignId);
       } else {
         return res.status(404).json({ error: "Share link has no associated world or campaign" });
@@ -10836,6 +10839,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mapPinsMap[map.id] = await storage.getWorldMapPins(map.id);
       }
       const visibleTimelineEvents = allTimelineEvents.filter(e => e.visibility !== 'gm_only');
+      const visibleTimelines = allTimelines.filter((t: any) => t.visibility !== 'gm_only').map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        eras: t.eras || [],
+        color: t.color,
+        sortOrder: t.sortOrder,
+      }));
       const visibleEntityIds = new Set(visibleEntities.map(e => e.id));
       const visibleLinks = entityLinksAll.filter(l => visibleEntityIds.has(l.fromEntityId) && visibleEntityIds.has(l.toEntityId));
       res.json({
@@ -10849,6 +10859,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mapPins: mapPinsMap,
         calendars,
         timelineEvents: visibleTimelineEvents,
+        timelines: visibleTimelines,
       });
     } catch (e) {
       console.error("Failed to get shared world:", e);

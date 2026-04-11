@@ -601,6 +601,7 @@ export interface IStorage {
 
   // World Timeline operations
   getTimelinesByWorld(worldId: string): Promise<WorldTimeline[]>;
+  getTimelinesByCampaign(campaignId: string): Promise<WorldTimeline[]>;
   getTimeline(id: string): Promise<WorldTimeline | undefined>;
   createTimeline(data: InsertWorldTimeline): Promise<WorldTimeline>;
   updateTimeline(id: string, data: Partial<WorldTimeline>): Promise<WorldTimeline | undefined>;
@@ -4235,6 +4236,10 @@ export class DatabaseStorage implements IStorage {
 
   async getTimelinesByWorld(worldId: string): Promise<WorldTimeline[]> {
     return await db.select().from(worldTimelines).where(eq(worldTimelines.worldId, worldId));
+  }
+
+  async getTimelinesByCampaign(campaignId: string): Promise<WorldTimeline[]> {
+    return await db.select().from(worldTimelines).where(eq(worldTimelines.campaignId, campaignId));
   }
 
   async getTimeline(id: string): Promise<WorldTimeline | undefined> {

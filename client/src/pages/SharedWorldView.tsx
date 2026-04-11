@@ -126,6 +126,14 @@ interface SharedCalendar {
   notes?: Record<string, any> | null;
 }
 
+interface SharedTimeline {
+  id: string;
+  name: string;
+  eras: { name: string; description?: string; color?: string }[];
+  color?: string | null;
+  sortOrder?: number | null;
+}
+
 interface SharedWorldData {
   campaignName: string;
   worldImage?: string | null;
@@ -137,6 +145,7 @@ interface SharedWorldData {
   mapPins: Record<string, SharedWorldMapPin[]>;
   calendars: SharedCalendar[];
   timelineEvents: SharedTimelineEvent[];
+  timelines?: SharedTimeline[];
 }
 
 type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar";
@@ -517,13 +526,24 @@ function SharedMapViewer({ maps, mapPins, entities, onNavigateToEntity }: {
   );
 }
 
-function SharedTimelineView({ events, entities, calendars, onSelectEntity }: {
+function SharedTimelineView({ events, entities, calendars, timelines = [], onSelectEntity }: {
   events: SharedTimelineEvent[];
   entities: SharedEntity[];
   calendars: SharedCalendar[];
+  timelines?: SharedTimeline[];
   onSelectEntity: (entityId: string) => void;
 }) {
   const [filterEra, setFilterEra] = useState<string>("");
+
+  const allDefinedEras = useMemo(() => {
+    const eras: { name: string; color?: string }[] = [];
+    timelines.forEach(tl => {
+      ((tl.eras as any[]) || []).forEach(e => {
+        if (!eras.find(x => x.name === e.name)) eras.push(e);
+      });
+    });
+    return eras;
+  }, [timelines]);
 
   const grouped = useMemo(() => {
     let filtered = events;
@@ -535,10 +555,23 @@ function SharedTimelineView({ events, entities, calendars, onSelectEntity }: {
       groups[era].push(e);
     });
     Object.values(groups).forEach(g => g.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
-    return groups;
-  }, [events, filterEra]);
+    const eraOrder = new Map<string, number>();
+    allDefinedEras.forEach((e, i) => eraOrder.set(e.name, i));
+    return Object.entries(groups).sort(([a], [b]) => {
+      const aIdx = eraOrder.has(a) ? eraOrder.get(a)! : Infinity;
+      const bIdx = eraOrder.has(b) ? eraOrder.get(b)! : Infinity;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return a.localeCompare(b);
+    });
+  }, [events, filterEra, allDefinedEras]);
 
-  const eras = useMemo(() => [...new Set(events.map(e => e.era || "Unclassified"))], [events]);
+  const eras = useMemo(() => {
+    const defined = allDefinedEras.map(e => e.name);
+    const fromEvents = [...new Set(events.map(e => e.era || "Unclassified"))];
+    const ordered: string[] = [...defined];
+    fromEvents.forEach(e => { if (!ordered.includes(e)) ordered.push(e); });
+    return ordered;
+  }, [events, allDefinedEras]);
 
   if (events.length === 0) {
     return (
@@ -574,10 +607,13 @@ function SharedTimelineView({ events, entities, calendars, onSelectEntity }: {
           </div>
         )}
       </div>
-      {Object.entries(grouped).map(([era, eraEvents]) => (
+      {grouped.map(([era, eraEvents]) => {
+        const definedEra = allDefinedEras.find(e => e.name === era);
+        const eraColor = definedEra?.color || ERA_COLORS[era] || "#78909c";
+        return (
         <div key={era} className="mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ERA_COLORS[era] || "#78909c" }} />
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: eraColor }} />
             <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">{era}</h3>
             <div className="flex-1 h-px bg-stone-800" />
           </div>
@@ -606,7 +642,8 @@ function SharedTimelineView({ events, entities, calendars, onSelectEntity }: {
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1578,6 +1615,7 @@ export default function SharedWorldView() {
                 events={timelineEvents}
                 entities={entities}
                 calendars={calendars}
+                timelines={data?.timelines || []}
                 onSelectEntity={handleSelectEntity}
               />
             </div>
