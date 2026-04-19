@@ -1,6 +1,16 @@
 // Google Drive integration for browsing image library and Google Docs sync
 import { google } from 'googleapis';
 
+// Public Drive client using API key (for browsing the public shared image library folder).
+// Uses GOOGLE_API_KEY env var. Read-only access to publicly shared files.
+function getPublicDriveClient() {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw new Error('GOOGLE_API_KEY environment variable not set');
+  }
+  return google.drive({ version: 'v3', auth: apiKey });
+}
+
 let connectionSettings: any;
 
 async function getAccessToken() {
@@ -58,25 +68,10 @@ export async function getGoogleDocsClient() {
   return google.docs({ version: 'v1', auth: oauth2Client });
 }
 
-// Get Google Drive connection status and user info
+// Get Google Drive connection status. The image library uses an API key against
+// a publicly shared folder, so "connected" simply means the API key is configured.
 export async function getGoogleDriveStatus(): Promise<{ connected: boolean; email?: string; name?: string }> {
-  try {
-    const accessToken = await getAccessToken();
-    
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-    const userInfo = await oauth2.userinfo.get();
-    
-    return {
-      connected: true,
-      email: userInfo.data.email || undefined,
-      name: userInfo.data.name || undefined,
-    };
-  } catch (error) {
-    return { connected: false };
-  }
+  return { connected: !!process.env.GOOGLE_API_KEY };
 }
 
 // Root folder ID for the image library - restricts browsing to this folder only
@@ -84,7 +79,7 @@ export const IMAGE_LIBRARY_ROOT_FOLDER_ID = '1MAdVTaRIO4r2ZsQU5AxEyQgb9iH_na6D';
 
 // List folders in a directory
 export async function listFolders(parentId?: string): Promise<{ id: string; name: string; }[]> {
-  const drive = await getGoogleDriveClient();
+  const drive = getPublicDriveClient();
   
   // Use the image library root folder if no parent specified
   const effectiveParentId = parentId || IMAGE_LIBRARY_ROOT_FOLDER_ID;
@@ -106,7 +101,7 @@ export async function listFolders(parentId?: string): Promise<{ id: string; name
 
 // List image files in a directory
 export async function listImages(folderId?: string): Promise<{ id: string; name: string; thumbnailLink?: string; webContentLink?: string; }[]> {
-  const drive = await getGoogleDriveClient();
+  const drive = getPublicDriveClient();
   
   // Use the image library root folder if no folder specified
   const effectiveFolderId = folderId || IMAGE_LIBRARY_ROOT_FOLDER_ID;
@@ -141,7 +136,7 @@ const LARGE_IMAGE_RESIZE_WIDTH = 2000;
 // Get a direct image URL (base64 encoded for use in app)
 // For large images, automatically fetches a resized version via Google Drive thumbnails
 export async function getImageBase64(fileId: string): Promise<string> {
-  const drive = await getGoogleDriveClient();
+  const drive = getPublicDriveClient();
   
   // First get file metadata to check mime type and size
   const metadata = await drive.files.get({
@@ -237,7 +232,7 @@ export async function getImageBase64(fileId: string): Promise<string> {
 }
 
 async function getAllFolderIds(parentId: string): Promise<string[]> {
-  const drive = await getGoogleDriveClient();
+  const drive = getPublicDriveClient();
   const allFolderIds: string[] = [parentId];
   let currentLevel: string[] = [parentId];
   
@@ -286,7 +281,7 @@ async function getAllowedFolderIds(): Promise<string[]> {
 
 // Search for files by name - RESTRICTED to allowed folder tree
 export async function searchImages(searchTerm: string, folderId?: string): Promise<{ id: string; name: string; thumbnailLink?: string; }[]> {
-  const drive = await getGoogleDriveClient();
+  const drive = getPublicDriveClient();
   
   // Get allowed folder IDs for validation and search
   const allowedFolderIds = await getAllowedFolderIds();
