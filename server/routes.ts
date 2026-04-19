@@ -3194,12 +3194,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Chat: most recent public messages (no whispers, no GM-targeted DMs).
+      // For roll-type messages, parse the formatted text into structured roll
+      // details so spectators can render the same notification-style card the
+      // in-app chat shows (label, dice, modifier, total, crit highlights).
+      // No GM-only data is involved; we only extract what is already present
+      // in the public chat text.
+      type SpectatorRollDetails = {
+        label: string;
+        breakdown: string;
+        total: number | null;
+        rolls: number[] | null;
+        modifier: number | null;
+        critSuccess: boolean;
+        critFailure: boolean;
+      };
       type SpectatorChat = {
         id: string;
         sender: string;
         text: string;
         type: string;
         createdAt: string;
+        rollDetails?: SpectatorRollDetails;
+      };
+      const parseSpectatorRollDetails = (text: string): SpectatorRollDetails => {
+        const colonIndex = text.indexOf(":");
+        const label = colonIndex > 0 ? text.substring(0, colonIndex).trim() : text.trim();
+        let breakdown = text;
+        if (colonIndex > 0) {
+          const afterColon = text.substring(colonIndex + 1);
+          const equalsIndex = afterColon.lastIndexOf("=");
+          breakdown = equalsIndex > 0
+            ? afterColon.substring(0, equalsIndex).trim()
+            : afterColon.trim();
+        }
+        const allTotals = Array.from(text.matchAll(/=\s*(-?\d+)/g));
+        const total = allTotals.length > 0
+          ? parseInt(allTotals[allTotals.length - 1][1], 10)
+          : null;
+        // Pull individual dice rolls from a "(n, n, n)" group if present.
+        let rolls: number[] | null = null;
+        const rollsMatch = breakdown.match(/[\(\[]([-\d,\s]+)[\)\]]/);
+        if (rollsMatch) {
+          const parts = rollsMatch[1]
+            .split(",")
+            .map(s => s.trim())
+            .filter(s => s.length > 0)
+            .map(s => parseInt(s, 10))
+            .filter(n => Number.isFinite(n));
+          if (parts.length > 0) rolls = parts;
+        }
+        // Trailing "± N" modifier on the breakdown, e.g. "15 (15) + 3".
+        let modifier: number | null = null;
+        const modMatch = breakdown.match(/([+-])\s*(\d+)\s*$/);
+        if (modMatch) {
+          const sign = modMatch[1] === "-" ? -1 : 1;
+          modifier = sign * parseInt(modMatch[2], 10);
+        }
+        return {
+          label,
+          breakdown,
+          total,
+          rolls,
+          modifier,
+          critSuccess: text.includes("Crit Success"),
+          critFailure: text.includes("Crit Failure"),
+        };
       };
       // Fetch a larger pool so filtering whispers/DMs out doesn't underfill
       // the spectator's recent-public-chat window.
@@ -3207,13 +3266,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const chat: SpectatorChat[] = rawMessages
         .filter(m => m.type !== "whisper" && !m.recipientId)
         .slice(0, 50)
-        .map(m => ({
-          id: m.id,
-          sender: m.sender,
-          text: m.text,
-          type: m.type,
-          createdAt: (m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt)).toISOString(),
-        }))
+        .map(m => {
+          const dto: SpectatorChat = {
+            id: m.id,
+            sender: m.sender,
+            text: m.text,
+            type: m.type,
+            createdAt: (m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt)).toISOString(),
+          };
+          if (m.type === "roll") {
+            dto.rollDetails = parseSpectatorRollDetails(m.text);
+          }
+          return dto;
+        })
         .reverse();
 
       res.json({

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, Eye, Loader2, MapPin, Swords, MessageSquare } from "lucide-react";
+import { ArrowDown, Eye, Loader2, MapPin, Swords, MessageSquare, Dice5 } from "lucide-react";
 
 interface SpectatorBundle {
   campaign: { id: string; name: string; activeSceneId: string | null; inCombat: boolean };
@@ -76,6 +76,15 @@ interface SpectatorBundle {
     text: string;
     type: string;
     createdAt: string;
+    rollDetails?: {
+      label: string;
+      breakdown: string;
+      total: number | null;
+      rolls: number[] | null;
+      modifier: number | null;
+      critSuccess: boolean;
+      critFailure: boolean;
+    };
   }>;
 }
 
@@ -632,24 +641,57 @@ export default function Spectate() {
             {chat.length === 0 && (
               <div className="text-xs text-stone-500 italic">No messages yet.</div>
             )}
-            {chat.map((m) => (
-              <div key={m.id} className="text-sm leading-snug" data-testid={`spectator-chat-message-${m.id}`}>
-                {m.type === "system" ? (
-                  <div className="text-xs italic text-stone-500">{m.text}</div>
-                ) : m.type === "roll" ? (
-                  <div>
-                    <span className="text-xs font-semibold text-amber-300">{m.sender}</span>
-                    <span className="text-xs text-stone-500"> rolled </span>
-                    <span className="text-stone-200">{m.text}</span>
+            {chat.map((m) => {
+              if (m.type === "system") {
+                return (
+                  <div key={m.id} className="text-sm leading-snug" data-testid={`spectator-chat-message-${m.id}`}>
+                    <div className="text-xs italic text-stone-500">{m.text}</div>
                   </div>
-                ) : (
+                );
+              }
+              if (m.type === "roll") {
+                const rd = m.rollDetails;
+                const label = rd?.label ?? m.text;
+                const breakdown = rd?.breakdown ?? '';
+                const total = rd?.total ?? null;
+                const isCritSuccess = !!rd?.critSuccess;
+                const isCritFail = !!rd?.critFailure;
+                return (
+                  <div key={m.id} className="text-sm leading-snug" data-testid={`spectator-chat-message-${m.id}`}>
+                    <div className={`relative rounded-lg shadow-lg bg-gradient-to-r ${isCritSuccess ? 'from-yellow-500 to-amber-600' : isCritFail ? 'from-red-800 to-red-900' : 'from-cyan-600 to-blue-700'} border ${isCritSuccess ? 'border-yellow-400/50' : isCritFail ? 'border-red-600/50' : 'border-white/20'} ${isCritSuccess ? 'ring-2 ring-yellow-400/50' : ''} ${isCritFail ? 'ring-2 ring-red-500/50' : ''}`}>
+                      <div className="absolute inset-0 bg-black/20 rounded-lg" />
+                      <div className="relative px-2 py-2 text-center">
+                        <div className="flex items-center justify-center gap-1.5 text-white/80 text-xs">
+                          <Dice5 className="w-3.5 h-3.5 text-white flex-shrink-0" />
+                          <span className="font-medium truncate" data-testid={`text-roll-sender-${m.id}`}>{m.sender}</span>
+                        </div>
+                        <div className="text-white/60 text-xs mt-1 truncate" data-testid={`text-roll-label-${m.id}`}>
+                          {label}
+                        </div>
+                        <div className="flex items-center justify-center gap-2 mt-0.5">
+                          <span className={`text-3xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`} data-testid={`text-roll-total-${m.id}`}>
+                            {total ?? '?'}
+                          </span>
+                          {isCritSuccess && <span className="text-yellow-200 text-xs font-bold">CRIT!</span>}
+                          {isCritFail && <span className="text-red-200 text-xs font-bold">FAIL!</span>}
+                        </div>
+                        <div className="text-white/50 text-[10px] mt-0.5 break-words" data-testid={`text-roll-breakdown-${m.id}`}>
+                          {breakdown}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={m.id} className="text-sm leading-snug" data-testid={`spectator-chat-message-${m.id}`}>
                   <div>
                     <span className="text-xs font-semibold text-blue-300">{m.sender}: </span>
                     <span className="text-stone-200 break-words">{m.text}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
           {unreadCount > 0 && (
             <button
