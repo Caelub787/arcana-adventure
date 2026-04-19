@@ -7505,6 +7505,16 @@ export default function Campaign() {
     return spectatorFollowParamRaw;
   })();
   const [spectatorFollowUserId, setSpectatorFollowUserId] = useState<string>(spectatorFollowUserIdInitial);
+  // Bumps every few seconds while spectating a specific member so the badge can
+  // reflect "not broadcasting" status without a viewport_update event.
+  const [spectatorBadgeTick, setSpectatorBadgeTick] = useState(0);
+  useEffect(() => {
+    if (!spectatorMode) return;
+    if (!spectatorFollow) return;
+    if (spectatorFollowUserId === 'host') return;
+    const id = setInterval(() => setSpectatorBadgeTick((t) => t + 1), 2000);
+    return () => clearInterval(id);
+  }, [spectatorMode, spectatorFollow, spectatorFollowUserId]);
   const campaignId = params?.id;
 
   const exitProjectorMode = useCallback(() => {
@@ -10524,13 +10534,20 @@ export default function Campaign() {
         const chosenMember = spectatorFollowUserId !== 'host'
           ? memberList.find((m: any) => m.userId === spectatorFollowUserId)
           : null;
-        // Mirror the same "stale broadcast" rule used by the viewport handler so
-        // the badge label reflects when we've fallen back to the host.
-        const chosenViewport = chosenMember ? otherPlayersViewports.get(chosenMember.userId) : null;
+        // Mirror the same "stale broadcast" rule used by the viewport handler:
+        // a chosen member is considered inactive when we have not received a
+        // viewport_update from them in the last 10 seconds. Referencing
+        // `spectatorBadgeTick` here forces this IIFE to recompute every few
+        // seconds, so the indicator appears/clears promptly even when no new
+        // viewport_update events arrive.
+        const now = spectatorBadgeTick >= 0 ? Date.now() : Date.now();
+        const lastSeen = chosenMember
+          ? (lastViewportAtRef.current.get(chosenMember.userId) || 0)
+          : 0;
         const isFallbackActive = spectatorFollow
           && spectatorFollowUserId !== 'host'
           && !!chosenMember
-          && !chosenViewport;
+          && now - lastSeen > 10000;
         const followLabel = spectatorFollow
           ? (spectatorFollowUserId === 'host' || !chosenMember
               ? 'Following Host'
