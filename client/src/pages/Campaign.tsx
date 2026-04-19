@@ -7484,13 +7484,18 @@ export default function Campaign() {
   const queryParams = new URLSearchParams(search);
   const isNew = queryParams.get("new") === "true";
   const isIncognitoMode = queryParams.get("incognito") === "true";
-  const projectorMode = queryParams.get("projector") === "1";
+  const isProjectorParam = queryParams.get("projector") === "1";
+  const spectatorMode = queryParams.get("spectator") === "1";
+  // Spectator mode is a player-facing variant of projector mode: same UI hiding,
+  // but accessible to any campaign member and always rendered with player visibility.
+  const projectorMode = isProjectorParam || spectatorMode;
   const campaignId = params?.id;
 
   const exitProjectorMode = useCallback(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     url.searchParams.delete("projector");
+    url.searchParams.delete("spectator");
     const newPath = url.pathname + (url.search ? url.search : "") + url.hash;
     setLocation(newPath);
   }, [setLocation]);
@@ -7972,12 +7977,13 @@ export default function Campaign() {
 
   // Load campaign data from API (with incognito support for admins)
   const { data: campaign, isLoading: campaignLoading } = useQuery({
-    queryKey: [`/api/campaigns/${effectiveCampaignId}`, isIncognitoMode && isAdmin],
+    queryKey: [`/api/campaigns/${effectiveCampaignId}`, isIncognitoMode && isAdmin, spectatorMode],
     queryFn: async () => {
       const url = isIncognitoMode && isAdmin 
         ? `/api/campaigns/${effectiveCampaignId}?incognito=true`
         : `/api/campaigns/${effectiveCampaignId}`;
-      const res = await fetch(url, { credentials: 'include' });
+      const headers: Record<string, string> = spectatorMode ? { 'X-Spectator-Mode': '1' } : {};
+      const res = await fetch(url, { credentials: 'include', headers });
       if (!res.ok) throw new Error('Failed to load campaign');
       return res.json();
     },
@@ -7987,11 +7993,15 @@ export default function Campaign() {
   // Derive user's role from the campaign data returned by the server
   // This is more secure than relying on URL query params
   // For new campaigns being created, the creator is always GM
-  const role: 'gm' | 'player' = isNew 
+  const actualRole: 'gm' | 'player' = isNew 
     ? 'gm' 
     : (campaign && typeof campaign === 'object' && 'userRole' in campaign 
         ? ((campaign as any).userRole as 'gm' | 'player') 
         : 'player');
+  // In spectator mode, always render with player-level visibility so GM-only data
+  // (hidden tokens, walls, GM notes, etc.) is never exposed when casting to a TV
+  // or sharing on stream — even if the viewer is actually the GM.
+  const role: 'gm' | 'player' = spectatorMode ? 'player' : actualRole;
 
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
@@ -9330,6 +9340,7 @@ export default function Campaign() {
   const effectiveCampaignIdRef = useRef(effectiveCampaignId);
   const membersRef = useRef(members);
   const incognitoFlagRef = useRef(isIncognitoMode && isAdmin);
+  const spectatorModeRef = useRef(spectatorMode);
   const userIdRef = useRef(user?.id);
   useEffect(() => {
     queryClientRef.current = queryClient;
@@ -9338,8 +9349,9 @@ export default function Campaign() {
     effectiveCampaignIdRef.current = effectiveCampaignId;
     membersRef.current = members;
     incognitoFlagRef.current = isIncognitoMode && isAdmin;
+    spectatorModeRef.current = spectatorMode;
     userIdRef.current = user?.id;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, user?.id]);
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, spectatorMode, user?.id]);
 
   // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
@@ -9350,7 +9362,7 @@ export default function Campaign() {
   useEffect(() => {
     if (effectiveCampaignId && !wsConnectedRef.current) {
       const shouldUseIncognito = isIncognitoMode && isAdmin;
-      gameWs.connect(effectiveCampaignId, shouldUseIncognito);
+      gameWs.connect(effectiveCampaignId, shouldUseIncognito, spectatorMode);
       wsConnectedRef.current = true;
 
       const unsubscribe = gameWs.onMessage((data) => {
@@ -9743,7 +9755,7 @@ export default function Campaign() {
           // Immediately update campaign cache with new active scene ID
           // Must match the exact query key used by useQuery, which includes the incognito flag
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignIdRef.current}`, incognitoFlagRef.current],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}`, incognitoFlagRef.current, spectatorModeRef.current],
             (oldData: any) => {
               if (!oldData) return oldData;
               return { ...oldData, activeSceneId: data.sceneId };
@@ -10409,16 +10421,29 @@ export default function Campaign() {
       {/* Projector Mode fullscreen prompt */}
       {projectorMode && <ProjectorFullscreen />}
 
-      {/* Projector Mode floating exit button */}
+      {/* Projector / Spectator Mode floating exit button */}
       {projectorMode && (
         <button
           onClick={exitProjectorMode}
           className="fixed top-2 right-2 z-[12000] w-8 h-8 rounded-full bg-stone-900/60 hover:bg-stone-800/90 border border-stone-700/60 hover:border-amber-500 text-stone-400 hover:text-amber-400 flex items-center justify-center backdrop-blur-sm shadow-lg transition-all opacity-30 hover:opacity-100"
-          title="Exit Projector Mode"
-          data-testid="button-exit-projector"
+          title={spectatorMode ? "Exit Spectator Mode" : "Exit Projector Mode"}
+          data-testid={spectatorMode ? "button-exit-spectator" : "button-exit-projector"}
         >
           <Settings className="h-4 w-4" />
         </button>
+      )}
+
+      {/* Spectator Mode badge */}
+      {spectatorMode && (
+        <div
+          className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] pointer-events-none"
+          data-testid="badge-spectator-mode"
+        >
+          <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm">
+            <Eye className="h-3.5 w-3.5 text-blue-300" />
+            <span className="text-xs font-medium text-blue-200">Spectator Mode</span>
+          </div>
+        </div>
       )}
 
       {/* Top Bar: Nav & Settings */}
@@ -12412,35 +12437,35 @@ export default function Campaign() {
            )}
            <BattleMap 
              tokens={tokens} 
-             onMoveToken={handleMoveToken} 
-             onTokenClick={handleTokenClick}
-             onTokenDoubleClick={handleTokenDoubleClick}
-             onTokenTripleClick={handleTokenTripleClick}
-             onDeleteToken={handleDeleteToken}
+             onMoveToken={spectatorMode ? () => {} : handleMoveToken} 
+             onTokenClick={spectatorMode ? undefined : handleTokenClick}
+             onTokenDoubleClick={spectatorMode ? undefined : handleTokenDoubleClick}
+             onTokenTripleClick={spectatorMode ? undefined : handleTokenTripleClick}
+             onDeleteToken={spectatorMode ? undefined : handleDeleteToken}
              role={role} 
              gridSize={activeScene?.gridSize || 50}
              backgroundImage={currentMap}
              scene={activeScene}
-             onViewChange={handleBattleMapViewChange}
+             onViewChange={spectatorMode ? undefined : handleBattleMapViewChange}
              characters={characters as any[]}
              allSpecies={memoizedAllSpecies}
-             selectionMode={selectionMode}
+             selectionMode={spectatorMode ? 'normal' : selectionMode}
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}
-             aoeTargetState={aoeTargetState}
-             onAoeMouseMove={updateAoeCenter}
-             onAoeClick={handleAoeClick}
+             aoeTargetState={spectatorMode ? createInitialAoeState() : aoeTargetState}
+             onAoeMouseMove={spectatorMode ? undefined : updateAoeCenter}
+             onAoeClick={spectatorMode ? undefined : handleAoeClick}
              otherPlayersAoe={otherPlayersAoe}
              myPermissions={myPermissions}
              tokenActiveEffects={tokenActiveEffectsQuery.data}
              allTokenEffects={tokenEffectsQuery.data}
-             onApplyEffect={handleApplyEffect}
-             onRemoveEffect={handleRemoveEffect}
-             onToggleInvisibility={handleToggleInvisibility}
+             onApplyEffect={spectatorMode ? undefined : handleApplyEffect}
+             onRemoveEffect={spectatorMode ? undefined : handleRemoveEffect}
+             onToggleInvisibility={spectatorMode ? undefined : handleToggleInvisibility}
              currentTurnCharacterId={currentTurnCharacterId}
              otherPlayersTargeting={otherPlayersTargeting}
              activeBeacons={activeBeacons}
-             onBeacon={handleBeacon}
+             onBeacon={spectatorMode ? undefined : handleBeacon}
              otherPlayersViewports={otherPlayersViewports}
              thrownItems={thrownItems}
              onRefetchThrownItems={handleRefetchThrownItems}
@@ -12524,13 +12549,15 @@ export default function Campaign() {
            {/* Battlemap Dice Overlay for 3D dice rolling */}
            <BattlemapDiceOverlay />
            
-           <SelectionModeButtons
-             selectionMode={selectionMode}
-             onModeChange={handleModeChange}
-             character={role === 'gm' ? inspectedChar : character}
-             notesPanelOpen={sidePanelOpen}
-             notesPanelWidth={notesPanelWidth}
-           />
+           {!spectatorMode && (
+             <SelectionModeButtons
+               selectionMode={selectionMode}
+               onModeChange={handleModeChange}
+               character={role === 'gm' ? inspectedChar : character}
+               notesPanelOpen={sidePanelOpen}
+               notesPanelWidth={notesPanelWidth}
+             />
+           )}
            
            {aoeTargetState.active && aoeTargetState.spell && (() => {
              return (

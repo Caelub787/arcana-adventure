@@ -31,6 +31,25 @@ declare module "express-session" {
   }
 }
 
+declare global {
+  namespace Express {
+    interface Request {
+      spectatorMode?: boolean;
+    }
+  }
+}
+
+/**
+ * Returns true if the incoming request has opted into spectator mode via the
+ * X-Spectator-Mode header (set by clients viewing /campaign/:id?spectator=1).
+ * In spectator mode the request must be treated as a player even if the
+ * authenticated user is actually the campaign GM, so that GM-only data
+ * (hidden tokens, GM notes, gm_only world entities, etc.) is never returned.
+ */
+function isSpectatorRequest(req: any): boolean {
+  return req?.spectatorMode === true;
+}
+
 async function migrateEntityTypesToTags() {
   try {
     await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS custom_tags text[] DEFAULT ARRAY[]::text[]`);
@@ -76,6 +95,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
   await migrateEntityTypesToTags();
+
+  // Spectator mode middleware: clients viewing the read-only spectator view
+  // send X-Spectator-Mode: 1 with every request. Mark the request so
+  // downstream handlers can scope responses to player-visible data only,
+  // even when the authenticated user is actually the campaign GM.
+  app.use((req, _res, next) => {
+    const headerVal = req.headers['x-spectator-mode'];
+    if (headerVal === '1' || headerVal === 'true') {
+      req.spectatorMode = true;
+    }
+    next();
+  });
+
+  // Read-only enforcement: a spectator tab must never mutate state, even via
+  // hand-crafted requests. Reject any non-GET API request that arrives with
+  // the spectator header set.
+  app.use('/api', (req, res, next) => {
+    if (req.spectatorMode && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+      return res.status(403).json({ error: 'Spectator mode is read-only' });
+    }
+    next();
+  });
   
   // Get session middleware from app
   const sessionMiddleware = (app as any)._router.stack.find(
@@ -403,11 +444,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }));
           return;
         }
+
+        // Spectator read-only enforcement: a connection that joined any
+        // campaign in spectator mode may only re-issue join_campaign or
+        // ping/pong frames. All other message types — including cosmetic
+        // ones like cursor/viewport/beacon broadcasts — are rejected so a
+        // spectator tab is never visible to or able to affect other users.
+        if ((ws as any).spectator && message.type !== "join_campaign" && message.type !== "ping" && message.type !== "pong") {
+          ws.send(JSON.stringify({
+            type: "error",
+            message: "Spectator mode is read-only"
+          }));
+          return;
+        }
         
         if (message.type === "join_campaign" && message.campaignId) {
           const campaignId = message.campaignId;
           const incognitoMode = message.incognito === true;
-          console.log(`[WebSocket] Processing join_campaign request from ${username} for campaign ${campaignId}${incognitoMode ? ' (INCOGNITO)' : ''}`);
+          const spectatorMode = message.spectator === true;
+          console.log(`[WebSocket] Processing join_campaign request from ${username} for campaign ${campaignId}${incognitoMode ? ' (INCOGNITO)' : ''}${spectatorMode ? ' (SPECTATOR)' : ''}`);
           
           // Check if user is a member of this campaign or is the GM
           const campaign = await storage.getCampaign(campaignId);
@@ -424,16 +479,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const wsUser = await storage.getUser(authenticatedUserId);
           const isUserAdmin = wsUser ? (wsUser.isAdmin || ADMIN_EMAILS.includes(wsUser.email.toLowerCase())) : false;
           
-          // Check if user is GM (owner)
-          const isGM = campaign.gmUserId === authenticatedUserId;
-          console.log(`[WebSocket] User ${username} isGM: ${isGM}, isAdmin: ${isUserAdmin}, gmUserId: ${campaign.gmUserId}, userId: ${authenticatedUserId}`);
+          // Check if user is GM (owner). In spectator mode the connection
+          // must be treated as a player so GM-only broadcasts/data are never
+          // delivered to the read-only spectator tab — even if the user is
+          // actually the campaign GM.
+          const isGM = !spectatorMode && campaign.gmUserId === authenticatedUserId;
+          console.log(`[WebSocket] User ${username} isGM: ${isGM}, isAdmin: ${isUserAdmin}, gmUserId: ${campaign.gmUserId}, userId: ${authenticatedUserId}, spectator: ${spectatorMode}`);
           
           // Check if user is a member
           const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
           console.log(`[WebSocket] User ${username} membership:`, membership);
           
           // Admin incognito mode: allow access without membership
-          if (incognitoMode && isUserAdmin) {
+          // (skipped when spectator is requested — spectator forces player view)
+          if (!spectatorMode && incognitoMode && isUserAdmin) {
             console.log(`[WebSocket] Admin ${username} accessing campaign ${campaignId} in INCOGNITO mode`);
             
             // Store campaign with GM role but mark as incognito
@@ -466,9 +525,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Store campaign with role in Map
-          // Both owner (gmUserId) and assistant_gm get "gm" role for privileges
-          const role = isGM ? "gm" : (membership?.role === 'assistant_gm' ? 'gm' : membership?.role || "player");
-          (ws as any).campaigns.set(campaignId, { role });
+          // Both owner (gmUserId) and assistant_gm get "gm" role for privileges,
+          // unless spectator mode is active — spectators are always players.
+          const role = spectatorMode
+            ? "player"
+            : (isGM ? "gm" : (membership?.role === 'assistant_gm' ? 'gm' : membership?.role || "player"));
+          (ws as any).campaigns.set(campaignId, { role, spectator: spectatorMode });
+          if (spectatorMode) (ws as any).spectator = true;
           
           // Join room
           if (!campaignRooms.has(campaignId)) {
@@ -1976,11 +2039,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return user ? (user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())) : false;
   };
 
-  const hasGmAccess = async (userId: string, campaignId: string, gmUserId: string): Promise<boolean> => {
+  const hasGmAccess = async (userId: string, campaignId: string, gmUserId: string, req?: any): Promise<boolean> => {
+    // Spectator mode always reports as a player so GM-only data is never returned.
+    if (req && isSpectatorRequest(req)) return false;
     if (gmUserId === userId) return true;
     if (await isAdminUser(userId)) return true;
     const membership = await storage.getCampaignMembership(userId, campaignId);
     return membership?.role === 'assistant_gm';
+  };
+
+  // Wrap storage.isGM with the spectator demotion so request handlers that
+  // call it directly for read-side filtering also honor spectator mode.
+  const isGmForRequest = async (req: any, userId: string, campaignId: string): Promise<boolean> => {
+    if (isSpectatorRequest(req)) return false;
+    return await storage.isGM(userId, campaignId);
   };
 
   /**
@@ -2321,9 +2393,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     let userRole: 'gm' | 'player' = 'player';
     let isIncognito = false;
-    
-    // Admin incognito mode: grant GM access without membership
-    if (incognitoMode && userIsAdmin) {
+    const inSpectator = isSpectatorRequest(req);
+
+    // Spectator mode forces player role regardless of actual membership.
+    if (inSpectator) {
+      userRole = 'player';
+    } else if (incognitoMode && userIsAdmin) {
+      // Admin incognito mode: grant GM access without membership
       userRole = 'gm';
       isIncognito = true;
     } else if (isOwner) {
@@ -2336,7 +2412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     
-    res.json({ ...campaign, userRole, isIncognito });
+    res.json({ ...campaign, userRole, isIncognito, spectator: inSpectator });
   });
   
   // Get chat messages for a campaign
@@ -2604,7 +2680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = await hasGmAccess(req.session.userId, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId, req.params.campaignId, campaign.gmUserId, req);
       const allCharacters = await storage.getCampaignCharacters(req.params.campaignId);
       
       // If GM (or admin), return all characters
@@ -3700,8 +3776,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tokenImage: character.portrait || token.image,
         };
       });
-      
-      res.json(enrichedTokens);
+
+      // In spectator mode, never expose tokens flagged as invisible or whose
+      // backing character is hidden from players. This mirrors the player-view
+      // filtering applied in BattleMap and prevents GM-only tokens from
+      // appearing in the network payload of the spectator tab.
+      const finalTokens = isSpectatorRequest(req)
+        ? enrichedTokens.filter((t: any) => {
+            if (t.isInvisible) return false;
+            const ch = t.characterId ? characterMap.get(t.characterId) : null;
+            if (ch && (ch as any).isHidden) return false;
+            return true;
+          })
+        : enrichedTokens;
+
+      res.json(finalTokens);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch tokens" });
     }
@@ -3886,7 +3975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Allow owner or assistant GMs to kick
-      const canKick = await storage.isGM(req.session.userId!, campaignId);
+      const canKick = await isGmForRequest(req, req.session.userId!, campaignId);
       if (!canKick) {
         return res.status(403).json({ error: "Only GMs can kick players" });
       }
@@ -3923,7 +4012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Allow owner or assistant GMs to ban
-      const canBan = await storage.isGM(req.session.userId!, campaignId);
+      const canBan = await isGmForRequest(req, req.session.userId!, campaignId);
       if (!canBan) {
         return res.status(403).json({ error: "Only GMs can ban players" });
       }
@@ -3959,7 +4048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Allow owner or assistant GMs to unban
-      const canUnban = await storage.isGM(req.session.userId!, campaignId);
+      const canUnban = await isGmForRequest(req, req.session.userId!, campaignId);
       if (!canUnban) {
         return res.status(403).json({ error: "Only GMs can unban players" });
       }
@@ -3982,7 +4071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Allow owner or assistant GMs to view bans
-      const canView = await storage.isGM(req.session.userId!, campaignId);
+      const canView = await isGmForRequest(req, req.session.userId!, campaignId);
       if (!canView) {
         return res.status(403).json({ error: "Only GMs can view banned players" });
       }
@@ -4008,7 +4097,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Allow owner or assistant GMs
-      const canLevelUp = await storage.isGM(req.session.userId, req.params.campaignId);
+      const canLevelUp = await isGmForRequest(req, req.session.userId, req.params.campaignId);
       if (!canLevelUp) {
         return res.status(403).json({ error: "Only GMs can level up all characters" });
       }
@@ -4120,7 +4209,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scenes = await storage.getCampaignScenes(req.params.campaignId);
       
       // GMs (and admins) can see all scenes, players only see active scene
-      const isGmForScenes = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGmForScenes = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGmForScenes) {
         const activeScenes = scenes.filter(s => s.id === campaign.activeSceneId);
         return res.json(activeScenes);
@@ -4146,7 +4235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Players can view the active scene or scenes linked by map pins
-      const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId, req);
       const isActiveScene = campaign.activeSceneId === scene.id;
       
       if (!isGM && !isActiveScene) {
@@ -4378,7 +4467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can create folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can create character folders" });
       }
@@ -4403,7 +4492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can update folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can update character folders" });
       }
@@ -4429,7 +4518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can delete folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can delete character folders" });
       }
@@ -4456,7 +4545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can move characters to folders
-      const isGM = await storage.isGM(req.session.userId!, character.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, character.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can organize characters into folders" });
       }
@@ -4497,7 +4586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can create scene folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can create scene folders" });
       }
@@ -4523,7 +4612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can update scene folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can update scene folders" });
       }
@@ -4550,7 +4639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can delete scene folders
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can delete scene folders" });
       }
@@ -4578,7 +4667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // GMs can move scenes to folders
-      const isGM = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can organize scenes into folders" });
       }
@@ -4609,7 +4698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can set the active scene" });
       }
@@ -6601,7 +6690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGm = await storage.isGM(userId, campaignId);
+      const isGm = await isGmForRequest(req, userId, campaignId);
       if (!isGm) {
         return res.status(403).json({ error: "Only GMs can add characters from templates" });
       }
@@ -6633,7 +6722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGm = await storage.isGM(userId, campaignId);
+      const isGm = await isGmForRequest(req, userId, campaignId);
       if (!isGm) {
         return res.status(403).json({ error: "Only GMs can import characters" });
       }
@@ -6692,7 +6781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Target campaign not found" });
       }
       
-      const isTargetGm = await storage.isGM(userId, campaignId);
+      const isTargetGm = await isGmForRequest(req, userId, campaignId);
       if (!isTargetGm) {
         return res.status(403).json({ error: "Only GMs can import characters to this campaign" });
       }
@@ -6707,7 +6796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Source character is not in a campaign" });
       }
       
-      const isSourceGm = await storage.isGM(userId, sourceCharacter.campaignId);
+      const isSourceGm = await isGmForRequest(req, userId, sourceCharacter.campaignId);
       if (!isSourceGm) {
         return res.status(403).json({ error: "You must be a GM in the source campaign to import characters" });
       }
@@ -7094,7 +7183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get lightweight summaries for both campaign and system items
       // Pass userId to include GM's library items across all their campaigns
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignItemSummaries(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItemSummaries(campaign.system)
@@ -7118,7 +7207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get campaign template items and system items
       // Pass userId to include GM's library items across all their campaigns
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignTemplateItems(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItems(campaign.system)
@@ -7263,7 +7352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can create template spells" });
 
       const spellData = insertSpellSchema.parse({
@@ -7285,7 +7374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can edit template spells" });
 
       const spell = await storage.getSpell(req.params.id);
@@ -7305,7 +7394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can delete template spells" });
 
       const spell = await storage.getSpell(req.params.id);
@@ -7665,7 +7754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user is GM
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       
       res.json({ permissions: permissionMap, isGM });
     } catch (e) {
@@ -7803,7 +7892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       const entries = await storage.getCampaignInitiative(req.params.campaignId);
       
       // If not GM, filter out hidden entries
@@ -7834,7 +7923,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      const isGM = campaign.gmUserId === req.session.userId || await storage.isGM(req.session.userId!, req.params.campaignId);
+      const isGM = campaign.gmUserId === req.session.userId || await isGmForRequest(req, req.session.userId!, req.params.campaignId);
       const isOwner = character.userId === req.session.userId;
       const editPermission = await storage.getCharacterPermission(characterId, req.session.userId!);
       const hasEditAccess = editPermission?.accessLevel === 'edit';
@@ -8286,7 +8375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check GM permission
-      const isGM = await storage.isGM(userId, scene.campaignId);
+      const isGM = await isGmForRequest(req, userId, scene.campaignId);
       if (!isGM) {
         return res.status(403).json({ error: "Only GMs can clear all thrown items" });
       }
@@ -8404,7 +8493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!scene) return res.status(404).json({ error: "Scene not found" });
       const campaign = await storage.getCampaign(scene.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
       
       const wall = await storage.createSceneWall({ ...req.body, sceneId: req.params.sceneId });
@@ -8419,7 +8508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
       
       const wallValues = req.body.walls.map((w: any) => ({ ...w, sceneId: req.params.sceneId }));
@@ -8454,7 +8543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
       
       await storage.deleteSceneWalls(req.params.sceneId);
@@ -8469,7 +8558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage doors" });
       
       await storage.deleteSceneDoors(req.params.sceneId);
@@ -8494,7 +8583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage doors" });
       
       const door = await storage.createSceneDoor({ ...req.body, sceneId: req.params.sceneId });
@@ -8528,7 +8617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage windows" });
       
       await storage.deleteSceneWindows(req.params.sceneId);
@@ -8553,7 +8642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage windows" });
       
       const win = await storage.createSceneWindow({ ...req.body, sceneId: req.params.sceneId });
@@ -8587,7 +8676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage lights" });
       
       await storage.deleteSceneLights(req.params.sceneId);
@@ -8612,7 +8701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage lights" });
       
       const light = await storage.createSceneLight({ ...req.body, sceneId: req.params.sceneId });
@@ -8738,7 +8827,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const scene = await storage.getScene(req.params.sceneId);
       if (!scene) return res.status(404).json({ error: "Scene not found" });
-      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGm = await isGmForRequest(req, req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage fog" });
       
       const updated = await storage.updateScene(req.params.sceneId, { fogState: req.body.fogState });
@@ -8764,7 +8853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!scene) return res.status(404).json({ error: "Scene not found" });
         const campaign = await storage.getCampaign(scene.campaignId);
         if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-        const gmAccess = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+        const gmAccess = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId, req);
         if (!gmAccess) {
           return res.status(403).json({ error: "Only the GM can toggle door vision" });
         }
@@ -9969,7 +10058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId, req);
       const isMember = isGM || await storage.isCampaignMember(token.campaignId, req.session.userId!);
       
       if (!isGM && !isMember) {
@@ -9996,7 +10085,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId, req);
       
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can apply effects to tokens" });
@@ -10049,7 +10138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId, req);
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can remove effects from tokens" });
       }
@@ -10075,7 +10164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId, req);
       
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can clear effects from tokens" });
@@ -10221,7 +10310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const folder = await storage.createSandboxFolder({
         campaignId: req.params.campaignId,
@@ -10241,7 +10330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -10261,7 +10350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       await storage.deleteSandboxFolder(req.params.folderId);
       broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
@@ -10287,7 +10376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const canvasId = crypto.randomUUID();
       const defaultData = {
@@ -10344,7 +10433,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can seed templates" });
 
       const { buildCharacterTemplateData, buildWeaponTemplateData, buildSpellTemplateData } = await import("./arcanaTemplates");
@@ -10381,7 +10470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.updateSandboxTemplate(req.params.templateId, req.body);
       broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
@@ -10396,7 +10485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       await storage.deleteSandboxTemplate(req.params.templateId);
       broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
@@ -10422,7 +10511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const actor = await storage.createSandboxActor({
         campaignId: req.params.campaignId,
@@ -10443,7 +10532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -10463,7 +10552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       await storage.deleteSandboxActor(req.params.actorId);
       broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
@@ -10482,7 +10571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entities = await storage.getEntitiesByCampaign(campaignId);
       const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
@@ -10500,7 +10589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entities = await storage.searchEntitiesByCampaign(campaignId, (q as string) || "", type as string | undefined);
       const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
@@ -10517,7 +10606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const entity = await storage.getEntity(entityId);
       if (!entity || entity.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
@@ -10534,7 +10623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create entities" });
       const parsed = insertEntitySchema.parse({ ...req.body, campaignId, createdBy: req.session.userId });
       const entity = await storage.createEntity(parsed);
@@ -10551,7 +10640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, entityId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       const existing = await storage.getEntity(entityId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
       if (!isGM) {
@@ -10576,7 +10665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, entityId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete entities" });
       const existing = await storage.getEntity(entityId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
@@ -10594,7 +10683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, entityId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can restore entities" });
       const entity = await storage.restoreEntity(entityId);
       if (!entity) return res.status(404).json({ error: "Entity not found" });
@@ -10612,7 +10701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const references = await storage.getEntityReferences(entityId);
       res.json(references);
@@ -10630,7 +10719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const links = await storage.getEntityLinksByCampaign(campaignId);
       if (isGM) {
@@ -10652,7 +10741,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const links = await storage.getEntityLinks(entityId);
       if (isGM) {
@@ -10673,7 +10762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create entity links" });
       const parsed = insertEntityLinkSchema.parse({ ...req.body, campaignId });
       const link = await storage.createEntityLink(parsed);
@@ -10690,7 +10779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, linkId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can update entity links" });
       const existing = await storage.getEntityLink(linkId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity link not found" });
@@ -10708,7 +10797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, linkId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete entity links" });
       const existing = await storage.getEntityLink(linkId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity link not found" });
@@ -10728,7 +10817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create share links" });
       const existing = await storage.getWorldShareLink(campaignId);
       if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
@@ -10760,7 +10849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can view share links" });
       const link = await storage.getWorldShareLink(campaignId);
       res.json(link || null);
@@ -10775,7 +10864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, linkId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete share links" });
       await storage.deleteWorldShareLink(linkId);
       broadcastToCampaign(campaignId, { type: "world_share_link_deleted", linkId });
@@ -10875,7 +10964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const maps = await storage.getWorldMaps(campaignId);
       const filtered = isGM ? maps : maps.filter(m => m.visibility !== 'gm_only');
@@ -10892,7 +10981,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const map = await storage.getWorldMap(mapId);
       if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
@@ -10909,7 +10998,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create maps" });
       const parsed = insertWorldMapSchema.parse({ ...req.body, campaignId });
       const map = await storage.createWorldMap(parsed);
@@ -10926,7 +11015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, mapId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can update maps" });
       const existing = await storage.getWorldMap(mapId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
@@ -10944,7 +11033,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, mapId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete maps" });
       const existing = await storage.getWorldMap(mapId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
@@ -10965,7 +11054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const map = await storage.getWorldMap(mapId);
       if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
@@ -10982,7 +11071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, mapId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create pins" });
       const map = await storage.getWorldMap(mapId);
       if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
@@ -11001,7 +11090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, mapId, pinId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can update pins" });
       const existing = await storage.getWorldMapPin(pinId);
       if (!existing || existing.mapId !== mapId) return res.status(404).json({ error: "Pin not found" });
@@ -11019,7 +11108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, mapId, pinId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete pins" });
       const existing = await storage.getWorldMapPin(pinId);
       if (!existing || existing.mapId !== mapId) return res.status(404).json({ error: "Pin not found" });
@@ -11040,7 +11129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const calendars = await storage.getWorldCalendars(campaignId);
       res.json(calendars);
@@ -11056,7 +11145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const calendar = await storage.getWorldCalendar(calendarId);
       if (!calendar || calendar.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
@@ -11072,7 +11161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create calendars" });
       const parsed = insertWorldCalendarSchema.parse({ ...req.body, campaignId });
       const calendar = await storage.createWorldCalendar(parsed);
@@ -11089,7 +11178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, calendarId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can update calendars" });
       const existing = await storage.getWorldCalendar(calendarId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
@@ -11107,7 +11196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, calendarId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete calendars" });
       const existing = await storage.getWorldCalendar(calendarId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
@@ -11128,7 +11217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const events = await storage.getWorldTimelineEvents(campaignId);
       const filtered = isGM ? events : events.filter(e => e.visibility !== 'gm_only');
@@ -11145,7 +11234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const event = await storage.getWorldTimelineEvent(eventId);
       if (!event || event.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
@@ -11162,7 +11251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can create timeline events" });
       const parsed = insertWorldTimelineEventSchema.parse({ ...req.body, campaignId });
       const event = await storage.createWorldTimelineEvent(parsed);
@@ -11179,7 +11268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, eventId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can update timeline events" });
       const existing = await storage.getWorldTimelineEvent(eventId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
@@ -11197,7 +11286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId, eventId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can delete timeline events" });
       const existing = await storage.getWorldTimelineEvent(eventId);
       if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
@@ -11238,7 +11327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
       const worlds = await storage.getWorldsByCampaign(campaignId);
       const linkedWorld = worlds.length > 0 ? worlds[0] : null;
@@ -11452,7 +11541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { campaignId } = req.params;
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only GMs can link worlds" });
       const { worldId } = req.body;
       if (worldId) {
@@ -12371,7 +12460,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can create map pins" });
 
       const parsed = insertCampaignMapPinSchema.parse({
@@ -12397,7 +12486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can update map pins" });
 
       const result = await storage.updateCampaignMapPin(req.params.pinId, req.body);
@@ -12417,7 +12506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can delete map pins" });
 
       await storage.deleteCampaignMapPin(req.params.pinId);
@@ -12459,7 +12548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can create shop items" });
 
       const parsed = insertShopItemSchema.parse({
@@ -12485,7 +12574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can update shop items" });
 
       const result = await storage.updateShopItem(req.params.itemId, req.body);
@@ -12507,7 +12596,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can delete shop items" });
 
       await storage.deleteShopItem(req.params.itemId);
@@ -12532,7 +12621,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const character = await storage.getCharacter(characterId);
       if (!character) return res.status(404).json({ error: "Character not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM && character.userId !== req.session.userId!) {
         const membership = await storage.getCampaignMembership(req.session.userId!, pin.campaignId);
         if (!membership || membership.assignedCharacterId !== characterId) {
@@ -12716,7 +12805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const character = await storage.getCharacter(characterId);
       if (!character) return res.status(404).json({ error: "Character not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM && character.userId !== req.session.userId!) {
         const membership = await storage.getCampaignMembership(req.session.userId!, pin.campaignId);
         if (!membership || membership.assignedCharacterId !== characterId) {
@@ -12900,7 +12989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(pin.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId, req);
       if (!isGM) return res.status(403).json({ error: "Only the GM can reset haggle rolls" });
 
       await storage.deleteShopHaggleRoll(req.params.pinId, req.params.characterId);

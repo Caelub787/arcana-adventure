@@ -11141,6 +11141,30 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               </Button>
             </div>
           )}
+          {!charactersOnly && (
+            <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-3">
+              <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
+                <Eye className="h-3 w-3 text-blue-400" /> Spectator Mode
+              </h3>
+              <p className="text-xs text-stone-500">
+                Open a read-only player view of the battlemap in a new tab — perfect for sharing on Discord, streaming, or letting an absent player watch along. Hidden tokens and GM-only data are never shown.
+              </p>
+              <Button
+                variant="secondary"
+                className="w-full bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
+                onClick={() => {
+                  if (typeof window === 'undefined') return;
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('projector');
+                  url.searchParams.set('spectator', '1');
+                  window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                }}
+                data-testid="button-open-spectator-tab"
+              >
+                <Eye className="mr-2 h-4 w-4" /> Open Spectator Tab
+              </Button>
+            </div>
+          )}
           {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (
             <Button
               variant="secondary"

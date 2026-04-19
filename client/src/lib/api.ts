@@ -645,11 +645,25 @@ class ApiClient {
   }
 
   private async request<T>(url: string, options?: RequestInit): Promise<T> {
+    // Propagate spectator scope so the server returns player-only data for
+    // every API call made from a spectator tab — even if the user is the GM.
+    // Derive directly from the URL so initial requests can't race a setter.
+    const isSpectator =
+      typeof window !== 'undefined' &&
+      (() => {
+        try {
+          return new URLSearchParams(window.location.search).get('spectator') === '1';
+        } catch {
+          return false;
+        }
+      })();
+    const spectatorHeaders: Record<string, string> = isSpectator ? { 'X-Spectator-Mode': '1' } : {};
     const response = await fetch(`${this.baseUrl}${url}`, {
       ...options,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...spectatorHeaders,
         ...options?.headers,
       },
     });
@@ -2328,11 +2342,12 @@ export class GameWebSocket {
   private joinedCampaign: boolean = false;
   private pendingMessages: Array<any> = [];
   private incognitoMode: boolean = false;
+  private spectatorMode: boolean = false;
 
-  connect(campaignId: string, incognito: boolean = false) {
-    // If already connected to this campaign and joined with same incognito mode, don't reconnect
-    if (this.campaignId === campaignId && this.joinedCampaign && this.incognitoMode === incognito && this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log('WebSocket: Already connected and joined to campaign:', campaignId, incognito ? '(incognito)' : '');
+  connect(campaignId: string, incognito: boolean = false, spectator: boolean = false) {
+    // If already connected to this campaign and joined with same incognito/spectator mode, don't reconnect
+    if (this.campaignId === campaignId && this.joinedCampaign && this.incognitoMode === incognito && this.spectatorMode === spectator && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket: Already connected and joined to campaign:', campaignId, incognito ? '(incognito)' : '', spectator ? '(spectator)' : '');
       return;
     }
     
@@ -2351,15 +2366,16 @@ export class GameWebSocket {
     this.joinedCampaign = false;
     this.pendingMessages = [];
     this.incognitoMode = incognito;
+    this.spectatorMode = spectator;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
-    console.log('WebSocket: Creating new connection for campaign:', campaignId, incognito ? '(INCOGNITO)' : '');
+    console.log('WebSocket: Creating new connection for campaign:', campaignId, incognito ? '(INCOGNITO)' : '', spectator ? '(SPECTATOR)' : '');
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('WebSocket: Connection opened, sending join_campaign for:', campaignId, this.incognitoMode ? '(incognito)' : '');
-      this.send({ type: 'join_campaign', campaignId, incognito: this.incognitoMode });
+      console.log('WebSocket: Connection opened, sending join_campaign for:', campaignId, this.incognitoMode ? '(incognito)' : '', this.spectatorMode ? '(spectator)' : '');
+      this.send({ type: 'join_campaign', campaignId, incognito: this.incognitoMode, spectator: this.spectatorMode });
     };
 
     this.ws.onmessage = (event) => {
@@ -2391,10 +2407,11 @@ export class GameWebSocket {
       console.log('WebSocket: Connection closed');
       this.joinedCampaign = false;
       const savedIncognitoMode = this.incognitoMode;
+      const savedSpectatorMode = this.spectatorMode;
       this.reconnectTimeout = setTimeout(() => {
         if (this.campaignId) {
-          console.log('WebSocket: Attempting reconnect to campaign:', this.campaignId, savedIncognitoMode ? '(incognito)' : '');
-          this.connect(this.campaignId, savedIncognitoMode);
+          console.log('WebSocket: Attempting reconnect to campaign:', this.campaignId, savedIncognitoMode ? '(incognito)' : '', savedSpectatorMode ? '(spectator)' : '');
+          this.connect(this.campaignId, savedIncognitoMode, savedSpectatorMode);
         }
       }, 3000);
     };
