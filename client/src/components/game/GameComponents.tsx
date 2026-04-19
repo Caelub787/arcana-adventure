@@ -20660,7 +20660,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <RollEntriesEditor 
                         ownerType="spell" 
                         ownerId={selectedSpell.id} 
-                        canEdit={isGM}
+                        canEdit={isGM || isOwner}
                         characterCustomSkills={characterCustomSkills as any[]}
                         campaignSystem={campaignSystem}
                         ownerEnergyCost={selectedSpell.energyCost || 0}
@@ -25677,7 +25677,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
             <RollEntriesEditor 
               ownerType="item" 
               ownerId={item.id} 
-              canEdit={isGM} 
+              canEdit={isGM || isOwner} 
               onExecuteRoll={executeRoll}
               characterCustomSkills={characterCustomSkills as any[]}
               campaignSystem={campaignSystem}

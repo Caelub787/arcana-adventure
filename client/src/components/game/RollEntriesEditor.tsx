@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface RollEntry {
   id: string;
@@ -899,6 +900,7 @@ function RollForm({
 
 export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -938,6 +940,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
       setAddingNew(false);
       setNewForm(emptyFormData(ownerType, ownerId || ''));
     },
+    onError: (err: any) => {
+      toast({ title: "Failed to add roll", description: err?.message || String(err), variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
@@ -947,12 +952,18 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
       setEditingId(null);
       setEditForm({});
     },
+    onError: (err: any) => {
+      toast({ title: "Failed to update roll", description: err?.message || String(err), variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteRollEntry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete roll", description: err?.message || String(err), variant: "destructive" });
     },
   });
 
