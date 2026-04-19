@@ -142,6 +142,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
   const lastViewports = new Map<string, Map<string, ViewportSnapshot>>();
 
+  // ---- Token-based public spectator tracking ----
+  // Public spectators (those connected via `/spectate/:token`) authenticate
+  // via a campaign-scoped spectator token rather than a user session. We
+  // track them per-campaign so the GM can see who is connected and push
+  // per-spectator directives (which member to mirror, fog reveal, etc).
+  type SpectatorDirective = {
+    follow: 'host' | 'free' | string; // 'host' | 'free' | userId
+    revealFog: boolean;
+  };
+  type SpectatorSession = {
+    sessionId: string;
+    label: string;
+    joinedAt: number;
+    directive: SpectatorDirective;
+    ws: any;
+  };
+  const connectedSpectators = new Map<string, Map<string, SpectatorSession>>();
+
+  function getSpectatorList(campaignId: string) {
+    const map = connectedSpectators.get(campaignId);
+    if (!map) return [];
+    return Array.from(map.values()).map(s => ({
+      sessionId: s.sessionId,
+      label: s.label,
+      joinedAt: s.joinedAt,
+      directive: s.directive,
+    }));
+  }
+
+  function broadcastSpectatorListToGms(campaignId: string) {
+    const room = campaignRooms.get(campaignId);
+    if (!room) return;
+    const payload = JSON.stringify({
+      type: "spectators_update",
+      campaignId,
+      spectators: getSpectatorList(campaignId),
+    });
+    room.forEach((client) => {
+      if (client.readyState !== 1) return;
+      const camps = (client as any).campaigns as Map<string, any> | undefined;
+      const entry = camps?.get(campaignId);
+      if (entry?.role === 'gm') {
+        client.send(payload);
+      }
+    });
+  }
+
+  function addSpectatorSession(campaignId: string, session: SpectatorSession) {
+    let bucket = connectedSpectators.get(campaignId);
+    if (!bucket) {
+      bucket = new Map();
+      connectedSpectators.set(campaignId, bucket);
+    }
+    bucket.set(session.sessionId, session);
+    broadcastSpectatorListToGms(campaignId);
+  }
+
+  function removeSpectatorSession(ws: any) {
+    const campaignId: string | undefined = (ws as any).spectatorCampaignId;
+    const sessionId: string | undefined = (ws as any).spectatorSessionId;
+    if (!campaignId || !sessionId) return;
+    const bucket = connectedSpectators.get(campaignId);
+    if (!bucket) return;
+    bucket.delete(sessionId);
+    if (bucket.size === 0) connectedSpectators.delete(campaignId);
+    broadcastSpectatorListToGms(campaignId);
+  }
+
   function recordViewport(campaignId: string, userId: string, snapshot: ViewportSnapshot) {
     let perUser = lastViewports.get(campaignId);
     if (!perUser) {
@@ -462,26 +530,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = (req as any).session?.userId;
     console.log(`[WebSocket] Session parsed, userId: ${userId}, session exists: ${!!(req as any).session}`);
     
-    // Reject unauthenticated connections
+    // Allow unauthenticated connections only as pending public spectators.
+    // Such connections may ONLY send `spectator_join` (with a valid token),
+    // `ping`, or `pong` until they are upgraded into a token spectator.
     if (!userId) {
-      console.log(`[WebSocket] Rejecting - no userId in session. Cookie header: ${req.headers.cookie?.substring(0, 50)}...`);
-      ws.close(4401, "Unauthorized - No active session");
-      return;
+      (ws as any).campaigns = new Map<string, { role: string }>();
+      (ws as any).pendingSpectator = true;
+      console.log(`[WebSocket] Anonymous connection accepted (pending spectator_join)`);
+    } else {
+      // Fetch user data for authenticated user
+      const user = await storage.getUser(userId);
+      if (!user) {
+        ws.close(4401, "Unauthorized - User not found");
+        return;
+      }
+      // Store authenticated user info on WebSocket connection
+      (ws as any).userId = userId;
+      (ws as any).username = user.username;
+      (ws as any).campaigns = new Map<string, { role: string }>(); // Track joined campaigns with roles
+      console.log(`[WebSocket] User ${user.username} (${userId}) connected successfully`);
     }
-    
-    // Fetch user data for authenticated user
-    const user = await storage.getUser(userId);
-    if (!user) {
-      ws.close(4401, "Unauthorized - User not found");
-      return;
-    }
-    
-    // Store authenticated user info on WebSocket connection
-    (ws as any).userId = userId;
-    (ws as any).username = user.username;
-    (ws as any).campaigns = new Map<string, { role: string }>(); // Track joined campaigns with roles
-    
-    console.log(`[WebSocket] User ${user.username} (${userId}) connected successfully`);
     
     // Add to global connected clients set for site-wide broadcasts
     allConnectedClients.add(ws);
@@ -502,10 +570,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const authenticatedUserId = (ws as any).userId;
         const username = (ws as any).username;
         
-        console.log(`[WebSocket] Received message from ${username}:`, message.type);
+        console.log(`[WebSocket] Received message from ${username || '<anon>'}:`, message.type);
         
+        // Pending spectator (no authenticated session): only allow joining
+        // via spectator token, or low-cost ping/pong frames. Anything else
+        // is a protocol error and the connection is closed.
+        if ((ws as any).pendingSpectator && !(ws as any).publicSpectator) {
+          if (message.type !== 'spectator_join' && message.type !== 'ping' && message.type !== 'pong') {
+            ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized - send spectator_join with a valid token' }));
+            try { ws.close(4401, 'Unauthorized'); } catch {}
+            return;
+          }
+        }
+
         // Rate limiting check
-        if (!checkRateLimit(authenticatedUserId)) {
+        if (authenticatedUserId && !checkRateLimit(authenticatedUserId)) {
           ws.send(JSON.stringify({
             type: "error",
             message: "Rate limit exceeded. Please slow down."
@@ -518,11 +597,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // ping/pong frames. All other message types — including cosmetic
         // ones like cursor/viewport/beacon broadcasts — are rejected so a
         // spectator tab is never visible to or able to affect other users.
-        if ((ws as any).spectator && message.type !== "join_campaign" && message.type !== "ping" && message.type !== "pong" && message.type !== "request_host_viewport") {
+        if ((ws as any).spectator && message.type !== "join_campaign" && message.type !== "spectator_join" && message.type !== "spectator_set_label" && message.type !== "ping" && message.type !== "pong" && message.type !== "request_host_viewport") {
           ws.send(JSON.stringify({
             type: "error",
             message: "Spectator mode is read-only"
           }));
+          return;
+        }
+
+        // Token-based spectator (public /spectate/:token) joining over WS.
+        // Authenticated users do NOT use this path — they use join_campaign
+        // with spectator: true. This path validates the share token instead.
+        if (message.type === "spectator_join" && message.token) {
+          const tokenRow = await storage.getSpectatorTokenByToken(message.token);
+          if (!tokenRow) {
+            ws.send(JSON.stringify({ type: "error", message: "Spectator link not found or revoked" }));
+            return;
+          }
+          const campaignId = tokenRow.campaignId;
+          const campaign = await storage.getCampaign(campaignId);
+          if (!campaign) {
+            ws.send(JSON.stringify({ type: "error", message: "Campaign not found" }));
+            return;
+          }
+          // Mark this connection as a public spectator
+          (ws as any).spectator = true;
+          (ws as any).publicSpectator = true;
+          (ws as any).campaigns = (ws as any).campaigns || new Map();
+          (ws as any).campaigns.set(campaignId, { role: 'player', spectator: true, publicSpectator: true });
+          (ws as any).spectatorCampaignId = campaignId;
+          const sessionId = (ws as any).spectatorSessionId
+            || (typeof message.sessionId === 'string' && message.sessionId)
+            || crypto.randomBytes(8).toString('hex');
+          (ws as any).spectatorSessionId = sessionId;
+          const label = (typeof message.label === 'string' && message.label.slice(0, 40)) || `Spectator-${sessionId.slice(0, 4)}`;
+          // Add to campaign room so token_move / aoe / beacon / etc broadcasts reach this WS
+          if (!campaignRooms.has(campaignId)) campaignRooms.set(campaignId, new Set());
+          campaignRooms.get(campaignId)!.add(ws);
+          addSpectatorSession(campaignId, {
+            sessionId,
+            label,
+            joinedAt: Date.now(),
+            directive: { follow: 'host', revealFog: false },
+            ws,
+          });
+          ws.send(JSON.stringify({
+            type: "spectator_joined",
+            campaignId,
+            sessionId,
+            gmUserId: campaign.gmUserId,
+            directive: { follow: 'host', revealFog: false },
+          }));
+          // Hydrate with host viewport
+          sendHostViewportToSpectator(campaignId, campaign.gmUserId, ws);
+          requestGmViewportRebroadcast(campaignId, campaign.gmUserId, ws);
+          return;
+        }
+
+        // Spectator updates their own display label (shown in GM panel).
+        if (message.type === "spectator_set_label" && (ws as any).publicSpectator) {
+          const campaignId: string | undefined = (ws as any).spectatorCampaignId;
+          const sessionId: string | undefined = (ws as any).spectatorSessionId;
+          if (!campaignId || !sessionId) return;
+          const bucket = connectedSpectators.get(campaignId);
+          const session = bucket?.get(sessionId);
+          if (!session) return;
+          const newLabel = (typeof message.label === 'string' ? message.label.trim().slice(0, 40) : '') || session.label;
+          session.label = newLabel;
+          broadcastSpectatorListToGms(campaignId);
+          return;
+        }
+
+        // GM directs a specific spectator: pick whose camera to mirror, or
+        // toggle fog reveal. Only campaign GMs may issue this.
+        if (message.type === "spectator_directive" && message.campaignId && message.sessionId) {
+          const campaignId: string = message.campaignId;
+          const userCampaign = (ws as any).campaigns?.get(campaignId);
+          if (!userCampaign || userCampaign.role !== 'gm' || userCampaign.spectator) {
+            ws.send(JSON.stringify({ type: "error", message: "Only the GM may direct spectators" }));
+            return;
+          }
+          const bucket = connectedSpectators.get(campaignId);
+          const session = bucket?.get(message.sessionId);
+          if (!session) return;
+          const followRaw = message.follow;
+          const follow: 'host' | 'free' | string = (followRaw === 'host' || followRaw === 'free' || (typeof followRaw === 'string' && followRaw.length > 0))
+            ? followRaw
+            : session.directive.follow;
+          const revealFog = typeof message.revealFog === 'boolean' ? message.revealFog : session.directive.revealFog;
+          session.directive = { follow, revealFog };
+          if (session.ws.readyState === 1) {
+            session.ws.send(JSON.stringify({
+              type: "spectator_directive",
+              directive: session.directive,
+            }));
+          }
+          broadcastSpectatorListToGms(campaignId);
           return;
         }
         
@@ -627,6 +797,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (spectatorMode) {
             sendHostViewportToSpectator(campaignId, campaign.gmUserId, ws);
             requestGmViewportRebroadcast(campaignId, campaign.gmUserId, ws);
+          }
+
+          // GM joining: hydrate them with the current public-spectator
+          // presence so the camera-icon panel renders immediately, even if
+          // no spectators connect/disconnect after this join.
+          if (role === 'gm') {
+            ws.send(JSON.stringify({
+              type: 'spectators_update',
+              campaignId,
+              spectators: getSpectatorList(campaignId),
+            }));
           }
         }
 
@@ -1943,7 +2124,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on("close", () => {
       // Remove from global connected clients set
       allConnectedClients.delete(ws);
-      
+
+      // If this was a public token-based spectator, remove it from the
+      // per-campaign spectator registry and notify the GM.
+      removeSpectatorSession(ws);
+
       // Remove from all campaign rooms
       const campaigns = (ws as any).campaigns || new Map();
       const closingUserId = (ws as any).userId;
@@ -2801,11 +2986,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         attachedTokenId: string | null;
       };
 
+      type SpectatorMapPin = {
+        id: string;
+        sceneId: string;
+        x: number;
+        y: number;
+        label: string | null;
+        icon: string | null;
+        color: string | null;
+        pinType: string;
+      };
+
       let visibleTokens: SpectatorToken[] = [];
       let characters: SpectatorCharacter[] = [];
       let walls: SpectatorWall[] = [];
       let doors: SpectatorDoor[] = [];
       let lights: SpectatorLight[] = [];
+      let mapPins: SpectatorMapPin[] = [];
 
       if (scene) {
         const rawTokens = await storage.getSceneTokens(scene.id);
@@ -2909,6 +3106,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             flickerSpeed: l.flickerSpeed,
             attachedTokenId: l.attachedTokenId ?? null,
           }));
+
+        // Map pins: include all pins for the active scene; coordinates are
+        // already player-facing. Strip GM-only fields (textContent for
+        // pinType=text_reveal, shop fields, target scene id).
+        const rawPins = await storage.getCampaignMapPins(scene.id);
+        mapPins = rawPins.map(p => ({
+          id: p.id,
+          sceneId: p.sceneId,
+          x: p.x,
+          y: p.y,
+          label: p.label ?? null,
+          icon: p.icon ?? null,
+          color: p.color ?? null,
+          pinType: p.pinType,
+        }));
       }
 
       res.json({
@@ -2944,6 +3156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         walls,
         doors,
         lights,
+        mapPins,
       });
     } catch (err) {
       console.error("[spectator] failed to load bundle", err);

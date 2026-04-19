@@ -28,7 +28,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
-import { ProjectorFullscreen } from "@/components/ProjectorFullscreen";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
@@ -46,7 +45,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -7484,11 +7483,7 @@ export default function Campaign() {
   const queryParams = new URLSearchParams(search);
   const isNew = queryParams.get("new") === "true";
   const isIncognitoMode = queryParams.get("incognito") === "true";
-  const isProjectorParam = queryParams.get("projector") === "1";
   const spectatorMode = queryParams.get("spectator") === "1";
-  // Spectator mode is a player-facing variant of projector mode: same UI hiding,
-  // but accessible to any campaign member and always rendered with player visibility.
-  const projectorMode = isProjectorParam || spectatorMode;
   // When spectating, follow the host's camera by default. Use `?spectator=1&follow=0`
   // (or "off"/"none") to allow the spectator to roam the map freely. Pass a specific
   // userId via `?spectator=1&follow=<userId>` to mirror that player's broadcast.
@@ -7517,10 +7512,9 @@ export default function Campaign() {
   }, [spectatorMode, spectatorFollow, spectatorFollowUserId]);
   const campaignId = params?.id;
 
-  const exitProjectorMode = useCallback(() => {
+  const exitSpectatorMode = useCallback(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
-    url.searchParams.delete("projector");
     url.searchParams.delete("spectator");
     const newPath = url.pathname + (url.search ? url.search : "") + url.hash;
     setLocation(newPath);
@@ -7543,6 +7537,17 @@ export default function Campaign() {
   const currentViewRef = useRef(currentView);
   useEffect(() => { currentViewRef.current = currentView; }, [currentView]);
   const [cameraTarget, setCameraTarget] = useState<{ x: number; y: number; zoom: number } | null>(null);
+
+  // GM-only: list of currently connected public spectators (token-based) and
+  // the open/closed state of the GM Spectators control panel.
+  type ConnectedSpectator = {
+    sessionId: string;
+    label: string;
+    joinedAt: number;
+    directive: { follow: 'host' | 'free' | string; revealFog: boolean };
+  };
+  const [connectedSpectators, setConnectedSpectators] = useState<ConnectedSpectator[]>([]);
+  const [showSpectatorsPanel, setShowSpectatorsPanel] = useState(false);
   const lastViewStateRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const fogCameraCenteredRef = useRef<string | null>(null);
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
@@ -10023,6 +10028,13 @@ export default function Campaign() {
           }
         }
         
+        // GM-only: presence list of token-based public spectators connected
+        // to this campaign (camera follow / fog reveal can be controlled per
+        // spectator from the GM Spectators panel).
+        if (data.type === 'spectators_update' && Array.isArray(data.spectators)) {
+          setConnectedSpectators(data.spectators as ConnectedSpectator[]);
+        }
+
         // Handle campaign map pin updates
         if (data.type === 'campaign_map_pin_created' || data.type === 'campaign_map_pin_updated' || data.type === 'campaign_map_pin_deleted') {
           const currentSceneId = sceneIdForTokensRef.current;
@@ -10512,16 +10524,13 @@ export default function Campaign() {
         </div>
       )}
       
-      {/* Projector Mode fullscreen prompt */}
-      {projectorMode && <ProjectorFullscreen />}
-
-      {/* Projector / Spectator Mode floating exit button */}
-      {projectorMode && (
+      {/* Spectator Mode floating exit button */}
+      {spectatorMode && (
         <button
-          onClick={exitProjectorMode}
+          onClick={exitSpectatorMode}
           className="fixed top-2 right-2 z-[12000] w-8 h-8 rounded-full bg-stone-900/60 hover:bg-stone-800/90 border border-stone-700/60 hover:border-amber-500 text-stone-400 hover:text-amber-400 flex items-center justify-center backdrop-blur-sm shadow-lg transition-all opacity-30 hover:opacity-100"
-          title={spectatorMode ? "Exit Spectator Mode" : "Exit Projector Mode"}
-          data-testid={spectatorMode ? "button-exit-spectator" : "button-exit-projector"}
+          title="Exit Spectator Mode"
+          data-testid="button-exit-spectator"
         >
           <Settings className="h-4 w-4" />
         </button>
@@ -10613,7 +10622,7 @@ export default function Campaign() {
       })()}
 
       {/* Top Bar: Nav & Settings */}
-      {!projectorMode && (
+      {!spectatorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
         {/* Left Side - Back button and dice roller only */}
         <div className="pointer-events-auto flex flex-col gap-2">
@@ -10936,7 +10945,7 @@ export default function Campaign() {
       )}
 
       {/* Show message when player has no character assigned */}
-      {!projectorMode && !isSandbox && !character && role === 'player' && (
+      {!spectatorMode && !isSandbox && !character && role === 'player' && (
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
@@ -11370,7 +11379,7 @@ export default function Campaign() {
       ))}
 
       {/* Floating World Builder */}
-      {!projectorMode && floatingWorldBuilderOpen && effectiveCampaignId && (
+      {!spectatorMode && floatingWorldBuilderOpen && effectiveCampaignId && (
         <FloatingWorldBuilder
           campaignId={effectiveCampaignId}
           isGM={role === 'gm'}
@@ -11388,8 +11397,111 @@ export default function Campaign() {
         />
       )}
 
+      {/* GM-only floating button: Spectators presence (camera icon).
+         Visible only when at least one public spectator is connected. */}
+      {!spectatorMode && role === 'gm' && connectedSpectators.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowSpectatorsPanel(v => !v)}
+          className={`fixed top-2 right-12 z-[12000] h-9 px-2.5 rounded-full border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 text-xs font-medium ${
+            showSpectatorsPanel
+              ? 'bg-blue-900/80 border-blue-500/60 text-blue-100'
+              : 'bg-stone-900/70 border-stone-600/60 text-stone-200 hover:bg-stone-800/80 hover:border-blue-500/50'
+          }`}
+          title={`${connectedSpectators.length} spectator${connectedSpectators.length === 1 ? '' : 's'} connected`}
+          data-testid="button-toggle-spectators-panel"
+        >
+          <Camera className="h-4 w-4" />
+          <span data-testid="text-spectators-count">{connectedSpectators.length}</span>
+        </button>
+      )}
+
+      {/* GM-only Spectators control panel */}
+      {!spectatorMode && role === 'gm' && showSpectatorsPanel && effectiveCampaignId && (
+        <FloatingPanel
+          open={showSpectatorsPanel}
+          onClose={() => setShowSpectatorsPanel(false)}
+          title={<span className="text-blue-300 flex items-center gap-2"><Camera className="h-4 w-4" /> Spectators ({connectedSpectators.length})</span>}
+          panelKey="spectators"
+          zIndex={floatingZIndicesRef.current['spectators'] || 10350}
+          onBringToFront={() => bringToFront('spectators')}
+          defaultSize={{ width: 380, height: 460 }}
+          minWidth={320}
+          minHeight={280}
+        >
+          <div className="flex flex-col h-full p-3 gap-2 overflow-y-auto" data-testid="panel-spectators">
+            {connectedSpectators.length === 0 ? (
+              <div className="text-stone-500 text-sm text-center py-8">No spectators connected.</div>
+            ) : (
+              connectedSpectators.map(spec => {
+                const memberList = (members as any[] | undefined) || [];
+                const gmUserId = (campaign as { gmUserId?: string } | undefined)?.gmUserId;
+                const sendDirective = (patch: Partial<{ follow: 'host' | 'free' | string; revealFog: boolean }>) => {
+                  gameWs.send({
+                    type: 'spectator_directive',
+                    campaignId: effectiveCampaignId,
+                    sessionId: spec.sessionId,
+                    follow: patch.follow ?? spec.directive.follow,
+                    revealFog: patch.revealFog ?? spec.directive.revealFog,
+                  });
+                };
+                const joinedMins = Math.max(0, Math.floor((Date.now() - spec.joinedAt) / 60000));
+                return (
+                  <div
+                    key={spec.sessionId}
+                    className="rounded border border-stone-700 bg-stone-900/60 p-2.5 flex flex-col gap-2"
+                    data-testid={`spectator-row-${spec.sessionId}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Camera className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                        <span className="text-sm font-medium text-stone-100 truncate" data-testid={`text-spectator-label-${spec.sessionId}`}>
+                          {spec.label}
+                        </span>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-wider text-stone-500 shrink-0">
+                        {joinedMins === 0 ? 'just now' : `${joinedMins}m`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] uppercase tracking-wider text-stone-400 shrink-0">Follow</label>
+                      <select
+                        value={spec.directive.follow}
+                        onChange={(e) => sendDirective({ follow: e.target.value })}
+                        className="flex-1 rounded px-2 py-1 text-xs bg-stone-800 border border-stone-700 text-stone-100"
+                        data-testid={`select-spectator-follow-${spec.sessionId}`}
+                      >
+                        <option value="host">Host (GM)</option>
+                        <option value="free">Free Roam</option>
+                        {memberList
+                          .filter((m: any) => m.userId !== gmUserId)
+                          .map((m: any) => (
+                            <option key={m.userId} value={m.userId}>
+                              {m.username}{m.role === 'assistant_gm' ? ' (Asst. GM)' : ''}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={spec.directive.revealFog}
+                        onChange={(e) => sendDirective({ revealFog: e.target.checked })}
+                        className="rounded border-stone-600"
+                        data-testid={`toggle-spectator-fog-${spec.sessionId}`}
+                      />
+                      <span>Reveal fog of war</span>
+                    </label>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </FloatingPanel>
+      )}
+
       {/* Map Pins Editor FloatingPanel */}
-      {!projectorMode && showMapPinEditor && role === 'gm' && effectiveCampaignId && (
+      {!spectatorMode && showMapPinEditor && role === 'gm' && effectiveCampaignId && (
         <FloatingPanel
           open={showMapPinEditor}
           onClose={() => { setShowMapPinEditor(false); setPinPlaceMode(false); setShowPinForm(false); setEditingPin(null); }}
@@ -12304,7 +12416,7 @@ export default function Campaign() {
       )}
 
       {/* Floating Notes Editor */}
-      {!projectorMode && floatingNotesOpen && effectiveCampaignId && (
+      {!spectatorMode && floatingNotesOpen && effectiveCampaignId && (
         <FloatingNotesEditor
           campaignId={effectiveCampaignId}
           initialNoteId={floatingNotesInitialNoteId}
@@ -12763,7 +12875,7 @@ export default function Campaign() {
            
            
 
-           {!projectorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
+           {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
                character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
@@ -12807,7 +12919,7 @@ export default function Campaign() {
       </div>
 
       {/* Character Overview Button - Outside battlemap container so fixed positioning works */}
-      {!projectorMode && (() => {
+      {!spectatorMode && (() => {
         const sheetChar = role === 'gm' 
           ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
           : character;
@@ -12842,7 +12954,7 @@ export default function Campaign() {
       })()}
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
-      {!projectorMode && !isSandbox && (isMobile ? (
+      {!spectatorMode && !isSandbox && (isMobile ? (
         <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => !open && setOpenCharacterSheets([])}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
@@ -12919,7 +13031,7 @@ export default function Campaign() {
       
       {/* Initiative Tracker Dialog */}
       <InitiativeTracker
-        open={!projectorMode && initiativeTrackerOpen}
+        open={!spectatorMode && initiativeTrackerOpen}
         onOpenChange={setInitiativeTrackerOpen}
         sceneId={activeScene?.id}
         campaignId={effectiveCampaignId || undefined}
@@ -12930,7 +13042,7 @@ export default function Campaign() {
       />
       
       {/* Unified Side Panel */}
-      {!projectorMode && activeSidePanel && !sidePanelMinimized && (
+      {!spectatorMode && activeSidePanel && !sidePanelMinimized && (
         <div 
           className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
@@ -13407,7 +13519,7 @@ export default function Campaign() {
       )}
       
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!projectorMode && !isSandbox && role === 'gm' && !isMobile && (
+      {!spectatorMode && !isSandbox && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -13622,7 +13734,7 @@ export default function Campaign() {
       </Dialog>)}
       
       {/* Sandbox Player Hotbar */}
-      {!projectorMode && isSandbox && sandboxHotbarVisible && (
+      {!spectatorMode && isSandbox && sandboxHotbarVisible && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900/95 border border-stone-700/60 rounded-xl px-2 py-1.5 backdrop-blur-sm shadow-xl"
           data-testid="sandbox-hotbar">
           {sandboxHotbar.map((slot, idx) => (

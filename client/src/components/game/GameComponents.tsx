@@ -4,7 +4,6 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
-import { getProjectorWindowFeatures } from "@/components/ProjectorFullscreen";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11286,29 +11285,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           )}
           {!charactersOnly && role === 'gm' && <CampaignWikiSelector campaignId={campaignId!} />}
           {!charactersOnly && <InviteCodeSection inviteCode={inviteCode} />}
-          {!charactersOnly && role === 'gm' && (
-            <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-3">
-              <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
-                <Monitor className="h-3 w-3 text-amber-400" /> Projector Mode
-              </h3>
-              <p className="text-xs text-stone-500">
-                Open a stripped-down view of the battlemap in a new tab to cast onto a TV or projector for in-person players. Live updates stay in sync with this tab.
-              </p>
-              <Button
-                variant="secondary"
-                className="w-full bg-amber-900/40 hover:bg-amber-800/50 border border-amber-700/60"
-                onClick={() => {
-                  if (typeof window === 'undefined') return;
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('projector', '1');
-                  window.open(url.toString(), '_blank', getProjectorWindowFeatures());
-                }}
-                data-testid="button-open-projector-tab"
-              >
-                <Monitor className="mr-2 h-4 w-4" /> Open Projector Tab
-              </Button>
-            </div>
-          )}
           {!charactersOnly && (
             <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-3">
               <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
@@ -11323,7 +11299,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 onClick={() => {
                   if (typeof window === 'undefined') return;
                   const url = new URL(window.location.href);
-                  url.searchParams.delete('projector');
                   url.searchParams.set('spectator', '1');
                   window.open(url.toString(), '_blank', 'noopener,noreferrer');
                 }}
