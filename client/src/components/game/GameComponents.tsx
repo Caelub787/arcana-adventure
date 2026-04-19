@@ -9355,6 +9355,121 @@ function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
   );
 }
 
+function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{ token: string | null; createdAt?: string }>({
+    queryKey: [`/api/campaigns/${campaignId}/spectator-token`],
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/spectator-token`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/spectator-token`] });
+      toast({ title: "Share link generated", description: "Anyone with the link can watch the battlemap." });
+    },
+    onError: () => toast({ title: "Failed to generate link", variant: "destructive" }),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/spectator-token`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/spectator-token`] });
+      toast({ title: "Share link revoked", description: "The previous link no longer works." });
+    },
+    onError: () => toast({ title: "Failed to revoke link", variant: "destructive" }),
+  });
+
+  const shareUrl = data?.token && typeof window !== "undefined"
+    ? `${window.location.origin}/spectate/${data.token}`
+    : null;
+
+  const handleCopy = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    toast({ title: "Link copied", description: "Spectator share link copied to clipboard." });
+  };
+
+  return (
+    <div className="pt-3 border-t border-stone-700/60 space-y-2">
+      <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-2">
+        Public Share Link
+      </div>
+      <p className="text-xs text-stone-500">
+        Generate a tokenized URL that lets anyone watch the active scene without joining the campaign. Revoke any time.
+      </p>
+      {isLoading ? (
+        <div className="text-xs text-stone-500">Loading…</div>
+      ) : shareUrl ? (
+        <>
+          <div
+            className="flex-1 font-mono text-[11px] text-blue-100 bg-black/40 p-2 rounded border border-dashed border-blue-700/50 break-all cursor-pointer hover:bg-black/60"
+            onClick={handleCopy}
+            title="Click to copy"
+            data-testid="spectator-share-url"
+          >
+            {shareUrl}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
+              onClick={handleCopy}
+              data-testid="button-copy-spectator-link"
+            >
+              Copy Link
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="bg-stone-800 hover:bg-stone-700 border border-stone-700"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+              data-testid="button-rotate-spectator-link"
+            >
+              Rotate
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => revokeMutation.mutate()}
+              disabled={revokeMutation.isPending}
+              data-testid="button-revoke-spectator-link"
+            >
+              Revoke
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="w-full bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
+          onClick={() => generateMutation.mutate()}
+          disabled={generateMutation.isPending}
+          data-testid="button-generate-spectator-link"
+        >
+          {generateMutation.isPending ? "Generating…" : "Generate Share Link"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -11216,6 +11331,9 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               >
                 <Eye className="mr-2 h-4 w-4" /> Open Spectator Tab
               </Button>
+              {role === 'gm' && campaignId && (
+                <SpectatorShareLinkSection campaignId={campaignId} />
+              )}
             </div>
           )}
           {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (

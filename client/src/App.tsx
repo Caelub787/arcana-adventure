@@ -20,6 +20,7 @@ import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
 import WorldBuilder from "@/pages/WorldBuilder";
 import SharedWorldView from "@/pages/SharedWorldView";
+import Spectate from "@/pages/Spectate";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { BannedScreen } from "@/components/BannedScreen";
 
@@ -188,6 +189,7 @@ function Router() {
       <Route path="/worldbuilder">
         {() => <ProtectedRoute component={WorldBuilder} />}
       </Route>
+      <Route path="/spectate/:token" component={Spectate} />
       <Route path="/world/:token" component={SharedWorldView} />
       <Route path="/shared/:token" component={SharedWorldView} />
       <Route component={NotFound} />

@@ -1937,3 +1937,18 @@ export const insertEntityAccessSchema = createInsertSchema(entityAccess).omit({
 });
 export type InsertEntityAccess = z.infer<typeof insertEntityAccessSchema>;
 export type EntityAccess = typeof entityAccess.$inferSelect;
+
+export const spectatorTokens = pgTable("spectator_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }).unique(),
+  token: text("token").notNull().unique(),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSpectatorTokenSchema = createInsertSchema(spectatorTokens).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSpectatorToken = z.infer<typeof insertSpectatorTokenSchema>;
+export type SpectatorToken = typeof spectatorTokens.$inferSelect;

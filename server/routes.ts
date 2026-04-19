@@ -2682,6 +2682,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // SPECTATOR SHARE LINK (public, read-only)
+  // ============================================
+  // GMs can mint a single tokenized link that lets anyone view the active
+  // scene as a player without joining the campaign. The token can be
+  // rotated (POST again) or revoked (DELETE) at any time.
+
+  app.get("/api/campaigns/:id/spectator-token", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGm = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      if (!isGm) return res.status(403).json({ error: "Only the GM can manage the spectator link" });
+      const existing = await storage.getSpectatorTokenByCampaign(campaign.id);
+      res.json(existing ? { token: existing.token, createdAt: existing.createdAt } : { token: null });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to load spectator token" });
+    }
+  });
+
+  app.post("/api/campaigns/:id/spectator-token", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGm = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      if (!isGm) return res.status(403).json({ error: "Only the GM can manage the spectator link" });
+      const newToken = crypto.randomBytes(24).toString("hex");
+      const created = await storage.upsertSpectatorToken(campaign.id, newToken, req.session.userId!);
+      res.json({ token: created.token, createdAt: created.createdAt });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create spectator token" });
+    }
+  });
+
+  app.delete("/api/campaigns/:id/spectator-token", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGm = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      if (!isGm) return res.status(403).json({ error: "Only the GM can manage the spectator link" });
+      await storage.deleteSpectatorToken(campaign.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to revoke spectator token" });
+    }
+  });
+
+  // Public bundle endpoint: returns a player-scoped snapshot of the campaign's
+  // active scene. No authentication required — only a valid spectator token.
+  // Returns campaign name, the active scene, the visible tokens for that
+  // scene, and the minimal character data needed to label tokens. GM-only
+  // data (hidden tokens, gm notes, GM-only entities, etc.) is never included.
+  app.get("/api/spectator/:token", async (req, res) => {
+    try {
+      const record = await storage.getSpectatorTokenByToken(req.params.token);
+      if (!record) return res.status(404).json({ error: "Spectator link not found or revoked" });
+      const campaign = await storage.getCampaign(record.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const sceneId = campaign.activeSceneId;
+      const scene = sceneId ? await storage.getScene(sceneId) : null;
+
+      type SpectatorToken = {
+        id: string;
+        sceneId: string;
+        characterId: string | null;
+        type: string;
+        x: number;
+        y: number;
+        image: string | null;
+      };
+      type SpectatorCharacter = {
+        id: string;
+        name: string;
+        nickname: string | null;
+        portrait: string | null;
+        race: string | null;
+        size: string | null;
+        hp?: number;
+        maxHp?: number;
+        energy?: number;
+        maxEnergy?: number;
+        mana?: number;
+        maxMana?: number;
+        showHpBar: boolean;
+        showEnergyBar: boolean;
+        showManaBar: boolean;
+      };
+      type SpectatorWall = {
+        id: string;
+        sceneId: string;
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+      };
+      type SpectatorDoor = {
+        id: string;
+        sceneId: string;
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+        isOpen: boolean;
+      };
+      type SpectatorLight = {
+        id: string;
+        sceneId: string;
+        x: number;
+        y: number;
+        radius: number;
+        color: string;
+        intensity: number;
+        softEdge: boolean;
+        flicker: boolean;
+        flickerSpeed: number;
+        attachedTokenId: string | null;
+      };
+
+      let visibleTokens: SpectatorToken[] = [];
+      let characters: SpectatorCharacter[] = [];
+      let walls: SpectatorWall[] = [];
+      let doors: SpectatorDoor[] = [];
+      let lights: SpectatorLight[] = [];
+
+      if (scene) {
+        const rawTokens = await storage.getSceneTokens(scene.id);
+        const characterIds = rawTokens
+          .filter(t => t.characterId)
+          .map(t => t.characterId!);
+        const charsForTokens = characterIds.length > 0
+          ? await storage.getCharactersByIds(characterIds)
+          : [];
+
+        // Only invisible flag exists on tokens; characters have no hidden flag
+        // in the schema, so spectator visibility is driven by token.isInvisible.
+        const filteredTokens = rawTokens.filter(t => !t.isInvisible);
+
+        visibleTokens = filteredTokens.map(t => ({
+          id: t.id,
+          sceneId: t.sceneId ?? scene.id,
+          characterId: t.characterId ?? null,
+          type: t.type,
+          x: t.x,
+          y: t.y,
+          image: t.image ?? null,
+        }));
+
+        // Only include character data for tokens that are still visible,
+        // and only fields players are normally allowed to see.
+        const visibleCharacterIds = new Set(
+          filteredTokens.map(t => t.characterId).filter((id): id is string => !!id)
+        );
+        characters = charsForTokens
+          .filter(c => visibleCharacterIds.has(c.id))
+          .map(c => {
+            const dto: SpectatorCharacter = {
+              id: c.id,
+              name: c.name,
+              nickname: c.nickname ?? null,
+              portrait: c.portrait ?? null,
+              race: c.race ?? null,
+              size: c.size ?? null,
+              showHpBar: !!c.showHpBar,
+              showEnergyBar: !!c.showEnergyBar,
+              showManaBar: !!c.showManaBar,
+            };
+            if (c.showHpBar) {
+              dto.hp = c.hp;
+              dto.maxHp = c.maxHp;
+            }
+            if (c.showEnergyBar) {
+              dto.energy = c.energy;
+              dto.maxEnergy = c.maxEnergy;
+            }
+            if (c.showManaBar) {
+              dto.mana = c.mana;
+              dto.maxMana = c.maxMana;
+            }
+            return dto;
+          });
+
+        const [rawWalls, rawDoors, rawLights] = await Promise.all([
+          storage.getSceneWalls(scene.id),
+          storage.getSceneDoors(scene.id),
+          storage.getSceneLights(scene.id),
+        ]);
+
+        // Walls: only those flagged player-visible, and only geometry.
+        walls = rawWalls
+          .filter(w => w.playerVisible)
+          .map(w => ({
+            id: w.id,
+            sceneId: w.sceneId,
+            x1: w.x1,
+            y1: w.y1,
+            x2: w.x2,
+            y2: w.y2,
+          }));
+
+        // Doors: omit lock state and GM-only flags; only show open/closed.
+        doors = rawDoors.map(d => ({
+          id: d.id,
+          sceneId: d.sceneId,
+          x1: d.x1,
+          y1: d.y1,
+          x2: d.x2,
+          y2: d.y2,
+          isOpen: d.isOpen,
+        }));
+
+        // Lights: only enabled lights, geometry + render properties.
+        lights = rawLights
+          .filter(l => l.enabled)
+          .map(l => ({
+            id: l.id,
+            sceneId: l.sceneId,
+            x: l.x,
+            y: l.y,
+            radius: l.radius,
+            color: l.color,
+            intensity: l.intensity,
+            softEdge: l.softEdge,
+            flicker: l.flicker,
+            flickerSpeed: l.flickerSpeed,
+            attachedTokenId: l.attachedTokenId ?? null,
+          }));
+      }
+
+      res.json({
+        campaign: {
+          id: campaign.id,
+          name: campaign.name,
+          activeSceneId: campaign.activeSceneId,
+          inCombat: campaign.inCombat,
+        },
+        scene: scene ? {
+          id: scene.id,
+          name: scene.name,
+          backgroundImage: scene.backgroundImage,
+          gridEnabled: scene.gridEnabled,
+          gridType: scene.gridType,
+          gridSize: scene.gridSize,
+          gridColor: scene.gridColor,
+          gridThickness: scene.gridThickness,
+          gridOpacity: scene.gridOpacity,
+          gridOffsetX: scene.gridOffsetX ?? 0,
+          gridOffsetY: scene.gridOffsetY ?? 0,
+          defaultViewX: scene.defaultViewX,
+          defaultViewY: scene.defaultViewY,
+          defaultViewZoom: scene.defaultViewZoom,
+          fogEnabled: scene.fogEnabled,
+          fogState: scene.fogState,
+          fogOpacity: scene.fogOpacity,
+          isDayTime: scene.isDayTime,
+          globalLightLevel: scene.globalLightLevel,
+        } : null,
+        tokens: visibleTokens,
+        characters,
+        walls,
+        doors,
+        lights,
+      });
+    } catch (err) {
+      console.error("[spectator] failed to load bundle", err);
+      res.status(500).json({ error: "Failed to load spectator view" });
+    }
+  });
+
   app.post("/api/campaigns/:id/leave", requireAuth, async (req, res) => {
     try {
       const campaignId = req.params.id;

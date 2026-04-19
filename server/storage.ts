@@ -55,6 +55,7 @@ import {
   type Entity, type InsertEntity,
   type EntityLink, type InsertEntityLink,
   type WorldShareLink, type InsertWorldShareLink,
+  type SpectatorToken, type InsertSpectatorToken,
   type WorldMap, type InsertWorldMap,
   type WorldMapPin, type InsertWorldMapPin,
   type WorldCalendar, type InsertWorldCalendar,
@@ -72,7 +73,7 @@ import {
   type CharacterClassSkill, type InsertCharacterClassSkill,
   type WorldCollaborator, type InsertWorldCollaborator,
   type EntityAccess, type InsertEntityAccess,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -530,6 +531,12 @@ export interface IStorage {
   updateEntityLink(id: string, data: Partial<EntityLink>): Promise<EntityLink | undefined>;
   deleteEntityLink(id: string): Promise<void>;
   getEntityReferences(entityId: string): Promise<{ links: EntityLink[]; noteReferences: any[]; }>;
+
+  // Spectator token operations (public read-only campaign share)
+  getSpectatorTokenByCampaign(campaignId: string): Promise<SpectatorToken | undefined>;
+  getSpectatorTokenByToken(token: string): Promise<SpectatorToken | undefined>;
+  upsertSpectatorToken(campaignId: string, token: string, createdBy: string): Promise<SpectatorToken>;
+  deleteSpectatorToken(campaignId: string): Promise<void>;
 
   // World Share Link operations
   getWorldShareLink(campaignId: string): Promise<WorldShareLink | undefined>;
@@ -3953,6 +3960,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorldShareLink(id: string): Promise<void> {
     await db.delete(worldShareLinks).where(eq(worldShareLinks.id, id));
+  }
+
+  // ============================================
+  // SPECTATOR TOKEN OPERATIONS
+  // ============================================
+
+  async getSpectatorTokenByCampaign(campaignId: string): Promise<SpectatorToken | undefined> {
+    const [row] = await db.select().from(spectatorTokens)
+      .where(eq(spectatorTokens.campaignId, campaignId))
+      .limit(1);
+    return row;
+  }
+
+  async getSpectatorTokenByToken(token: string): Promise<SpectatorToken | undefined> {
+    const [row] = await db.select().from(spectatorTokens)
+      .where(eq(spectatorTokens.token, token))
+      .limit(1);
+    return row;
+  }
+
+  async upsertSpectatorToken(campaignId: string, token: string, createdBy: string): Promise<SpectatorToken> {
+    await db.delete(spectatorTokens).where(eq(spectatorTokens.campaignId, campaignId));
+    const [row] = await db.insert(spectatorTokens).values({ campaignId, token, createdBy }).returning();
+    return row;
+  }
+
+  async deleteSpectatorToken(campaignId: string): Promise<void> {
+    await db.delete(spectatorTokens).where(eq(spectatorTokens.campaignId, campaignId));
   }
 
   // ============================================
