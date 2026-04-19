@@ -7519,6 +7519,8 @@ export default function Campaign() {
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
+  const currentViewRef = useRef(currentView);
+  useEffect(() => { currentViewRef.current = currentView; }, [currentView]);
   const [cameraTarget, setCameraTarget] = useState<{ x: number; y: number; zoom: number } | null>(null);
   const lastViewStateRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const fogCameraCenteredRef = useRef<string | null>(null);
@@ -9893,6 +9895,28 @@ export default function Campaign() {
             setCameraTarget({ x: viewportX, y: viewportY, zoom });
           }
         }
+
+        // Server is asking us (the GM) to rebroadcast our current viewport so a
+        // freshly-connected spectator can sync immediately instead of waiting
+        // for the next debounced viewport_update.
+        if (data.type === 'request_viewport') {
+          const view = currentViewRef.current;
+          const container = battlemapContainerRef.current;
+          const width = container?.clientWidth ?? viewportSizeRef.current.width;
+          const height = container?.clientHeight ?? viewportSizeRef.current.height;
+          if (view.zoom > 0 && width > 0 && height > 0) {
+            // Reset the debounce gate so this immediate broadcast is not
+            // dropped, and so the next user-driven pan still goes through.
+            lastViewportBroadcastRef.current = 0;
+            gameWs.sendViewport({
+              viewportX: view.x,
+              viewportY: view.y,
+              viewportWidth: width / view.zoom,
+              viewportHeight: height / view.zoom,
+              zoom: view.zoom,
+            });
+          }
+        }
         
         // Handle member list updates (join/leave/kick/role changes)
         if (data.type === 'members_updated' && data.members) {
@@ -10460,7 +10484,19 @@ export default function Campaign() {
           </div>
           <button
             type="button"
-            onClick={() => setSpectatorFollow((v) => !v)}
+            onClick={() => setSpectatorFollow((v) => {
+              const next = !v;
+              // When (re-)enabling follow, ask the server for the host's
+              // current viewport so the camera snaps immediately instead of
+              // sitting on the last cached position until the GM next pans.
+              if (next && effectiveCampaignId) {
+                gameWs.send({
+                  type: 'request_host_viewport',
+                  campaignId: effectiveCampaignId,
+                });
+              }
+              return next;
+            })}
             className={`pointer-events-auto rounded-full px-3 py-1 text-xs font-medium border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 ${
               spectatorFollow
                 ? 'bg-amber-900/70 border-amber-500/60 text-amber-100 hover:bg-amber-800/80'

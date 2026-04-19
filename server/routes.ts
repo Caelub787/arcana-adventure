@@ -128,6 +128,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
+
+  // Track last broadcast viewport per campaign per user, so spectators (and any
+  // late joiner) can be hydrated with the GM's current camera position the
+  // moment they connect — instead of waiting for the next debounced
+  // viewport_update broadcast (which may never arrive while the GM is idle).
+  type ViewportSnapshot = {
+    viewportX: number;
+    viewportY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    zoom: number;
+  };
+  const lastViewports = new Map<string, Map<string, ViewportSnapshot>>();
+
+  function recordViewport(campaignId: string, userId: string, snapshot: ViewportSnapshot) {
+    let perUser = lastViewports.get(campaignId);
+    if (!perUser) {
+      perUser = new Map();
+      lastViewports.set(campaignId, perUser);
+    }
+    perUser.set(userId, snapshot);
+  }
+
+  function sendHostViewportToSpectator(campaignId: string, gmUserId: string | undefined, ws: any) {
+    if (!gmUserId) return;
+    const perUser = lastViewports.get(campaignId);
+    const snapshot = perUser?.get(gmUserId);
+    if (!snapshot) return;
+    if (ws.readyState !== 1) return;
+    // Look up the GM's username from any connected GM client (best effort)
+    let gmUsername = '';
+    const room = campaignRooms.get(campaignId);
+    if (room) {
+      room.forEach((client) => {
+        if (!gmUsername && (client as any).userId === gmUserId) {
+          gmUsername = (client as any).username || '';
+        }
+      });
+    }
+    ws.send(JSON.stringify({
+      type: "viewport_update",
+      userId: gmUserId,
+      username: gmUsername,
+      ...snapshot,
+    }));
+  }
+
+  function requestGmViewportRebroadcast(campaignId: string, gmUserId: string | undefined, requesterWs: any) {
+    if (!gmUserId) return;
+    const room = campaignRooms.get(campaignId);
+    if (!room) return;
+    const requesterUserId = (requesterWs as any).userId;
+    const requesterUsername = (requesterWs as any).username;
+    const requestMessage = JSON.stringify({
+      type: "request_viewport",
+      campaignId,
+      requesterUserId,
+      requesterUsername,
+    });
+    room.forEach((client) => {
+      // Only ask actual (non-spectator) GM connections to rebroadcast
+      if (client !== requesterWs && client.readyState === 1
+          && (client as any).userId === gmUserId
+          && !(client as any).spectator) {
+        client.send(requestMessage);
+      }
+    });
+  }
   
   // Set to track ALL connected WebSocket clients (for global broadcasts like site updates)
   const allConnectedClients = new Set<any>();
@@ -450,7 +518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // ping/pong frames. All other message types — including cosmetic
         // ones like cursor/viewport/beacon broadcasts — are rejected so a
         // spectator tab is never visible to or able to affect other users.
-        if ((ws as any).spectator && message.type !== "join_campaign" && message.type !== "ping" && message.type !== "pong") {
+        if ((ws as any).spectator && message.type !== "join_campaign" && message.type !== "ping" && message.type !== "pong" && message.type !== "request_host_viewport") {
           ws.send(JSON.stringify({
             type: "error",
             message: "Spectator mode is read-only"
@@ -549,6 +617,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ws.send(confirmationMsg);
           
           console.log(`[WebSocket] User ${username} joined campaign ${campaignId} as ${role}`);
+
+          // Hydrate spectators with the GM's last-known viewport immediately on
+          // join so the cast/stream view doesn't sit on the scene's saved
+          // default until the GM happens to pan. We send any cached snapshot
+          // right away, and also nudge the GM to rebroadcast their current
+          // viewport in case the cache is empty (GM idle since reconnect) or
+          // stale.
+          if (spectatorMode) {
+            sendHostViewportToSpectator(campaignId, campaign.gmUserId, ws);
+            requestGmViewportRebroadcast(campaignId, campaign.gmUserId, ws);
+          }
+        }
+
+        // Spectator (or follower) explicitly asks for the host's current
+        // viewport — used when toggling "Follow Host" back on so the camera
+        // snaps immediately rather than waiting for the next GM pan.
+        if (message.type === "request_host_viewport" && message.campaignId) {
+          const campaignId = message.campaignId;
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            return;
+          }
+          const campaign = await storage.getCampaign(campaignId);
+          if (!campaign) {
+            return;
+          }
+          sendHostViewportToSpectator(campaignId, campaign.gmUserId, ws);
+          requestGmViewportRebroadcast(campaignId, campaign.gmUserId, ws);
         }
 
         if (message.type === "token_move") {
@@ -1526,7 +1622,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!userCampaign) {
             return;
           }
-          
+
+          // Cache this viewport so late joiners (especially spectators) can be
+          // hydrated with the current camera position immediately on connect.
+          recordViewport(campaignId, authenticatedUserId, {
+            viewportX,
+            viewportY,
+            viewportWidth,
+            viewportHeight,
+            zoom,
+          });
+
           // Broadcast viewport update to all OTHER campaign members (not the sender)
           const room = campaignRooms.get(campaignId);
           if (room) {
@@ -1840,12 +1946,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Remove from all campaign rooms
       const campaigns = (ws as any).campaigns || new Map();
+      const closingUserId = (ws as any).userId;
       campaigns.forEach((_: any, campaignId: string) => {
         const room = campaignRooms.get(campaignId);
         if (room) {
           room.delete(ws);
           if (room.size === 0) {
             campaignRooms.delete(campaignId);
+            // No connected listeners left for this campaign — drop the cached
+            // viewports so we don't leak memory across campaign sessions.
+            lastViewports.delete(campaignId);
+          } else if (closingUserId) {
+            // If this user has no other connections in the room, evict their
+            // cached viewport so a future spectator doesn't get hydrated with
+            // stale data from a long-departed user.
+            let stillConnected = false;
+            room.forEach((client) => {
+              if (!stillConnected && (client as any).userId === closingUserId) {
+                stillConnected = true;
+              }
+            });
+            if (!stillConnected) {
+              lastViewports.get(campaignId)?.delete(closingUserId);
+            }
           }
         }
       });
