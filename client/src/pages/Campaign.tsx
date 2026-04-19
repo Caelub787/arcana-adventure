@@ -7,7 +7,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, Monitor } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -7483,7 +7483,16 @@ export default function Campaign() {
   const queryParams = new URLSearchParams(search);
   const isNew = queryParams.get("new") === "true";
   const isIncognitoMode = queryParams.get("incognito") === "true";
+  const projectorMode = queryParams.get("projector") === "1";
   const campaignId = params?.id;
+
+  const exitProjectorMode = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("projector");
+    window.history.replaceState({}, "", url.pathname + (url.search ? url.search : "") + url.hash);
+    window.location.reload();
+  }, []);
 
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
@@ -10396,7 +10405,20 @@ export default function Campaign() {
         </div>
       )}
       
+      {/* Projector Mode floating exit button */}
+      {projectorMode && (
+        <button
+          onClick={exitProjectorMode}
+          className="fixed top-2 right-2 z-[12000] w-8 h-8 rounded-full bg-stone-900/60 hover:bg-stone-800/90 border border-stone-700/60 hover:border-amber-500 text-stone-400 hover:text-amber-400 flex items-center justify-center backdrop-blur-sm shadow-lg transition-all opacity-30 hover:opacity-100"
+          title="Exit Projector Mode"
+          data-testid="button-exit-projector"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      )}
+
       {/* Top Bar: Nav & Settings */}
+      {!projectorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
         {/* Left Side - Back button and dice roller only */}
         <div className="pointer-events-auto flex flex-col gap-2">
@@ -10716,9 +10738,10 @@ export default function Campaign() {
 
         </div>
       </div>
+      )}
 
       {/* Show message when player has no character assigned */}
-      {!isSandbox && !character && role === 'player' && (
+      {!projectorMode && !isSandbox && !character && role === 'player' && (
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
@@ -11152,7 +11175,7 @@ export default function Campaign() {
       ))}
 
       {/* Floating World Builder */}
-      {floatingWorldBuilderOpen && effectiveCampaignId && (
+      {!projectorMode && floatingWorldBuilderOpen && effectiveCampaignId && (
         <FloatingWorldBuilder
           campaignId={effectiveCampaignId}
           isGM={role === 'gm'}
@@ -11171,7 +11194,7 @@ export default function Campaign() {
       )}
 
       {/* Map Pins Editor FloatingPanel */}
-      {showMapPinEditor && role === 'gm' && effectiveCampaignId && (
+      {!projectorMode && showMapPinEditor && role === 'gm' && effectiveCampaignId && (
         <FloatingPanel
           open={showMapPinEditor}
           onClose={() => { setShowMapPinEditor(false); setPinPlaceMode(false); setShowPinForm(false); setEditingPin(null); }}
@@ -12086,7 +12109,7 @@ export default function Campaign() {
       )}
 
       {/* Floating Notes Editor */}
-      {floatingNotesOpen && effectiveCampaignId && (
+      {!projectorMode && floatingNotesOpen && effectiveCampaignId && (
         <FloatingNotesEditor
           campaignId={effectiveCampaignId}
           initialNoteId={floatingNotesInitialNoteId}
@@ -12541,7 +12564,7 @@ export default function Campaign() {
            
            
 
-           {!isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
+           {!projectorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
                character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
@@ -12585,7 +12608,7 @@ export default function Campaign() {
       </div>
 
       {/* Character Overview Button - Outside battlemap container so fixed positioning works */}
-      {(() => {
+      {!projectorMode && (() => {
         const sheetChar = role === 'gm' 
           ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
           : character;
@@ -12620,7 +12643,7 @@ export default function Campaign() {
       })()}
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
-      {!isSandbox && (isMobile ? (
+      {!projectorMode && !isSandbox && (isMobile ? (
         <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => !open && setOpenCharacterSheets([])}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
@@ -12697,7 +12720,7 @@ export default function Campaign() {
       
       {/* Initiative Tracker Dialog */}
       <InitiativeTracker
-        open={initiativeTrackerOpen}
+        open={!projectorMode && initiativeTrackerOpen}
         onOpenChange={setInitiativeTrackerOpen}
         sceneId={activeScene?.id}
         campaignId={effectiveCampaignId || undefined}
@@ -12708,7 +12731,7 @@ export default function Campaign() {
       />
       
       {/* Unified Side Panel */}
-      {activeSidePanel && !sidePanelMinimized && (
+      {!projectorMode && activeSidePanel && !sidePanelMinimized && (
         <div 
           className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
@@ -13185,7 +13208,7 @@ export default function Campaign() {
       )}
       
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!isSandbox && role === 'gm' && !isMobile && (
+      {!projectorMode && !isSandbox && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -13400,7 +13423,7 @@ export default function Campaign() {
       </Dialog>)}
       
       {/* Sandbox Player Hotbar */}
-      {isSandbox && sandboxHotbarVisible && (
+      {!projectorMode && isSandbox && sandboxHotbarVisible && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900/95 border border-stone-700/60 rounded-xl px-2 py-1.5 backdrop-blur-sm shadow-xl"
           data-testid="sandbox-hotbar">
           {sandboxHotbar.map((slot, idx) => (
