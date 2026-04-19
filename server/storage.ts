@@ -209,6 +209,7 @@ export interface IStorage {
   deleteSpell(id: string): Promise<void>;
   getCampaignTemplateSpells(campaignId: string): Promise<Spell[]>;
   getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]>;
+  getSystemItemTemplates(system?: string): Promise<Item[]>;
   getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]>;
   getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]>;
 
@@ -1863,6 +1864,21 @@ export class DatabaseStorage implements IStorage {
   async getSystemItems(system?: string): Promise<Item[]> {
     const conditions = [
       eq(items.isTemplate, true),
+      eq(items.isLiveTemplate, false),
+      eq(items.isArchived, false),
+      sql`${items.characterId} IS NULL`,
+      sql`${items.campaignId} IS NULL`,
+    ];
+    if (system) conditions.push(eq(items.system, system));
+    const result = await db.select()
+      .from(items)
+      .where(and(...conditions)) as Item[];
+    return result.map(item => this.convertLegacyItemPrice(item));
+  }
+
+  async getSystemItemTemplates(system?: string): Promise<Item[]> {
+    const conditions = [
+      eq(items.isLiveTemplate, true),
       eq(items.isArchived, false),
       sql`${items.characterId} IS NULL`,
       sql`${items.campaignId} IS NULL`,
@@ -1895,6 +1911,7 @@ export class DatabaseStorage implements IStorage {
   async getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     const conditions = [
       eq(items.isTemplate, true),
+      eq(items.isLiveTemplate, false),
       eq(items.isArchived, false),
       sql`${items.characterId} IS NULL`,
       sql`${items.campaignId} IS NULL`,

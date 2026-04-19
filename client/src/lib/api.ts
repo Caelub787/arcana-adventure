@@ -1130,6 +1130,41 @@ class ApiClient {
     return this.request('/admin/system-items/archive-all', { method: 'POST', body: system ? JSON.stringify({ system }) : undefined });
   }
 
+  // Item Templates (admin live templates whose roll edits propagate to linked items)
+  async getItemTemplates(system?: string): Promise<Item[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/item-templates${params}`);
+  }
+
+  async getItemTemplate(id: string): Promise<Item> {
+    return this.request(`/admin/item-templates/${id}`);
+  }
+
+  async createItemTemplate(item: Partial<Item>): Promise<Item> {
+    return this.request('/admin/item-templates', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+
+  async updateItemTemplate(id: string, data: Partial<Item>): Promise<Item> {
+    return this.request(`/admin/item-templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteItemTemplate(id: string): Promise<void> {
+    return this.request(`/admin/item-templates/${id}`, { method: 'DELETE' });
+  }
+
+  async linkItemToTemplate(itemId: string, templateId: string | null): Promise<{ success: boolean; templateItemId: string | null }> {
+    return this.request(`/items/${itemId}/link-template`, {
+      method: 'POST',
+      body: JSON.stringify({ templateId }),
+    });
+  }
+
   async copyItemToSystem(id: string, targetSystem: string): Promise<Item> {
     return this.request(`/admin/system-items/${id}/copy-to-system`, {
       method: 'POST',

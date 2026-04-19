@@ -5910,6 +5910,227 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== Item Templates (admin-managed live templates) =====
+  app.get("/api/admin/item-templates", requireAdmin, async (req, res) => {
+    try {
+      const system = req.query.system as string | undefined;
+      const templates = await storage.getSystemItemTemplates(system);
+      res.json(templates);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item templates" });
+    }
+  });
+
+  app.get("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "Item template not found" });
+      }
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item template" });
+    }
+  });
+
+  app.post("/api/admin/item-templates", requireAdmin, async (req, res) => {
+    try {
+      const itemData = insertItemSchema.parse({
+        ...req.body,
+        isTemplate: true,
+        isLiveTemplate: true,
+        characterId: null,
+        campaignId: null,
+      });
+      const item = await storage.createItem(itemData);
+      if (item.isDetonatable) {
+        const existingRolls = await storage.getRollEntries('item', item.id);
+        if (!existingRolls.some(r => r.name === 'Detonate')) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: item.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        }
+      }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-templates' });
+      res.json(item);
+    } catch (err: any) {
+      console.error('[item-templates] create failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to create item template" });
+    }
+  });
+
+  app.patch("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "Item template not found" });
+      }
+      // Don't let updates flip the template flags away
+      const { isLiveTemplate: _i, isTemplate: _t, characterId: _c, campaignId: _cm, ...updates } = req.body;
+      const updatedItem = await storage.updateItem(req.params.id, updates);
+
+      // Propagate template-level field changes to all linked items so they stay in sync
+      if (updatedItem) {
+        const linked = await storage.getItemsLinkedToTemplate(updatedItem.id);
+        const propagatedFieldList: (keyof typeof updates)[] = [
+          'name', 'description', 'rules', 'rulesVisible', 'image',
+          'damage', 'damageType', 'mod', 'range', 'aoe', 'attribute', 'size',
+          'isHeavy', 'ammunitionType', 'weaponCategory', 'breakChance',
+          'itemWeight', 'durability', 'itemType', 'rarity',
+          'isContainer', 'carryCapacity',
+          'armorSlot', 'armorBonus', 'damageReduction', 'damageReductionType',
+          'grantsDcBonus', 'dcBonusValue',
+          'rationServings', 'isDamaging',
+          'isDetonatable', 'detonateAoeShape', 'detonateAoeRange',
+          'canApplyEffects',
+        ];
+        const propagatePayload: any = {};
+        for (const k of propagatedFieldList) {
+          if (k in updates) propagatePayload[k] = (updates as any)[k];
+        }
+        if (Object.keys(propagatePayload).length > 0) {
+          for (const linkedItem of linked) {
+            await storage.updateItem(linkedItem.id, propagatePayload);
+          }
+        }
+
+        // Detonate roll bookkeeping (matches system-items behavior)
+        const existingRolls = await storage.getRollEntries('item', updatedItem.id);
+        const detonateRoll = existingRolls.find(r => r.name === 'Detonate');
+        if (updatedItem.isDetonatable && !detonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: updatedItem.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        } else if (!updatedItem.isDetonatable && detonateRoll) {
+          await storage.deleteRollEntry(detonateRoll.id);
+        }
+      }
+
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-templates' });
+      res.json(updatedItem);
+    } catch (err: any) {
+      console.error('[item-templates] update failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to update item template" });
+    }
+  });
+
+  app.delete("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "Item template not found" });
+      }
+      // Unlink any items pointing at this template (and detach their roll links)
+      const linkedItems = await storage.getItemsLinkedToTemplate(req.params.id);
+      for (const linked of linkedItems) {
+        await db.update(items).set({ templateItemId: null }).where(eq(items.id, linked.id));
+      }
+      const templateRolls = await storage.getRollEntries('item', req.params.id);
+      for (const tRoll of templateRolls) {
+        const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
+        for (const iRoll of inherited) {
+          await db.update(rollEntries).set({ fromTemplateRollId: null }).where(eq(rollEntries.id, iRoll.id));
+        }
+      }
+      await storage.deleteItem(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-templates' });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[item-templates] delete failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to delete item template" });
+    }
+  });
+
+  // Link / unlink an existing item to a live template. Copies template rolls into the item
+  // (replacing any prior template-derived rolls) and sets templateItemId so future template
+  // edits propagate. Pass templateId: null to unlink.
+  app.post("/api/items/:id/link-template", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const item = await storage.getItem(req.params.id);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+
+      // Authorization: must be able to modify this item's rolls
+      const canModify = await canModifyRollEntries(userId, 'item', item.id);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify this item" });
+      }
+
+      const { templateId } = req.body as { templateId: string | null };
+
+      // Validate target template FIRST before any mutation
+      let template: any = null;
+      if (templateId) {
+        template = await storage.getItem(templateId);
+        if (!template || !template.isLiveTemplate || template.characterId || template.campaignId) {
+          return res.status(404).json({ error: "Item template not found" });
+        }
+        if (template.system && item.system && template.system !== item.system) {
+          return res.status(400).json({ error: "Template system does not match item system" });
+        }
+      }
+
+      // Detach existing template-derived rolls
+      const existingRolls = await storage.getRollEntries('item', item.id);
+      for (const r of existingRolls) {
+        if (r.fromTemplateRollId) {
+          await storage.deleteRollEntry(r.id);
+        }
+      }
+
+      if (!templateId) {
+        await storage.updateItem(item.id, { templateItemId: null });
+        return res.json({ success: true, templateItemId: null });
+      }
+
+      await storage.updateItem(item.id, { templateItemId: templateId });
+
+      // Copy template rolls into the item with fromTemplateRollId pointers
+      const templateRolls = await storage.getRollEntries('item', templateId);
+      if (templateRolls.length > 0) {
+        const toInsert = templateRolls.map((roll: any) => {
+          const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
+          return {
+            ...rest,
+            ownerType: 'item',
+            ownerId: item.id,
+            fromTemplateRollId: roll.id,
+          };
+        });
+        await storage.createRollEntriesBulk(toInsert as any);
+      }
+
+      // Also propagate template-level fields to the item so the linked instance matches
+      const propagatedFields: any = {
+        name: template.name, description: template.description, rules: template.rules,
+        rulesVisible: template.rulesVisible, image: template.image,
+        damage: template.damage, damageType: template.damageType, mod: template.mod,
+        range: template.range, aoe: template.aoe, attribute: template.attribute,
+        size: template.size, isHeavy: template.isHeavy,
+        ammunitionType: template.ammunitionType, weaponCategory: template.weaponCategory,
+        breakChance: template.breakChance, itemWeight: template.itemWeight,
+        durability: template.durability, itemType: template.itemType, rarity: template.rarity,
+        isContainer: template.isContainer, carryCapacity: template.carryCapacity,
+        armorSlot: template.armorSlot, armorBonus: template.armorBonus,
+        damageReduction: template.damageReduction, damageReductionType: template.damageReductionType,
+        grantsDcBonus: template.grantsDcBonus, dcBonusValue: template.dcBonusValue,
+        rationServings: template.rationServings, isDamaging: template.isDamaging,
+        isDetonatable: template.isDetonatable, detonateAoeShape: template.detonateAoeShape,
+        detonateAoeRange: template.detonateAoeRange, canApplyEffects: template.canApplyEffects,
+      };
+      await storage.updateItem(item.id, propagatedFields);
+
+      res.json({ success: true, templateItemId: templateId });
+    } catch (err: any) {
+      console.error('[link-template] failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to link template" });
+    }
+  });
+
   app.post("/api/admin/system-spells/:id/archive", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.updateSystemSpell(req.params.id, { isArchived: true });
@@ -8228,14 +8449,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sourceTemplateId = req.body.sourceTemplateId;
 
-      // Check if source template is a campaign template (for template linking)
+      // Check if source template is a live template (campaign-scoped or system-scoped)
       let linkToTemplate = false;
       if (sourceTemplateId) {
         const sourceItem = await storage.getItem(sourceTemplateId);
-        if (sourceItem && sourceItem.isTemplate && sourceItem.campaignId) {
-          const character = await storage.getCharacter(req.params.characterId);
-          if (character?.campaignId === sourceItem.campaignId) {
-            linkToTemplate = true;
+        if (sourceItem && sourceItem.isTemplate) {
+          if (sourceItem.isLiveTemplate && !sourceItem.campaignId && !sourceItem.characterId) {
+            // System-scoped admin live template: any character in matching system can link
+            const character = await storage.getCharacter(req.params.characterId);
+            if (character && (!sourceItem.system || character.system === sourceItem.system)) {
+              linkToTemplate = true;
+            }
+          } else if (sourceItem.campaignId) {
+            // Campaign template: must match character's campaign
+            const character = await storage.getCharacter(req.params.characterId);
+            if (character?.campaignId === sourceItem.campaignId) {
+              linkToTemplate = true;
+            }
           }
         }
       }
@@ -8248,7 +8478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const item = await storage.createItem(itemData);
 
-      if (sourceTemplateId) {
+      if (sourceTemplateId && linkToTemplate) {
         try {
           const templateRolls = await storage.getRollEntries('item', sourceTemplateId);
           if (templateRolls.length > 0) {

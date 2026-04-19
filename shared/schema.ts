@@ -442,6 +442,7 @@ export const items = pgTable("items", {
   createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }), // Track which GM created this item (for GM library items)
   containerId: varchar("container_id").references((): AnyPgColumn => items.id, { onDelete: "cascade" }), // For nested inventories
   isTemplate: boolean("is_template").default(false).notNull(), // True for campaign item templates
+  isLiveTemplate: boolean("is_live_template").default(false).notNull(), // True for admin-managed live templates whose roll edits propagate to all linked items
   name: text("name").notNull(),
   image: text("image"),
   description: text("description"), // GM only editable

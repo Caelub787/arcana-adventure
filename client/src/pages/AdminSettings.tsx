@@ -22,7 +22,7 @@ import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -103,6 +103,11 @@ export default function AdminSettings() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+
+  const [showAddTemplate, setShowAddTemplate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<Item | null>(null);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
 
   const [showAddSpecies, setShowAddSpecies] = useState(false);
   const [editingSpecies, setEditingSpecies] = useState<SystemSpecies | null>(null);
@@ -233,6 +238,62 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       toast({ title: 'Item Deleted', description: 'System item deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  // ===== Item Templates =====
+  const { data: itemTemplates = [], isLoading: templatesLoading } = useQuery({
+    queryKey: ['item-templates', systemSlug],
+    queryFn: () => api.getItemTemplates(systemSlug),
+    enabled: isAdmin && currentView === 'item-templates',
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const createItemTemplateMutation = useMutation({
+    mutationFn: async ({ item, draftRolls }: { item: Partial<Item>; draftRolls?: any[] }) => {
+      const created = await api.createItemTemplate({ ...item, system: systemSlug });
+      if (draftRolls && draftRolls.length > 0) {
+        for (const roll of draftRolls) {
+          const { id, ...rollData } = roll;
+          await api.createRollEntry({
+            ...rollData,
+            ownerType: 'item',
+            ownerId: created.id,
+          });
+        }
+      }
+      return created;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['item-templates'] });
+      setShowAddTemplate(false);
+      toast({ title: 'Template Created', description: 'Item template created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateItemTemplateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Item> }) => api.updateItemTemplate(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['item-templates'] });
+      setEditingTemplate(null);
+      toast({ title: 'Template Updated', description: 'Linked items will be updated automatically' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteItemTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.deleteItemTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['item-templates'] });
+      toast({ title: 'Template Deleted', description: 'Linked items have been unlinked' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -701,6 +762,7 @@ export default function AdminSettings() {
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
+               currentView === 'item-templates' ? 'Item Templates' :
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? 'Custom Skills' : 
@@ -763,6 +825,27 @@ export default function AdminSettings() {
               copyItemToSystemMutation.mutate({ id, targetSystem: target });
             }}
             copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
+          />
+        )}
+
+        {currentView === 'item-templates' && (
+          <ItemTemplatesView
+            templates={itemTemplates}
+            isLoading={templatesLoading}
+            searchQuery={templateSearchQuery}
+            setSearchQuery={setTemplateSearchQuery}
+            typeFilter={templateTypeFilter}
+            setTypeFilter={setTemplateTypeFilter}
+            onAddTemplate={() => setShowAddTemplate(true)}
+            onEditTemplate={async (id) => {
+              const full = await api.getItemTemplate(id);
+              setEditingTemplate(full);
+            }}
+            onDeleteTemplate={(id) => {
+              if (confirm('Delete this template? Linked items will be unlinked but preserved.')) {
+                deleteItemTemplateMutation.mutate(id);
+              }
+            }}
           />
         )}
 
@@ -944,6 +1027,25 @@ export default function AdminSettings() {
             onSave={(data, _draftRolls) => updateItemMutation.mutate({ id: editingItem.id, data })}
             initialData={editingItem}
             isLoading={updateItemMutation.isPending}
+            campaignSystem={systemSlug}
+          />
+        )}
+
+        <ItemFormDialog
+          open={showAddTemplate}
+          onOpenChange={setShowAddTemplate}
+          onSave={(data, draftRolls) => createItemTemplateMutation.mutate({ item: data, draftRolls })}
+          isLoading={createItemTemplateMutation.isPending}
+          campaignSystem={systemSlug}
+        />
+
+        {editingTemplate && (
+          <ItemFormDialog
+            open={!!editingTemplate}
+            onOpenChange={() => setEditingTemplate(null)}
+            onSave={(data, _draftRolls) => updateItemTemplateMutation.mutate({ id: editingTemplate.id, data })}
+            initialData={editingTemplate}
+            isLoading={updateItemTemplateMutation.isPending}
             campaignSystem={systemSlug}
           />
         )}
@@ -1365,6 +1467,22 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
           <CardTitle className="text-amber-500">System Items</CardTitle>
           <CardDescription className="text-stone-400">
             Manage weapons, armor, consumables, and other items available across all campaigns
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('item-templates')}
+        data-testid="card-item-templates"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <Layers className="h-6 w-6 text-amber-500" />
+          </div>
+          <CardTitle className="text-amber-500">Item Templates</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create live item templates whose roll edits propagate to every linked item, even on character sheets
           </CardDescription>
         </CardHeader>
       </Card>
@@ -1884,6 +2002,108 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
               <X className="h-3 w-3" />
             </Button>
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ItemTemplatesViewProps {
+  templates: any[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  typeFilter: string;
+  setTypeFilter: (t: string) => void;
+  onAddTemplate: () => void;
+  onEditTemplate: (id: string) => void;
+  onDeleteTemplate: (id: string) => void;
+}
+
+function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddTemplate, onEditTemplate, onDeleteTemplate }: ItemTemplatesViewProps) {
+  const filtered = templates.filter((t: any) => {
+    const matchesSearch = !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = typeFilter === 'all' || t.itemType === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  return (
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
+        <div>
+          <CardTitle className="text-amber-500">Item Templates</CardTitle>
+          <CardDescription className="text-stone-400 mt-1">
+            Edits to a template's rolls and properties propagate live to every linked item, including those on character sheets.
+          </CardDescription>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={onAddTemplate} className="bg-amber-700 hover:bg-amber-600" data-testid="button-add-item-template">
+            <Plus className="h-4 w-4 mr-2" /> Add Template
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="flex gap-4 mb-4 shrink-0">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input placeholder="Search templates..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-stone-800 border-stone-700" data-testid="input-search-templates" />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-template-type-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="weapon">Weapons</SelectItem>
+              <SelectItem value="armor">Armor</SelectItem>
+              <SelectItem value="consumable">Consumables</SelectItem>
+              <SelectItem value="utility">Utilities</SelectItem>
+              <SelectItem value="container">Containers</SelectItem>
+              <SelectItem value="currency">Currency</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading templates...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Layers className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No item templates yet</p>
+            <p className="text-sm mt-2">Create a template, then assign items to it from any item's settings.</p>
+          </div>
+        ) : (
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-2">
+              {filtered.map((template: any) => (
+                <div
+                  key={template.id}
+                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`template-row-${template.id}`}
+                >
+                  <LazyAdminItemImage itemId={template.id} itemType={template.itemType} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base" data-testid={`text-template-name-${template.id}`}>{template.name}</span>
+                      <Badge className={`${rarityColors[template.rarity] || 'bg-stone-600'} text-xs`}>{template.rarity}</Badge>
+                      <Badge className="bg-amber-700/30 text-amber-300 text-xs border border-amber-700/50">Live Template</Badge>
+                    </div>
+                    <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
+                      <span className="capitalize">{template.itemType}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
+                    <Button variant="ghost" size="icon" onClick={() => onEditTemplate(template.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-template-${template.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => onDeleteTemplate(template.id)} className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-delete-template-${template.id}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>
@@ -7271,6 +7491,76 @@ interface ItemFormDialogProps {
   campaignSystem?: string;
 }
 
+function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { itemId: string; currentTemplateId: string | null; systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<string>(currentTemplateId || 'none');
+
+  useEffect(() => {
+    setSelected(currentTemplateId || 'none');
+  }, [currentTemplateId]);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['item-templates', systemSlug],
+    queryFn: () => api.getItemTemplates(systemSlug),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: (templateId: string | null) => api.linkItemToTemplate(itemId, templateId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', itemId] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['campaign-items'] });
+      queryClient.invalidateQueries({ queryKey: ['character-items'] });
+      toast({ title: 'Template Linked', description: 'Item synced to template. Future template edits will propagate automatically.' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message || 'Failed to link template', variant: 'destructive' });
+    },
+  });
+
+  const handleApply = () => {
+    const value = selected === 'none' ? null : selected;
+    if (value === currentTemplateId) return;
+    linkMutation.mutate(value);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <Layers className="h-4 w-4 text-amber-500" />
+        <Label className="text-amber-500">Linked Template</Label>
+      </div>
+      <p className="text-xs text-stone-500 mb-3">
+        Assign this item to a template. Template rolls and properties will be copied in immediately and stay in sync with future edits.
+      </p>
+      <div className="flex gap-2">
+        <Select value={selected} onValueChange={setSelected}>
+          <SelectTrigger className="bg-stone-800 border-stone-700 flex-1" data-testid="select-linked-template">
+            <SelectValue placeholder="No template" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No template (standalone)</SelectItem>
+            {templates.map((t: any) => (
+              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          onClick={handleApply}
+          disabled={linkMutation.isPending || (selected === 'none' ? !currentTemplateId : selected === currentTemplateId)}
+          className="bg-amber-700 hover:bg-amber-600"
+          data-testid="button-apply-template-link"
+        >
+          {linkMutation.isPending ? 'Applying...' : 'Apply'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: ItemFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
 
@@ -7907,6 +8197,16 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                 {formData.canApplyEffects && !initialData && (
                   <p className="text-xs text-amber-500 mt-2">Save the item first to manage effects</p>
                 )}
+              </div>
+            )}
+
+            {initialData?.id && !(initialData as any)?.isLiveTemplate && (
+              <div className="pt-4 border-t border-stone-700">
+                <ItemTemplateLinkPicker
+                  itemId={initialData.id}
+                  currentTemplateId={(initialData as any)?.templateItemId || null}
+                  systemSlug={campaignSystem || (initialData as any)?.system || 'arcana-adventure'}
+                />
               </div>
             )}
 
