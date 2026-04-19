@@ -537,6 +537,7 @@ export interface IStorage {
   getSpectatorTokenByToken(token: string): Promise<SpectatorToken | undefined>;
   upsertSpectatorToken(campaignId: string, token: string, createdBy: string, expiresAt?: Date | null): Promise<SpectatorToken>;
   deleteSpectatorToken(campaignId: string): Promise<void>;
+  deleteExpiredSpectatorTokens(): Promise<number>;
 
   // World Share Link operations
   getWorldShareLink(campaignId: string): Promise<WorldShareLink | undefined>;
@@ -3977,6 +3978,12 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(spectatorTokens)
       .where(eq(spectatorTokens.token, token))
       .limit(1);
+    if (!row) return undefined;
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+      // Lazy cleanup: drop the expired row so the table stays tidy.
+      await db.delete(spectatorTokens).where(eq(spectatorTokens.id, row.id));
+      return undefined;
+    }
     return row;
   }
 
@@ -3988,6 +3995,16 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSpectatorToken(campaignId: string): Promise<void> {
     await db.delete(spectatorTokens).where(eq(spectatorTokens.campaignId, campaignId));
+  }
+
+  async deleteExpiredSpectatorTokens(): Promise<number> {
+    const result = await db.delete(spectatorTokens)
+      .where(and(
+        sql`${spectatorTokens.expiresAt} IS NOT NULL`,
+        sql`${spectatorTokens.expiresAt} <= NOW()`,
+      ))
+      .returning({ id: spectatorTokens.id });
+    return result.length;
   }
 
   // ============================================

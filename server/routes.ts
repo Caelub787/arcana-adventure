@@ -96,6 +96,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   await migrateEntityTypesToTags();
 
+  // Periodic sweep: remove expired spectator tokens so the table stays tidy.
+  // Runs once at startup and then hourly. The lookup path also lazy-deletes
+  // expired rows it encounters, so this is a belt-and-suspenders measure for
+  // links that no one ever tries to open again.
+  const sweepExpiredSpectatorTokens = async () => {
+    try {
+      const removed = await storage.deleteExpiredSpectatorTokens();
+      if (removed > 0) {
+        console.log(`[spectator] Cleaned up ${removed} expired spectator token(s)`);
+      }
+    } catch (err) {
+      console.error('[spectator] Failed to clean up expired spectator tokens:', err);
+    }
+  };
+  void sweepExpiredSpectatorTokens();
+  setInterval(sweepExpiredSpectatorTokens, 60 * 60 * 1000).unref();
+
   // Spectator mode middleware: clients viewing the read-only spectator view
   // send X-Spectator-Mode: 1 with every request. Mark the request so
   // downstream handlers can scope responses to player-visible data only,
