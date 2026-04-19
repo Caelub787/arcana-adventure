@@ -28,6 +28,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
+import { ProjectorFullscreen } from "@/components/ProjectorFullscreen";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
@@ -10405,6 +10406,9 @@ export default function Campaign() {
         </div>
       )}
       
+      {/* Projector Mode fullscreen prompt */}
+      {projectorMode && <ProjectorFullscreen />}
+
       {/* Projector Mode floating exit button */}
       {projectorMode && (
         <button
