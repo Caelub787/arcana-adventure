@@ -3144,6 +3144,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }));
       }
 
+      // Initiative: only when combat is active. Hidden entries are excluded
+      // so spectators only see what players would normally see.
+      type SpectatorInitiative = {
+        id: string;
+        characterId: string;
+        name: string;
+        portrait: string | null;
+        value: number;
+        isCurrentTurn: boolean;
+      };
+      let initiative: SpectatorInitiative[] = [];
+      if (campaign.inCombat) {
+        const rawInit = await storage.getCampaignInitiative(campaign.id);
+        const visibleInit = rawInit.filter(e => !e.isHidden);
+        const initCharIds = visibleInit.map(e => e.characterId);
+        const initChars = initCharIds.length > 0
+          ? await storage.getCharactersByIds(initCharIds)
+          : [];
+        const initCharMap = new Map(initChars.map(c => [c.id, c]));
+        initiative = visibleInit.map(e => {
+          const ch = initCharMap.get(e.characterId);
+          return {
+            id: e.id,
+            characterId: e.characterId,
+            name: ch?.nickname || ch?.name || "Unknown",
+            portrait: ch?.portrait ?? null,
+            value: e.value,
+            isCurrentTurn: campaign.currentTurnCharacterId === e.characterId,
+          };
+        });
+      }
+
+      // Chat: most recent public messages (no whispers, no GM-targeted DMs).
+      type SpectatorChat = {
+        id: string;
+        sender: string;
+        text: string;
+        type: string;
+        createdAt: string;
+      };
+      // Fetch a larger pool so filtering whispers/DMs out doesn't underfill
+      // the spectator's recent-public-chat window.
+      const rawMessages = await storage.getCampaignMessages(campaign.id, 200);
+      const chat: SpectatorChat[] = rawMessages
+        .filter(m => m.type !== "whisper" && !m.recipientId)
+        .slice(0, 50)
+        .map(m => ({
+          id: m.id,
+          sender: m.sender,
+          text: m.text,
+          type: m.type,
+          createdAt: (m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt)).toISOString(),
+        }))
+        .reverse();
+
       res.json({
         campaign: {
           id: campaign.id,
@@ -3178,6 +3233,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         doors,
         lights,
         mapPins,
+        initiative,
+        chat,
       });
     } catch (err) {
       console.error("[spectator] failed to load bundle", err);

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, Loader2, MapPin } from "lucide-react";
+import { Eye, Loader2, MapPin, Swords, MessageSquare } from "lucide-react";
 
 interface SpectatorBundle {
   campaign: { id: string; name: string; activeSceneId: string | null; inCombat: boolean };
@@ -61,6 +61,21 @@ interface SpectatorBundle {
     icon: string | null;
     color: string | null;
     pinType: string;
+  }>;
+  initiative?: Array<{
+    id: string;
+    characterId: string;
+    name: string;
+    portrait: string | null;
+    value: number;
+    isCurrentTurn: boolean;
+  }>;
+  chat?: Array<{
+    id: string;
+    sender: string;
+    text: string;
+    type: string;
+    createdAt: string;
   }>;
 }
 
@@ -313,6 +328,8 @@ export default function Spectate() {
   }
 
   const { scene, tokens, characters, campaign, mapPins } = data;
+  const initiative = data.initiative ?? [];
+  const chat = data.chat ?? [];
   const charMap = useMemo(() => new Map(characters.map(c => [c.id, c])), [characters]);
   const tokenMap = useMemo(() => new Map(tokens.map(t => [t.id, t])), [tokens]);
   const SIZE_TO_CELLS: Record<string, number> = {
@@ -361,6 +378,7 @@ export default function Spectate() {
         </span>
       </div>
 
+      <div className="flex-1 flex min-h-0">
       <div ref={containerRef} className="flex-1 relative overflow-hidden bg-stone-900" data-testid="spectator-map">
         {!scene && (
           <div className="absolute inset-0 flex items-center justify-center text-stone-500">
@@ -509,6 +527,75 @@ export default function Spectate() {
             </div>
           </>
         )}
+      </div>
+      <aside className="w-72 shrink-0 bg-stone-950 border-l border-stone-800 flex flex-col min-h-0">
+        {campaign.inCombat && initiative.length > 0 && (
+          <div className="border-b border-stone-800 flex flex-col max-h-[45%] min-h-0" data-testid="spectator-initiative">
+            <div className="px-3 py-2 flex items-center gap-2 bg-stone-900/60 shrink-0">
+              <Swords className="h-3.5 w-3.5 text-amber-400" />
+              <span className="text-xs uppercase tracking-wider font-semibold text-stone-300">Initiative</span>
+            </div>
+            <div className="overflow-y-auto py-1">
+              {initiative.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`flex items-center gap-2 px-3 py-1.5 ${
+                    entry.isCurrentTurn
+                      ? "bg-amber-900/30 border-l-2 border-amber-400"
+                      : "border-l-2 border-transparent"
+                  }`}
+                  data-testid={`spectator-initiative-entry-${entry.characterId}`}
+                >
+                  <div className="w-7 h-7 rounded-full overflow-hidden bg-stone-800 shrink-0 border border-stone-700">
+                    {entry.portrait ? (
+                      <img src={entry.portrait} alt="" className="w-full h-full object-cover" draggable={false} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-stone-300">
+                        {entry.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 text-sm text-stone-100 truncate" data-testid={`text-initiative-name-${entry.characterId}`}>
+                    {entry.name}
+                  </div>
+                  <div className="text-xs font-bold text-amber-300 tabular-nums" data-testid={`text-initiative-value-${entry.characterId}`}>
+                    {entry.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex-1 flex flex-col min-h-0" data-testid="spectator-chat">
+          <div className="px-3 py-2 flex items-center gap-2 bg-stone-900/60 shrink-0 border-b border-stone-800">
+            <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
+            <span className="text-xs uppercase tracking-wider font-semibold text-stone-300">Chat</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+            {chat.length === 0 && (
+              <div className="text-xs text-stone-500 italic">No messages yet.</div>
+            )}
+            {chat.map((m) => (
+              <div key={m.id} className="text-sm leading-snug" data-testid={`spectator-chat-message-${m.id}`}>
+                {m.type === "system" ? (
+                  <div className="text-xs italic text-stone-500">{m.text}</div>
+                ) : m.type === "roll" ? (
+                  <div>
+                    <span className="text-xs font-semibold text-amber-300">{m.sender}</span>
+                    <span className="text-xs text-stone-500"> rolled </span>
+                    <span className="text-stone-200">{m.text}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="text-xs font-semibold text-blue-300">{m.sender}: </span>
+                    <span className="text-stone-200 break-words">{m.text}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
       </div>
     </div>
   );
