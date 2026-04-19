@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
+import { getProjectorWindowFeatures } from "@/components/ProjectorFullscreen";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11133,7 +11134,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   if (typeof window === 'undefined') return;
                   const url = new URL(window.location.href);
                   url.searchParams.set('projector', '1');
-                  window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                  window.open(url.toString(), '_blank', getProjectorWindowFeatures());
                 }}
                 data-testid="button-open-projector-tab"
               >

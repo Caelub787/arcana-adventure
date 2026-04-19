@@ -2,6 +2,52 @@ import React, { useEffect, useRef, useState } from "react";
 import { Maximize2, Monitor } from "lucide-react";
 
 const STORAGE_KEY = "projector-display-label";
+const BOUNDS_STORAGE_KEY = "projector-window-bounds";
+
+interface ProjectorBounds {
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+}
+
+function readSavedBounds(): ProjectorBounds | null {
+  try {
+    const raw = localStorage.getItem(BOUNDS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ProjectorBounds>;
+    if (
+      parsed &&
+      typeof parsed.width === "number" &&
+      typeof parsed.height === "number" &&
+      typeof parsed.left === "number" &&
+      typeof parsed.top === "number" &&
+      parsed.width > 100 &&
+      parsed.height > 100 &&
+      Number.isFinite(parsed.left) &&
+      Number.isFinite(parsed.top)
+    ) {
+      return parsed as ProjectorBounds;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function getProjectorWindowFeatures(): string {
+  const b = readSavedBounds();
+  if (!b) return "noopener,noreferrer";
+  return [
+    "popup=yes",
+    `width=${Math.round(b.width)}`,
+    `height=${Math.round(b.height)}`,
+    `left=${Math.round(b.left)}`,
+    `top=${Math.round(b.top)}`,
+    "noopener",
+    "noreferrer",
+  ].join(",");
+}
 
 interface ScreenDetailed {
   readonly label: string;
@@ -66,6 +112,60 @@ export function ProjectorFullscreen() {
     };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = readSavedBounds();
+    if (!saved) return;
+    try {
+      window.resizeTo(Math.round(saved.width), Math.round(saved.height));
+      window.moveTo(Math.round(saved.left), Math.round(saved.top));
+    } catch {
+      // browser may block resize/move on regular tabs; ignore silently
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let lastSerialized: string | null = null;
+    const persist = () => {
+      if (document.fullscreenElement) return;
+      const width = window.outerWidth;
+      const height = window.outerHeight;
+      const left = window.screenX;
+      const top = window.screenY;
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        !Number.isFinite(left) ||
+        !Number.isFinite(top) ||
+        width < 100 ||
+        height < 100
+      ) {
+        return;
+      }
+      const bounds: ProjectorBounds = { width, height, left, top };
+      const serialized = JSON.stringify(bounds);
+      if (serialized === lastSerialized) return;
+      try {
+        localStorage.setItem(BOUNDS_STORAGE_KEY, serialized);
+        lastSerialized = serialized;
+      } catch {
+        // ignore storage errors (private mode etc.)
+      }
+    };
+    const interval = window.setInterval(persist, 1000);
+    const onResize = () => persist();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("beforeunload", persist);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("beforeunload", persist);
+      window.removeEventListener("pagehide", persist);
+    };
   }, []);
 
   const loadScreens = async (): Promise<ScreenInfo[] | null> => {
