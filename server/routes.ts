@@ -2881,7 +2881,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGm = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
       if (!isGm) return res.status(403).json({ error: "Only the GM can manage the spectator link" });
       const existing = await storage.getSpectatorTokenByCampaign(campaign.id);
-      res.json(existing ? { token: existing.token, createdAt: existing.createdAt } : { token: null });
+      res.json(existing
+        ? {
+            token: existing.token,
+            createdAt: existing.createdAt,
+            expiresAt: existing.expiresAt,
+            expired: existing.expiresAt ? existing.expiresAt.getTime() <= Date.now() : false,
+          }
+        : { token: null });
     } catch (err) {
       res.status(500).json({ error: "Failed to load spectator token" });
     }
@@ -2894,8 +2901,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGm = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
       if (!isGm) return res.status(403).json({ error: "Only the GM can manage the spectator link" });
       const newToken = crypto.randomBytes(24).toString("hex");
-      const created = await storage.upsertSpectatorToken(campaign.id, newToken, req.session.userId!);
-      res.json({ token: created.token, createdAt: created.createdAt });
+      // Optional expiration: caller may pass `expiresInMs` (number) for a
+      // relative duration, or `expiresAt` (ISO string) for an absolute time.
+      // Omit / null / 0 means the link never expires.
+      let expiresAt: Date | null = null;
+      const body = (req.body || {}) as { expiresInMs?: unknown; expiresAt?: unknown };
+      if (typeof body.expiresInMs === "number" && Number.isFinite(body.expiresInMs) && body.expiresInMs > 0) {
+        expiresAt = new Date(Date.now() + body.expiresInMs);
+      } else if (typeof body.expiresAt === "string" && body.expiresAt.length > 0) {
+        const parsed = new Date(body.expiresAt);
+        if (!Number.isNaN(parsed.getTime())) expiresAt = parsed;
+      }
+      const created = await storage.upsertSpectatorToken(campaign.id, newToken, req.session.userId!, expiresAt);
+      res.json({ token: created.token, createdAt: created.createdAt, expiresAt: created.expiresAt });
     } catch (err) {
       res.status(500).json({ error: "Failed to create spectator token" });
     }
@@ -2923,6 +2941,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const record = await storage.getSpectatorTokenByToken(req.params.token);
       if (!record) return res.status(404).json({ error: "Spectator link not found or revoked" });
+      if (record.expiresAt && record.expiresAt.getTime() <= Date.now()) {
+        return res.status(404).json({ error: "Spectator link has expired" });
+      }
       const campaign = await storage.getCampaign(record.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 

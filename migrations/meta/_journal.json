@@ -92,6 +92,13 @@
       "when": 1776620800000,
       "tag": "0012_spectator_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776707200000,
+      "tag": "0013_spectator_token_expiration",
+      "breakpoints": true
     }
   ]
 }

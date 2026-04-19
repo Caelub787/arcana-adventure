@@ -1943,6 +1943,7 @@ export const spectatorTokens = pgTable("spectator_tokens", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }).unique(),
   token: text("token").notNull().unique(),
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at"), // Null = never expires
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

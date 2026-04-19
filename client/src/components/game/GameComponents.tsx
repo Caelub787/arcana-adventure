@@ -9356,15 +9356,27 @@ function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
 
 function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery<{ token: string | null; createdAt?: string }>({
+  const { data, isLoading } = useQuery<{ token: string | null; createdAt?: string; expiresAt?: string | null; expired?: boolean }>({
     queryKey: [`/api/campaigns/${campaignId}/spectator-token`],
   });
+
+  // Expiration choices: value is duration in milliseconds; 0 means "never".
+  const EXPIRATION_OPTIONS: { label: string; value: number }[] = [
+    { label: "Never", value: 0 },
+    { label: "1 hour", value: 60 * 60 * 1000 },
+    { label: "24 hours", value: 24 * 60 * 60 * 1000 },
+    { label: "7 days", value: 7 * 24 * 60 * 60 * 1000 },
+    { label: "30 days", value: 30 * 24 * 60 * 60 * 1000 },
+  ];
+  const [expiresInMs, setExpiresInMs] = useState<number>(0);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/campaigns/${campaignId}/spectator-token`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(expiresInMs > 0 ? { expiresInMs } : {}),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -9402,6 +9414,28 @@ function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
     toast({ title: "Link copied", description: "Spectator share link copied to clipboard." });
   };
 
+  const expiresAtDate = data?.expiresAt ? new Date(data.expiresAt) : null;
+  const isExpired = !!data?.expired;
+
+  const expirationPicker = (
+    <div className="flex items-center gap-2">
+      <label className="text-[11px] text-stone-400 uppercase tracking-wider" htmlFor={`spectator-expiration-${campaignId}`}>
+        Expires
+      </label>
+      <select
+        id={`spectator-expiration-${campaignId}`}
+        className="flex-1 bg-stone-900 border border-stone-700 rounded px-2 py-1 text-xs text-stone-200"
+        value={expiresInMs}
+        onChange={(e) => setExpiresInMs(Number(e.target.value))}
+        data-testid="select-spectator-expiration"
+      >
+        {EXPIRATION_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   return (
     <div className="pt-3 border-t border-stone-700/60 space-y-2">
       <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-2">
@@ -9415,19 +9449,39 @@ function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
       ) : shareUrl ? (
         <>
           <div
-            className="flex-1 font-mono text-[11px] text-blue-100 bg-black/40 p-2 rounded border border-dashed border-blue-700/50 break-all cursor-pointer hover:bg-black/60"
-            onClick={handleCopy}
-            title="Click to copy"
+            className={`flex-1 font-mono text-[11px] p-2 rounded border border-dashed break-all ${
+              isExpired
+                ? "text-stone-500 bg-black/40 border-red-700/50 line-through cursor-not-allowed"
+                : "text-blue-100 bg-black/40 border-blue-700/50 hover:bg-black/60 cursor-pointer"
+            }`}
+            onClick={isExpired ? undefined : handleCopy}
+            title={isExpired ? "Link has expired" : "Click to copy"}
             data-testid="spectator-share-url"
           >
             {shareUrl}
           </div>
+          {expiresAtDate ? (
+            <div
+              className={`text-[11px] ${isExpired ? "text-red-400 font-semibold" : "text-stone-400"}`}
+              data-testid="text-spectator-expiration"
+            >
+              {isExpired
+                ? `Expired ${expiresAtDate.toLocaleString()} — generate a new link to keep sharing.`
+                : `Expires ${expiresAtDate.toLocaleString()}`}
+            </div>
+          ) : (
+            <div className="text-[11px] text-stone-500" data-testid="text-spectator-expiration">
+              Never expires
+            </div>
+          )}
+          {expirationPicker}
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="secondary"
               className="flex-1 bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
               onClick={handleCopy}
+              disabled={isExpired}
               data-testid="button-copy-spectator-link"
             >
               Copy Link
@@ -9454,16 +9508,19 @@ function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
           </div>
         </>
       ) : (
-        <Button
-          size="sm"
-          variant="secondary"
-          className="w-full bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
-          onClick={() => generateMutation.mutate()}
-          disabled={generateMutation.isPending}
-          data-testid="button-generate-spectator-link"
-        >
-          {generateMutation.isPending ? "Generating…" : "Generate Share Link"}
-        </Button>
+        <>
+          {expirationPicker}
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full bg-blue-900/40 hover:bg-blue-800/50 border border-blue-700/60"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            data-testid="button-generate-spectator-link"
+          >
+            {generateMutation.isPending ? "Generating…" : "Generate Share Link"}
+          </Button>
+        </>
       )}
     </div>
   );

@@ -535,7 +535,7 @@ export interface IStorage {
   // Spectator token operations (public read-only campaign share)
   getSpectatorTokenByCampaign(campaignId: string): Promise<SpectatorToken | undefined>;
   getSpectatorTokenByToken(token: string): Promise<SpectatorToken | undefined>;
-  upsertSpectatorToken(campaignId: string, token: string, createdBy: string): Promise<SpectatorToken>;
+  upsertSpectatorToken(campaignId: string, token: string, createdBy: string, expiresAt?: Date | null): Promise<SpectatorToken>;
   deleteSpectatorToken(campaignId: string): Promise<void>;
 
   // World Share Link operations
@@ -3980,9 +3980,9 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async upsertSpectatorToken(campaignId: string, token: string, createdBy: string): Promise<SpectatorToken> {
+  async upsertSpectatorToken(campaignId: string, token: string, createdBy: string, expiresAt?: Date | null): Promise<SpectatorToken> {
     await db.delete(spectatorTokens).where(eq(spectatorTokens.campaignId, campaignId));
-    const [row] = await db.insert(spectatorTokens).values({ campaignId, token, createdBy }).returning();
+    const [row] = await db.insert(spectatorTokens).values({ campaignId, token, createdBy, expiresAt: expiresAt ?? null }).returning();
     return row;
   }
 
