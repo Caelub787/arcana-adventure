@@ -7490,10 +7490,21 @@ export default function Campaign() {
   // but accessible to any campaign member and always rendered with player visibility.
   const projectorMode = isProjectorParam || spectatorMode;
   // When spectating, follow the host's camera by default. Use `?spectator=1&follow=0`
-  // (or "off"/"none") to allow the spectator to roam the map freely.
-  const spectatorFollowParam = (queryParams.get("follow") || "host").toLowerCase();
-  const spectatorFollowInitial = spectatorMode && spectatorFollowParam !== "0" && spectatorFollowParam !== "off" && spectatorFollowParam !== "none";
+  // (or "off"/"none") to allow the spectator to roam the map freely. Pass a specific
+  // userId via `?spectator=1&follow=<userId>` to mirror that player's broadcast.
+  const spectatorFollowParamRaw = queryParams.get("follow") || "host";
+  const spectatorFollowParam = spectatorFollowParamRaw.toLowerCase();
+  const spectatorFollowDisabled = spectatorFollowParam === "0" || spectatorFollowParam === "off" || spectatorFollowParam === "none";
+  const spectatorFollowInitial = spectatorMode && !spectatorFollowDisabled;
   const [spectatorFollow, setSpectatorFollow] = useState(spectatorFollowInitial);
+  // Selected user to mirror. 'host' means whichever member is the campaign GM.
+  const spectatorFollowUserIdInitial = (() => {
+    if (!spectatorMode) return 'host';
+    if (spectatorFollowDisabled) return 'host';
+    if (spectatorFollowParam === 'host' || spectatorFollowParam === '1' || spectatorFollowParam === 'on') return 'host';
+    return spectatorFollowParamRaw;
+  })();
+  const [spectatorFollowUserId, setSpectatorFollowUserId] = useState<string>(spectatorFollowUserIdInitial);
   const campaignId = params?.id;
 
   const exitProjectorMode = useCallback(() => {
@@ -8222,6 +8233,18 @@ export default function Campaign() {
 
   // Current user's membership (for beacon color)
   const myMembership = (members as any[] | undefined)?.find((m: any) => m.userId === user?.id);
+
+  // If the chosen spectator-follow target leaves the campaign (kicked / left),
+  // gracefully reset the selector to the host so the UI doesn't show a stale name.
+  useEffect(() => {
+    if (!spectatorMode) return;
+    if (spectatorFollowUserId === 'host') return;
+    const list = (members as any[] | undefined);
+    if (!list) return;
+    if (!list.some((m: any) => m.userId === spectatorFollowUserId)) {
+      setSpectatorFollowUserId('host');
+    }
+  }, [members, spectatorFollowUserId, spectatorMode]);
 
   // Mutation to update beacon color
   const updateBeaconColorMutation = useMutation({
@@ -9349,8 +9372,12 @@ export default function Campaign() {
   const incognitoFlagRef = useRef(isIncognitoMode && isAdmin);
   const spectatorModeRef = useRef(spectatorMode);
   const spectatorFollowRef = useRef(spectatorFollow);
+  const spectatorFollowUserIdRef = useRef(spectatorFollowUserId);
   const gmUserIdRef = useRef<string | undefined>(undefined);
   const userIdRef = useRef(user?.id);
+  // Tracks last time (ms) we received a viewport_update from each userId, used to
+  // gracefully fall back to the host when the chosen player stops broadcasting.
+  const lastViewportAtRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     queryClientRef.current = queryClient;
     toastRef.current = toast;
@@ -9360,9 +9387,10 @@ export default function Campaign() {
     incognitoFlagRef.current = isIncognitoMode && isAdmin;
     spectatorModeRef.current = spectatorMode;
     spectatorFollowRef.current = spectatorFollow;
+    spectatorFollowUserIdRef.current = spectatorFollowUserId;
     gmUserIdRef.current = (campaign as { gmUserId?: string } | undefined)?.gmUserId;
     userIdRef.current = user?.id;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, spectatorMode, spectatorFollow, campaign, user?.id]);
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, spectatorMode, spectatorFollow, spectatorFollowUserId, campaign, user?.id]);
 
   // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
@@ -9874,6 +9902,9 @@ export default function Campaign() {
           
           // Skip our own broadcasts
           if (userId === user?.id) return;
+
+          // Track when we last received a broadcast from this user (used for fallback)
+          lastViewportAtRef.current.set(userId, Date.now());
           
           setOtherPlayersViewports(prev => {
             const updated = new Map(prev);
@@ -9890,9 +9921,23 @@ export default function Campaign() {
           });
 
           // Spectator follow: when spectating with follow enabled, mirror the
-          // host's (GM's) viewport so the cast/stream view matches what the GM sees.
-          if (spectatorModeRef.current && spectatorFollowRef.current && userId === gmUserIdRef.current) {
-            setCameraTarget({ x: viewportX, y: viewportY, zoom });
+          // chosen member's viewport so the cast/stream view matches their view.
+          // Resolves the chosen target with graceful fallback to the host (GM)
+          // when the chosen user is the host, has been kicked/left the campaign,
+          // or has not broadcast a viewport in the last 10 seconds.
+          if (spectatorModeRef.current && spectatorFollowRef.current) {
+            const chosen = spectatorFollowUserIdRef.current;
+            const gmUserId = gmUserIdRef.current;
+            const memberList = (membersRef.current as any[] | undefined) || [];
+            const chosenStillInCampaign = chosen === 'host' || memberList.some((m: any) => m.userId === chosen);
+            const lastSeen = chosen !== 'host' ? (lastViewportAtRef.current.get(chosen) || 0) : 0;
+            const chosenStale = chosen !== 'host' && Date.now() - lastSeen > 10000;
+            const effective = chosen === 'host' || !chosenStillInCampaign || chosenStale
+              ? gmUserId
+              : chosen;
+            if (userId === effective) {
+              setCameraTarget({ x: viewportX, y: viewportY, zoom });
+            }
           }
         }
 
@@ -10473,43 +10518,82 @@ export default function Campaign() {
       )}
 
       {/* Spectator Mode badge */}
-      {spectatorMode && (
-        <div
-          className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] flex items-center gap-2"
-          data-testid="badge-spectator-mode"
-        >
-          <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm pointer-events-none">
-            <Eye className="h-3.5 w-3.5 text-blue-300" />
-            <span className="text-xs font-medium text-blue-200">Spectator Mode</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSpectatorFollow((v) => {
-              const next = !v;
-              // When (re-)enabling follow, ask the server for the host's
-              // current viewport so the camera snaps immediately instead of
-              // sitting on the last cached position until the GM next pans.
-              if (next && effectiveCampaignId) {
-                gameWs.send({
-                  type: 'request_host_viewport',
-                  campaignId: effectiveCampaignId,
-                });
-              }
-              return next;
-            })}
-            className={`pointer-events-auto rounded-full px-3 py-1 text-xs font-medium border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 ${
-              spectatorFollow
-                ? 'bg-amber-900/70 border-amber-500/60 text-amber-100 hover:bg-amber-800/80'
-                : 'bg-stone-900/70 border-stone-600/60 text-stone-200 hover:bg-stone-800/80'
-            }`}
-            title={spectatorFollow ? 'Following the host\u2019s camera \u2014 click to free-roam' : 'Free-roam mode \u2014 click to follow the host'}
-            data-testid="button-spectator-follow-toggle"
+      {spectatorMode && (() => {
+        const memberList = (members as any[] | undefined) || [];
+        const gmUserId = (campaign as { gmUserId?: string } | undefined)?.gmUserId;
+        const chosenMember = spectatorFollowUserId !== 'host'
+          ? memberList.find((m: any) => m.userId === spectatorFollowUserId)
+          : null;
+        // Mirror the same "stale broadcast" rule used by the viewport handler so
+        // the badge label reflects when we've fallen back to the host.
+        const chosenViewport = chosenMember ? otherPlayersViewports.get(chosenMember.userId) : null;
+        const isFallbackActive = spectatorFollow
+          && spectatorFollowUserId !== 'host'
+          && !!chosenMember
+          && !chosenViewport;
+        const followLabel = spectatorFollow
+          ? (spectatorFollowUserId === 'host' || !chosenMember
+              ? 'Following Host'
+              : isFallbackActive
+                ? `Following Host (${chosenMember.username} not broadcasting)`
+                : `Following ${chosenMember.username}`)
+          : 'Free Roam';
+        return (
+          <div
+            className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] flex items-center gap-2"
+            data-testid="badge-spectator-mode"
           >
-            {spectatorFollow ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-            <span>{spectatorFollow ? 'Following Host' : 'Free Roam'}</span>
-          </button>
-        </div>
-      )}
+            <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm pointer-events-none">
+              <Eye className="h-3.5 w-3.5 text-blue-300" />
+              <span className="text-xs font-medium text-blue-200">Spectator Mode</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSpectatorFollow((v) => {
+                const next = !v;
+                // When (re-)enabling follow, ask the server for the host's
+                // current viewport so the camera snaps immediately instead of
+                // sitting on the last cached position until the GM next pans.
+                if (next && effectiveCampaignId) {
+                  gameWs.send({
+                    type: 'request_host_viewport',
+                    campaignId: effectiveCampaignId,
+                  });
+                }
+                return next;
+              })}
+              className={`pointer-events-auto rounded-full px-3 py-1 text-xs font-medium border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 ${
+                spectatorFollow
+                  ? 'bg-amber-900/70 border-amber-500/60 text-amber-100 hover:bg-amber-800/80'
+                  : 'bg-stone-900/70 border-stone-600/60 text-stone-200 hover:bg-stone-800/80'
+              }`}
+              title={spectatorFollow ? 'Mirroring a member\u2019s camera \u2014 click to free-roam' : 'Free-roam mode \u2014 click to mirror the chosen member'}
+              data-testid="button-spectator-follow-toggle"
+            >
+              {spectatorFollow ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+              <span>{followLabel}</span>
+            </button>
+            {spectatorFollow && (
+              <select
+                value={spectatorFollowUserId}
+                onChange={(e) => setSpectatorFollowUserId(e.target.value)}
+                className="pointer-events-auto rounded-full px-2.5 py-1 text-xs font-medium bg-stone-900/70 border border-stone-600/60 text-stone-200 shadow-lg backdrop-blur-sm hover:bg-stone-800/80 max-w-[180px]"
+                title="Choose which member's camera to follow"
+                data-testid="select-spectator-follow-target"
+              >
+                <option value="host">Host (GM)</option>
+                {memberList
+                  .filter((m: any) => m.userId !== gmUserId)
+                  .map((m: any) => (
+                    <option key={m.userId} value={m.userId} data-testid={`option-spectator-follow-${m.userId}`}>
+                      {m.username}{m.role === 'assistant_gm' ? ' (Asst. GM)' : ''}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Top Bar: Nav & Settings */}
       {!projectorMode && (
