@@ -46,7 +46,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -7489,6 +7489,11 @@ export default function Campaign() {
   // Spectator mode is a player-facing variant of projector mode: same UI hiding,
   // but accessible to any campaign member and always rendered with player visibility.
   const projectorMode = isProjectorParam || spectatorMode;
+  // When spectating, follow the host's camera by default. Use `?spectator=1&follow=0`
+  // (or "off"/"none") to allow the spectator to roam the map freely.
+  const spectatorFollowParam = (queryParams.get("follow") || "host").toLowerCase();
+  const spectatorFollowInitial = spectatorMode && spectatorFollowParam !== "0" && spectatorFollowParam !== "off" && spectatorFollowParam !== "none";
+  const [spectatorFollow, setSpectatorFollow] = useState(spectatorFollowInitial);
   const campaignId = params?.id;
 
   const exitProjectorMode = useCallback(() => {
@@ -9341,6 +9346,8 @@ export default function Campaign() {
   const membersRef = useRef(members);
   const incognitoFlagRef = useRef(isIncognitoMode && isAdmin);
   const spectatorModeRef = useRef(spectatorMode);
+  const spectatorFollowRef = useRef(spectatorFollow);
+  const gmUserIdRef = useRef<string | undefined>(undefined);
   const userIdRef = useRef(user?.id);
   useEffect(() => {
     queryClientRef.current = queryClient;
@@ -9350,8 +9357,10 @@ export default function Campaign() {
     membersRef.current = members;
     incognitoFlagRef.current = isIncognitoMode && isAdmin;
     spectatorModeRef.current = spectatorMode;
+    spectatorFollowRef.current = spectatorFollow;
+    gmUserIdRef.current = (campaign as { gmUserId?: string } | undefined)?.gmUserId;
     userIdRef.current = user?.id;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, spectatorMode, user?.id]);
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, spectatorMode, spectatorFollow, campaign, user?.id]);
 
   // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
@@ -9877,6 +9886,12 @@ export default function Campaign() {
             });
             return updated;
           });
+
+          // Spectator follow: when spectating with follow enabled, mirror the
+          // host's (GM's) viewport so the cast/stream view matches what the GM sees.
+          if (spectatorModeRef.current && spectatorFollowRef.current && userId === gmUserIdRef.current) {
+            setCameraTarget({ x: viewportX, y: viewportY, zoom });
+          }
         }
         
         // Handle member list updates (join/leave/kick/role changes)
@@ -10436,13 +10451,27 @@ export default function Campaign() {
       {/* Spectator Mode badge */}
       {spectatorMode && (
         <div
-          className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] pointer-events-none"
+          className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] flex items-center gap-2"
           data-testid="badge-spectator-mode"
         >
-          <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm">
+          <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm pointer-events-none">
             <Eye className="h-3.5 w-3.5 text-blue-300" />
             <span className="text-xs font-medium text-blue-200">Spectator Mode</span>
           </div>
+          <button
+            type="button"
+            onClick={() => setSpectatorFollow((v) => !v)}
+            className={`pointer-events-auto rounded-full px-3 py-1 text-xs font-medium border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 ${
+              spectatorFollow
+                ? 'bg-amber-900/70 border-amber-500/60 text-amber-100 hover:bg-amber-800/80'
+                : 'bg-stone-900/70 border-stone-600/60 text-stone-200 hover:bg-stone-800/80'
+            }`}
+            title={spectatorFollow ? 'Following the host\u2019s camera \u2014 click to free-roam' : 'Free-roam mode \u2014 click to follow the host'}
+            data-testid="button-spectator-follow-toggle"
+          >
+            {spectatorFollow ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            <span>{spectatorFollow ? 'Following Host' : 'Free Roam'}</span>
+          </button>
         </div>
       )}
 
@@ -12499,6 +12528,8 @@ export default function Campaign() {
              onGridCalibrationCancel={() => setGridCalibrationMode(false)}
              cameraTarget={cameraTarget}
              onCameraTargetReached={handleCameraTargetReached}
+             lockView={spectatorMode && spectatorFollow}
+             smoothCamera={spectatorMode && spectatorFollow}
              mapPins={mapPins}
              pinPlaceMode={pinPlaceMode}
              pinMoveMode={pinMoveMode}

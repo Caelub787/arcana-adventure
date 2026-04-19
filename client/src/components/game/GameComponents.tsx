@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
-import { motion, AnimatePresence, useMotionValue } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getProjectorWindowFeatures } from "@/components/ProjectorFullscreen";
@@ -344,6 +344,8 @@ interface BattleMapProps {
   onGridCalibrationCancel?: () => void;
   cameraTarget?: { x: number; y: number; zoom: number } | null;
   onCameraTargetReached?: () => void;
+  lockView?: boolean;
+  smoothCamera?: boolean;
   mapPins?: any[];
   pinPlaceMode?: boolean;
   pinMoveMode?: boolean;
@@ -486,7 +488,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
 }
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1134,6 +1136,35 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     const containerWidth = viewportSize.width || window.innerWidth;
     const containerHeight = viewportSize.height || window.innerHeight;
     const pixelOffset = worldToPixelOffset(x, y, zoom, containerWidth, containerHeight);
+
+    if (smoothCamera) {
+      const opts = { duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] };
+      const ctrlX = animate(motionX, pixelOffset.x, {
+        ...opts,
+        onUpdate: (v) => { panRef.current = { x: v, y: panRef.current.y }; },
+      });
+      const ctrlY = animate(motionY, pixelOffset.y, {
+        ...opts,
+        onUpdate: (v) => { panRef.current = { x: panRef.current.x, y: v }; },
+      });
+      const ctrlZ = animate(motionZoom, zoom, {
+        ...opts,
+        onUpdate: (v) => { zoomRef.current = v; },
+        onComplete: () => {
+          forceUpdate(n => n + 1);
+          // Defer the "reached" callback until the tween actually finishes so
+          // the parent doesn't clear cameraTarget mid-animation (which would
+          // otherwise trigger effect cleanup and stop the in-flight tween).
+          if (onCameraTargetReached) onCameraTargetReached();
+        },
+      });
+      return () => {
+        ctrlX.stop();
+        ctrlY.stop();
+        ctrlZ.stop();
+      };
+    }
+
     motionX.set(pixelOffset.x);
     motionY.set(pixelOffset.y);
     motionZoom.set(zoom);
@@ -1141,7 +1172,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     zoomRef.current = zoom;
     forceUpdate(n => n + 1);
     if (onCameraTargetReached) onCameraTargetReached();
-  }, [cameraTarget]);
+  }, [cameraTarget, smoothCamera]);
+
+  // Lock view effect - syncs external lockView prop with internal isMapLockedRef
+  useEffect(() => {
+    if (lockView === undefined) return;
+    isMapLockedRef.current = lockView;
+    setIsMapLocked(lockView);
+    if (lockView) {
+      // Cancel any in-flight pan/pinch gesture so the lock takes effect immediately
+      if (gestureModeRef.current === 'panning' || gestureModeRef.current === 'pinching') {
+        gestureModeRef.current = 'idle';
+        panPointerIdRef.current = null;
+        panStartRef.current = null;
+        lastTouchDistanceRef.current = null;
+        setIsPinching(false);
+      }
+    }
+  }, [lockView]);
 
   // Clear delete button if token no longer exists (after successful deletion)
   useEffect(() => {
@@ -1954,8 +2002,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         <Button 
            size="sm" 
            variant="secondary" 
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           disabled={lockView === true}
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'} ${lockView === true ? 'opacity-50 cursor-not-allowed' : ''}`}
            onClick={() => {
+             // When the parent enforces the lock (e.g. spectator follow mode),
+             // local toggling must not be able to bypass it.
+             if (lockView === true) return;
              const newLockState = !isMapLocked;
              
              // Force reset all gesture state when toggling lock to ensure clean state
@@ -1966,7 +2018,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
              setIsMapLocked(newLockState);
            }}
            data-testid="button-lock-map"
-           title={isMapLocked ? "Unlock map movement" : "Lock map movement"}
+           title={lockView === true ? "Map locked by follow mode" : (isMapLocked ? "Unlock map movement" : "Lock map movement")}
         >
           {isMapLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
         </Button>
