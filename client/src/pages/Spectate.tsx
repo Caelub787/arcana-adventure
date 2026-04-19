@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, Loader2, MapPin, Swords, MessageSquare } from "lucide-react";
+import { ArrowDown, Eye, Loader2, MapPin, Swords, MessageSquare } from "lucide-react";
 
 interface SpectatorBundle {
   campaign: { id: string; name: string; activeSceneId: string | null; inCombat: boolean };
@@ -258,6 +258,58 @@ export default function Spectate() {
     return () => window.clearInterval(interval);
   }, []);
 
+  // ----- Chat auto-scroll + unread indicator state -----
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const isAtBottomRef = useRef(true);
+  const lastSeenChatIdRef = useRef<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const chatMessages = data?.chat ?? [];
+  const latestChatId = chatMessages.length ? chatMessages[chatMessages.length - 1].id : null;
+
+  const handleChatScroll = () => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    isAtBottomRef.current = atBottom;
+    if (atBottom) {
+      setUnreadCount(0);
+      lastSeenChatIdRef.current = latestChatId;
+    }
+  };
+
+  const scrollChatToBottom = (smooth = true) => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    isAtBottomRef.current = true;
+    setUnreadCount(0);
+    lastSeenChatIdRef.current = latestChatId;
+  };
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    if (lastSeenChatIdRef.current === null) {
+      el.scrollTop = el.scrollHeight;
+      isAtBottomRef.current = true;
+      lastSeenChatIdRef.current = latestChatId;
+      setUnreadCount(0);
+      return;
+    }
+    if (latestChatId === lastSeenChatIdRef.current) return;
+    if (isAtBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      lastSeenChatIdRef.current = latestChatId;
+      setUnreadCount(0);
+    } else {
+      const lastSeen = lastSeenChatIdRef.current;
+      const idx = lastSeen ? chatMessages.findIndex(m => m.id === lastSeen) : -1;
+      const newCount = idx >= 0 ? chatMessages.length - 1 - idx : chatMessages.length;
+      setUnreadCount(newCount);
+    }
+  }, [latestChatId, chatMessages.length]);
+
   // Auto-fit when not following, or when no viewport data yet
   useEffect(() => {
     if (!data?.scene || !containerRef.current || imgDims.w === 0) return;
@@ -330,6 +382,7 @@ export default function Spectate() {
   const { scene, tokens, characters, campaign, mapPins } = data;
   const initiative = data.initiative ?? [];
   const chat = data.chat ?? [];
+
   const charMap = useMemo(() => new Map(characters.map(c => [c.id, c])), [characters]);
   const tokenMap = useMemo(() => new Map(tokens.map(t => [t.id, t])), [tokens]);
   const SIZE_TO_CELLS: Record<string, number> = {
@@ -566,12 +619,16 @@ export default function Spectate() {
             </div>
           </div>
         )}
-        <div className="flex-1 flex flex-col min-h-0" data-testid="spectator-chat">
+        <div className="flex-1 flex flex-col min-h-0 relative" data-testid="spectator-chat">
           <div className="px-3 py-2 flex items-center gap-2 bg-stone-900/60 shrink-0 border-b border-stone-800">
             <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
             <span className="text-xs uppercase tracking-wider font-semibold text-stone-300">Chat</span>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          <div
+            ref={chatScrollRef}
+            onScroll={handleChatScroll}
+            className="flex-1 overflow-y-auto px-3 py-2 space-y-2"
+          >
             {chat.length === 0 && (
               <div className="text-xs text-stone-500 italic">No messages yet.</div>
             )}
@@ -594,6 +651,17 @@ export default function Spectate() {
               </div>
             ))}
           </div>
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={() => scrollChatToBottom(true)}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg border border-blue-400/40 transition-colors"
+              data-testid="button-spectator-chat-unread"
+            >
+              <ArrowDown className="h-3 w-3" />
+              {unreadCount} new {unreadCount === 1 ? "message" : "messages"}
+            </button>
+          )}
         </div>
       </aside>
       </div>
