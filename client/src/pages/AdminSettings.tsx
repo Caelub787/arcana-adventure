@@ -107,7 +107,6 @@ export default function AdminSettings() {
   const [showAddTemplate, setShowAddTemplate] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Item | null>(null);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
-  const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
 
   const [showAddSpecies, setShowAddSpecies] = useState(false);
   const [editingSpecies, setEditingSpecies] = useState<SystemSpecies | null>(null);
@@ -834,8 +833,6 @@ export default function AdminSettings() {
             isLoading={templatesLoading}
             searchQuery={templateSearchQuery}
             setSearchQuery={setTemplateSearchQuery}
-            typeFilter={templateTypeFilter}
-            setTypeFilter={setTemplateTypeFilter}
             onAddTemplate={() => setShowAddTemplate(true)}
             onEditTemplate={async (id) => {
               const full = await api.getItemTemplate(id);
@@ -1031,7 +1028,7 @@ export default function AdminSettings() {
           />
         )}
 
-        <ItemFormDialog
+        <TemplateFormDialog
           open={showAddTemplate}
           onOpenChange={setShowAddTemplate}
           onSave={(data, draftRolls) => createItemTemplateMutation.mutate({ item: data, draftRolls })}
@@ -1040,7 +1037,7 @@ export default function AdminSettings() {
         />
 
         {editingTemplate && (
-          <ItemFormDialog
+          <TemplateFormDialog
             open={!!editingTemplate}
             onOpenChange={() => setEditingTemplate(null)}
             onSave={(data, _draftRolls) => updateItemTemplateMutation.mutate({ id: editingTemplate.id, data })}
@@ -2013,18 +2010,14 @@ interface ItemTemplatesViewProps {
   isLoading: boolean;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  typeFilter: string;
-  setTypeFilter: (t: string) => void;
   onAddTemplate: () => void;
   onEditTemplate: (id: string) => void;
   onDeleteTemplate: (id: string) => void;
 }
 
-function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddTemplate, onEditTemplate, onDeleteTemplate }: ItemTemplatesViewProps) {
+function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, onAddTemplate, onEditTemplate, onDeleteTemplate }: ItemTemplatesViewProps) {
   const filtered = templates.filter((t: any) => {
-    const matchesSearch = !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === 'all' || t.itemType === typeFilter;
-    return matchesSearch && matchesType;
+    return !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   return (
@@ -2043,25 +2036,11 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0">
-        <div className="flex gap-4 mb-4 shrink-0">
+        <div className="mb-4 shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input placeholder="Search templates..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-stone-800 border-stone-700" data-testid="input-search-templates" />
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-template-type-filter">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="weapon">Weapons</SelectItem>
-              <SelectItem value="armor">Armor</SelectItem>
-              <SelectItem value="consumable">Consumables</SelectItem>
-              <SelectItem value="utility">Utilities</SelectItem>
-              <SelectItem value="container">Containers</SelectItem>
-              <SelectItem value="currency">Currency</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         {isLoading ? (
@@ -7489,6 +7468,89 @@ interface ItemFormDialogProps {
   initialData?: Item;
   isLoading?: boolean;
   campaignSystem?: string;
+}
+
+interface TemplateFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: any, draftRolls?: any[]) => void;
+  initialData?: any;
+  isLoading?: boolean;
+  campaignSystem?: string;
+}
+
+function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: TemplateFormDialogProps) {
+  const [name, setName] = useState(initialData?.name || '');
+  const [draftRolls, setDraftRolls] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      setName(initialData?.name || '');
+      setDraftRolls([]);
+    }
+  }, [open, initialData?.id]);
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      toast({ title: 'Name Required', description: 'Please give the template a name.', variant: 'destructive' });
+      return;
+    }
+    const payload: any = {
+      name: name.trim(),
+      itemType: initialData?.itemType || 'utility',
+      rarity: initialData?.rarity || 'common',
+    };
+    onSave(payload, !initialData?.id ? draftRolls : undefined);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-amber-500">
+            {initialData?.id ? 'Edit Item Template' : 'New Item Template'}
+          </DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Templates are reusable bundles of rolls. Assign one to any item to give that item these rolls -- edits here flow to every linked item.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          <div className="space-y-2">
+            <Label htmlFor="template-name" className="text-stone-300">Template Name</Label>
+            <Input
+              id="template-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Fire Damage Bundle"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-template-name"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-stone-700">
+            <RollEntriesEditor
+              ownerType="item"
+              ownerId={initialData?.id}
+              canEdit={true}
+              draftRolls={!initialData?.id ? draftRolls : undefined}
+              onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+              campaignSystem={campaignSystem || 'arcana-adventure'}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-700" data-testid="button-cancel-template">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading} className="bg-amber-700 hover:bg-amber-600" data-testid="button-save-template">
+            {isLoading ? 'Saving...' : (initialData?.id ? 'Save Changes' : 'Create Template')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { itemId: string; currentTemplateId: string | null; systemSlug: string }) {
