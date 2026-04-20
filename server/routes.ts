@@ -7344,6 +7344,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lightweight summary endpoint for fast spell list/picker loading (no icon base64, no effects jsonb)
+  app.get("/api/system-spells/summary", requireAuth, async (req, res) => {
+    try {
+      const system = req.query.system as string | undefined;
+      const summaries = await storage.getSystemSpellSummaries(system);
+      res.json(summaries);
+    } catch (err) {
+      console.error('[Summary] Error fetching system spells:', err);
+      res.status(500).json({ error: "Failed to fetch spell summaries" });
+    }
+  });
+
+  // Lightweight icon-only endpoint for lazy loading in spell pickers
+  app.get("/api/system-spells/:id/icon", requireAuth, async (req, res) => {
+    try {
+      const spell = await storage.getSystemSpell(req.params.id);
+      if (!spell) {
+        return res.status(404).json({ error: "Spell not found" });
+      }
+      res.json({ icon: spell.icon });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spell icon" });
+    }
+  });
+
   app.get("/api/admin/spells/:id", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.getSystemSpell(req.params.id);

@@ -17196,9 +17196,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   });
 
   // Fetch system spell library for adding from library - cached for 5 minutes, filtered by campaign system
+  // Uses summaries (no icon base64, no effects jsonb) for fast loading; icons load lazily per row
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['system-spells', campaignSystem],
-    queryFn: () => api.getSystemSpells(campaignSystem),
+    queryKey: ['system-spells-summary', campaignSystem],
+    queryFn: () => api.getSystemSpellSummaries(campaignSystem),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -20076,13 +20077,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               data-testid={`spell-library-item-${spell.id}`}
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center overflow-hidden">
-                                  {spell.icon ? (
-                                    <img src={spell.icon} alt={spell.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <Sparkles className="h-5 w-5 text-purple-400" />
-                                  )}
-                                </div>
+                                <LazySystemSpellIcon spellId={spell.id} />
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-stone-100">{spell.name}</span>
@@ -22576,6 +22571,42 @@ function FeatTreeViewerGrid({
 }
 
 // Lazy-loading item image component using IntersectionObserver
+export function LazySystemSpellIcon({ spellId }: { spellId: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data } = useQuery({
+    queryKey: ['spell-icon', spellId],
+    queryFn: () => api.getSystemSpellIcon(spellId),
+    enabled: isVisible,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center overflow-hidden shrink-0">
+      {data?.icon ? (
+        <img src={data.icon} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <Sparkles className="h-5 w-5 text-purple-400" />
+      )}
+    </div>
+  );
+}
+
 export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
   const [isVisible, setIsVisible] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);

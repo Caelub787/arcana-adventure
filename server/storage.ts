@@ -334,6 +334,7 @@ export interface IStorage {
 
   // System Spell operations (global spell definitions)
   getSystemSpells(system?: string): Promise<SystemSpell[]>;
+  getSystemSpellSummaries(system?: string): Promise<any[]>;
   getSystemSpell(id: string): Promise<SystemSpell | undefined>;
   createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
   updateSystemSpell(id: string, data: Partial<InsertSystemSpell>): Promise<SystemSpell | undefined>;
@@ -2654,6 +2655,51 @@ export class DatabaseStorage implements IStorage {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
     return await db.select()
+      .from(systemSpells)
+      .where(and(...conditions))
+      .orderBy(systemSpells.level, systemSpells.name);
+  }
+
+  // Lightweight summaries for fast spell list/picker loading (no icon base64, no effects jsonb)
+  async getSystemSpellSummaries(system?: string): Promise<any[]> {
+    const conditions = [eq(systemSpells.isArchived, false)];
+    if (system) conditions.push(eq(systemSpells.system, system));
+    return await db.select({
+      id: systemSpells.id,
+      name: systemSpells.name,
+      description: systemSpells.description,
+      school: systemSpells.school,
+      level: systemSpells.level,
+      castingTime: systemSpells.castingTime,
+      range: systemSpells.range,
+      rangeNum: systemSpells.rangeNum,
+      duration: systemSpells.duration,
+      components: systemSpells.components,
+      damageType: systemSpells.damageType,
+      damageDice: systemSpells.damageDice,
+      gainEnergy: systemSpells.gainEnergy,
+      mod: systemSpells.mod,
+      attribute: systemSpells.attribute,
+      healingDice: systemSpells.healingDice,
+      energyCost: systemSpells.energyCost,
+      manaCost: systemSpells.manaCost,
+      concentration: systemSpells.concentration,
+      ritual: systemSpells.ritual,
+      targetType: systemSpells.targetType,
+      areaSize: systemSpells.areaSize,
+      aoe: systemSpells.aoe,
+      isAoe: systemSpells.isAoe,
+      aoeRange: systemSpells.aoeRange,
+      aoeShape: systemSpells.aoeShape,
+      passesThroughWalls: systemSpells.passesThroughWalls,
+      requiresSave: systemSpells.requiresSave,
+      saveAttribute: systemSpells.saveAttribute,
+      saveDc: systemSpells.saveDc,
+      saveSuccessEffect: systemSpells.saveSuccessEffect,
+      savingThrow: systemSpells.savingThrow,
+      isAttack: systemSpells.isAttack,
+      system: systemSpells.system,
+    })
       .from(systemSpells)
       .where(and(...conditions))
       .orderBy(systemSpells.level, systemSpells.name);

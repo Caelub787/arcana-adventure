@@ -1390,6 +1390,17 @@ class ApiClient {
     return this.request(`/admin/spells${params}`);
   }
 
+  // Lightweight summaries (no icon base64, no effects jsonb) for fast loading
+  async getSystemSpellSummaries(system?: string): Promise<any[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/system-spells/summary${params}`);
+  }
+
+  // Lazy-load individual spell icon for spell pickers
+  async getSystemSpellIcon(spellId: string): Promise<{ icon: string | null }> {
+    return this.request(`/system-spells/${spellId}/icon`);
+  }
+
   async getSystemSpell(id: string): Promise<SystemSpell> {
     return this.request(`/admin/spells/${id}`);
   }

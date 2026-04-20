@@ -69,6 +69,45 @@ function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: st
   );
 }
 
+function LazyAdminSpellIcon({ spellId, size = 'md' }: { spellId: string; size?: 'sm' | 'md' }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data } = useQuery({
+    queryKey: ['spell-icon', spellId],
+    queryFn: () => api.getSystemSpellIcon(spellId),
+    enabled: isVisible,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const dim = size === 'sm' ? 'w-8 h-8' : 'h-10 w-10 sm:h-12 sm:w-12';
+  const iconDim = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5 sm:h-6 sm:w-6';
+
+  return (
+    <div ref={ref} className={`${dim} rounded bg-stone-700 flex items-center justify-center shrink-0 overflow-hidden`}>
+      {data?.icon ? (
+        <img src={data.icon} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <Sparkles className={`${iconDim} text-blue-400`} />
+      )}
+    </div>
+  );
+}
+
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
   armor: Shield,
@@ -153,8 +192,8 @@ export default function AdminSettings() {
   });
 
   const { data: systemSpells = [], isLoading: spellsLoading } = useQuery({
-    queryKey: ['system-spells', systemSlug],
-    queryFn: () => api.getSystemSpells(systemSlug),
+    queryKey: ['system-spells-summary', systemSlug],
+    queryFn: () => api.getSystemSpellSummaries(systemSlug),
     enabled: isAdmin && currentView === 'spells',
   });
 
@@ -2294,13 +2333,7 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                   <button onClick={() => toggleSelect(spell.id)} className="shrink-0" data-testid={`checkbox-spell-${spell.id}`}>
                     {selectedIds.has(spell.id) ? <CheckSquare className="h-5 w-5 text-blue-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
                   </button>
-                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden shrink-0">
-                    {spell.icon ? (
-                      <img src={spell.icon} alt={spell.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400" />
-                    )}
-                  </div>
+                  <LazyAdminSpellIcon spellId={spell.id} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium truncate text-sm sm:text-base">{spell.name}</span>
