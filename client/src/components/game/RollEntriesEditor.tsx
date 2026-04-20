@@ -51,6 +51,10 @@ interface RollEntry {
   requiredSkillValue?: number;
   hasDcCheck?: boolean;
   dcToSucceed?: number;
+  dcToSucceedAttribute?: string;
+  dcToSucceedType?: string;
+  dcToSucceedDcAttribute?: string;
+  dcToSucceedSuccessEffect?: string;
 }
 
 interface RollEntriesEditorProps {
@@ -143,6 +147,10 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     requiredSkillValue: 1,
     hasDcCheck: false,
     dcToSucceed: undefined,
+    dcToSucceedAttribute: "",
+    dcToSucceedType: "value",
+    dcToSucceedDcAttribute: "",
+    dcToSucceedSuccessEffect: "",
   };
 }
 
@@ -175,14 +183,16 @@ function getRollDetails(roll: RollEntry): string[] {
   if (roll.isAoe && roll.aoeRange && roll.aoeShape) details.push(`AOE: ${roll.aoeRange}ft ${roll.aoeShape}`);
   if (roll.requiresSave && roll.saveAttribute) {
     const dcType = roll.saveDcType || 'value';
+    const isNoneAttr = roll.saveAttribute === 'none';
+    const attrLabel = isNoneAttr ? '' : ` ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)}`;
     if (dcType === 'value' && roll.saveDc) {
-      details.push(`DC ${roll.saveDc} ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+      details.push(`DC ${roll.saveDc}${attrLabel} save`);
     } else if (dcType === 'target') {
       const dcAttr = roll.saveDcAttribute ? roll.saveDcAttribute.charAt(0).toUpperCase() + roll.saveDcAttribute.slice(1) : '?';
-      details.push(`Target's ${dcAttr} DC ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+      details.push(`Target's ${dcAttr} DC${attrLabel} save`);
     } else if (dcType === 'caster') {
       const dcAttr = roll.saveDcAttribute ? roll.saveDcAttribute.charAt(0).toUpperCase() + roll.saveDcAttribute.slice(1) : '?';
-      details.push(`Caster's ${dcAttr} DC ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+      details.push(`Caster's ${dcAttr} DC${attrLabel} save`);
     }
   }
   if (roll.requiresEnergy && roll.energyCost) {
@@ -197,8 +207,19 @@ function getRollDetails(roll: RollEntry): string[] {
     const count = (roll.tokenEffectIds || []).length;
     details.push(`Applies ${count} effect${count !== 1 ? 's' : ''} (${trigger})`);
   }
-  if (roll.hasDcCheck && roll.dcToSucceed) {
-    details.push(`DC ${roll.dcToSucceed} to succeed`);
+  if (roll.hasDcCheck) {
+    const dcType = roll.dcToSucceedType || 'value';
+    const isNoneAttr = roll.dcToSucceedAttribute === 'none';
+    const attrLabel = (!roll.dcToSucceedAttribute || isNoneAttr) ? '' : ` ${roll.dcToSucceedAttribute.charAt(0).toUpperCase() + roll.dcToSucceedAttribute.slice(1)}`;
+    if (dcType === 'value' && roll.dcToSucceed) {
+      details.push(`DC ${roll.dcToSucceed}${attrLabel} to succeed`);
+    } else if (dcType === 'target') {
+      const dcAttr = roll.dcToSucceedDcAttribute ? roll.dcToSucceedDcAttribute.charAt(0).toUpperCase() + roll.dcToSucceedDcAttribute.slice(1) : '?';
+      details.push(`Target's ${dcAttr} DC${attrLabel} to succeed`);
+    } else if (dcType === 'caster') {
+      const dcAttr = roll.dcToSucceedDcAttribute ? roll.dcToSucceedDcAttribute.charAt(0).toUpperCase() + roll.dcToSucceedDcAttribute.slice(1) : '?';
+      details.push(`Caster's ${dcAttr} DC${attrLabel} to succeed`);
+    }
   }
   if (roll.isHidden) {
     details.push(`Hidden (requires skill lvl ${roll.requiredSkillValue || 1}+)`);
@@ -556,11 +577,12 @@ function RollForm({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs text-stone-400">Save Attribute</Label>
-                <Select value={form.saveAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v === "_none" ? "" : v }))}>
+                <Select value={form.saveAttribute || "_unset"} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v === "_unset" ? "" : v }))}>
                   <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveAttribute`}>
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None (DC value only)</SelectItem>
                     {ATTRIBUTE_OPTIONS.map((attr) => (
                       <SelectItem key={attr} value={attr}>
                         {attr.charAt(0).toUpperCase() + attr.slice(1)}
@@ -599,7 +621,7 @@ function RollForm({
               {(form.saveDcType === "target" || form.saveDcType === "caster") && (
                 <div>
                   <Label className="text-xs text-stone-400">DC Attribute</Label>
-                  <Select value={form.saveDcAttribute || "might"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcAttribute: v }))}>
+                  <Select value={form.saveDcAttribute || "might"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcAttribute: v === "_unset" ? "" : v }))}>
                     <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveDcAttribute`}>
                       <SelectValue placeholder="Select attribute" />
                     </SelectTrigger>
@@ -771,18 +793,85 @@ function RollForm({
           testId={`toggle-${prefix}-hasDcCheck`}
         />
         {form.hasDcCheck && (
-          <div className="mt-2">
-            <Label className="text-xs text-stone-400">DC Value</Label>
-            <Input
-              className="bg-stone-900 border-stone-600 h-7 text-xs"
-              type="number"
-              value={form.dcToSucceed ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, dcToSucceed: e.target.value ? parseInt(e.target.value) : undefined }))}
-              placeholder="e.g. 15"
-              data-testid={`input-${prefix}-dcToSucceed`}
-            />
-            <p className="text-[10px] text-stone-500 italic mt-1">
-              Roll must meet or exceed this DC to succeed. Result shown in chat and roll notification.
+          <div className="space-y-2 mt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs text-stone-400">Save Attribute</Label>
+                <Select value={form.dcToSucceedAttribute || "_unset"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedAttribute: v === "_unset" ? "" : v }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedAttribute`}>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (DC value only)</SelectItem>
+                    {ATTRIBUTE_OPTIONS.map((attr) => (
+                      <SelectItem key={attr} value={attr}>
+                        {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-stone-400">DC Type</Label>
+                <Select value={form.dcToSucceedType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedType: v, dcToSucceedDcAttribute: v === "value" ? "" : (f.dcToSucceedDcAttribute || "might") }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedType`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SAVE_DC_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(form.dcToSucceedType === "value" || !form.dcToSucceedType) && (
+                <div>
+                  <Label className="text-xs text-stone-400">DC Value</Label>
+                  <Input
+                    className="bg-stone-900 border-stone-600 h-7 text-xs"
+                    type="number"
+                    value={form.dcToSucceed ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, dcToSucceed: e.target.value ? parseInt(e.target.value) : undefined }))}
+                    placeholder="e.g. 15"
+                    data-testid={`input-${prefix}-dcToSucceed`}
+                  />
+                </div>
+              )}
+              {(form.dcToSucceedType === "target" || form.dcToSucceedType === "caster") && (
+                <div>
+                  <Label className="text-xs text-stone-400">DC Attribute</Label>
+                  <Select value={form.dcToSucceedDcAttribute || "might"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedDcAttribute: v }))}>
+                    <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedDcAttribute`}>
+                      <SelectValue placeholder="Select attribute" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ATTRIBUTE_OPTIONS.map((attr) => (
+                        <SelectItem key={attr} value={attr}>
+                          {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label className="text-xs text-stone-400">On Success</Label>
+                <Select value={form.dcToSucceedSuccessEffect || "half"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedSuccessEffect: v }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedSuccessEffect`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SAVE_SUCCESS_EFFECT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-[10px] text-stone-500 italic">
+              Roll must meet or exceed the DC to succeed. Result shown in chat and roll notification.
             </p>
           </div>
         )}

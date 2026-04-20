@@ -14034,7 +14034,9 @@ export default function Campaign() {
 
       {dcSavePrompt && (() => {
         const targetChar = (characters as any[])?.find((c: any) => c.id === dcSavePrompt.targetCharacterId);
-        const attrMod = targetChar?.[dcSavePrompt.saveAttribute] || 0;
+        const isNoneAttr = dcSavePrompt.saveAttribute === 'none' || !dcSavePrompt.saveAttribute;
+        const attrMod = isNoneAttr ? 0 : (targetChar?.[dcSavePrompt.saveAttribute] || 0);
+        const attrLabel = isNoneAttr ? '' : dcSavePrompt.saveAttribute.charAt(0).toUpperCase() + dcSavePrompt.saveAttribute.slice(1);
 
         const handleDcSaveRoll = () => {
           let roll1 = Math.floor(Math.random() * 20) + 1;
@@ -14078,7 +14080,7 @@ export default function Campaign() {
             total: saveTotal,
           });
 
-          const resultText = `${targetChar?.name || 'Unknown'} ${dcSavePrompt.saveAttribute} save vs ${dcSavePrompt.spellName}: d20(${finalRoll})${advText} + ${totalMod} = ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`;
+          const resultText = `${targetChar?.name || 'Unknown'} ${attrLabel ? attrLabel + ' ' : ''}save vs ${dcSavePrompt.spellName}: d20(${finalRoll})${advText} + ${totalMod} = ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`;
           gameWs.sendChatMessage(user?.id || '', targetChar?.name || user?.username || '', resultText, 'roll');
 
           toast({
@@ -14102,10 +14104,12 @@ export default function Campaign() {
               </div>
 
               <div className="bg-stone-800 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-stone-400">Save Attribute:</span>
-                  <span className="text-amber-400 font-bold">{dcSavePrompt.saveAttribute.charAt(0).toUpperCase() + dcSavePrompt.saveAttribute.slice(1)}</span>
-                </div>
+                {!isNoneAttr && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-400">Save Attribute:</span>
+                    <span className="text-amber-400 font-bold">{attrLabel}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-stone-400">DC:</span>
                   <span className="text-red-400 font-bold">{dcSavePrompt.saveDc}</span>
@@ -14177,7 +14181,7 @@ export default function Campaign() {
                 className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-lg transition-colors"
                 data-testid="dc-save-roll-button"
               >
-                Roll {dcSavePrompt.saveAttribute.charAt(0).toUpperCase() + dcSavePrompt.saveAttribute.slice(1)} Save
+                Roll {attrLabel ? `${attrLabel} ` : ''}Save
               </button>
             </div>
           </div>

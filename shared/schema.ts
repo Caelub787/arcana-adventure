@@ -1330,6 +1330,10 @@ export const rollEntries = pgTable("roll_entries", {
   requiredSkillValue: integer("required_skill_value").default(1),
   hasDcCheck: boolean("has_dc_check").default(false),
   dcToSucceed: integer("dc_to_succeed"),
+  dcToSucceedAttribute: text("dc_to_succeed_attribute"),
+  dcToSucceedType: text("dc_to_succeed_type").default("value"),
+  dcToSucceedDcAttribute: text("dc_to_succeed_dc_attribute"),
+  dcToSucceedSuccessEffect: text("dc_to_succeed_success_effect"),
   fromTemplateRollId: varchar("from_template_roll_id").references(() => rollEntries.id, { onDelete: "set null" }),
 });
 
