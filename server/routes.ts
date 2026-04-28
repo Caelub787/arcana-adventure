@@ -4393,16 +4393,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const entry = await storage.createRollEntry(req.body);
 
-      // Roll propagation: if this roll belongs to a template item/spell, propagate to linked items/spells
+      // Roll propagation: if this roll belongs to a template item/spell, propagate to linked items/spells.
+      // Fan-out is provenance-aware: it covers items in the link set (join-table or
+      // legacy templateItemId) AND any item that already carries inherited rolls
+      // from this template (e.g. character-owned copies that were duplicated off a
+      // linked admin item), so newly-added template rolls reach those copies too.
       if (entry.ownerType === 'item') {
         const ownerItem = await storage.getItem(entry.ownerId);
         if (ownerItem && ownerItem.isTemplate) {
           const linkedItems = await storage.getItemsLinkedToTemplate(ownerItem.id);
-          for (const linked of linkedItems) {
+          const targetIds = new Map<string, true>();
+          for (const li of linkedItems) targetIds.set(li.id, true);
+          // Find items that already inherit any roll from this template (by provenance).
+          const tplRolls = await storage.getRollEntries('item', ownerItem.id);
+          const tplRollIds = tplRolls.map(r => r.id).filter(id => id !== entry.id);
+          if (tplRollIds.length > 0) {
+            const provenanceRows = await db.select({ ownerId: rollEntries.ownerId })
+              .from(rollEntries)
+              .where(and(
+                eq(rollEntries.ownerType, 'item'),
+                inArray(rollEntries.fromTemplateRollId, tplRollIds),
+              ));
+            for (const row of provenanceRows) targetIds.set(row.ownerId, true);
+          }
+          for (const targetId of Array.from(targetIds.keys())) {
             const { id: _id, ...rollData } = entry;
             await storage.createRollEntry({
               ...rollData,
-              ownerId: linked.id,
+              ownerId: targetId,
               fromTemplateRollId: entry.id,
             });
           }
@@ -6066,27 +6084,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item template not found" });
       }
       // Per spec: deleting a template removes inherited rolls and template links from
-      // every linked item, while preserving each item's independent rolls and other fields.
-      const linkedItems = await storage.getItemsLinkedToTemplate(req.params.id);
+      // every affected item, while preserving each item's independent rolls and other
+      // fields. Cleanup is provenance-driven so character-owned copies of inherited
+      // rolls are also swept up, not just items currently in the link set.
       const templateRolls = await storage.getRollEntries('item', req.params.id);
       const templateRollIds = templateRolls.map(r => r.id);
-      // 1. Delete every inherited roll on each linked item (rolls whose provenance
-      //    points back to one of this template's rolls).
-      if (templateRollIds.length > 0 && linkedItems.length > 0) {
-        for (const linked of linkedItems) {
-          await db.delete(rollEntries).where(and(
-            eq(rollEntries.ownerType, 'item'),
-            eq(rollEntries.ownerId, linked.id),
-            inArray(rollEntries.fromTemplateRollId, templateRollIds),
-          ));
-        }
+      // 1. Globally delete every roll whose provenance points back to one of this
+      //    template's rolls (covers admin items, campaign items, and character items
+      //    alike, including ones not in any current link record).
+      if (templateRollIds.length > 0) {
+        await db.delete(rollEntries).where(and(
+          eq(rollEntries.ownerType, 'item'),
+          inArray(rollEntries.fromTemplateRollId, templateRollIds),
+        ));
       }
-      // 2. Detach legacy single-link pointer.
-      for (const linked of linkedItems) {
-        if (linked.templateItemId === req.params.id) {
-          await db.update(items).set({ templateItemId: null }).where(eq(items.id, linked.id));
-        }
-      }
+      // 2. Detach legacy single-link pointer on every item that still references
+      //    this template (not just ones returned by getItemsLinkedToTemplate).
+      await db.update(items).set({ templateItemId: null }).where(eq(items.templateItemId, req.params.id));
       // 3. Drop multi-link join rows for this template (also handled by FK cascade,
       //    but explicit for clarity in case the cascade is ever changed).
       await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.templateId, req.params.id));
