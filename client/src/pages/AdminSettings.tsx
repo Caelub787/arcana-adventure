@@ -234,7 +234,7 @@ export default function AdminSettings() {
   });
 
   const createItemMutation = useMutation({
-    mutationFn: async ({ item, draftRolls }: { item: Partial<Item>; draftRolls?: any[] }) => {
+    mutationFn: async ({ item, draftRolls, templateLinks }: { item: Partial<Item>; draftRolls?: any[]; templateLinks?: string[] }) => {
       const created = await api.createSystemItem({ ...item, system: systemSlug });
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
@@ -245,6 +245,9 @@ export default function AdminSettings() {
             ownerId: created.id,
           });
         }
+      }
+      if (templateLinks && templateLinks.length > 0) {
+        await api.setItemTemplateLinks(created.id, templateLinks);
       }
       return created;
     },
@@ -259,10 +262,18 @@ export default function AdminSettings() {
   });
 
   const updateItemMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Item> }) => api.updateSystemItem(id, data),
-    onSuccess: () => {
+    mutationFn: async ({ id, data, templateLinks }: { id: string; data: Partial<Item>; templateLinks?: string[] }) => {
+      const updated = await api.updateSystemItem(id, data);
+      if (templateLinks !== undefined) {
+        await api.setItemTemplateLinks(id, templateLinks);
+      }
+      return updated;
+    },
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      queryClient.invalidateQueries({ queryKey: ['item-template-links', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', vars.id] });
       setEditingItem(null);
       toast({ title: 'Item Updated', description: 'System item updated successfully' });
     },
@@ -1051,7 +1062,7 @@ export default function AdminSettings() {
           onOpenChange={(open) => {
             setShowAddItem(open);
           }}
-          onSave={(data, draftRolls) => createItemMutation.mutate({ item: data, draftRolls })}
+          onSave={(data, draftRolls, templateLinks) => createItemMutation.mutate({ item: data, draftRolls, templateLinks })}
           isLoading={createItemMutation.isPending}
           campaignSystem={systemSlug}
         />
@@ -1060,7 +1071,7 @@ export default function AdminSettings() {
           <ItemFormDialog
             open={!!editingItem}
             onOpenChange={() => setEditingItem(null)}
-            onSave={(data, _draftRolls) => updateItemMutation.mutate({ id: editingItem.id, data })}
+            onSave={(data, _draftRolls, templateLinks) => updateItemMutation.mutate({ id: editingItem.id, data, templateLinks })}
             initialData={editingItem}
             isLoading={updateItemMutation.isPending}
             campaignSystem={systemSlug}
@@ -7497,7 +7508,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
 interface ItemFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (data: Partial<Item>, draftRolls?: any[]) => void;
+  onSave: (data: Partial<Item>, draftRolls?: any[], templateLinks?: string[]) => void;
   initialData?: Item;
   isLoading?: boolean;
   campaignSystem?: string;
@@ -7586,6 +7597,84 @@ function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading
   );
 }
 
+function ItemTemplateLinksPanel({
+  systemSlug,
+  selectedIds,
+  onSelectedIdsChange,
+}: {
+  systemSlug: string;
+  selectedIds: string[];
+  onSelectedIdsChange: (ids: string[]) => void;
+}) {
+  const [expanded, setExpanded] = useState<boolean>(false);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['item-templates', systemSlug],
+    queryFn: () => api.getItemTemplates(systemSlug),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const toggle = (templateId: string) => {
+    const next = selectedIds.includes(templateId)
+      ? selectedIds.filter(id => id !== templateId)
+      : [...selectedIds, templateId];
+    onSelectedIdsChange(next);
+  };
+
+  const summary = selectedIds.length === 0
+    ? 'No templates linked'
+    : `${selectedIds.length} template${selectedIds.length === 1 ? '' : 's'} linked`;
+
+  return (
+    <div data-testid="panel-item-template-links">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-2 rounded bg-stone-800/60 hover:bg-stone-800 border border-stone-700 text-left"
+        data-testid="button-toggle-template-links"
+      >
+        <div className="flex items-center gap-2">
+          {expanded ? <ChevronDown className="h-4 w-4 text-amber-500" /> : <ChevronRight className="h-4 w-4 text-amber-500" />}
+          <Layers className="h-4 w-4 text-amber-500" />
+          <span className="text-sm font-medium text-amber-500">Roll Templates</span>
+          <span className="text-xs text-stone-400">({summary})</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-2 p-3 rounded border border-stone-700 bg-stone-900/40">
+          <p className="text-xs text-stone-500 mb-3">
+            Attach roll templates. Their rolls will be copied onto this item, and any future edits to those template rolls will propagate to every linked item automatically.
+          </p>
+          {templates.length === 0 ? (
+            <p className="text-xs text-stone-500">No item templates exist yet. Create one in the Item Templates view.</p>
+          ) : (
+            <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+              {templates.map((t: any) => {
+                const checked = selectedIds.includes(t.id);
+                return (
+                  <label
+                    key={t.id}
+                    className="flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 cursor-pointer"
+                    data-testid={`label-template-link-${t.id}`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggle(t.id)}
+                      data-testid={`checkbox-template-link-${t.id}`}
+                    />
+                    <span className="text-sm text-stone-200">{t.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-amber-600/80 mt-2">Template links are saved when you save the item.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { itemId: string; currentTemplateId: string | null; systemSlug: string }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string>(currentTemplateId || 'none');
@@ -7658,6 +7747,16 @@ function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { ite
 
 function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: ItemFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
+  // Multi-template selection (AAv2 only). Always parent-controlled; the parent
+  // applies on save for both create and edit flows to avoid race conditions.
+  const [selectedTemplateLinks, setSelectedTemplateLinks] = useState<string[]>([]);
+
+  // For existing items, fetch the current set of linked template IDs and seed state.
+  const { data: existingLinks } = useQuery({
+    queryKey: ['item-template-links', initialData?.id],
+    queryFn: () => api.getItemTemplateLinks(initialData!.id),
+    enabled: !!initialData?.id && open,
+  });
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -7779,8 +7878,16 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
         dcBonusValue: (initialData as any)?.dcBonusValue ?? 0,
       });
       setDraftRolls([]);
+      setSelectedTemplateLinks([]);
     }
   }, [open, initialData]);
+
+  // When existing-item links load, seed the selection state.
+  useEffect(() => {
+    if (open && initialData?.id && existingLinks?.templateIds) {
+      setSelectedTemplateLinks(existingLinks.templateIds);
+    }
+  }, [open, initialData?.id, existingLinks]);
   
   const [showImageBrowser, setShowImageBrowser] = useState(false);
   
@@ -7839,7 +7946,11 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
       grantsDcBonus: formData.grantsDcBonus,
       dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
-    onSave(cleanedData, !initialData ? draftRolls : undefined);
+    onSave(
+      cleanedData,
+      !initialData ? draftRolls : undefined,
+      selectedTemplateLinks,
+    );
   };
 
   return (
@@ -8295,7 +8406,17 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               </div>
             )}
 
-            {initialData?.id && !(initialData as any)?.isLiveTemplate && (
+            {!(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') === 'aa-v2' && (
+              <div className="pt-4 border-t border-stone-700">
+                <ItemTemplateLinksPanel
+                  itemId={initialData?.id}
+                  systemSlug={campaignSystem || (initialData as any)?.system || 'aa-v2'}
+                  selectedIds={selectedTemplateLinks}
+                  onSelectedIdsChange={setSelectedTemplateLinks}
+                />
+              </div>
+            )}
+            {initialData?.id && !(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') !== 'aa-v2' && (
               <div className="pt-4 border-t border-stone-700">
                 <ItemTemplateLinkPicker
                   itemId={initialData.id}

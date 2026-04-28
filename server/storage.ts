@@ -73,7 +73,7 @@ import {
   type CharacterClassSkill, type InsertCharacterClassSkill,
   type WorldCollaborator, type InsertWorldCollaborator,
   type EntityAccess, type InsertEntityAccess,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -212,6 +212,9 @@ export interface IStorage {
   getSystemItemTemplates(system?: string): Promise<Item[]>;
   getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]>;
   getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]>;
+  getItemTemplateLinks(itemId: string): Promise<string[]>;
+  addItemTemplateLink(itemId: string, templateId: string): Promise<void>;
+  removeItemTemplateLink(itemId: string, templateId: string): Promise<void>;
 
   // Roll Entry operations
   getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
@@ -2015,9 +2018,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]> {
-    return await db.select()
+    // Multi-link source of truth: items joined via item_template_links.
+    // Also include legacy single-link items via items.templateItemId for backwards compatibility.
+    const joined = await db.select({ item: items })
+      .from(itemTemplateLinks)
+      .innerJoin(items, eq(items.id, itemTemplateLinks.itemId))
+      .where(eq(itemTemplateLinks.templateId, templateItemId));
+    const legacy = await db.select()
       .from(items)
       .where(eq(items.templateItemId, templateItemId)) as Item[];
+    const map = new Map<string, Item>();
+    for (const row of joined) map.set(row.item.id, row.item as Item);
+    for (const it of legacy) map.set(it.id, it);
+    return Array.from(map.values());
+  }
+
+  async getItemTemplateLinks(itemId: string): Promise<string[]> {
+    const rows = await db.select({ templateId: itemTemplateLinks.templateId })
+      .from(itemTemplateLinks)
+      .where(eq(itemTemplateLinks.itemId, itemId));
+    return rows.map(r => r.templateId);
+  }
+
+  async addItemTemplateLink(itemId: string, templateId: string): Promise<void> {
+    await db.insert(itemTemplateLinks)
+      .values({ itemId, templateId })
+      .onConflictDoNothing();
+  }
+
+  async removeItemTemplateLink(itemId: string, templateId: string): Promise<void> {
+    await db.delete(itemTemplateLinks)
+      .where(and(
+        eq(itemTemplateLinks.itemId, itemId),
+        eq(itemTemplateLinks.templateId, templateId),
+      ));
   }
 
   async getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]> {

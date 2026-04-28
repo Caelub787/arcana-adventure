@@ -1165,6 +1165,18 @@ class ApiClient {
     });
   }
 
+  // Multi-template links for AAv2 admin item dialog
+  async getItemTemplateLinks(itemId: string): Promise<{ templateIds: string[] }> {
+    return this.request(`/items/${itemId}/template-links`);
+  }
+
+  async setItemTemplateLinks(itemId: string, templateIds: string[]): Promise<{ templateIds: string[] }> {
+    return this.request(`/items/${itemId}/template-links`, {
+      method: 'PUT',
+      body: JSON.stringify({ templateIds }),
+    });
+  }
+
   async copyItemToSystem(id: string, targetSystem: string): Promise<Item> {
     return this.request(`/admin/system-items/${id}/copy-to-system`, {
       method: 'POST',

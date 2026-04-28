@@ -1271,7 +1271,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         <Dices className="w-3 h-3" />
                       </Button>
                     )}
-                    {canEdit && (
+                    {canEdit && !(roll as any).fromTemplateRollId && (
                       <>
                         <Button
                           size="sm"
@@ -1324,6 +1324,15 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           </Button>
                         )}
                       </>
+                    )}
+                    {canEdit && (roll as any).fromTemplateRollId && (
+                      <span
+                        className="text-[9px] text-stone-500 italic px-1"
+                        title="This roll is managed by a linked template"
+                        data-testid={`text-roll-template-managed-${roll.id}`}
+                      >
+                        from template
+                      </span>
                     )}
                   </div>
                 </div>

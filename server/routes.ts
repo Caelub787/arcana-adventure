@@ -5971,9 +5971,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { isLiveTemplate: _i, isTemplate: _t, characterId: _c, campaignId: _cm, ...updates } = req.body;
       const updatedItem = await storage.updateItem(req.params.id, updates);
 
-      // Propagate template-level field changes to all linked items so they stay in sync
+      // Propagate template-level field changes to all linked items so they stay in sync.
+      // For multi-template links (item_template_links), the task spec calls for *roll-only*
+      // propagation, so we limit field propagation to legacy single-template links only.
       if (updatedItem) {
-        const linked = await storage.getItemsLinkedToTemplate(updatedItem.id);
+        const allLinked = await storage.getItemsLinkedToTemplate(updatedItem.id);
+        const linked = allLinked.filter(it => it.templateItemId === updatedItem.id);
         const propagatedFieldList: (keyof typeof updates)[] = [
           'name', 'description', 'rules', 'rulesVisible', 'image',
           'damage', 'damageType', 'mod', 'range', 'aoe', 'attribute', 'size',
@@ -6128,6 +6131,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error('[link-template] failed:', err?.message || err);
       res.status(400).json({ error: "Failed to link template" });
+    }
+  });
+
+  // Multi-template links: an item can be linked to many templates simultaneously.
+  // Used by the AAv2 admin Item edit dialog ("Roll Templates" panel).
+  // Field propagation is intentionally NOT performed here — only template *rolls*
+  // are copied onto the item with fromTemplateRollId pointers, which makes
+  // subsequent template-roll edits flow through automatically via the existing
+  // /api/roll-entries propagation path.
+  app.get("/api/items/:id/template-links", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const item = await storage.getItem(req.params.id);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      const canModify = await canModifyRollEntries(userId, 'item', item.id);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to view template links for this item" });
+      }
+      const templateIds = await storage.getItemTemplateLinks(item.id);
+      res.json({ templateIds });
+    } catch (err: any) {
+      console.error('[template-links GET] failed:', err?.message || err);
+      res.status(500).json({ error: "Failed to fetch template links" });
+    }
+  });
+
+  app.put("/api/items/:id/template-links", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const item = await storage.getItem(req.params.id);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      const canModify = await canModifyRollEntries(userId, 'item', item.id);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify template links for this item" });
+      }
+
+      const requested = Array.isArray(req.body?.templateIds) ? (req.body.templateIds as string[]) : null;
+      if (!requested) return res.status(400).json({ error: "templateIds[] required" });
+
+      // Validate every requested template exists, is a live template, and matches system.
+      const validatedTemplates: any[] = [];
+      for (const tid of requested) {
+        const tpl = await storage.getItem(tid);
+        if (!tpl || !tpl.isLiveTemplate || tpl.characterId || tpl.campaignId) {
+          return res.status(404).json({ error: `Template not found: ${tid}` });
+        }
+        if (tpl.system && item.system && tpl.system !== item.system) {
+          return res.status(400).json({ error: "Template system does not match item system" });
+        }
+        validatedTemplates.push(tpl);
+      }
+
+      const existing = new Set(await storage.getItemTemplateLinks(item.id));
+      const desired = new Set(requested);
+      const toAdd = [...desired].filter(t => !existing.has(t));
+      const toRemove = [...existing].filter(t => !desired.has(t));
+
+      // Removals: delete inherited rolls whose source roll belongs to the removed template.
+      if (toRemove.length > 0) {
+        const itemRolls = await storage.getRollEntries('item', item.id);
+        for (const tid of toRemove) {
+          const tplRollIds = new Set((await storage.getRollEntries('item', tid)).map(r => r.id));
+          for (const r of itemRolls) {
+            if (r.fromTemplateRollId && tplRollIds.has(r.fromTemplateRollId)) {
+              await storage.deleteRollEntry(r.id);
+            }
+          }
+          await storage.removeItemTemplateLink(item.id, tid);
+        }
+      }
+
+      // Additions: copy template rolls onto the item with fromTemplateRollId pointers.
+      if (toAdd.length > 0) {
+        for (const tid of toAdd) {
+          await storage.addItemTemplateLink(item.id, tid);
+          const tplRolls = await storage.getRollEntries('item', tid);
+          if (tplRolls.length > 0) {
+            const toInsert = tplRolls.map((roll: any) => {
+              const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
+              return {
+                ...rest,
+                ownerType: 'item',
+                ownerId: item.id,
+                fromTemplateRollId: roll.id,
+              };
+            });
+            await storage.createRollEntriesBulk(toInsert as any);
+          }
+        }
+      }
+
+      const finalLinks = await storage.getItemTemplateLinks(item.id);
+      res.json({ templateIds: finalLinks });
+    } catch (err: any) {
+      console.error('[template-links PUT] failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to update template links" });
     }
   });
 

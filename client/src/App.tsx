@@ -73,6 +73,7 @@ function SiteUpdateBanner() {
               'token-effects': [['token-effects']],
               'spell-effects': [['system-spells'], ['token-effects']],
               'item-effects': [['system-items'], ['system-items-summary'], ['token-effects']],
+              'item-templates': [['item-templates'], ['system-items'], ['system-items-summary']],
             };
             const keys = entityQueryMap[data.entity];
             if (keys) {

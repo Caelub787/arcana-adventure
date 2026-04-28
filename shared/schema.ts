@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json, index, uniqueIndex, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -515,6 +515,20 @@ export const insertItemSchema = createInsertSchema(items).omit({
 
 export type InsertItem = z.infer<typeof insertItemSchema>;
 export type Item = typeof items.$inferSelect;
+
+// Many-to-many: an item may be linked to multiple item templates.
+// When a template is linked, the template's rolls are copied onto the item with
+// roll_entries.fromTemplateRollId pointing back at the template's roll for live propagation.
+export const itemTemplateLinks = pgTable("item_template_links", {
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.itemId, t.templateId] }),
+}));
+
+export const insertItemTemplateLinkSchema = createInsertSchema(itemTemplateLinks);
+export type InsertItemTemplateLink = z.infer<typeof insertItemTemplateLinkSchema>;
+export type ItemTemplateLink = typeof itemTemplateLinks.$inferSelect;
 
 // System Species table (for race/species definitions in game systems)
 export const systemSpecies = pgTable("system_species", {
