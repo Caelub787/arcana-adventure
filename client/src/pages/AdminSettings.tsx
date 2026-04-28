@@ -7751,11 +7751,14 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
   // applies on save for both create and edit flows to avoid race conditions.
   const [selectedTemplateLinks, setSelectedTemplateLinks] = useState<string[]>([]);
 
-  // For existing items, fetch the current set of linked template IDs and seed state.
+  // For existing AAv2 items, fetch the current set of linked template IDs and
+  // seed state. Scoped to AA V2 only -- legacy systems use the single-link picker
+  // and must not have their (empty) template-link set written back to the server.
+  const isAaV2 = campaignSystem === 'aa-v2';
   const { data: existingLinks } = useQuery({
     queryKey: ['item-template-links', initialData?.id],
     queryFn: () => api.getItemTemplateLinks(initialData!.id),
-    enabled: !!initialData?.id && open,
+    enabled: !!initialData?.id && open && isAaV2,
   });
 
   const [formData, setFormData] = useState<{
@@ -7946,15 +7949,17 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
       grantsDcBonus: formData.grantsDcBonus,
       dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
-    // Only sync template-links when we know what the current set is:
+    // Only sync template-links for AAv2 items. For legacy systems, the panel
+    // isn't shown and we must never write back an empty selection.
     //   - In create mode (no initialData), the user's selection IS the desired state.
     //   - In edit mode, we only have a true desired state once existingLinks has
     //     loaded; passing `selectedTemplateLinks` (which initialises to []) before
     //     the GET resolves would silently wipe all existing links on the server.
-    const linksToSync =
-      !initialData?.id || existingLinks?.templateIds !== undefined
-        ? selectedTemplateLinks
-        : undefined;
+    const linksToSync = !isAaV2
+      ? undefined
+      : !initialData?.id || existingLinks?.templateIds !== undefined
+      ? selectedTemplateLinks
+      : undefined;
     onSave(
       cleanedData,
       !initialData ? draftRolls : undefined,
