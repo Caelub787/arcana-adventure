@@ -43,3 +43,38 @@ echo "Character item rolls AFTER template delete (must be empty):"
 psql "$DATABASE_URL" -c "SELECT name, dice_formula, from_template_roll_id FROM roll_entries WHERE owner_id='$PC_ITEM' ORDER BY sort_order;"
 echo "Character item.template_item_id AFTER delete (must be null):"
 psql "$DATABASE_URL" -c "SELECT template_item_id FROM items WHERE id='$PC_ITEM';"
+
+echo ""
+echo "=========================================="
+echo "== Multi-template add/remove idempotency =="
+echo "=========================================="
+TPL_A=$(curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X POST "$BASE/admin/item-templates" \
+  -d '{"name":"IdemA","system":"aa-v2","itemType":"utility","rarity":"common"}' | jq -r .id)
+TPL_B=$(curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X POST "$BASE/admin/item-templates" \
+  -d '{"name":"IdemB","system":"aa-v2","itemType":"utility","rarity":"common"}' | jq -r .id)
+curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X POST "$BASE/roll-entries" \
+  -d "{\"ownerType\":\"item\",\"ownerId\":\"$TPL_A\",\"name\":\"AR\",\"diceFormula\":\"1d4\",\"rollType\":\"damage\",\"sortOrder\":0}" >/dev/null
+curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X POST "$BASE/roll-entries" \
+  -d "{\"ownerType\":\"item\",\"ownerId\":\"$TPL_B\",\"name\":\"BR\",\"diceFormula\":\"1d6\",\"rollType\":\"damage\",\"sortOrder\":0}" >/dev/null
+ITEM=$(curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X POST "$BASE/admin/system-items" \
+  -d '{"name":"IdemItem","system":"aa-v2","itemType":"utility","rarity":"common"}' | jq -r .id)
+
+echo "-- PUT [A,B] x3 (idempotent): each call must yield exactly 2 inherited rolls --"
+for i in 1 2 3; do
+  curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X PUT "$BASE/items/$ITEM/template-links" \
+    -d "{\"templateIds\":[\"$TPL_A\",\"$TPL_B\"]}" >/dev/null
+  COUNT=$(curl -s -b "$ADMIN_JAR" "$BASE/items/$ITEM/rolls" | jq '[.[] | select(.fromTemplateRollId != null)] | length')
+  echo "iter $i: inherited rolls = $COUNT (expected 2)"
+done
+
+echo "-- PUT [A] : remove B, A's roll must persist (1 inherited) --"
+curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X PUT "$BASE/items/$ITEM/template-links" \
+  -d "{\"templateIds\":[\"$TPL_A\"]}" >/dev/null
+COUNT=$(curl -s -b "$ADMIN_JAR" "$BASE/items/$ITEM/rolls" | jq '[.[] | select(.fromTemplateRollId != null)] | length')
+echo "after remove B: inherited rolls = $COUNT (expected 1)"
+
+echo "-- PUT [] : remove all --"
+curl -s -b "$ADMIN_JAR" -H "Content-Type: application/json" -X PUT "$BASE/items/$ITEM/template-links" \
+  -d '{"templateIds":[]}' >/dev/null
+COUNT=$(curl -s -b "$ADMIN_JAR" "$BASE/items/$ITEM/rolls" | jq '[.[] | select(.fromTemplateRollId != null)] | length')
+echo "after remove all: inherited rolls = $COUNT (expected 0)"
