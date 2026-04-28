@@ -6210,7 +6210,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req as any).session?.userId;
       const item = await storage.getItem(req.params.id);
       if (!item) return res.status(404).json({ error: "Item not found" });
-      const canModify = await canModifyRollEntries(userId, 'item', item.id);
+      // Authz: site admins can always manage template links on any item; otherwise
+      // fall through to the standard roll-modification permission check (covers
+      // GM/owner cases for character/campaign items).
+      const reqUser = await storage.getUser(userId);
+      const reqIsAdmin = reqUser?.isAdmin || ADMIN_EMAILS.includes(reqUser?.email?.toLowerCase() || '');
+      const canModify = reqIsAdmin || await canModifyRollEntries(userId, 'item', item.id);
       if (!canModify) {
         return res.status(403).json({ error: "Not authorized to view template links for this item" });
       }
@@ -6232,7 +6237,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req as any).session?.userId;
       const item = await storage.getItem(req.params.id);
       if (!item) return res.status(404).json({ error: "Item not found" });
-      const canModify = await canModifyRollEntries(userId, 'item', item.id);
+      // Authz: site admins can always manage template links on any item; otherwise
+      // fall through to the standard roll-modification permission check (covers
+      // GM/owner cases for character/campaign items).
+      const reqUser = await storage.getUser(userId);
+      const reqIsAdmin = reqUser?.isAdmin || ADMIN_EMAILS.includes(reqUser?.email?.toLowerCase() || '');
+      const canModify = reqIsAdmin || await canModifyRollEntries(userId, 'item', item.id);
       if (!canModify) {
         return res.status(403).json({ error: "Not authorized to modify template links for this item" });
       }
