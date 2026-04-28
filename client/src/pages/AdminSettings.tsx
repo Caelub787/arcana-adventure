@@ -8409,7 +8409,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
             {!(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') === 'aa-v2' && (
               <div className="pt-4 border-t border-stone-700">
                 <ItemTemplateLinksPanel
-                  itemId={initialData?.id}
                   systemSlug={campaignSystem || (initialData as any)?.system || 'aa-v2'}
                   selectedIds={selectedTemplateLinks}
                   onSelectedIdsChange={setSelectedTemplateLinks}
