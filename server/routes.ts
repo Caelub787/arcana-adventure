@@ -6227,7 +6227,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!requested) return res.status(400).json({ error: "templateIds[] required" });
 
       // Validate every requested template exists, is a live template, and matches system.
-      const validatedTemplates: Item[] = [];
       for (const tid of requested) {
         const tpl = await storage.getItem(tid);
         if (!tpl || !tpl.isLiveTemplate || tpl.characterId || tpl.campaignId) {
@@ -6236,7 +6235,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (tpl.system && item.system && tpl.system !== item.system) {
           return res.status(400).json({ error: "Template system does not match item system" });
         }
-        validatedTemplates.push(tpl);
       }
 
       // Treat any legacy single-link (items.templateItemId) as part of the current
@@ -6298,7 +6296,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const finalLinks = await storage.getItemTemplateLinks(item.id);
+      // Return canonical effective links: union of join-table rows + any remaining
+      // legacy items.templateItemId pointer, matching the GET endpoint's contract.
+      const updatedItem = await storage.getItem(item.id);
+      const joinFinal = await storage.getItemTemplateLinks(item.id);
+      const finalLinks = updatedItem?.templateItemId && !joinFinal.includes(updatedItem.templateItemId)
+        ? [...joinFinal, updatedItem.templateItemId]
+        : joinFinal;
       res.json({ templateIds: finalLinks });
     } catch (err: any) {
       console.error('[template-links PUT] failed:', err?.message || err);
