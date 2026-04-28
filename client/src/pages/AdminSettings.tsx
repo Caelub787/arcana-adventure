@@ -7608,7 +7608,7 @@ function ItemTemplateLinksPanel({
 }) {
   const [expanded, setExpanded] = useState<boolean>(false);
 
-  const { data: templates = [] } = useQuery({
+  const { data: templates = [] } = useQuery<Item[]>({
     queryKey: ['item-templates', systemSlug],
     queryFn: () => api.getItemTemplates(systemSlug),
     staleTime: 5 * 60 * 1000,
@@ -7649,7 +7649,7 @@ function ItemTemplateLinksPanel({
             <p className="text-xs text-stone-500">No item templates exist yet. Create one in the Item Templates view.</p>
           ) : (
             <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
-              {templates.map((t: any) => {
+              {templates.map((t) => {
                 const checked = selectedIds.includes(t.id);
                 return (
                   <label
