@@ -7946,10 +7946,19 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
       grantsDcBonus: formData.grantsDcBonus,
       dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
+    // Only sync template-links when we know what the current set is:
+    //   - In create mode (no initialData), the user's selection IS the desired state.
+    //   - In edit mode, we only have a true desired state once existingLinks has
+    //     loaded; passing `selectedTemplateLinks` (which initialises to []) before
+    //     the GET resolves would silently wipe all existing links on the server.
+    const linksToSync =
+      !initialData?.id || existingLinks?.templateIds !== undefined
+        ? selectedTemplateLinks
+        : undefined;
     onSave(
       cleanedData,
       !initialData ? draftRolls : undefined,
-      selectedTemplateLinks,
+      linksToSync,
     );
   };
 

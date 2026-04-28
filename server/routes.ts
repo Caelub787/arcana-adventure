@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -6146,7 +6146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Copy template rolls into the item with fromTemplateRollId pointers
       const templateRolls = await storage.getRollEntries('item', templateId);
       if (templateRolls.length > 0) {
-        const toInsert = templateRolls.map((roll: any) => {
+        const toInsert: InsertRollEntry[] = templateRolls.map((roll: RollEntry) => {
           const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
           return {
             ...rest,
@@ -6155,7 +6155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fromTemplateRollId: roll.id,
           };
         });
-        await storage.createRollEntriesBulk(toInsert as any);
+        await storage.createRollEntriesBulk(toInsert);
       }
 
       // Also propagate template-level fields to the item so the linked instance matches
@@ -6222,7 +6222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!requested) return res.status(400).json({ error: "templateIds[] required" });
 
       // Validate every requested template exists, is a live template, and matches system.
-      const validatedTemplates: any[] = [];
+      const validatedTemplates: Item[] = [];
       for (const tid of requested) {
         const tpl = await storage.getItem(tid);
         if (!tpl || !tpl.isLiveTemplate || tpl.characterId || tpl.campaignId) {
@@ -6259,7 +6259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.addItemTemplateLink(item.id, tid);
           const tplRolls = await storage.getRollEntries('item', tid);
           if (tplRolls.length > 0) {
-            const toInsert = tplRolls.map((roll: any) => {
+            const toInsert: InsertRollEntry[] = tplRolls.map((roll: RollEntry) => {
               const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
               return {
                 ...rest,
@@ -6268,7 +6268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 fromTemplateRollId: roll.id,
               };
             });
-            await storage.createRollEntriesBulk(toInsert as any);
+            await storage.createRollEntriesBulk(toInsert);
           }
         }
       }
