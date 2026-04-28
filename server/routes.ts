@@ -6239,10 +6239,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         validatedTemplates.push(tpl);
       }
 
-      const existing = new Set(await storage.getItemTemplateLinks(item.id));
+      // Treat any legacy single-link (items.templateItemId) as part of the current
+      // state so that unchecking it via the new panel actually clears the legacy
+      // pointer, and re-checking it does NOT duplicate inherited rolls.
+      const joinExisting = await storage.getItemTemplateLinks(item.id);
+      const existingSet = new Set<string>(joinExisting);
+      if (item.templateItemId) existingSet.add(item.templateItemId);
       const desired = new Set(requested);
-      const toAdd = Array.from(desired).filter(t => !existing.has(t));
-      const toRemove = Array.from(existing).filter(t => !desired.has(t));
+      const toAdd = Array.from(desired).filter(t => !existingSet.has(t));
+      const toRemove = Array.from(existingSet).filter(t => !desired.has(t));
 
       // Removals: delete inherited rolls whose source roll belongs to the removed template.
       if (toRemove.length > 0) {
@@ -6254,17 +6259,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await storage.deleteRollEntry(r.id);
             }
           }
+          // Drop the join row if present.
           await storage.removeItemTemplateLink(item.id, tid);
+          // Clear the legacy single-pointer if it still references the removed template.
+          if (item.templateItemId === tid) {
+            await storage.updateItem(item.id, { templateItemId: null });
+          }
         }
       }
 
       // Additions: copy template rolls onto the item with fromTemplateRollId pointers.
+      // Skip any source roll that already has a copy on the item (provenance dedupe).
       if (toAdd.length > 0) {
+        const itemRollsAfterRemove = await storage.getRollEntries('item', item.id);
+        const alreadyCopiedSourceIds = new Set(
+          itemRollsAfterRemove
+            .map(r => r.fromTemplateRollId)
+            .filter((x): x is string => !!x),
+        );
         for (const tid of toAdd) {
           await storage.addItemTemplateLink(item.id, tid);
           const tplRolls = await storage.getRollEntries('item', tid);
-          if (tplRolls.length > 0) {
-            const toInsert: InsertRollEntry[] = tplRolls.map((roll: RollEntry) => {
+          const tplRollsToCopy = tplRolls.filter(r => !alreadyCopiedSourceIds.has(r.id));
+          if (tplRollsToCopy.length > 0) {
+            const toInsert: InsertRollEntry[] = tplRollsToCopy.map((roll: RollEntry) => {
               const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
               return {
                 ...rest,
@@ -6274,6 +6292,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               };
             });
             await storage.createRollEntriesBulk(toInsert);
+            // Track these as copied for subsequent template iterations in this PUT.
+            for (const r of tplRollsToCopy) alreadyCopiedSourceIds.add(r.id);
           }
         }
       }
