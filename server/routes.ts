@@ -1,13 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import multer from "multer";
@@ -4283,10 +4283,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Roll Entry routes
+  // For each roll that has fromTemplateRollId set, look up the source template's
+  // name once so the client can render "From template: <name>" badges without
+  // needing extra round-trips. Returns the rolls with an added `templateName`.
+  const enrichWithTemplateNames = async (rolls: RollEntry[]): Promise<(RollEntry & { templateName?: string })[]> => {
+    const inheritedIds = Array.from(new Set(
+      rolls.map(r => r.fromTemplateRollId).filter((v): v is string => !!v)
+    ));
+    if (inheritedIds.length === 0) return rolls;
+    const sourceRolls = await db.select({ id: rollEntries.id, ownerType: rollEntries.ownerType, ownerId: rollEntries.ownerId })
+      .from(rollEntries)
+      .where(inArray(rollEntries.id, inheritedIds));
+    const itemOwnerIds = Array.from(new Set(
+      sourceRolls.filter(r => r.ownerType === 'item').map(r => r.ownerId)
+    ));
+    const spellOwnerIds = Array.from(new Set(
+      sourceRolls.filter(r => r.ownerType === 'spell').map(r => r.ownerId)
+    ));
+    const nameByOwner = new Map<string, string>();
+    if (itemOwnerIds.length > 0) {
+      const its = await db.select({ id: items.id, name: items.name }).from(items).where(inArray(items.id, itemOwnerIds));
+      for (const it of its) nameByOwner.set(`item:${it.id}`, it.name);
+    }
+    if (spellOwnerIds.length > 0) {
+      const sps = await db.select({ id: spells.id, name: spells.name }).from(spells).where(inArray(spells.id, spellOwnerIds));
+      for (const sp of sps) nameByOwner.set(`spell:${sp.id}`, sp.name);
+    }
+    const templateNameByRollId = new Map<string, string>();
+    for (const sr of sourceRolls) {
+      const name = nameByOwner.get(`${sr.ownerType}:${sr.ownerId}`);
+      if (name) templateNameByRollId.set(sr.id, name);
+    }
+    return rolls.map(r => r.fromTemplateRollId
+      ? { ...r, templateName: templateNameByRollId.get(r.fromTemplateRollId) }
+      : r);
+  };
+
   app.get("/api/items/:id/rolls", requireAuth, async (req, res) => {
     try {
       const rolls = await storage.getRollEntries("item", req.params.id);
-      res.json(rolls);
+      const enriched = await enrichWithTemplateNames(rolls);
+      res.json(enriched);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch item roll entries" });
     }
@@ -4295,7 +4332,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/spells/:id/rolls", requireAuth, async (req, res) => {
     try {
       const rolls = await storage.getRollEntries("spell", req.params.id);
-      res.json(rolls);
+      const enriched = await enrichWithTemplateNames(rolls);
+      res.json(enriched);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spell roll entries" });
     }
@@ -6027,18 +6065,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "Item template not found" });
       }
-      // Unlink any items pointing at this template (and detach their roll links)
+      // Per spec: deleting a template removes inherited rolls and template links from
+      // every linked item, while preserving each item's independent rolls and other fields.
       const linkedItems = await storage.getItemsLinkedToTemplate(req.params.id);
-      for (const linked of linkedItems) {
-        await db.update(items).set({ templateItemId: null }).where(eq(items.id, linked.id));
-      }
       const templateRolls = await storage.getRollEntries('item', req.params.id);
-      for (const tRoll of templateRolls) {
-        const inherited = await storage.getRollEntriesByTemplateRollId(tRoll.id);
-        for (const iRoll of inherited) {
-          await db.update(rollEntries).set({ fromTemplateRollId: null }).where(eq(rollEntries.id, iRoll.id));
+      const templateRollIds = templateRolls.map(r => r.id);
+      // 1. Delete every inherited roll on each linked item (rolls whose provenance
+      //    points back to one of this template's rolls).
+      if (templateRollIds.length > 0 && linkedItems.length > 0) {
+        for (const linked of linkedItems) {
+          await db.delete(rollEntries).where(and(
+            eq(rollEntries.ownerType, 'item'),
+            eq(rollEntries.ownerId, linked.id),
+            inArray(rollEntries.fromTemplateRollId, templateRollIds),
+          ));
         }
       }
+      // 2. Detach legacy single-link pointer.
+      for (const linked of linkedItems) {
+        if (linked.templateItemId === req.params.id) {
+          await db.update(items).set({ templateItemId: null }).where(eq(items.id, linked.id));
+        }
+      }
+      // 3. Drop multi-link join rows for this template (also handled by FK cascade,
+      //    but explicit for clarity in case the cascade is ever changed).
+      await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.templateId, req.params.id));
       await storage.deleteItem(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-templates' });
       res.json({ success: true });
@@ -6185,8 +6236,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const existing = new Set(await storage.getItemTemplateLinks(item.id));
       const desired = new Set(requested);
-      const toAdd = [...desired].filter(t => !existing.has(t));
-      const toRemove = [...existing].filter(t => !desired.has(t));
+      const toAdd = Array.from(desired).filter(t => !existing.has(t));
+      const toRemove = Array.from(existing).filter(t => !desired.has(t));
 
       // Removals: delete inherited rolls whose source roll belongs to the removed template.
       if (toRemove.length > 0) {

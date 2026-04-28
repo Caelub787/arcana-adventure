@@ -55,6 +55,8 @@ interface RollEntry {
   dcToSucceedType?: string;
   dcToSucceedDcAttribute?: string;
   dcToSucceedSuccessEffect?: string;
+  fromTemplateRollId?: string | null;
+  templateName?: string;
 }
 
 interface RollEntriesEditorProps {
@@ -1244,8 +1246,14 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                       <div className="w-3 h-3 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: roll.primaryColor }} />
                     )}
                     <span className={`text-xs font-medium truncate ${isHiddenRoll ? 'text-stone-500' : 'text-stone-200'}`} data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
-                    {(roll as any).fromTemplateRollId && (
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/50 shrink-0" data-testid={`badge-template-roll-${roll.id}`}>T</span>
+                    {roll.fromTemplateRollId && (
+                      <span
+                        className="text-[9px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/50 shrink-0"
+                        title={roll.templateName ? `From template: ${roll.templateName}` : 'Inherited from a linked template'}
+                        data-testid={`badge-template-roll-${roll.id}`}
+                      >
+                        {roll.templateName ? `From: ${roll.templateName}` : 'From template'}
+                      </span>
                     )}
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
@@ -1271,7 +1279,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         <Dices className="w-3 h-3" />
                       </Button>
                     )}
-                    {canEdit && !(roll as any).fromTemplateRollId && (
+                    {canEdit && !roll.fromTemplateRollId && (
                       <>
                         <Button
                           size="sm"
@@ -1325,13 +1333,13 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         )}
                       </>
                     )}
-                    {canEdit && (roll as any).fromTemplateRollId && (
+                    {canEdit && roll.fromTemplateRollId && (
                       <span
                         className="text-[9px] text-stone-500 italic px-1"
-                        title="This roll is managed by a linked template"
+                        title={roll.templateName ? `From template: ${roll.templateName}` : 'This roll is managed by a linked template'}
                         data-testid={`text-roll-template-managed-${roll.id}`}
                       >
-                        from template
+                        {roll.templateName ? `from "${roll.templateName}"` : 'from template'}
                       </span>
                     )}
                   </div>
