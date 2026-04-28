@@ -6200,7 +6200,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canModify) {
         return res.status(403).json({ error: "Not authorized to view template links for this item" });
       }
-      const templateIds = await storage.getItemTemplateLinks(item.id);
+      // Include any legacy single-link via items.templateItemId so the AAv2 admin
+      // panel reflects pre-existing links until they are migrated to the join table.
+      const joinLinks = await storage.getItemTemplateLinks(item.id);
+      const templateIds = item.templateItemId && !joinLinks.includes(item.templateItemId)
+        ? [...joinLinks, item.templateItemId]
+        : joinLinks;
       res.json({ templateIds });
     } catch (err: any) {
       console.error('[template-links GET] failed:', err?.message || err);
