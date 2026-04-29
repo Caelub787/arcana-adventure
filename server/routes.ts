@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -4362,7 +4362,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return false;
     } else if (ownerType === 'spell') {
       const spell = await storage.getSpell(ownerId);
-      if (!spell) return false;
+      if (!spell) {
+        // Fallback: AAv2 admin spell catalog lives in `system_spells`. If the
+        // owner is a SystemSpell row, only site admins can manage its rolls.
+        if (!isAdmin) return false;
+        const [sys] = await db.select({ id: systemSpells.id }).from(systemSpells).where(eq(systemSpells.id, ownerId)).limit(1);
+        return !!sys;
+      }
       if (spell.isTemplate && spell.campaignId) {
         const campaign = await storage.getCampaign(spell.campaignId);
         if (!campaign) return false;
@@ -4401,39 +4407,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (entry.ownerType === 'item') {
         const ownerItem = await storage.getItem(entry.ownerId);
         if (ownerItem && ownerItem.isTemplate) {
+          // Fan-out goes to BOTH items AND spells linked to this unified roll
+          // template. ownerType is preserved for each target so the rolls land
+          // on the correct collection in the (owner_type, owner_id) primary key.
+          const itemTargetIds = new Map<string, true>();
+          const spellTargetIds = new Map<string, true>();
           const linkedItems = await storage.getItemsLinkedToTemplate(ownerItem.id);
-          const targetIds = new Map<string, true>();
-          for (const li of linkedItems) targetIds.set(li.id, true);
-          // Find items that already inherit any roll from this template (by provenance).
+          for (const li of linkedItems) itemTargetIds.set(li.id, true);
+          const linkedSpells = await storage.getSpellsLinkedToRollTemplate(ownerItem.id);
+          for (const ls of linkedSpells) spellTargetIds.set(ls.id, true);
+          // Provenance-aware: also include any owner that already inherits a roll
+          // from this template (e.g. character-owned items/spells whose link
+          // record was severed but whose copies remain).
           const tplRolls = await storage.getRollEntries('item', ownerItem.id);
           const tplRollIds = tplRolls.map(r => r.id).filter(id => id !== entry.id);
           if (tplRollIds.length > 0) {
-            const provenanceRows = await db.select({ ownerId: rollEntries.ownerId })
+            const provenanceRows = await db.select({ ownerType: rollEntries.ownerType, ownerId: rollEntries.ownerId })
               .from(rollEntries)
-              .where(and(
-                eq(rollEntries.ownerType, 'item'),
-                inArray(rollEntries.fromTemplateRollId, tplRollIds),
-              ));
-            for (const row of provenanceRows) targetIds.set(row.ownerId, true);
+              .where(inArray(rollEntries.fromTemplateRollId, tplRollIds));
+            for (const row of provenanceRows) {
+              if (row.ownerType === 'item') itemTargetIds.set(row.ownerId, true);
+              else if (row.ownerType === 'spell') spellTargetIds.set(row.ownerId, true);
+            }
           }
-          for (const targetId of Array.from(targetIds.keys())) {
-            const { id: _id, ...rollData } = entry;
+          const { id: _id, ...rollData } = entry;
+          for (const targetId of Array.from(itemTargetIds.keys())) {
             await storage.createRollEntry({
               ...rollData,
+              ownerType: 'item',
+              ownerId: targetId,
+              fromTemplateRollId: entry.id,
+            });
+          }
+          for (const targetId of Array.from(spellTargetIds.keys())) {
+            await storage.createRollEntry({
+              ...rollData,
+              ownerType: 'spell',
               ownerId: targetId,
               fromTemplateRollId: entry.id,
             });
           }
         }
       } else if (entry.ownerType === 'spell') {
+        // Legacy campaign-scoped spell-template fan-out (single-link via
+        // spells.templateSpellId). The unified Roll Templates path is handled
+        // above under ownerType==='item'.
         const ownerSpell = await storage.getSpell(entry.ownerId);
         if (ownerSpell && ownerSpell.isTemplate) {
           const linkedSpells = await storage.getSpellsLinkedToTemplate(ownerSpell.id);
-          for (const linked of linkedSpells) {
-            const { id: _id, ...rollData } = entry;
+          const { id: _id, ...rollData } = entry;
+          for (const ls of linkedSpells) {
             await storage.createRollEntry({
               ...rollData,
-              ownerId: linked.id,
+              ownerType: 'spell',
+              ownerId: ls.id,
               fromTemplateRollId: entry.id,
             });
           }
@@ -6084,26 +6111,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item template not found" });
       }
       // Per spec: deleting a template removes inherited rolls and template links from
-      // every affected item, while preserving each item's independent rolls and other
-      // fields. Cleanup is provenance-driven so character-owned copies of inherited
-      // rolls are also swept up, not just items currently in the link set.
+      // every affected item AND spell, while preserving each owner's independent
+      // rolls and other fields. Cleanup is provenance-driven so character-owned
+      // copies of inherited rolls are also swept up, not just owners currently in
+      // the link set. Roll Templates are unified across items + spells.
       const templateRolls = await storage.getRollEntries('item', req.params.id);
       const templateRollIds = templateRolls.map(r => r.id);
       // 1. Globally delete every roll whose provenance points back to one of this
-      //    template's rolls (covers admin items, campaign items, and character items
-      //    alike, including ones not in any current link record).
+      //    template's rolls — across BOTH ownerType='item' and ownerType='spell'
+      //    (covers admin items, campaign items, character items, and spells alike,
+      //    including ones not in any current link record).
       if (templateRollIds.length > 0) {
-        await db.delete(rollEntries).where(and(
-          eq(rollEntries.ownerType, 'item'),
+        await db.delete(rollEntries).where(
           inArray(rollEntries.fromTemplateRollId, templateRollIds),
-        ));
+        );
       }
       // 2. Detach legacy single-link pointer on every item that still references
       //    this template (not just ones returned by getItemsLinkedToTemplate).
       await db.update(items).set({ templateItemId: null }).where(eq(items.templateItemId, req.params.id));
       // 3. Drop multi-link join rows for this template (also handled by FK cascade,
-      //    but explicit for clarity in case the cascade is ever changed).
+      //    but explicit for clarity in case the cascade is ever changed). Both the
+      //    item link table and the spell link table point at items.id for unified templates.
       await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.templateId, req.params.id));
+      await db.delete(spellTemplateLinks).where(eq(spellTemplateLinks.templateId, req.params.id));
       await storage.deleteItem(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-templates' });
       res.json({ success: true });
@@ -6330,6 +6360,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ templateIds: finalLinks });
     } catch (err: any) {
       console.error('[template-links PUT] failed:', err?.message || err);
+      res.status(400).json({ error: "Failed to update template links" });
+    }
+  });
+
+  // ============================================================================
+  // SPELL TEMPLATE-LINKS — mirror of items/:id/template-links for spells.
+  // The :id may reference either a `spells.id` (character/campaign spells) OR
+  // a `system_spells.id` (the AAv2 admin spell catalog). The join row's spellId
+  // column has no FK so it can hold either.
+  // ============================================================================
+  // Resolve a spell-or-systemSpell ID, returning a normalised shape with the
+  // legacy `templateSpellId` pointer when applicable so the rest of the route
+  // logic can stay table-agnostic.
+  const resolveSpellOwner = async (id: string): Promise<{
+    id: string;
+    system: string | null;
+    templateSpellId: string | null;
+    isSystemSpell: boolean;
+  } | null> => {
+    const sp = await storage.getSpell(id);
+    if (sp) return { id: sp.id, system: sp.system ?? null, templateSpellId: sp.templateSpellId ?? null, isSystemSpell: false };
+    const [sys] = await db.select({ id: systemSpells.id, system: systemSpells.system })
+      .from(systemSpells).where(eq(systemSpells.id, id)).limit(1);
+    if (!sys) return null;
+    return { id: sys.id, system: (sys as any).system ?? null, templateSpellId: null, isSystemSpell: true };
+  };
+
+  app.get("/api/spells/:id/template-links", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const owner = await resolveSpellOwner(req.params.id);
+      if (!owner) return res.status(404).json({ error: "Spell not found" });
+      const reqUser = await storage.getUser(userId);
+      const reqIsAdmin = reqUser?.isAdmin || ADMIN_EMAILS.includes(reqUser?.email?.toLowerCase() || '');
+      const canModify = reqIsAdmin || await canModifyRollEntries(userId, 'spell', owner.id);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to view template links for this spell" });
+      }
+      // Roll templates are unified with items: spell_template_links.templateId
+      // points at items.id (live templates). The legacy spells.templateSpellId
+      // refers to old campaign-spell-template links and is intentionally NOT
+      // included here, since the panel only manages the unified Roll Templates.
+      const templateIds = await storage.getSpellTemplateLinks(owner.id);
+      res.json({ templateIds });
+    } catch (err: any) {
+      console.error('[spell template-links GET] failed:', err?.message || err);
+      res.status(500).json({ error: "Failed to fetch template links" });
+    }
+  });
+
+  app.put("/api/spells/:id/template-links", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const owner = await resolveSpellOwner(req.params.id);
+      if (!owner) return res.status(404).json({ error: "Spell not found" });
+      const reqUser = await storage.getUser(userId);
+      const reqIsAdmin = reqUser?.isAdmin || ADMIN_EMAILS.includes(reqUser?.email?.toLowerCase() || '');
+      const canModify = reqIsAdmin || await canModifyRollEntries(userId, 'spell', owner.id);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify template links for this spell" });
+      }
+
+      const requested = Array.isArray(req.body?.templateIds) ? (req.body.templateIds as string[]) : null;
+      if (!requested) return res.status(400).json({ error: "templateIds[] required" });
+
+      // Roll Templates are unified across items + spells: every templateId must
+      // resolve to a live item-template (items.isLiveTemplate=true). The rolls
+      // attached to that item-template are copied onto the spell with
+      // ownerType='spell' on link, and removed on unlink.
+      for (const tid of requested) {
+        const tpl = await storage.getItem(tid);
+        if (!tpl || !tpl.isLiveTemplate || tpl.characterId || tpl.campaignId) {
+          return res.status(404).json({ error: `Roll template not found: ${tid}` });
+        }
+        if (tpl.system && owner.system && tpl.system !== owner.system) {
+          return res.status(400).json({ error: "Template system does not match spell system" });
+        }
+      }
+
+      const joinExisting = await storage.getSpellTemplateLinks(owner.id);
+      const existingSet = new Set<string>(joinExisting);
+      const desired = new Set(requested);
+      const toAdd = Array.from(desired).filter(t => !existingSet.has(t));
+      const toRemove = Array.from(existingSet).filter(t => !desired.has(t));
+
+      if (toRemove.length > 0) {
+        const spellRolls = await storage.getRollEntries('spell', owner.id);
+        for (const tid of toRemove) {
+          // Template rolls live on the item-template (ownerType='item').
+          const tplRollIds = new Set((await storage.getRollEntries('item', tid)).map(r => r.id));
+          for (const r of spellRolls) {
+            if (r.fromTemplateRollId && tplRollIds.has(r.fromTemplateRollId)) {
+              await storage.deleteRollEntry(r.id);
+            }
+          }
+          await storage.removeSpellTemplateLink(owner.id, tid);
+        }
+      }
+
+      if (toAdd.length > 0) {
+        const spellRollsAfterRemove = await storage.getRollEntries('spell', owner.id);
+        const alreadyCopiedSourceIds = new Set(
+          spellRollsAfterRemove
+            .map(r => r.fromTemplateRollId)
+            .filter((x): x is string => !!x),
+        );
+        for (const tid of toAdd) {
+          await storage.addSpellTemplateLink(owner.id, tid);
+          // Pull rolls from the item-template and re-key them onto the spell.
+          const tplRolls = await storage.getRollEntries('item', tid);
+          const tplRollsToCopy = tplRolls.filter(r => !alreadyCopiedSourceIds.has(r.id));
+          if (tplRollsToCopy.length > 0) {
+            const toInsert: InsertRollEntry[] = tplRollsToCopy.map((roll: RollEntry) => {
+              const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, ...rest } = roll;
+              return {
+                ...rest,
+                ownerType: 'spell',
+                ownerId: owner.id,
+                fromTemplateRollId: roll.id,
+              };
+            });
+            await storage.createRollEntriesBulk(toInsert);
+            for (const r of tplRollsToCopy) alreadyCopiedSourceIds.add(r.id);
+          }
+        }
+      }
+
+      const finalLinks = await storage.getSpellTemplateLinks(owner.id);
+      res.json({ templateIds: finalLinks });
+    } catch (err: any) {
+      console.error('[spell template-links PUT] failed:', err?.message || err);
       res.status(400).json({ error: "Failed to update template links" });
     }
   });
@@ -7609,6 +7770,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/admin/spells/:id", requireAdmin, async (req, res) => {
     try {
+      // Cleanup any spell-template-link rows that reference this SystemSpell
+      // (the join table has no FK on spellId so we must clean it explicitly).
+      await db.delete(spellTemplateLinks).where(eq(spellTemplateLinks.spellId, req.params.id));
       await storage.deleteSystemSpell(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true });

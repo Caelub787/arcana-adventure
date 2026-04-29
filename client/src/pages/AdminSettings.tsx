@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder } from '@/lib/api';
+import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -385,7 +385,7 @@ export default function AdminSettings() {
   });
 
   const createSpellMutation = useMutation({
-    mutationFn: async ({ spell, draftRolls }: { spell: Partial<SystemSpell>; draftRolls?: any[] }) => {
+    mutationFn: async ({ spell, draftRolls, templateLinks }: { spell: Partial<SystemSpell>; draftRolls?: any[]; templateLinks?: string[] }) => {
       const created = await api.createSystemSpell({ ...spell, system: systemSlug });
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
@@ -396,6 +396,9 @@ export default function AdminSettings() {
             ownerId: created.id,
           });
         }
+      }
+      if (templateLinks && templateLinks.length > 0) {
+        await api.setSpellTemplateLinks(created.id, templateLinks);
       }
       return created;
     },
@@ -410,7 +413,13 @@ export default function AdminSettings() {
   });
 
   const updateSpellMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<SystemSpell> }) => api.updateSystemSpell(id, data),
+    mutationFn: async ({ id, data, templateLinks }: { id: string; data: Partial<SystemSpell>; templateLinks?: string[] }) => {
+      const updated = await api.updateSystemSpell(id, data);
+      if (templateLinks !== undefined) {
+        await api.setSpellTemplateLinks(id, templateLinks);
+      }
+      return updated;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
       queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
@@ -811,7 +820,7 @@ export default function AdminSettings() {
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
-               currentView === 'item-templates' ? 'Item Templates' :
+               currentView === 'item-templates' ? 'Roll Templates' :
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? 'Custom Skills' : 
@@ -1121,7 +1130,7 @@ export default function AdminSettings() {
         <SpellFormDialog
           open={showAddSpell}
           onOpenChange={setShowAddSpell}
-          onSave={(data, draftRolls) => createSpellMutation.mutate({ spell: data, draftRolls })}
+          onSave={(data, draftRolls, templateLinks) => createSpellMutation.mutate({ spell: data, draftRolls, templateLinks })}
           isLoading={createSpellMutation.isPending}
           campaignSystem={systemSlug}
         />
@@ -1130,7 +1139,7 @@ export default function AdminSettings() {
           <SpellFormDialog
             open={!!editingSpell}
             onOpenChange={() => setEditingSpell(null)}
-            onSave={(data, _draftRolls) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
+            onSave={(data, _draftRolls, templateLinks) => updateSpellMutation.mutate({ id: editingSpell.id, data, templateLinks })}
             initialData={editingSpell}
             isLoading={updateSpellMutation.isPending}
             campaignSystem={systemSlug}
@@ -1527,9 +1536,9 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
           <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
             <Layers className="h-6 w-6 text-amber-500" />
           </div>
-          <CardTitle className="text-amber-500">Item Templates</CardTitle>
+          <CardTitle className="text-amber-500">Roll Templates</CardTitle>
           <CardDescription className="text-stone-400">
-            Create live item templates whose roll edits propagate to every linked item, even on character sheets
+            Create live roll templates whose roll edits propagate to every linked item and spell, even on character sheets
           </CardDescription>
         </CardHeader>
       </Card>
@@ -2074,9 +2083,9 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <div>
-          <CardTitle className="text-amber-500">Item Templates</CardTitle>
+          <CardTitle className="text-amber-500">Roll Templates</CardTitle>
           <CardDescription className="text-stone-400 mt-1">
-            Edits to a template's rolls and properties propagate live to every linked item, including those on character sheets.
+            Edits to a template's rolls propagate live to every linked item and spell, including character-owned copies.
           </CardDescription>
         </div>
         <div className="flex gap-2">
@@ -2098,7 +2107,7 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-stone-400">
             <Layers className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p className="font-bold">No item templates yet</p>
+            <p className="font-bold">No item roll templates yet</p>
             <p className="text-sm mt-2">Create a template, then assign items to it from any item's settings.</p>
           </div>
         ) : (
@@ -7208,7 +7217,7 @@ function ItemEffectsSection({ itemId }: { itemId: string }) {
 interface SpellFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (data: Partial<SystemSpell>, draftRolls?: any[]) => void;
+  onSave: (data: Partial<SystemSpell>, draftRolls?: any[], templateLinks?: string[]) => void;
   initialData?: SystemSpell;
   isLoading?: boolean;
   campaignSystem?: string;
@@ -7218,6 +7227,26 @@ const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft']
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: SpellFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
+  const isAaV2 = campaignSystem === 'aa-v2';
+
+  // Spell ↔ live spell-template links (AAv2 only). Loaded on edit; sent on save.
+  const [selectedTemplateLinks, setSelectedTemplateLinks] = useState<string[]>([]);
+  const { data: existingSpellLinks } = useQuery<{ templateIds: string[] }>({
+    queryKey: ['spell-template-links', initialData?.id],
+    queryFn: () => api.getSpellTemplateLinks(initialData!.id),
+    enabled: !!initialData?.id && isAaV2,
+    staleTime: 60 * 1000,
+  });
+  useEffect(() => {
+    if (existingSpellLinks?.templateIds) {
+      setSelectedTemplateLinks(existingSpellLinks.templateIds);
+    }
+  }, [existingSpellLinks]);
+  useEffect(() => {
+    if (!initialData?.id) {
+      setSelectedTemplateLinks([]);
+    }
+  }, [initialData?.id]);
 
   // Normalize castingTime to new action format
   const normalizeCastingTime = (ct: string | undefined | null): string => {
@@ -7302,6 +7331,14 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
       return;
     }
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
+    // Diff existing vs selected to detect a change worth syncing.
+    const existingLinks = existingSpellLinks?.templateIds || [];
+    const linksChanged =
+      isAaV2 && (
+        selectedTemplateLinks.length !== existingLinks.length ||
+        selectedTemplateLinks.some(id => !existingLinks.includes(id))
+      );
+    const linksToSync = linksChanged ? selectedTemplateLinks : (!initialData ? selectedTemplateLinks : undefined);
     onSave({
       name: formData.name,
       description: formData.description,
@@ -7311,7 +7348,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
       rangeNum: Number(formData.range) || 30,
       duration: formData.duration,
       attribute: normalizeNone(formData.attribute),
-    }, !initialData ? draftRolls : undefined);
+    }, !initialData ? draftRolls : undefined, linksToSync);
   };
 
   return (
@@ -7466,6 +7503,16 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
               campaignSystem={campaignSystem || 'arcana-adventure'}
             />
           </div>
+
+          {isAaV2 && !(initialData as any)?.isLiveTemplate && (
+            <div className="pt-4 border-t border-stone-700">
+              <ItemTemplateLinksPanel
+                systemSlug={campaignSystem || 'aa-v2'}
+                selectedIds={selectedTemplateLinks}
+                onSelectedIdsChange={setSelectedTemplateLinks}
+              />
+            </div>
+          )}
 
           {initialData && (
             <div className="border-t border-stone-700 pt-4 mt-4">
@@ -7646,7 +7693,7 @@ function ItemTemplateLinksPanel({
             Attach roll templates. Their rolls will be copied onto this item, and any future edits to those template rolls will propagate to every linked item automatically.
           </p>
           {templates.length === 0 ? (
-            <p className="text-xs text-stone-500">No item templates exist yet. Create one in the Item Templates view.</p>
+            <p className="text-xs text-stone-500">No roll templates exist yet. Create one in the Roll Templates view.</p>
           ) : (
             <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
               {templates.map((t) => {

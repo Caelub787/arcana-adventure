@@ -1177,6 +1177,19 @@ class ApiClient {
     });
   }
 
+  // Spell ↔ unified Roll Templates link management. Roll Templates are
+  // shared with items (admin item-templates pool); link IDs reference items.id.
+  async getSpellTemplateLinks(spellId: string): Promise<{ templateIds: string[] }> {
+    return this.request(`/spells/${spellId}/template-links`);
+  }
+
+  async setSpellTemplateLinks(spellId: string, templateIds: string[]): Promise<{ templateIds: string[] }> {
+    return this.request(`/spells/${spellId}/template-links`, {
+      method: 'PUT',
+      body: JSON.stringify({ templateIds }),
+    });
+  }
+
   async copyItemToSystem(id: string, targetSystem: string): Promise<Item> {
     return this.request(`/admin/system-items/${id}/copy-to-system`, {
       method: 'POST',

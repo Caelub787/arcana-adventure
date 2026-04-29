@@ -73,7 +73,7 @@ import {
   type CharacterClassSkill, type InsertCharacterClassSkill,
   type WorldCollaborator, type InsertWorldCollaborator,
   type EntityAccess, type InsertEntityAccess,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -211,10 +211,14 @@ export interface IStorage {
   getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]>;
   getSystemItemTemplates(system?: string): Promise<Item[]>;
   getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]>;
+  getSpellsLinkedToRollTemplate(rollTemplateId: string): Promise<{ id: string; system: string | null }[]>;
   getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]>;
   getItemTemplateLinks(itemId: string): Promise<string[]>;
   addItemTemplateLink(itemId: string, templateId: string): Promise<void>;
   removeItemTemplateLink(itemId: string, templateId: string): Promise<void>;
+  getSpellTemplateLinks(spellId: string): Promise<string[]>;
+  addSpellTemplateLink(spellId: string, templateId: string): Promise<void>;
+  removeSpellTemplateLink(spellId: string, templateId: string): Promise<void>;
 
   // Roll Entry operations
   getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
@@ -2055,9 +2059,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]> {
+    // Legacy single-link path: spells.templateSpellId pointing at a campaign-scoped
+    // spell template (the older, pre-unification mechanism). The new unified roll
+    // templates (item-templates pool) are queried via getSpellsLinkedToRollTemplate.
     return await db.select()
       .from(spells)
-      .where(eq(spells.templateSpellId, templateSpellId));
+      .where(eq(spells.templateSpellId, templateSpellId)) as Spell[];
+  }
+
+  async getSpellsLinkedToRollTemplate(rollTemplateId: string): Promise<{ id: string; system: string | null }[]> {
+    // Unified roll templates live in the items table. spell_template_links.templateId
+    // references items.id. spell_template_links.spellId may reference EITHER
+    // spells.id OR system_spells.id, so we just return ids and let callers do the
+    // owner-agnostic roll-entry fan-out (rolls table is keyed by ownerType+ownerId).
+    const rows = await db.select({ spellId: spellTemplateLinks.spellId })
+      .from(spellTemplateLinks)
+      .where(eq(spellTemplateLinks.templateId, rollTemplateId));
+    if (rows.length === 0) return [];
+    const ids = rows.map(r => r.spellId);
+    // Best-effort system lookup (used by validators); systemSpells doesn't always
+    // have a system column matching items.system, so default to null when missing.
+    const sp = await db.select({ id: spells.id, system: spells.system })
+      .from(spells)
+      .where(inArray(spells.id, ids));
+    const sysMap = new Map<string, string | null>();
+    for (const r of sp) sysMap.set(r.id, r.system ?? null);
+    return ids.map(id => ({ id, system: sysMap.get(id) ?? null }));
+  }
+
+  async getSpellTemplateLinks(spellId: string): Promise<string[]> {
+    const rows = await db.select({ templateId: spellTemplateLinks.templateId })
+      .from(spellTemplateLinks)
+      .where(eq(spellTemplateLinks.spellId, spellId));
+    return rows.map(r => r.templateId);
+  }
+
+  async addSpellTemplateLink(spellId: string, templateId: string): Promise<void> {
+    await db.insert(spellTemplateLinks)
+      .values({ spellId, templateId })
+      .onConflictDoNothing();
+  }
+
+  async removeSpellTemplateLink(spellId: string, templateId: string): Promise<void> {
+    await db.delete(spellTemplateLinks)
+      .where(and(
+        eq(spellTemplateLinks.spellId, spellId),
+        eq(spellTemplateLinks.templateId, templateId),
+      ));
   }
 
   async getRollEntriesByTemplateRollId(fromTemplateRollId: string): Promise<RollEntry[]> {

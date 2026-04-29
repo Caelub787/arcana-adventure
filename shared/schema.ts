@@ -739,8 +739,10 @@ export const spells = pgTable("spells", {
   saveDc: integer("save_dc"),
   saveSuccessEffect: text("save_success_effect"),
   isTemplate: boolean("is_template").default(false).notNull(),
+  isLiveTemplate: boolean("is_live_template").default(false).notNull(), // True for admin-managed live spell templates whose roll edits propagate to all linked spells
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
   templateSpellId: varchar("template_spell_id").references(() => spells.id, { onDelete: "set null" }),
+  system: text("system"), // 'arcana-adventure' | 'aa-v2' — for admin-managed system spells / templates
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -749,6 +751,26 @@ export const insertSpellSchema = createInsertSchema(spells).omit({
 
 export type InsertSpell = z.infer<typeof insertSpellSchema>;
 export type Spell = typeof spells.$inferSelect;
+
+// Spell ↔ template join table (many-to-many) for AAv2 multi-template links.
+// Mirrors itemTemplateLinks. Unlike templateSpellId (legacy single-link), this
+// table supports a spell inheriting rolls from multiple live spell templates.
+// NOTE: spellId has no FK constraint so it can hold either a `spells.id` OR a
+// `system_spells.id` (the AAv2 admin spell catalog lives in system_spells).
+// Cleanup on owner-delete is handled explicitly by the relevant routes.
+export const spellTemplateLinks = pgTable("spell_template_links", {
+  spellId: varchar("spell_id").notNull(),
+  // templateId references the unified roll-templates list, which lives in
+  // items.id rows where is_live_template = true. Items + spells share the
+  // same templates pool. Cascade delete cleans the join when a template is removed.
+  templateId: varchar("template_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.spellId, t.templateId] }),
+}));
+
+export const insertSpellTemplateLinkSchema = createInsertSchema(spellTemplateLinks);
+export type InsertSpellTemplateLink = z.infer<typeof insertSpellTemplateLinkSchema>;
+export type SpellTemplateLink = typeof spellTemplateLinks.$inferSelect;
 
 // Hotbars table (for quick access slots)
 export const hotbars = pgTable("hotbars", {
