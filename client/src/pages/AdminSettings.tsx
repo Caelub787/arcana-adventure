@@ -7331,14 +7331,13 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
       return;
     }
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
-    // Diff existing vs selected to detect a change worth syncing.
-    const existingLinks = existingSpellLinks?.templateIds || [];
-    const linksChanged =
-      isAaV2 && (
-        selectedTemplateLinks.length !== existingLinks.length ||
-        selectedTemplateLinks.some(id => !existingLinks.includes(id))
-      );
-    const linksToSync = linksChanged ? selectedTemplateLinks : (!initialData ? selectedTemplateLinks : undefined);
+    // Template links: in AAv2 edit mode, the SpellTemplateLinksPanel commits
+    // every checkbox toggle to the server live, so save-time sync would just
+    // be a redundant write that can race against an in-flight live mutation.
+    // We only need to sync at save time for brand-new spells (no id yet).
+    const linksToSync = isAaV2 && !initialData?.id
+      ? selectedTemplateLinks
+      : undefined;
     onSave({
       name: formData.name,
       description: formData.description,
@@ -7510,6 +7509,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
                 systemSlug={campaignSystem || 'aa-v2'}
                 selectedIds={selectedTemplateLinks}
                 onSelectedIdsChange={setSelectedTemplateLinks}
+                ownerType="spell"
+                ownerId={initialData?.id}
               />
             </div>
           )}
@@ -7648,12 +7649,24 @@ function ItemTemplateLinksPanel({
   systemSlug,
   selectedIds,
   onSelectedIdsChange,
+  ownerType,
+  ownerId,
 }: {
   systemSlug: string;
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
+  // When ownerType + ownerId are provided, every checkbox toggle commits to
+  // the server immediately (live mode) so rolls fan out the moment the user
+  // ticks the box. When ownerId is missing (e.g. creating a brand-new item or
+  // spell that does not yet have an id), the panel falls back to buffered
+  // mode and the parent form syncs links on save.
+  ownerType?: 'item' | 'spell';
+  ownerId?: string;
 }) {
   const [expanded, setExpanded] = useState<boolean>(false);
+  const queryClient = useQueryClient();
+  const isLive = !!ownerId && !!ownerType;
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery<Item[]>({
     queryKey: ['item-templates', systemSlug],
@@ -7661,11 +7674,42 @@ function ItemTemplateLinksPanel({
     staleTime: 5 * 60 * 1000,
   });
 
+  const liveMutation = useMutation({
+    mutationFn: async (nextIds: string[]) => {
+      if (!ownerId || !ownerType) throw new Error('Live mode requires ownerType and ownerId');
+      if (ownerType === 'item') {
+        return api.setItemTemplateLinks(ownerId, nextIds);
+      }
+      return api.setSpellTemplateLinks(ownerId, nextIds);
+    },
+    onSuccess: (data, nextIds) => {
+      // Update the parent's local state and invalidate the rolls editor + the
+      // template-links query so the inherited rolls re-render right away.
+      onSelectedIdsChange(data?.templateIds ?? nextIds);
+      if (ownerType && ownerId) {
+        queryClient.invalidateQueries({ queryKey: ['rollEntries', ownerType, ownerId] });
+        queryClient.invalidateQueries({
+          queryKey: [ownerType === 'item' ? 'item-template-links' : 'spell-template-links', ownerId],
+        });
+      }
+      setPendingId(null);
+    },
+    onError: (err: any) => {
+      setPendingId(null);
+      toast({ title: 'Failed to update template links', description: err?.message || String(err), variant: 'destructive' });
+    },
+  });
+
   const toggle = (templateId: string) => {
     const next = selectedIds.includes(templateId)
       ? selectedIds.filter(id => id !== templateId)
       : [...selectedIds, templateId];
-    onSelectedIdsChange(next);
+    if (isLive) {
+      setPendingId(templateId);
+      liveMutation.mutate(next);
+    } else {
+      onSelectedIdsChange(next);
+    }
   };
 
   const summary = selectedIds.length === 0
@@ -7690,7 +7734,9 @@ function ItemTemplateLinksPanel({
       {expanded && (
         <div className="mt-2 p-3 rounded border border-stone-700 bg-stone-900/40">
           <p className="text-xs text-stone-500 mb-3">
-            Attach roll templates. Their rolls will be copied onto this item, and any future edits to those template rolls will propagate to every linked item automatically.
+            {isLive
+              ? `Tick a box to add this template's rolls to the ${ownerType} immediately. Untick to remove its inherited rolls. Future edits to the template propagate automatically.`
+              : `Attach roll templates. Their rolls will be copied onto this ${ownerType ?? 'item'}, and any future edits to those template rolls will propagate automatically.`}
           </p>
           {templates.length === 0 ? (
             <p className="text-xs text-stone-500">No roll templates exist yet. Create one in the Roll Templates view.</p>
@@ -7698,24 +7744,29 @@ function ItemTemplateLinksPanel({
             <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
               {templates.map((t) => {
                 const checked = selectedIds.includes(t.id);
+                const isPending = liveMutation.isPending && pendingId === t.id;
                 return (
                   <label
                     key={t.id}
-                    className="flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 cursor-pointer"
+                    className={`flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 ${liveMutation.isPending ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
                     data-testid={`label-template-link-${t.id}`}
                   >
                     <Checkbox
                       checked={checked}
+                      disabled={liveMutation.isPending}
                       onCheckedChange={() => toggle(t.id)}
                       data-testid={`checkbox-template-link-${t.id}`}
                     />
                     <span className="text-sm text-stone-200">{t.name}</span>
+                    {isPending && <span className="text-xs text-amber-500 ml-auto">Saving…</span>}
                   </label>
                 );
               })}
             </div>
           )}
-          <p className="text-xs text-amber-600/80 mt-2">Template links are saved when you save the item.</p>
+          {!isLive && (
+            <p className="text-xs text-amber-600/80 mt-2">Template links are saved when you save the {ownerType ?? 'item'}.</p>
+          )}
         </div>
       )}
     </div>
@@ -7998,13 +8049,13 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
     };
     // Only sync template-links for AAv2 items. For legacy systems, the panel
     // isn't shown and we must never write back an empty selection.
-    //   - In create mode (no initialData), the user's selection IS the desired state.
-    //   - In edit mode, we only have a true desired state once existingLinks has
-    //     loaded; passing `selectedTemplateLinks` (which initialises to []) before
-    //     the GET resolves would silently wipe all existing links on the server.
-    const linksToSync = !isAaV2
-      ? undefined
-      : !initialData?.id || existingLinks?.templateIds !== undefined
+    //   - In create mode (no id yet), the user's selection IS the desired
+    //     state and is sent on Save.
+    //   - In edit mode, the ItemTemplateLinksPanel commits every checkbox
+    //     toggle to the server live, so we must NOT re-send links here. Doing
+    //     so would race with any in-flight live mutation and could silently
+    //     overwrite the just-committed state with a stale snapshot.
+    const linksToSync = isAaV2 && !initialData?.id
       ? selectedTemplateLinks
       : undefined;
     onSave(
@@ -8473,6 +8524,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   systemSlug={campaignSystem || (initialData as any)?.system || 'aa-v2'}
                   selectedIds={selectedTemplateLinks}
                   onSelectedIdsChange={setSelectedTemplateLinks}
+                  ownerType="item"
+                  ownerId={initialData?.id}
                 />
               </div>
             )}
