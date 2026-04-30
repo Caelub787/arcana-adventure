@@ -443,6 +443,14 @@ export const items = pgTable("items", {
   containerId: varchar("container_id").references((): AnyPgColumn => items.id, { onDelete: "cascade" }), // For nested inventories
   isTemplate: boolean("is_template").default(false).notNull(), // True for campaign item templates
   isLiveTemplate: boolean("is_live_template").default(false).notNull(), // True for admin-managed live templates whose roll edits propagate to all linked items
+  // For live Roll Templates only: positions the entire template's inherited rolls
+  // among the owner's other rolls (lower = higher up). Default 1.
+  templatePriority: integer("template_priority").default(1).notNull(),
+  // For live Roll Templates only: when true, the template's inherited rolls render
+  // as one contiguous group ordered by their own per-roll priorities, anchored at
+  // `templatePriority` in the owner's list. When false, inherited rolls participate
+  // in the owner's overall priority sort like any other roll. Default false.
+  templateUseOwnOrder: boolean("template_use_own_order").default(false).notNull(),
   name: text("name").notNull(),
   image: text("image"),
   description: text("description"), // GM only editable
@@ -1336,6 +1344,12 @@ export const rollEntries = pgTable("roll_entries", {
   attribute: text("attribute"), // "might", "finesse", "wit", "presence", "will", "craft" - adds attribute mod
   applyToStat: text("apply_to_stat").default("none"), // "hp", "energy", "none" - what stat to affect on target
   sortOrder: integer("sort_order").default(0).notNull(),
+  // Optional folder name for visually grouping rolls in the editor/character sheet.
+  // Null/empty = ungrouped (rendered at the top level). Folder strings are case-sensitive.
+  folder: text("folder"),
+  // Sort priority: lower numbers render higher up. Default 1; can be negative.
+  // Mixed with `sortOrder` as a tiebreak so manual reorder still works inside a priority bucket.
+  priority: integer("priority").default(1).notNull(),
   range: integer("range"),
   aoeShape: text("aoe_shape"), // "cone", "sphere", "line", "cube", "cylinder"
   aoeRange: integer("aoe_range"),

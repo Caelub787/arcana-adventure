@@ -4300,23 +4300,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const spellOwnerIds = Array.from(new Set(
       sourceRolls.filter(r => r.ownerType === 'spell').map(r => r.ownerId)
     ));
-    const nameByOwner = new Map<string, string>();
+    // Pull each template's name AND its templatePriority / templateUseOwnOrder so the
+    // client can group inherited rolls by source template and honour the template's
+    // group-mode toggle without extra round-trips. Spells don't carry the
+    // template-level ordering fields today, so they fall back to defaults.
+    const templateMetaByOwner = new Map<string, { name: string; templatePriority: number; templateUseOwnOrder: boolean }>();
     if (itemOwnerIds.length > 0) {
-      const its = await db.select({ id: items.id, name: items.name }).from(items).where(inArray(items.id, itemOwnerIds));
-      for (const it of its) nameByOwner.set(`item:${it.id}`, it.name);
+      const its = await db.select({
+        id: items.id,
+        name: items.name,
+        templatePriority: items.templatePriority,
+        templateUseOwnOrder: items.templateUseOwnOrder,
+      }).from(items).where(inArray(items.id, itemOwnerIds));
+      for (const it of its) templateMetaByOwner.set(`item:${it.id}`, {
+        name: it.name,
+        templatePriority: it.templatePriority ?? 1,
+        templateUseOwnOrder: it.templateUseOwnOrder ?? false,
+      });
     }
     if (spellOwnerIds.length > 0) {
       const sps = await db.select({ id: spells.id, name: spells.name }).from(spells).where(inArray(spells.id, spellOwnerIds));
-      for (const sp of sps) nameByOwner.set(`spell:${sp.id}`, sp.name);
+      for (const sp of sps) templateMetaByOwner.set(`spell:${sp.id}`, {
+        name: sp.name,
+        templatePriority: 1,
+        templateUseOwnOrder: false,
+      });
     }
-    const templateNameByRollId = new Map<string, string>();
+    const templateMetaByRollId = new Map<string, { name: string; templatePriority: number; templateUseOwnOrder: boolean; sourceOwnerKey: string }>();
     for (const sr of sourceRolls) {
-      const name = nameByOwner.get(`${sr.ownerType}:${sr.ownerId}`);
-      if (name) templateNameByRollId.set(sr.id, name);
+      const meta = templateMetaByOwner.get(`${sr.ownerType}:${sr.ownerId}`);
+      if (meta) templateMetaByRollId.set(sr.id, { ...meta, sourceOwnerKey: `${sr.ownerType}:${sr.ownerId}` });
     }
-    return rolls.map(r => r.fromTemplateRollId
-      ? { ...r, templateName: templateNameByRollId.get(r.fromTemplateRollId) }
-      : r);
+    return rolls.map(r => {
+      if (!r.fromTemplateRollId) return r;
+      const meta = templateMetaByRollId.get(r.fromTemplateRollId);
+      if (!meta) return r;
+      return {
+        ...r,
+        templateName: meta.name,
+        templatePriority: meta.templatePriority,
+        templateUseOwnOrder: meta.templateUseOwnOrder,
+        templateOwnerKey: meta.sourceOwnerKey,
+      };
+    });
   };
 
   app.get("/api/items/:id/rolls", requireAuth, async (req, res) => {

@@ -7727,11 +7727,20 @@ interface TemplateFormDialogProps {
 function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: TemplateFormDialogProps) {
   const [name, setName] = useState(initialData?.name || '');
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
+  // Template-level ordering controls. `templatePriority` slots this template's
+  // inherited rolls into the owner's overall list (lower = higher up).
+  // `templateUseOwnOrder` makes the inherited rolls render as one contiguous
+  // group (anchored at templatePriority) ordered internally by their own
+  // per-roll priorities, instead of being interleaved with the owner's other rolls.
+  const [templatePriority, setTemplatePriority] = useState<number>(initialData?.templatePriority ?? 1);
+  const [templateUseOwnOrder, setTemplateUseOwnOrder] = useState<boolean>(initialData?.templateUseOwnOrder ?? false);
 
   useEffect(() => {
     if (open) {
       setName(initialData?.name || '');
       setDraftRolls([]);
+      setTemplatePriority(initialData?.templatePriority ?? 1);
+      setTemplateUseOwnOrder(initialData?.templateUseOwnOrder ?? false);
     }
   }, [open, initialData?.id]);
 
@@ -7744,6 +7753,8 @@ function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading
       name: name.trim(),
       itemType: initialData?.itemType || 'utility',
       rarity: initialData?.rarity || 'common',
+      templatePriority,
+      templateUseOwnOrder,
     };
     onSave(payload, !initialData?.id ? draftRolls : undefined);
   };
@@ -7782,6 +7793,42 @@ function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading
               onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
               campaignSystem={campaignSystem || 'arcana-adventure'}
             />
+          </div>
+
+          <div className="pt-4 border-t border-stone-700 space-y-3">
+            <div className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Template Ordering</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="template-priority" className="text-stone-300 text-xs">
+                  Template Priority
+                </Label>
+                <Input
+                  id="template-priority"
+                  type="number"
+                  value={templatePriority}
+                  onChange={(e) => setTemplatePriority(Number(e.target.value))}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-template-priority"
+                />
+                <p className="text-[10px] text-stone-500">Lower sorts higher. Used to slot this template's rolls into the owner's list.</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-stone-300 text-xs">Group Mode</Label>
+                <label className="flex items-start gap-2 text-xs text-stone-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={templateUseOwnOrder}
+                    onChange={(e) => setTemplateUseOwnOrder(e.target.checked)}
+                    className="mt-0.5"
+                    data-testid="checkbox-template-use-own-order"
+                  />
+                  <span>
+                    Use template's own roll ordering
+                    <span className="block text-[10px] text-stone-500">When on, this template's rolls render as one contiguous group anchored at Template Priority, ordered internally by their own priorities.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 

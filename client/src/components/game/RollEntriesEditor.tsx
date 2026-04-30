@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy, RotateCcw } from "lucide-react";
+import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy, RotateCcw, Folder as FolderIcon, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { sortRollsForDisplay, collectFolderNames, type RollDisplayNode } from "@/lib/rollSort";
 
 interface RollEntry {
   id: string;
@@ -57,6 +58,12 @@ interface RollEntry {
   dcToSucceedSuccessEffect?: string;
   fromTemplateRollId?: string | null;
   templateName?: string;
+  templatePriority?: number | null;
+  templateUseOwnOrder?: boolean | null;
+  templateOwnerKey?: string;
+  folder?: string | null;
+  priority?: number | null;
+  isOverridden?: boolean;
 }
 
 interface RollEntriesEditorProps {
@@ -119,6 +126,8 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     attribute: "",
     applyToStat: "none",
     sortOrder: 0,
+    folder: null,
+    priority: 1,
     range: undefined,
     aoeShape: "",
     aoeRange: undefined,
@@ -399,8 +408,10 @@ function RollForm({
   isNew: boolean;
   availableEffects?: any[];
   campaignSystem?: string;
+  folderSuggestions?: string[];
 }) {
   const prefix = isNew ? "new-roll" : `edit-roll-${form.id}`;
+  const folderListId = `${prefix}-folderList`;
 
   return (
     <div className="space-y-2" data-testid={isNew ? "form-new-roll" : `form-edit-roll-${form.id}`}>
@@ -413,6 +424,45 @@ function RollForm({
           placeholder="Roll name"
           data-testid={`input-${prefix}-name`}
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs text-stone-400">Folder</Label>
+          <Input
+            className="bg-stone-900 border-stone-600 h-7 text-xs"
+            value={form.folder || ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setForm((f) => ({ ...f, folder: v.trim() === "" ? null : v }));
+            }}
+            placeholder="(none)"
+            list={folderListId}
+            data-testid={`input-${prefix}-folder`}
+          />
+          {(folderSuggestions ?? []).length > 0 && (
+            <datalist id={folderListId}>
+              {(folderSuggestions ?? []).map((f) => (
+                <option key={f} value={f} />
+              ))}
+            </datalist>
+          )}
+        </div>
+        <div>
+          <Label className="text-xs text-stone-400">Priority</Label>
+          <Input
+            className="bg-stone-900 border-stone-600 h-7 text-xs"
+            type="number"
+            value={form.priority ?? 1}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const parsed = parseInt(raw, 10);
+              setForm((f) => ({ ...f, priority: Number.isFinite(parsed) ? parsed : 1 }));
+            }}
+            placeholder="1"
+            data-testid={`input-${prefix}-priority`}
+          />
+        </div>
       </div>
 
       <div>
@@ -1134,21 +1184,44 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     createMutation.mutate({ ...rest, name: newName, sortOrder: maxSort + 1 });
   };
 
-  const allSortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
-  const sortedRolls = canEdit ? allSortedRolls : allSortedRolls.filter(roll => {
+  // Filter rolls by visibility, then sort + group via the shared util.
+  // Sort is now driven by `priority` (lower = higher up) with `sortOrder` as a
+  // tiebreak inside the same priority bucket. Folders and isolated template
+  // groups are interleaved by their effective priority — see lib/rollSort.
+  const visibleRolls = canEdit ? (rolls as RollEntry[]) : (rolls as RollEntry[]).filter(roll => {
     if (!roll.isHidden) return true;
     if (roll.requiredSkillId) return true;
     return false;
   });
+  const displayNodes: RollDisplayNode<RollEntry>[] = useMemo(() => sortRollsForDisplay(visibleRolls), [visibleRolls]);
+  // Folder name suggestions for the form's datalist autocomplete.
+  const folderSuggestions = useMemo(() => collectFolderNames(rolls as RollEntry[]), [rolls]);
+  // Flatten the grouped display back to a roll order for the up/down reorder
+  // buttons (which still tweak sortOrder within a priority bucket).
+  const flatDisplayOrder: RollEntry[] = useMemo(() => {
+    const out: RollEntry[] = [];
+    const walk = (nodes: RollDisplayNode<RollEntry>[]) => {
+      for (const n of nodes) {
+        if (n.kind === 'roll') out.push(n.roll);
+        else if (n.kind === 'folder') out.push(...n.rolls);
+        else for (const c of n.children) {
+          if (c.kind === 'roll') out.push(c.roll);
+          else out.push(...c.rolls);
+        }
+      }
+    };
+    walk(displayNodes);
+    return out;
+  }, [displayNodes]);
 
   const handleReorder = async (rollId: string, direction: 'up' | 'down') => {
-    const idx = sortedRolls.findIndex(r => r.id === rollId);
+    const idx = flatDisplayOrder.findIndex(r => r.id === rollId);
     if (idx < 0) return;
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= sortedRolls.length) return;
+    if (targetIdx < 0 || targetIdx >= flatDisplayOrder.length) return;
 
-    const current = sortedRolls[idx];
-    const target = sortedRolls[targetIdx];
+    const current = flatDisplayOrder[idx];
+    const target = flatDisplayOrder[targetIdx];
 
     if (isDraftMode) {
       const updated = draftRollsData.map(r => {
@@ -1202,17 +1275,21 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
             isNew
             availableEffects={availableEffects}
             campaignSystem={campaignSystem}
+            folderSuggestions={folderSuggestions}
           />
         </div>
       )}
 
       {isLoading && <p className="text-xs text-stone-400 italic">Loading rolls...</p>}
 
-      {!isLoading && sortedRolls.length === 0 && !addingNew && (
+      {!isLoading && flatDisplayOrder.length === 0 && !addingNew && (
         <p className="text-xs text-stone-400 italic" data-testid="text-no-rolls">No rolls defined</p>
       )}
 
-      {sortedRolls.map((roll) => {
+      {(() => {
+        // Per-roll renderer extracted so it can be reused inside folder bodies
+        // and template-group blocks. Captures the same closures as before.
+        const renderRoll = (roll: RollEntry): React.ReactNode => {
         const isEditing = editingId === roll.id;
         const isExpanded = expandedId === roll.id;
         const summary = getRollSummary(roll);
@@ -1248,6 +1325,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                 isNew={false}
                 availableEffects={availableEffects}
                 campaignSystem={campaignSystem}
+                folderSuggestions={folderSuggestions}
               />
             ) : (
               <div>
@@ -1312,7 +1390,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
                           onClick={() => handleReorder(roll.id, 'up')}
-                          disabled={sortedRolls.indexOf(roll) === 0}
+                          disabled={flatDisplayOrder.indexOf(roll) === 0}
                           data-testid={`button-move-roll-up-${roll.id}`}
                         >
                           <ArrowUp className="w-3 h-3" />
@@ -1322,7 +1400,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
                           onClick={() => handleReorder(roll.id, 'down')}
-                          disabled={sortedRolls.indexOf(roll) === sortedRolls.length - 1}
+                          disabled={flatDisplayOrder.indexOf(roll) === flatDisplayOrder.length - 1}
                           data-testid={`button-move-roll-down-${roll.id}`}
                         >
                           <ArrowDown className="w-3 h-3" />
@@ -1418,7 +1496,116 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
             )}
           </div>
         );
+        };
+
+        return <DisplayNodes nodes={displayNodes} renderRoll={renderRoll} />;
+      })()}
+    </div>
+  );
+}
+
+// ---------- Folder + template-group rendering ----------
+//
+// `DisplayNodes` walks the output of `sortRollsForDisplay` and renders each
+// node:
+//   - 'roll'           -> render the roll card (delegated back to renderRoll)
+//   - 'folder'         -> a collapsible folder header above its rolls
+//   - 'template-group' -> a contiguous block of inherited rolls from a template
+//                         that has `templateUseOwnOrder=true`. The block has its
+//                         own header with the template name and recursively
+//                         renders its children (which can include folders).
+function DisplayNodes<R extends { id: string }>({
+  nodes,
+  renderRoll,
+}: {
+  nodes: RollDisplayNode<R>[];
+  renderRoll: (roll: R) => React.ReactNode;
+}) {
+  return (
+    <>
+      {nodes.map((node, i) => {
+        if (node.kind === 'roll') return <React.Fragment key={node.roll.id}>{renderRoll(node.roll)}</React.Fragment>;
+        if (node.kind === 'folder') {
+          return (
+            <FolderGroup key={`folder:${node.folder}`} folder={node.folder} rolls={node.rolls} renderRoll={renderRoll} />
+          );
+        }
+        return (
+          <TemplateGroup
+            key={`tplg:${node.templateOwnerKey}`}
+            templateName={node.templateName}
+            nodes={node.children}
+            renderRoll={renderRoll}
+          />
+        );
       })}
+    </>
+  );
+}
+
+function FolderGroup<R extends { id: string }>({
+  folder,
+  rolls,
+  renderRoll,
+}: {
+  folder: string;
+  rolls: R[];
+  renderRoll: (roll: R) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-md border border-stone-700/60 bg-stone-900/40" data-testid={`folder-group-${folder}`}>
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-stone-800/40"
+        onClick={() => setOpen(o => !o)}
+        data-testid={`button-toggle-folder-${folder}`}
+      >
+        {open ? <ChevronDown className="w-3 h-3 text-stone-400" /> : <ChevronUp className="w-3 h-3 text-stone-400" />}
+        <FolderIcon className="w-3 h-3 text-amber-400/80" />
+        <span className="text-xs font-semibold text-stone-200 truncate" data-testid={`text-folder-name-${folder}`}>{folder}</span>
+        <span className="text-[10px] text-stone-500">({rolls.length})</span>
+      </button>
+      {open && (
+        <div className="p-1.5 pt-0 space-y-2">
+          {rolls.map(r => <React.Fragment key={r.id}>{renderRoll(r)}</React.Fragment>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TemplateGroup<R extends { id: string }>({
+  templateName,
+  nodes,
+  renderRoll,
+}: {
+  templateName?: string;
+  nodes: Array<{ kind: 'roll'; roll: R } | { kind: 'folder'; folder: string; rolls: R[] }>;
+  renderRoll: (roll: R) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const label = templateName ? `Template: ${templateName}` : 'Template group';
+  return (
+    <div className="rounded-md border border-amber-700/40 bg-amber-950/10" data-testid={`template-group-${templateName ?? 'unknown'}`}>
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-amber-900/10"
+        onClick={() => setOpen(o => !o)}
+        data-testid={`button-toggle-template-group-${templateName ?? 'unknown'}`}
+      >
+        {open ? <ChevronDown className="w-3 h-3 text-amber-400/80" /> : <ChevronUp className="w-3 h-3 text-amber-400/80" />}
+        <Layers className="w-3 h-3 text-amber-400/80" />
+        <span className="text-xs font-semibold text-amber-200 truncate">{label}</span>
+      </button>
+      {open && (
+        <div className="p-1.5 pt-0 space-y-2">
+          {nodes.map((c) => {
+            if (c.kind === 'roll') return <React.Fragment key={c.roll.id}>{renderRoll(c.roll)}</React.Fragment>;
+            return <FolderGroup key={`folder:${c.folder}`} folder={c.folder} rolls={c.rolls} renderRoll={renderRoll} />;
+          })}
+        </div>
+      )}
     </div>
   );
 }
