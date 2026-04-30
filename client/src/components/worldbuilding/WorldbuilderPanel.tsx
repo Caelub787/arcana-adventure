@@ -133,79 +133,86 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
 
   const createDialog = (
     <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && onCloseCreate) onCloseCreate(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-create-entity">
         <DialogHeader>
           <DialogTitle className="text-stone-100">Create New Article</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs text-stone-400">Article Type</Label>
-            <div className="flex gap-2 mt-1">
-              <button
-                onClick={() => setNewEntity(p => ({ ...p, entityType: "article" }))}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                  newEntity.entityType === "article"
-                    ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
-                    : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
-                }`}
-                data-testid="button-type-article"
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_minmax(0,260px)] gap-4">
+          <div className="space-y-3 min-w-0">
+            <div>
+              <Label className="text-xs text-stone-400">Article Type</Label>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => setNewEntity(p => ({ ...p, entityType: "article" }))}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                    newEntity.entityType === "article"
+                      ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                      : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
+                  }`}
+                  data-testid="button-type-article"
+                >
+                  <FileText className="h-4 w-4" />
+                  Article
+                </button>
+                <button
+                  onClick={() => setNewEntity(p => ({ ...p, entityType: "canvas" }))}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                    newEntity.entityType === "canvas"
+                      ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
+                      : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
+                  }`}
+                  data-testid="button-type-canvas"
+                >
+                  <Layout className="h-4 w-4" />
+                  Canvas
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input
+                value={newEntity.displayName}
+                onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
+                placeholder="Article name..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-entity-name"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea
+                value={newEntity.description}
+                onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
+                placeholder="Brief description..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-entity-description"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Visibility</Label>
+              <select
+                value={newEntity.visibility}
+                onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
+                data-testid="select-entity-visibility"
               >
-                <FileText className="h-4 w-4" />
-                Article
-              </button>
-              <button
-                onClick={() => setNewEntity(p => ({ ...p, entityType: "canvas" }))}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                  newEntity.entityType === "canvas"
-                    ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
-                    : "border-stone-700 bg-stone-800 text-stone-400 hover:border-stone-600"
-                }`}
-                data-testid="button-type-canvas"
-              >
-                <Layout className="h-4 w-4" />
-                Canvas
-              </button>
+                <option value="gm_only">GM Only</option>
+                <option value="shared">Shared</option>
+                <option value="player_visible">Player Visible</option>
+              </select>
             </div>
           </div>
-          <div>
-            <Label className="text-xs text-stone-400">Name</Label>
-            <Input
-              value={newEntity.displayName}
-              onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
-              placeholder="Article name..."
-              className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-              data-testid="input-entity-name"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-stone-400">Description</Label>
-            <Textarea
-              value={newEntity.description}
-              onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
-              placeholder="Brief description..."
-              className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-              data-testid="input-entity-description"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-stone-400">Visibility</Label>
-            <select
-              value={newEntity.visibility}
-              onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
-              className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
-              data-testid="select-entity-visibility"
-            >
-              <option value="gm_only">GM Only</option>
-              <option value="shared">Shared</option>
-              <option value="player_visible">Player Visible</option>
-            </select>
-          </div>
-          <div>
-            <Label className="text-xs text-stone-400 flex items-center gap-1">
+          <div className="flex flex-col min-w-0 md:border-l md:border-stone-700 md:pl-4">
+            <Label className="text-xs text-stone-400 flex items-center gap-1 mb-1">
               <Tag className="h-3 w-3" /> Tags
+              {newEntity.selectedTags.length > 0 && (
+                <span className="ml-auto text-[10px] text-stone-500" data-testid="text-create-tag-count">
+                  {newEntity.selectedTags.length} selected
+                </span>
+              )}
             </Label>
             {newEntity.selectedTags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1 mb-1.5">
+              <div className="flex flex-wrap gap-1 mb-1.5 max-h-24 overflow-y-auto pr-1">
                 {newEntity.selectedTags.map(tag => (
                   <Badge
                     key={tag}
@@ -224,26 +231,30 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
               value={createTagSearch}
               onChange={(e) => setCreateTagSearch(e.target.value)}
               placeholder="Search tags..."
-              className="mt-1 bg-stone-800 border-stone-700 text-stone-200 text-xs h-7"
+              className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 mb-1"
               data-testid="input-create-tag-search"
             />
-            <div className="mt-1 max-h-32 overflow-y-auto border border-stone-700 rounded bg-stone-800/50">
-              {filteredCreateTags.map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => toggleCreateTag(tag)}
-                  className={`w-full text-left px-2 py-1 text-xs transition-colors flex items-center justify-between ${
-                    newEntity.selectedTags.includes(tag) ? 'bg-stone-700/50 text-amber-400' : 'text-stone-300 hover:bg-stone-700/30'
-                  }`}
-                  data-testid={`create-tag-option-${tag}`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
-                    {tag}
-                  </span>
-                  {newEntity.selectedTags.includes(tag) && <span className="text-[10px]">&#10003;</span>}
-                </button>
-              ))}
+            <div className="flex-1 min-h-[180px] md:min-h-[260px] md:max-h-[420px] max-h-48 overflow-y-auto border border-stone-700 rounded bg-stone-800/50">
+              {filteredCreateTags.length === 0 ? (
+                <div className="text-[11px] text-stone-500 px-2 py-2 italic">No tags match your search.</div>
+              ) : (
+                filteredCreateTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleCreateTag(tag)}
+                    className={`w-full text-left px-2 py-1 text-xs transition-colors flex items-center justify-between ${
+                      newEntity.selectedTags.includes(tag) ? 'bg-stone-700/50 text-amber-400' : 'text-stone-300 hover:bg-stone-700/30'
+                    }`}
+                    data-testid={`create-tag-option-${tag}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TAG_COLORS[tag] || "#78909c" }} />
+                      {tag}
+                    </span>
+                    {newEntity.selectedTags.includes(tag) && <span className="text-[10px]">&#10003;</span>}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
