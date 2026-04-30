@@ -1064,6 +1064,10 @@ class ApiClient {
     return this.request(`/roll-entries/${id}`, { method: 'DELETE' });
   }
 
+  async resetRollEntryToTemplate(id: string): Promise<RollEntry> {
+    return this.request(`/roll-entries/${id}/reset-template`, { method: 'POST' });
+  }
+
   // Public system item (single item for entity references)
   async getSystemItem(id: string): Promise<Item> {
     return this.request(`/system-items/${id}`);

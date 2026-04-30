@@ -4483,30 +4483,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not authorized to modify this roll entry" });
       }
 
-      const entry = await storage.updateRollEntry(req.params.id, req.body);
+      // Detect whether the OWNER of the roll being patched is a *live*
+      // Roll Template (admin-managed template whose rolls propagate to all
+      // linked items/spells). Only `isLiveTemplate=true` qualifies — plain
+      // `isTemplate=true` is also set on regular admin system-items, so it
+      // cannot be used here. If the owner is NOT a live template and the
+      // roll has a template provenance pointer, this edit is a per-instance
+      // override — flip isOverridden=true so future template propagation
+      // skips this row.
+      const ownerIsTemplate = await (async () => {
+        if (existing.ownerType === 'item') {
+          const ownerItem = await storage.getItem(existing.ownerId);
+          return ownerItem?.isLiveTemplate === true;
+        } else if (existing.ownerType === 'spell') {
+          const ownerSpell = await storage.getSpell(existing.ownerId);
+          return ownerSpell?.isLiveTemplate === true;
+        }
+        return false;
+      })();
+      // Strip server-managed / forbidden fields from the client payload so
+      // callers cannot rewrite ownership or provenance pointers via PATCH.
+      // `isOverridden` is server-set (auto-flipped below) and must never be
+      // accepted from the client; `templateName` is a UI enrichment and not
+      // a real schema column.
+      const patchBody = { ...req.body };
+      delete patchBody.id;
+      delete patchBody.ownerId;
+      delete patchBody.ownerType;
+      delete patchBody.fromTemplateRollId;
+      delete patchBody.isOverridden;
+      delete patchBody.templateName;
+      if (!ownerIsTemplate && existing.fromTemplateRollId) {
+        patchBody.isOverridden = true;
+      }
+
+      const entry = await storage.updateRollEntry(req.params.id, patchBody);
       if (!entry) {
         return res.status(404).json({ error: "Roll entry not found" });
       }
 
-      // Roll propagation: if this roll belongs to a template, update all inherited copies
-      const isTemplateOwner = await (async () => {
-        if (entry.ownerType === 'item') {
-          const ownerItem = await storage.getItem(entry.ownerId);
-          return ownerItem?.isTemplate === true;
-        } else if (entry.ownerType === 'spell') {
-          const ownerSpell = await storage.getSpell(entry.ownerId);
-          return ownerSpell?.isTemplate === true;
-        }
-        return false;
-      })();
-
-      if (isTemplateOwner) {
+      // Roll propagation: if this roll belongs to a template, update all
+      // inherited copies — but skip any copy the user has already
+      // overridden so their per-instance edits survive future template
+      // updates (this is exactly the "untouched ones still update" rule).
+      if (ownerIsTemplate) {
         const inheritedRolls = await storage.getRollEntriesByTemplateRollId(entry.id);
         const propagateFields = { ...req.body };
         delete propagateFields.ownerId;
         delete propagateFields.ownerType;
         delete propagateFields.fromTemplateRollId;
+        delete propagateFields.isOverridden;
         for (const inherited of inheritedRolls) {
+          if (inherited.isOverridden) continue;
           await storage.updateRollEntry(inherited.id, propagateFields);
         }
       }
@@ -4533,15 +4561,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Roll propagation: if this roll belongs to a template, delete all inherited copies
+      // Roll propagation: if this roll belongs to a *live* Roll Template,
+      // clean up inherited copies. Only `isLiveTemplate=true` qualifies —
+      // plain `isTemplate=true` is also set on regular admin system-items
+      // and would over-fire here.
       if (entry) {
         const isTemplateOwner = await (async () => {
           if (entry.ownerType === 'item') {
             const ownerItem = await storage.getItem(entry.ownerId);
-            return ownerItem?.isTemplate === true;
+            return ownerItem?.isLiveTemplate === true;
           } else if (entry.ownerType === 'spell') {
             const ownerSpell = await storage.getSpell(entry.ownerId);
-            return ownerSpell?.isTemplate === true;
+            return ownerSpell?.isLiveTemplate === true;
           }
           return false;
         })();
@@ -4549,7 +4580,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isTemplateOwner) {
           const inheritedRolls = await storage.getRollEntriesByTemplateRollId(entry.id);
           for (const inherited of inheritedRolls) {
-            await storage.deleteRollEntry(inherited.id);
+            if (inherited.isOverridden) {
+              // Preserve user's per-instance customisation: detach the
+              // provenance pointer so the row survives as a standalone roll
+              // on the owning item/spell.
+              await db.update(rollEntries)
+                .set({ fromTemplateRollId: null, isOverridden: false })
+                .where(eq(rollEntries.id, inherited.id));
+            } else {
+              await storage.deleteRollEntry(inherited.id);
+            }
           }
         }
       }
@@ -4558,6 +4598,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete roll entry" });
+    }
+  });
+
+  // Reset an overridden inherited roll back to its source template roll's
+  // current values. Clears the isOverridden flag so future template edits
+  // resume propagating to this row.
+  app.post("/api/roll-entries/:id/reset-template", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const existing = await db.select().from(rollEntries).where(eq(rollEntries.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Roll entry not found" });
+      if (!existing.fromTemplateRollId) {
+        return res.status(400).json({ error: "Roll is not inherited from a template" });
+      }
+      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify this roll entry" });
+      }
+      const source = await db.select().from(rollEntries).where(eq(rollEntries.id, existing.fromTemplateRollId)).then(r => r[0]);
+      if (!source) {
+        return res.status(404).json({ error: "Source template roll no longer exists" });
+      }
+      // Verify the source roll's owner is actually a live Roll Template.
+      // Without this check, a malformed/stale fromTemplateRollId could be
+      // used to copy data from arbitrary roll rows.
+      const sourceIsTemplateRoll = await (async () => {
+        if (source.ownerType !== 'item') return false;
+        const sourceOwner = await storage.getItem(source.ownerId);
+        return sourceOwner?.isLiveTemplate === true;
+      })();
+      if (!sourceIsTemplateRoll) {
+        return res.status(400).json({ error: "Source roll is not part of a live Roll Template" });
+      }
+      // Copy every field from the source template roll except identity /
+      // ownership / provenance markers, and clear isOverridden so future
+      // template edits start propagating again.
+      const { id: _id, ownerId: _o, ownerType: _t, fromTemplateRollId: _f, isOverridden: _io, ...resetFields } = source as any;
+      const updated = await storage.updateRollEntry(req.params.id, {
+        ...resetFields,
+        isOverridden: false,
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to reset roll entry" });
     }
   });
 
@@ -6117,11 +6201,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // the link set. Roll Templates are unified across items + spells.
       const templateRolls = await storage.getRollEntries('item', req.params.id);
       const templateRollIds = templateRolls.map(r => r.id);
-      // 1. Globally delete every roll whose provenance points back to one of this
-      //    template's rolls — across BOTH ownerType='item' and ownerType='spell'
-      //    (covers admin items, campaign items, character items, and spells alike,
-      //    including ones not in any current link record).
+      // 1. Globally clean up every roll whose provenance points back to one of
+      //    this template's rolls — across BOTH ownerType='item' and
+      //    ownerType='spell' (covers admin items, campaign items, character
+      //    items, and spells alike, including ones not in any current link
+      //    record). Overridden inherited rolls are detached (preserved as
+      //    standalone) so the user's per-instance customisation survives the
+      //    template's removal; non-overridden inherited rolls are deleted.
       if (templateRollIds.length > 0) {
+        await db.update(rollEntries)
+          .set({ fromTemplateRollId: null, isOverridden: false })
+          .where(and(
+            inArray(rollEntries.fromTemplateRollId, templateRollIds),
+            eq(rollEntries.isOverridden, true),
+          ));
         await db.delete(rollEntries).where(
           inArray(rollEntries.fromTemplateRollId, templateRollIds),
         );
@@ -6172,11 +6265,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Detach existing template-derived rolls
+      // Detach existing template-derived rolls. Overridden rolls are kept
+      // as standalone rows so the user's per-instance edits survive even
+      // when the template is unlinked from the item.
       const existingRolls = await storage.getRollEntries('item', item.id);
       for (const r of existingRolls) {
         if (r.fromTemplateRollId) {
-          await storage.deleteRollEntry(r.id);
+          if (r.isOverridden) {
+            await db.update(rollEntries)
+              .set({ fromTemplateRollId: null, isOverridden: false })
+              .where(eq(rollEntries.id, r.id));
+          } else {
+            await storage.deleteRollEntry(r.id);
+          }
         }
       }
 
@@ -6301,14 +6402,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const toAdd = Array.from(desired).filter(t => !existingSet.has(t));
       const toRemove = Array.from(existingSet).filter(t => !desired.has(t));
 
-      // Removals: delete inherited rolls whose source roll belongs to the removed template.
+      // Removals: clean up inherited rolls whose source roll belongs to the
+      // removed template. Overridden rolls are detached (kept as standalone)
+      // so the user's per-instance customisation survives unlink.
       if (toRemove.length > 0) {
         const itemRolls = await storage.getRollEntries('item', item.id);
         for (const tid of toRemove) {
           const tplRollIds = new Set((await storage.getRollEntries('item', tid)).map(r => r.id));
           for (const r of itemRolls) {
             if (r.fromTemplateRollId && tplRollIds.has(r.fromTemplateRollId)) {
-              await storage.deleteRollEntry(r.id);
+              if (r.isOverridden) {
+                await db.update(rollEntries)
+                  .set({ fromTemplateRollId: null, isOverridden: false })
+                  .where(eq(rollEntries.id, r.id));
+              } else {
+                await storage.deleteRollEntry(r.id);
+              }
             }
           }
           // Drop the join row if present.
@@ -6452,7 +6561,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const tplRollIds = new Set((await storage.getRollEntries('item', tid)).map(r => r.id));
           for (const r of spellRolls) {
             if (r.fromTemplateRollId && tplRollIds.has(r.fromTemplateRollId)) {
-              await storage.deleteRollEntry(r.id);
+              if (r.isOverridden) {
+                await db.update(rollEntries)
+                  .set({ fromTemplateRollId: null, isOverridden: false })
+                  .where(eq(rollEntries.id, r.id));
+              } else {
+                await storage.deleteRollEntry(r.id);
+              }
             }
           }
           await storage.removeSpellTemplateLink(owner.id, tid);

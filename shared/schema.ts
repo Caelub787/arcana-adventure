@@ -1371,6 +1371,12 @@ export const rollEntries = pgTable("roll_entries", {
   dcToSucceedDcAttribute: text("dc_to_succeed_dc_attribute"),
   dcToSucceedSuccessEffect: text("dc_to_succeed_success_effect"),
   fromTemplateRollId: varchar("from_template_roll_id").references(() => rollEntries.id, { onDelete: "set null" }),
+  // When an inherited roll (one with fromTemplateRollId set) is edited on the
+  // owning item/spell, the server flips this flag to true. Subsequent
+  // template-roll edits and template-roll deletions skip overridden copies so
+  // the user's customisation is preserved. Reset clears the flag and re-syncs
+  // the row from the source template roll.
+  isOverridden: boolean("is_overridden").default(false),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

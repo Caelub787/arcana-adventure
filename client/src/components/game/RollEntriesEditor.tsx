@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy } from "lucide-react";
+import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface RollEntry {
@@ -1058,6 +1058,22 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     },
   });
 
+  const resetTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.resetRollEntryToTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast({ title: "Roll reset", description: "Roll has been restored to the template's current values." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to reset roll", description: err?.message || String(err), variant: "destructive" });
+    },
+  });
+
+  const handleResetTemplate = (id: string) => {
+    if (isDraftMode) return;
+    resetTemplateMutation.mutate(id);
+  };
+
   const handleStartEdit = (roll: RollEntry) => {
     setEditingId(roll.id);
     setEditForm({ ...roll });
@@ -1248,11 +1264,21 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     <span className={`text-xs font-medium truncate ${isHiddenRoll ? 'text-stone-500' : 'text-stone-200'}`} data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
                     {roll.fromTemplateRollId && (
                       <span
-                        className="text-[9px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/50 shrink-0"
-                        title={roll.templateName ? `From template: ${roll.templateName}` : 'Inherited from a linked template'}
+                        className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
+                          (roll as any).isOverridden
+                            ? 'bg-violet-900/60 text-violet-200 border border-violet-700/50'
+                            : 'bg-amber-900/60 text-amber-300 border border-amber-700/50'
+                        }`}
+                        title={
+                          (roll as any).isOverridden
+                            ? `Overridden — your edits to this roll will not be replaced when the template "${roll.templateName ?? 'source'}" updates`
+                            : (roll.templateName ? `From template: ${roll.templateName}` : 'Inherited from a linked template')
+                        }
                         data-testid={`badge-template-roll-${roll.id}`}
                       >
-                        {roll.templateName ? `From: ${roll.templateName}` : 'From template'}
+                        {(roll as any).isOverridden
+                          ? (roll.templateName ? `From: ${roll.templateName} (modified)` : 'From template (modified)')
+                          : (roll.templateName ? `From: ${roll.templateName}` : 'From template')}
                       </span>
                     )}
                     {roll.diceFormula && (
@@ -1279,7 +1305,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         <Dices className="w-3 h-3" />
                       </Button>
                     )}
-                    {canEdit && !roll.fromTemplateRollId && (
+                    {canEdit && (
                       <>
                         <Button
                           size="sm"
@@ -1301,21 +1327,36 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                         >
                           <ArrowDown className="w-3 h-3" />
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-blue-400"
-                          onClick={() => handleDuplicate(roll)}
-                          title="Duplicate roll"
-                          data-testid={`button-duplicate-roll-${roll.id}`}
-                        >
-                          <Copy className="w-3 h-3" />
-                        </Button>
+                        {!roll.fromTemplateRollId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-blue-400"
+                            onClick={() => handleDuplicate(roll)}
+                            title="Duplicate roll"
+                            data-testid={`button-duplicate-roll-${roll.id}`}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        )}
+                        {roll.fromTemplateRollId && (roll as any).isOverridden && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-amber-400"
+                            onClick={() => handleResetTemplate(roll.id)}
+                            title="Reset to template values"
+                            data-testid={`button-reset-roll-${roll.id}`}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
                           onClick={() => handleStartEdit(roll)}
+                          title={roll.fromTemplateRollId ? 'Edit (will mark as overridden so future template updates skip this roll)' : 'Edit roll'}
                           data-testid={`button-edit-roll-${roll.id}`}
                         >
                           <Pencil className="w-3 h-3" />
@@ -1332,15 +1373,6 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           </Button>
                         )}
                       </>
-                    )}
-                    {canEdit && roll.fromTemplateRollId && (
-                      <span
-                        className="text-[9px] text-stone-500 italic px-1"
-                        title={roll.templateName ? `From template: ${roll.templateName}` : 'This roll is managed by a linked template'}
-                        data-testid={`text-roll-template-managed-${roll.id}`}
-                      >
-                        {roll.templateName ? `from "${roll.templateName}"` : 'from template'}
-                      </span>
                     )}
                   </div>
                 </div>
