@@ -349,6 +349,59 @@ export default function AdminSettings() {
     },
   });
 
+  const duplicateItemTemplateMutation = useMutation({
+    mutationFn: async (sourceId: string) => {
+      // Pull the source template's full record + its rolls, then create a
+      // brand-new template with the same fields and copy each roll onto it.
+      // The copy is a standalone template — its rolls have no provenance
+      // pointer, so future edits to the original do NOT affect the copy.
+      const source = await api.getItemTemplate(sourceId);
+      const sourceRolls = await api.getItemRolls(sourceId);
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        templateItemId: _templateItemId,
+        ...rest
+      } = source as any;
+      const copy = await api.createItemTemplate({
+        ...rest,
+        name: `${source.name} (Copy)`,
+        system: systemSlug,
+        isLiveTemplate: true,
+      });
+      // The server auto-creates rolls for some item flags (e.g. a "Detonate"
+      // roll when isDetonatable is true). Skip any source roll whose name
+      // already exists on the copy to avoid duplicates.
+      const autoRolls = await api.getItemRolls(copy.id);
+      const existingNames = new Set(autoRolls.map((r: any) => r.name));
+      for (const roll of sourceRolls) {
+        const {
+          id: _rollId,
+          createdAt: _rollCreated,
+          updatedAt: _rollUpdated,
+          ownerId: _ownerId,
+          fromTemplateRollId: _fromTemplate,
+          ...rollData
+        } = roll as any;
+        if (existingNames.has(rollData.name)) continue;
+        await api.createRollEntry({
+          ...rollData,
+          ownerType: 'item',
+          ownerId: copy.id,
+        });
+      }
+      return copy;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['item-templates'] });
+      toast({ title: 'Template Duplicated', description: 'A copy has been created' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const createSpeciesMutation = useMutation({
     mutationFn: (species: Partial<SystemSpecies>) => api.createSystemSpecies({ ...species, systemName: selectedSystem }),
     onSuccess: () => {
@@ -902,6 +955,8 @@ export default function AdminSettings() {
                 deleteItemTemplateMutation.mutate(id);
               }
             }}
+            onDuplicateTemplate={(id) => duplicateItemTemplateMutation.mutate(id)}
+            duplicatingTemplateId={duplicateItemTemplateMutation.isPending ? (duplicateItemTemplateMutation.variables as string) : null}
           />
         )}
 
@@ -2072,9 +2127,11 @@ interface ItemTemplatesViewProps {
   onAddTemplate: () => void;
   onEditTemplate: (id: string) => void;
   onDeleteTemplate: (id: string) => void;
+  onDuplicateTemplate: (id: string) => void;
+  duplicatingTemplateId: string | null;
 }
 
-function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, onAddTemplate, onEditTemplate, onDeleteTemplate }: ItemTemplatesViewProps) {
+function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, onAddTemplate, onEditTemplate, onDeleteTemplate, onDuplicateTemplate, duplicatingTemplateId }: ItemTemplatesViewProps) {
   const filtered = templates.filter((t: any) => {
     return !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase());
   });
@@ -2133,6 +2190,17 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
                   <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <Button variant="ghost" size="icon" onClick={() => onEditTemplate(template.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-template-${template.id}`}>
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDuplicateTemplate(template.id)}
+                      disabled={duplicatingTemplateId === template.id}
+                      className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10"
+                      title="Duplicate template"
+                      data-testid={`button-duplicate-template-${template.id}`}
+                    >
+                      <Copy className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => onDeleteTemplate(template.id)} className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-delete-template-${template.id}`}>
                       <Trash2 className="h-4 w-4" />
