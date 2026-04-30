@@ -349,6 +349,29 @@ export default function AdminSettings() {
     },
   });
 
+  // Bulk-delete roll templates by calling the per-template DELETE endpoint
+  // for each id. Each call goes through the proper template cleanup
+  // pathway (scrubbing inherited rolls and dropping link rows across both
+  // items and spells), unlike the generic bulkDeleteItems endpoint.
+  const bulkDeleteItemTemplatesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map(id => api.deleteItemTemplate(id)));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { total: ids.length, failed };
+    },
+    onSuccess: ({ total, failed }) => {
+      queryClient.invalidateQueries({ queryKey: ['item-templates'] });
+      if (failed === 0) {
+        toast({ title: `${total} templates deleted`, description: 'Linked items and spells have been unlinked' });
+      } else {
+        toast({ title: `${total - failed} of ${total} templates deleted`, description: `${failed} failed to delete`, variant: 'destructive' });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const duplicateItemTemplateMutation = useMutation({
     mutationFn: async (sourceId: string) => {
       // Pull the source template's full record + its rolls, then create a
@@ -956,6 +979,8 @@ export default function AdminSettings() {
               }
             }}
             onDuplicateTemplate={(id) => duplicateItemTemplateMutation.mutate(id)}
+            onBulkDeleteTemplates={(ids) => bulkDeleteItemTemplatesMutation.mutate(ids)}
+            bulkDeletePending={bulkDeleteItemTemplatesMutation.isPending}
             duplicatingTemplateId={duplicateItemTemplateMutation.isPending ? (duplicateItemTemplateMutation.variables as string) : null}
           />
         )}
@@ -2128,13 +2153,36 @@ interface ItemTemplatesViewProps {
   onEditTemplate: (id: string) => void;
   onDeleteTemplate: (id: string) => void;
   onDuplicateTemplate: (id: string) => void;
+  onBulkDeleteTemplates: (ids: string[]) => void;
+  bulkDeletePending: boolean;
   duplicatingTemplateId: string | null;
 }
 
-function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, onAddTemplate, onEditTemplate, onDeleteTemplate, onDuplicateTemplate, duplicatingTemplateId }: ItemTemplatesViewProps) {
+function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, onAddTemplate, onEditTemplate, onDeleteTemplate, onDuplicateTemplate, onBulkDeleteTemplates, bulkDeletePending, duplicatingTemplateId }: ItemTemplatesViewProps) {
   const filtered = templates.filter((t: any) => {
     return !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase());
   });
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (filtered.length > 0 && selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((t: any) => t.id)));
+    }
+  };
+
+  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
+  const someSelected = selectedIds.size > 0;
 
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
@@ -2159,6 +2207,16 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
           </div>
         </div>
 
+        {filtered.length > 0 && (
+          <div className="flex items-center gap-3 mb-3 shrink-0">
+            <button onClick={toggleAll} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-200 transition-colors" data-testid="button-select-all-templates">
+              {allSelected ? <CheckSquare className="h-4 w-4 text-amber-400" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            {someSelected && <span className="text-xs text-amber-400" data-testid="text-templates-selected-count">{selectedIds.size} selected</span>}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-center py-12 text-stone-400">Loading templates...</div>
         ) : filtered.length === 0 ? (
@@ -2173,9 +2231,12 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
               {filtered.map((template: any) => (
                 <div
                   key={template.id}
-                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className={`flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border ${selectedIds.has(template.id) ? 'border-amber-500/50 bg-amber-900/10' : 'border-stone-700 hover:border-stone-600'}`}
                   data-testid={`template-row-${template.id}`}
                 >
+                  <button onClick={() => toggleSelect(template.id)} className="shrink-0" data-testid={`checkbox-template-${template.id}`}>
+                    {selectedIds.has(template.id) ? <CheckSquare className="h-5 w-5 text-amber-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
+                  </button>
                   <LazyAdminItemImage itemId={template.id} itemType={template.itemType} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -2210,6 +2271,30 @@ function ItemTemplatesView({ templates, isLoading, searchQuery, setSearchQuery, 
               ))}
             </div>
           </ScrollArea>
+        )}
+
+        {someSelected && (
+          <div className="shrink-0 mt-3 flex items-center gap-2 p-3 bg-stone-800 border border-stone-600 rounded-lg">
+            <span className="text-xs text-stone-300 mr-auto">{selectedIds.size} selected</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-red-800 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+              onClick={() => {
+                if (confirm(`Permanently delete ${selectedIds.size} roll templates? Linked items and spells will be unlinked but preserved.`)) {
+                  onBulkDeleteTemplates(Array.from(selectedIds));
+                  setSelectedIds(new Set());
+                }
+              }}
+              disabled={bulkDeletePending}
+              data-testid="button-bulk-delete-templates"
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-stone-500" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection-templates">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
