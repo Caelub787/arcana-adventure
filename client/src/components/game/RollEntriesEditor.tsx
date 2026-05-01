@@ -399,6 +399,7 @@ function RollForm({
   isNew,
   availableEffects = [],
   campaignSystem,
+  folderSuggestions,
 }: {
   form: Partial<RollEntry>;
   setForm: React.Dispatch<React.SetStateAction<Partial<RollEntry>>>;
