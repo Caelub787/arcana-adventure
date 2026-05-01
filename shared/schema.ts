@@ -1380,10 +1380,21 @@ export const rollEntries = pgTable("roll_entries", {
   requiredSkillValue: integer("required_skill_value").default(1),
   hasDcCheck: boolean("has_dc_check").default(false),
   dcToSucceed: integer("dc_to_succeed"),
+  // When dcCheckRollMode='separate', this attribute's mod is added to the
+  // dedicated d20 the system rolls for the DC check. When 'main', the DC
+  // check just compares the main roll's total against the DC and this field
+  // is unused.
   dcToSucceedAttribute: text("dc_to_succeed_attribute"),
   dcToSucceedType: text("dc_to_succeed_type").default("value"),
+  // Only meaningful when dcToSucceedType='caster'. For type='target' the
+  // target's own DC value (naturalArmor) is used directly. For 'value' the
+  // static `dcToSucceed` is used.
   dcToSucceedDcAttribute: text("dc_to_succeed_dc_attribute"),
   dcToSucceedSuccessEffect: text("dc_to_succeed_success_effect"),
+  // 'main' (default) -> compare the main roll's total against the DC.
+  // 'separate' -> roll a fresh 1d20 + dcToSucceedAttribute mod and compare
+  // that against the DC, leaving the main roll untouched.
+  dcCheckRollMode: text("dc_check_roll_mode").default("main"),
   fromTemplateRollId: varchar("from_template_roll_id").references(() => rollEntries.id, { onDelete: "set null" }),
   // When an inherited roll (one with fromTemplateRollId set) is edited on the
   // owning item/spell, the server flips this flag to true. Subsequent

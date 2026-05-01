@@ -56,6 +56,7 @@ interface RollEntry {
   dcToSucceedType?: string;
   dcToSucceedDcAttribute?: string;
   dcToSucceedSuccessEffect?: string;
+  dcCheckRollMode?: string;
   fromTemplateRollId?: string | null;
   templateName?: string;
   templatePriority?: number | null;
@@ -162,6 +163,7 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     dcToSucceedType: "value",
     dcToSucceedDcAttribute: "",
     dcToSucceedSuccessEffect: "",
+    dcCheckRollMode: "main",
   };
 }
 
@@ -220,16 +222,21 @@ function getRollDetails(roll: RollEntry): string[] {
   }
   if (roll.hasDcCheck) {
     const dcType = roll.dcToSucceedType || 'value';
-    const isNoneAttr = roll.dcToSucceedAttribute === 'none';
-    const attrLabel = (!roll.dcToSucceedAttribute || isNoneAttr) ? '' : ` ${roll.dcToSucceedAttribute.charAt(0).toUpperCase() + roll.dcToSucceedAttribute.slice(1)}`;
+    const rollMode = roll.dcCheckRollMode || 'main';
+    const isNoneAttr = !roll.dcToSucceedAttribute || roll.dcToSucceedAttribute === 'none';
+    // dcToSucceedAttribute only modifies the dedicated d20 in 'separate' mode.
+    const rollSuffix = rollMode === 'separate'
+      ? (isNoneAttr
+          ? ' (separate d20)'
+          : ` (separate d20 + ${roll.dcToSucceedAttribute!.charAt(0).toUpperCase()}${roll.dcToSucceedAttribute!.slice(1)})`)
+      : '';
     if (dcType === 'value' && roll.dcToSucceed) {
-      details.push(`DC ${roll.dcToSucceed}${attrLabel} to succeed`);
+      details.push(`DC ${roll.dcToSucceed} to succeed${rollSuffix}`);
     } else if (dcType === 'target') {
-      const dcAttr = roll.dcToSucceedDcAttribute ? roll.dcToSucceedDcAttribute.charAt(0).toUpperCase() + roll.dcToSucceedDcAttribute.slice(1) : '?';
-      details.push(`Target's ${dcAttr} DC${attrLabel} to succeed`);
+      details.push(`Target's DC to succeed${rollSuffix}`);
     } else if (dcType === 'caster') {
       const dcAttr = roll.dcToSucceedDcAttribute ? roll.dcToSucceedDcAttribute.charAt(0).toUpperCase() + roll.dcToSucceedDcAttribute.slice(1) : '?';
-      details.push(`Caster's ${dcAttr} DC${attrLabel} to succeed`);
+      details.push(`Caster's ${dcAttr} DC to succeed${rollSuffix}`);
     }
   }
   if (roll.isHidden) {
@@ -849,24 +856,43 @@ function RollForm({
           <div className="space-y-2 mt-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs text-stone-400">Save Attribute</Label>
-                <Select value={form.dcToSucceedAttribute || "_unset"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedAttribute: v === "_unset" ? "" : v }))}>
-                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedAttribute`}>
-                    <SelectValue placeholder="Select" />
+                <Label className="text-xs text-stone-400">Roll Mode</Label>
+                <Select
+                  value={form.dcCheckRollMode || "main"}
+                  onValueChange={(v) => setForm((f) => ({ ...f, dcCheckRollMode: v }))}
+                >
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcCheckRollMode`}>
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None (DC value only)</SelectItem>
-                    {ATTRIBUTE_OPTIONS.map((attr) => (
-                      <SelectItem key={attr} value={attr}>
-                        {attr.charAt(0).toUpperCase() + attr.slice(1)}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="main">Use main roll's value</SelectItem>
+                    <SelectItem value="separate">Separate d20 roll</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {(form.dcCheckRollMode || "main") === "separate" && (
+                <div>
+                  <Label className="text-xs text-stone-400">Roll Attribute</Label>
+                  <Select value={form.dcToSucceedAttribute || "none"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedAttribute: v === "none" ? "" : v }))}>
+                    <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedAttribute`}>
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (d20 only)</SelectItem>
+                      {ATTRIBUTE_OPTIONS.map((attr) => (
+                        <SelectItem key={attr} value={attr}>
+                          {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs text-stone-400">DC Type</Label>
-                <Select value={form.dcToSucceedType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedType: v, dcToSucceedDcAttribute: v === "value" ? "" : (f.dcToSucceedDcAttribute || "might") }))}>
+                <Select value={form.dcToSucceedType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedType: v, dcToSucceedDcAttribute: v === "caster" ? (f.dcToSucceedDcAttribute || "might") : "" }))}>
                   <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-dcToSucceedType`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -877,8 +903,6 @@ function RollForm({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
               {(form.dcToSucceedType === "value" || !form.dcToSucceedType) && (
                 <div>
                   <Label className="text-xs text-stone-400">DC Value</Label>
@@ -892,7 +916,7 @@ function RollForm({
                   />
                 </div>
               )}
-              {(form.dcToSucceedType === "target" || form.dcToSucceedType === "caster") && (
+              {form.dcToSucceedType === "caster" && (
                 <div>
                   <Label className="text-xs text-stone-400">DC Attribute</Label>
                   <Select value={form.dcToSucceedDcAttribute || "might"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedDcAttribute: v }))}>
@@ -909,6 +933,15 @@ function RollForm({
                   </Select>
                 </div>
               )}
+              {form.dcToSucceedType === "target" && (
+                <div className="flex items-end">
+                  <p className="text-[10px] text-stone-500 italic">
+                    Uses the target's DC value (Natural Armor) directly.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs text-stone-400">On Success</Label>
                 <Select value={form.dcToSucceedSuccessEffect || "half"} onValueChange={(v) => setForm((f) => ({ ...f, dcToSucceedSuccessEffect: v }))}>

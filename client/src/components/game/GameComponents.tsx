@@ -49,6 +49,68 @@ import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTok
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
 
+// Resolves a roll entry's DC check: figures out the value being checked
+// (main roll's total, or a fresh d20 + optional attribute mod) and the DC
+// to beat (static value, 8 + caster attr mod, or the target's natural armor).
+// Returns null when the entry has no usable DC configuration.
+//
+// `targetChar` should be the targeted character when known (used for
+// dcToSucceedType==='target'); when omitted the check falls back to the
+// static `dcToSucceed` value.
+function resolveDcCheck(
+  rollEntry: any,
+  mainRollTotal: number,
+  caster: any,
+  targetChar?: any,
+): { dc: number; checkValue: number; success: boolean; checkLabel: string } | null {
+  if (!rollEntry?.hasDcCheck) return null;
+
+  const dcType = rollEntry.dcToSucceedType || 'value';
+  const rollMode = rollEntry.dcCheckRollMode || 'main';
+
+  // Resolve DC.
+  let dc: number | null = null;
+  if (dcType === 'caster') {
+    const attr = rollEntry.dcToSucceedDcAttribute;
+    const casterMod = (attr && caster && typeof caster[attr] === 'number') ? caster[attr] : 0;
+    dc = 8 + casterMod;
+  } else if (dcType === 'target') {
+    if (targetChar && typeof targetChar.naturalArmor === 'number') {
+      dc = targetChar.naturalArmor;
+    } else if (typeof rollEntry.dcToSucceed === 'number') {
+      dc = rollEntry.dcToSucceed;
+    } else {
+      dc = 10;
+    }
+  } else {
+    if (typeof rollEntry.dcToSucceed !== 'number') return null;
+    dc = rollEntry.dcToSucceed;
+  }
+  if (dc === null) return null;
+
+  // Resolve check value.
+  let checkValue: number;
+  let checkLabel: string;
+  if (rollMode === 'separate') {
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const attr = rollEntry.dcToSucceedAttribute;
+    const useAttr = attr && attr !== 'none' && caster && typeof caster[attr] === 'number';
+    const attrMod = useAttr ? caster[attr] : 0;
+    checkValue = d20 + attrMod;
+    if (useAttr) {
+      const attrName = attr.charAt(0).toUpperCase() + attr.slice(1);
+      checkLabel = `Check d20=${d20} + ${attrName} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${checkValue}`;
+    } else {
+      checkLabel = `Check d20=${d20}`;
+    }
+  } else {
+    checkValue = mainRollTotal;
+    checkLabel = `Rolled ${checkValue}`;
+  }
+
+  return { dc, checkValue, success: checkValue >= dc, checkLabel };
+}
+
 function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -16361,15 +16423,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     const fullFormula = formulaParts.join('');
     const result = rollDice(fullFormula);
     
-    const dcCheck = rollEntry.hasDcCheck && rollEntry.dcToSucceed;
-    const dcSuccess = dcCheck ? result.total >= rollEntry.dcToSucceed : null;
+    const dcCheckEnabled = !!rollEntry.hasDcCheck;
+    const dcInfo = dcCheckEnabled ? resolveDcCheck(rollEntry, result.total, character) : null;
+    const dcCheck = !!dcInfo;
+    const dcSuccess = dcInfo ? dcInfo.success : null;
     
     const breakdown = [
       rollEntry.diceFormula,
       rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
       rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
-      dcCheck ? `DC ${rollEntry.dcToSucceed}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
+      dcInfo ? `${dcInfo.checkLabel} vs DC ${dcInfo.dc}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
     ].filter(Boolean).join(' | ');
     
     triggerRollNotification({
@@ -16385,10 +16449,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       isHealing: rollEntry.rollType === 'heal',
     });
     
-    if (dcCheck && character?.campaignId) {
+    if (dcInfo && character?.campaignId) {
       const dcMsg = dcSuccess 
-        ? `${selectedSpell.name} - ${rollEntry.name} SUCCEEDED! (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`
-        : `${selectedSpell.name} - ${rollEntry.name} FAILED (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`;
+        ? `${selectedSpell.name} - ${rollEntry.name} SUCCEEDED! (${dcInfo.checkLabel} vs DC ${dcInfo.dc})`
+        : `${selectedSpell.name} - ${rollEntry.name} FAILED (${dcInfo.checkLabel} vs DC ${dcInfo.dc})`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', dcMsg, 'roll');
     } else if (character?.campaignId) {
       const chatText = `${selectedSpell.name} - ${rollEntry.name}: ${breakdown} = ${result.total}`;
@@ -25085,8 +25149,10 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     const fullFormula = formulaParts.join('');
     const result = rollDice(fullFormula);
     
-    const dcCheck = rollEntry.hasDcCheck && rollEntry.dcToSucceed;
-    const dcSuccess = dcCheck ? result.total >= rollEntry.dcToSucceed : null;
+    const dcCheckEnabled = !!rollEntry.hasDcCheck;
+    const dcInfo = dcCheckEnabled ? resolveDcCheck(rollEntry, result.total, character) : null;
+    const dcCheck = !!dcInfo;
+    const dcSuccess = dcInfo ? dcInfo.success : null;
     
     const breakdown = [
       rollEntry.diceFormula,
@@ -25094,7 +25160,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
       energyCost > 0 ? `Energy: -${energyCost}` : null,
-      dcCheck ? `DC ${rollEntry.dcToSucceed}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
+      dcInfo ? `${dcInfo.checkLabel} vs DC ${dcInfo.dc}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
     ].filter(Boolean).join(' | ');
     
     triggerRollNotification({
@@ -25110,10 +25176,10 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       isHealing: rollEntry.rollType === 'heal',
     });
 
-    if (dcCheck && character?.campaignId) {
+    if (dcInfo && character?.campaignId) {
       const dcMsg = dcSuccess 
-        ? `${item.name} - ${rollEntry.name} SUCCEEDED! (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`
-        : `${item.name} - ${rollEntry.name} FAILED (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`;
+        ? `${item.name} - ${rollEntry.name} SUCCEEDED! (${dcInfo.checkLabel} vs DC ${dcInfo.dc})`
+        : `${item.name} - ${rollEntry.name} FAILED (${dcInfo.checkLabel} vs DC ${dcInfo.dc})`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', dcMsg, 'roll');
     }
 
