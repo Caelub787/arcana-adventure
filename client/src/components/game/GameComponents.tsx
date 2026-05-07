@@ -416,6 +416,59 @@ interface BattleMapProps {
   campaignSystem?: string;
 }
 
+// Roll Item-Cost helpers. A roll can require the player to have specific
+// admin items in their inventory before it executes; items flagged
+// `consumed:true` are removed from the inventory after the roll resolves.
+// Inventory matching prefers `templateItemId` (the canonical link from a
+// player-owned copy back to the admin source item) and falls back to
+// `name` so direct copies / legacy items still satisfy a requirement.
+type RollItemCostReq = { itemId: string; name: string; consumed: boolean };
+function findOwnedForCost(inventory: any[] | undefined, req: RollItemCostReq): any | null {
+  if (!Array.isArray(inventory) || inventory.length === 0) return null;
+  return inventory.find((it: any) =>
+    it && (it.templateItemId === req.itemId || it.name === req.name) && (it.quantity ?? 1) > 0
+  ) || null;
+}
+function checkRollItemCosts(rollEntry: any, inventory: any[] | undefined): {
+  ok: boolean;
+  missing: RollItemCostReq[];
+  available: RollItemCostReq[];
+  required: RollItemCostReq[];
+} {
+  const required: RollItemCostReq[] = (rollEntry?.hasItemCost && Array.isArray(rollEntry.itemCosts))
+    ? rollEntry.itemCosts as RollItemCostReq[]
+    : [];
+  if (required.length === 0) return { ok: true, missing: [], available: [], required: [] };
+  const missing: RollItemCostReq[] = [];
+  const available: RollItemCostReq[] = [];
+  for (const req of required) {
+    if (findOwnedForCost(inventory, req)) available.push(req);
+    else missing.push(req);
+  }
+  return { ok: missing.length === 0, missing, available, required };
+}
+async function consumeRollItemCosts(rollEntry: any, inventory: any[] | undefined): Promise<void> {
+  const required: RollItemCostReq[] = (rollEntry?.hasItemCost && Array.isArray(rollEntry.itemCosts))
+    ? rollEntry.itemCosts as RollItemCostReq[]
+    : [];
+  if (required.length === 0) return;
+  for (const req of required) {
+    if (!req.consumed) continue;
+    const owned = findOwnedForCost(inventory, req);
+    if (!owned) continue;
+    const qty = owned.quantity ?? 1;
+    try {
+      if (qty > 1) {
+        await api.updateItem(owned.id, { quantity: qty - 1 });
+      } else {
+        await api.deleteItem(owned.id);
+      }
+    } catch (err) {
+      console.error('[itemCost] failed to consume', owned?.name, err);
+    }
+  }
+}
+
 function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
   pin: any;
   xPx: number;
@@ -6986,6 +7039,26 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
     }
 
+    // Item Cost pre-check (must run BEFORE energy/mana so we never charge a
+    // resource for a roll that's about to be blocked by missing items).
+    const costCheck = checkRollItemCosts(rollEntry, allItems);
+    if (!costCheck.ok) {
+      const haveStr = costCheck.available.length > 0
+        ? costCheck.available.map(r => r.name).join(', ')
+        : 'none';
+      const missingStr = costCheck.missing.map(r => r.name).join(', ');
+      triggerRollNotification({
+        type: 'system',
+        label: `${spellData?.name || itemData?.name || 'Roll'} - ${rollEntry.name}: Missing required items`,
+        result: 0,
+        total: 0,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Missing: ${missingStr} | Have: ${haveStr}`,
+      });
+      return;
+    }
+
     if (rollEntry.requiresEnergy && rollEntry.energyCost > 0) {
       const currentEnergy = character?.energy ?? 0;
       if (currentEnergy < rollEntry.energyCost) {
@@ -7025,6 +7098,19 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     if (!rollEntry.diceFormula && !isAttackRoll) return;
+
+    // Consume required items now — energy and mana have already been
+    // checked + spent above, so we mirror that same "committed once gating
+    // passes" semantic. Range/attack-resolution failures past this point
+    // still consume, matching how energy/mana are handled.
+    if (rollEntry.hasItemCost) {
+      void consumeRollItemCosts(rollEntry, allItems).then(() => {
+        if (character?.id) {
+          queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+          queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        }
+      });
+    }
 
     if (targetedTokenId && rollEntry.range) {
       const attackerToken = getAttackerToken();
@@ -7348,6 +7434,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 character?.name || 'Unknown',
                 isAdding
               );
+            } else if (saveApplyStat === 'mana' && campaignSystem === 'aa-v2') {
+              gameWs.sendCombatMana(
+                targetChar.id,
+                damageToApply,
+                character?.name || 'Unknown',
+                isAdding
+              );
             } else if (saveApplyStat === 'hp') {
               await applyDamageToTarget(
                 damageToApply,
@@ -7358,7 +7451,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             }
           }
 
-          const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'hp' ? 'HP' : '');
+          const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'mana' ? 'Mana' : (saveApplyStat === 'hp' ? 'HP' : ''));
           const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isAdding ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
           affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
         }
@@ -7446,6 +7539,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 character?.name || 'Unknown',
                 aoeIsAdding
               );
+            } else if (aoeApplyStat === 'mana' && campaignSystem === 'aa-v2') {
+              gameWs.sendCombatMana(
+                targetChar.id,
+                total,
+                character?.name || 'Unknown',
+                aoeIsAdding
+              );
             } else if (aoeApplyStat === 'hp') {
               await applyDamageToTarget(
                 total,
@@ -7505,6 +7605,15 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           );
           const energyAction = singleIsAdding ? '+' : '-';
           label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${total} Energy)`;
+        } else if (applyStat === 'mana' && targetData.characterId && campaignSystem === 'aa-v2') {
+          gameWs.sendCombatMana(
+            targetData.characterId,
+            total,
+            character?.name || 'Unknown',
+            singleIsAdding
+          );
+          const manaAction = singleIsAdding ? '+' : '-';
+          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${manaAction}${total} Mana)`;
         } else if (applyStat === 'hp' && targetData.characterId) {
           label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${singleIsAdding ? '+' : '-'}${total} HP)`;
           applyDamageToTarget(
@@ -13386,8 +13495,21 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
               <Label className="text-xs text-stone-400 mb-2 block">Tap or drag skills to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {skillsList.map(skill => {
-                  const skillValue = character[skill.key as keyof typeof character] || 0;
+                  const skillValue = (character[skill.key as keyof typeof character] as number) || 0;
                   const modifier = skillValue >= 0 ? `+${skillValue}` : `${skillValue}`;
+                  // Total = skill modifier + linked attribute modifier. Lets the
+                  // player see the actual value the d20 will be added to without
+                  // doing the math themselves. `skill.attr` here is a 3-letter
+                  // abbreviation (FIN/MIG/WIT/...); character columns are the
+                  // full lowercase names, so we map first.
+                  const SKILL_ATTR_ABBREV: Record<string, string> = {
+                    FIN: 'finesse', MIG: 'might', WIT: 'wit', WIL: 'will',
+                    CRA: 'craft', PRE: 'presence',
+                  };
+                  const attrKey = SKILL_ATTR_ABBREV[skill.attr] || skill.attr.toLowerCase();
+                  const attrValue = (character[attrKey as keyof typeof character] as number) || 0;
+                  const total = skillValue + attrValue;
+                  const totalStr = total >= 0 ? `+${total}` : `${total}`;
                   return (
                     <div
                       key={skill.key}
@@ -13397,9 +13519,9 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                       className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-blue-500 hover:bg-stone-800 active:bg-blue-900/30 transition-all text-xs touch-target"
                       data-testid={`drag-skill-${skill.name.toLowerCase().replace(/ /g, '-')}`}
                     >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-stone-300">{skill.name} <span className="text-stone-500">({skill.attr})</span></span>
-                        <span className="text-stone-500">{modifier}</span>
+                      <div className="flex justify-between items-center gap-1">
+                        <span className="font-medium text-stone-300 truncate">{skill.name} <span className="text-stone-500">({skill.attr})</span></span>
+                        <span className="text-stone-500 shrink-0">{modifier} <span className="text-amber-400" data-testid={`text-skill-total-${skill.name.toLowerCase().replace(/ /g, '-')}`}>= {totalStr}</span></span>
                       </div>
                     </div>
                   );
@@ -13412,7 +13534,15 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   <Label className="text-xs text-stone-400 mb-2 block">Tap or drag custom skills to equip:</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                     {characterCustomSkills.map((customSkill: any) => {
-                      const modifier = (customSkill.value || 0) >= 0 ? `+${customSkill.value || 0}` : `${customSkill.value || 0}`;
+                      const skillVal = customSkill.value || 0;
+                      const modifier = skillVal >= 0 ? `+${skillVal}` : `${skillVal}`;
+                      // Custom skills store parentAttribute capitalized
+                      // (e.g. "Wit"); character columns are lowercase. Map and
+                      // sum so the player sees the final modifier.
+                      const parentAttr = (customSkill.parentAttribute || '').toLowerCase();
+                      const attrValue = parentAttr ? ((character[parentAttr as keyof typeof character] as number) || 0) : 0;
+                      const total = skillVal + attrValue;
+                      const totalStr = total >= 0 ? `+${total}` : `${total}`;
                       return (
                         <div
                           key={customSkill.id}
@@ -13422,9 +13552,9 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                           className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-blue-500 hover:bg-stone-800 active:bg-blue-900/30 transition-all text-xs touch-target"
                           data-testid={`drag-custom-skill-${customSkill.id}`}
                         >
-                          <div className="flex justify-between items-center">
+                          <div className="flex justify-between items-center gap-1">
                             <span className="font-medium text-violet-400 truncate">{customSkill.name}</span>
-                            <span className="text-stone-500">{modifier}</span>
+                            <span className="text-stone-500 shrink-0">{modifier} <span className="text-amber-400" data-testid={`text-custom-skill-total-${customSkill.id}`}>= {totalStr}</span></span>
                           </div>
                         </div>
                       );
@@ -16405,9 +16535,35 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   const executeSpellRoll = (rollEntry: any) => {
     if (!rollEntry.diceFormula || !selectedSpell) return;
-    
+
+    // Item Cost gating — block before any roll/notification fires.
+    const spellCostCheck = checkRollItemCosts(rollEntry, items);
+    if (!spellCostCheck.ok) {
+      const haveStr = spellCostCheck.available.length > 0
+        ? spellCostCheck.available.map(r => r.name).join(', ')
+        : 'none';
+      triggerRollNotification({
+        type: 'system',
+        label: `${selectedSpell.name} - ${rollEntry.name}: Missing required items`,
+        result: 0,
+        total: 0,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Missing: ${spellCostCheck.missing.map(r => r.name).join(', ')} | Have: ${haveStr}`,
+      });
+      return;
+    }
+    if (rollEntry.hasItemCost) {
+      void consumeRollItemCosts(rollEntry, items).then(() => {
+        if (character?.id) {
+          queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+          queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        }
+      });
+    }
+
     const formulaParts: string[] = [rollEntry.diceFormula];
-    
+
     if (rollEntry.mod && rollEntry.mod !== 0) {
       formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
     }
@@ -16471,6 +16627,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         );
       } else if (rollEntry.applyToStat === 'energy') {
         gameWs.sendCombatEnergy(
+          character.id,
+          result.total,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+        gameWs.sendCombatMana(
           character.id,
           result.total,
           character?.name || 'Unknown',
@@ -25025,6 +25188,24 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
   };
 
   const executeRoll = async (rollEntry: any) => {
+    // Item Cost gating — block before any resource cost or roll fires.
+    const rollCostCheck = checkRollItemCosts(rollEntry, items);
+    if (!rollCostCheck.ok) {
+      const haveStr = rollCostCheck.available.length > 0
+        ? rollCostCheck.available.map(r => r.name).join(', ')
+        : 'none';
+      triggerRollNotification({
+        type: 'system',
+        label: `${item?.name || 'Roll'} - ${rollEntry.name}: Missing required items`,
+        result: 0,
+        total: 0,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Missing: ${rollCostCheck.missing.map(r => r.name).join(', ')} | Have: ${haveStr}`,
+      });
+      return;
+    }
+
     const energyCost = rollEntry.requiresEnergy ? (rollEntry.energyCost || 0) : 0;
     const currentEnergy = character?.energy || 0;
 
@@ -25053,6 +25234,16 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
         calculationBreakdown: `${item.name} - ${rollEntry.name} requires ${manaCostExec} mana but you only have ${currentManaExec}.`,
       });
       return;
+    }
+
+    // All sufficiency gating passed — consume any required items now.
+    if (rollEntry.hasItemCost) {
+      void consumeRollItemCosts(rollEntry, items).then(() => {
+        if (character?.id) {
+          queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+          queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        }
+      });
     }
 
     if (rollEntry.noRoll) {
@@ -25099,6 +25290,13 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
           );
         } else if (rollEntry.applyToStat === 'energy') {
           gameWs.sendCombatEnergy(
+            character.id,
+            flatValue,
+            character?.name || 'Unknown',
+            isHeal
+          );
+        } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+          gameWs.sendCombatMana(
             character.id,
             flatValue,
             character?.name || 'Unknown',
@@ -25195,6 +25393,13 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
         );
       } else if (rollEntry.applyToStat === 'energy') {
         gameWs.sendCombatEnergy(
+          character.id,
+          result.total,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+        gameWs.sendCombatMana(
           character.id,
           result.total,
           character?.name || 'Unknown',

@@ -57,6 +57,8 @@ interface RollEntry {
   dcToSucceedDcAttribute?: string;
   dcToSucceedSuccessEffect?: string;
   dcCheckRollMode?: string;
+  hasItemCost?: boolean;
+  itemCosts?: Array<{ itemId: string; name: string; consumed: boolean }>;
   fromTemplateRollId?: string | null;
   templateName?: string;
   templatePriority?: number | null;
@@ -83,11 +85,21 @@ interface RollEntriesEditorProps {
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
 const ROLL_TYPE_OPTIONS = ["attack", "damage", "heal", "effect"];
 const AOE_SHAPE_OPTIONS = ["cone", "sphere", "line", "cube", "cylinder"];
-const APPLY_TO_STAT_OPTIONS = [
+const APPLY_TO_STAT_OPTIONS_BASE = [
   { value: "none", label: "None" },
   { value: "hp", label: "HP (subtract damage / add healing)" },
   { value: "energy", label: "Energy (subtract / add)" },
 ];
+// Mana is an AA-V2-only resource; gate the option on the active campaign
+// system so non-AA-V2 forms never expose the choice. Any roll authored in
+// an AA-V2 campaign can target Mana, mirroring how Energy works.
+const APPLY_TO_STAT_OPTIONS_AAV2 = [
+  ...APPLY_TO_STAT_OPTIONS_BASE,
+  { value: "mana", label: "Mana (subtract / add)" },
+];
+function getApplyToStatOptions(campaignSystem?: string) {
+  return campaignSystem === 'aa-v2' ? APPLY_TO_STAT_OPTIONS_AAV2 : APPLY_TO_STAT_OPTIONS_BASE;
+}
 
 const ROLL_TYPE_COLORS: Record<string, string> = {
   attack: "bg-red-700 text-red-100",
@@ -164,6 +176,8 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     dcToSucceedDcAttribute: "",
     dcToSucceedSuccessEffect: "",
     dcCheckRollMode: "main",
+    hasItemCost: false,
+    itemCosts: [],
   };
 }
 
@@ -213,6 +227,12 @@ function getRollDetails(roll: RollEntry): string[] {
   }
   if (roll.requiresMana && roll.manaCost) {
     details.push(`Mana Cost: ${roll.manaCost}`);
+  }
+  if (roll.hasItemCost && Array.isArray(roll.itemCosts) && roll.itemCosts.length > 0) {
+    const list = roll.itemCosts
+      .map(ic => `${ic.name}${ic.consumed ? ' (consumed)' : ''}`)
+      .join(', ');
+    details.push(`Requires items: ${list}`);
   }
   if (roll.applyTokenEffects) {
     const trigger = roll.effectTriggerCondition === 'success' ? 'on success' : 
@@ -397,6 +417,157 @@ function HiddenRollSkillPicker({
   );
 }
 
+// Picker UI for the "Item Cost" requirement on a roll. Lists all admin
+// system items (filtered by campaign system) and lets the editor add them
+// to the roll's `itemCosts` JSON. Each requirement has an independent
+// "Consumed?" toggle which the executor uses to remove that copy of the
+// item from the player's inventory after the roll resolves. The denormalised
+// `name` field is what non-admin players will see when they're missing a
+// required item, so we capture it at picker time rather than re-fetching.
+function ItemCostSection({
+  prefix,
+  form,
+  setForm,
+  campaignSystem,
+}: {
+  prefix: string;
+  form: Partial<RollEntry>;
+  setForm: React.Dispatch<React.SetStateAction<Partial<RollEntry>>>;
+  campaignSystem?: string;
+}) {
+  const [search, setSearch] = useState("");
+  const enabled = !!form.hasItemCost;
+  const costs = (form.itemCosts || []) as Array<{ itemId: string; name: string; consumed: boolean }>;
+
+  const { data: systemItems = [], isLoading } = useQuery({
+    queryKey: ['system-items-for-roll-cost', campaignSystem || 'all'],
+    queryFn: () => api.getSystemItems(campaignSystem),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selectedIds = new Set(costs.map(c => c.itemId));
+  const trimmed = search.trim().toLowerCase();
+  const filtered = !trimmed
+    ? []
+    : (systemItems as any[])
+        .filter(it => !selectedIds.has(it.id) && it.name?.toLowerCase().includes(trimmed))
+        .slice(0, 30);
+
+  const addItem = (it: any) => {
+    setForm(f => ({
+      ...f,
+      itemCosts: [...((f.itemCosts || []) as any[]), { itemId: it.id, name: it.name, consumed: false }],
+    }));
+    setSearch("");
+  };
+
+  const removeItem = (itemId: string) => {
+    setForm(f => ({
+      ...f,
+      itemCosts: ((f.itemCosts || []) as any[]).filter(c => c.itemId !== itemId),
+    }));
+  };
+
+  const toggleConsumed = (itemId: string) => {
+    setForm(f => ({
+      ...f,
+      itemCosts: ((f.itemCosts || []) as any[]).map(c =>
+        c.itemId === itemId ? { ...c, consumed: !c.consumed } : c
+      ),
+    }));
+  };
+
+  return (
+    <div className="space-y-2">
+      <ToggleButton
+        active={enabled}
+        onClick={() => setForm(f => ({ ...f, hasItemCost: !f.hasItemCost }))}
+        label="Require Items in Inventory"
+        testId={`toggle-${prefix}-hasItemCost`}
+      />
+      {enabled && (
+        <div className="space-y-2 mt-2">
+          <p className="text-[10px] text-stone-500 italic">
+            The roll will only execute if the player has every listed item. Items marked
+            "Consumed" are removed from inventory when the roll resolves.
+          </p>
+          <div>
+            <Label className="text-xs text-stone-400">Add Required Item</Label>
+            <Input
+              className="bg-stone-900 border-stone-600 h-7 text-xs mt-1"
+              placeholder={isLoading ? "Loading items..." : "Search admin items..."}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid={`input-${prefix}-itemCostSearch`}
+            />
+            {trimmed && (
+              <div className="max-h-32 overflow-y-auto border border-stone-700 rounded bg-stone-800 mt-1">
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-stone-500 p-2 italic">No matching items</p>
+                ) : (
+                  filtered.map((it: any) => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      className="w-full text-left px-2 py-1 text-xs text-stone-300 hover:bg-stone-700 transition-colors flex items-center gap-2"
+                      onClick={() => addItem(it)}
+                      data-testid={`button-${prefix}-addItemCost-${it.id}`}
+                    >
+                      {it.imageUrl && (
+                        <img src={it.imageUrl} alt="" className="w-4 h-4 rounded shrink-0" />
+                      )}
+                      <span className="truncate">{it.name}</span>
+                      {it.system && (
+                        <span className="text-[9px] text-stone-500 ml-auto shrink-0">{it.system}</span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          {costs.length > 0 ? (
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Required Items ({costs.length})</Label>
+              {costs.map((c) => (
+                <div
+                  key={c.itemId}
+                  className="flex items-center gap-2 bg-stone-900 border border-stone-700 rounded px-2 py-1"
+                  data-testid={`row-${prefix}-itemCost-${c.itemId}`}
+                >
+                  <span className="text-xs text-stone-200 flex-1 truncate">{c.name}</span>
+                  <label className="flex items-center gap-1 text-[10px] text-stone-400 cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={c.consumed}
+                      onChange={() => toggleConsumed(c.itemId)}
+                      className="rounded border-stone-600"
+                      data-testid={`checkbox-${prefix}-itemCostConsumed-${c.itemId}`}
+                    />
+                    Consumed?
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(c.itemId)}
+                    className="text-stone-500 hover:text-red-400 shrink-0"
+                    title="Remove requirement"
+                    data-testid={`button-${prefix}-removeItemCost-${c.itemId}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-stone-500 italic">No items required yet — search above to add one.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RollForm({
   form,
   setForm,
@@ -546,7 +717,7 @@ function RollForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {APPLY_TO_STAT_OPTIONS.map((opt) => (
+              {getApplyToStatOptions(campaignSystem).map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
               ))}
             </SelectContent>
@@ -765,6 +936,15 @@ function RollForm({
           )}
         </CollapsibleSection>
       )}
+
+      <CollapsibleSection title="Item Cost" testId={`section-${prefix}-item-cost`}>
+        <ItemCostSection
+          prefix={prefix}
+          form={form}
+          setForm={setForm}
+          campaignSystem={campaignSystem}
+        />
+      </CollapsibleSection>
 
       <CollapsibleSection title="Chat Message" testId={`section-${prefix}-chat-message`}>
         <ToggleButton

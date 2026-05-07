@@ -5936,8 +5936,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // System item routes (admin only)
-  app.get("/api/admin/system-items", requireAdmin, async (req, res) => {
+  // System item routes (admin only for mutations; the GET is opened to any
+  // authenticated user so GMs can pick items for roll-entry "Item Cost"
+  // requirements without needing global admin rights — read-only listing).
+  app.get("/api/admin/system-items", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
       const items = await storage.getSystemItems(system);

@@ -1395,6 +1395,14 @@ export const rollEntries = pgTable("roll_entries", {
   // 'separate' -> roll a fresh 1d20 + dcToSucceedAttribute mod and compare
   // that against the DC, leaving the main roll untouched.
   dcCheckRollMode: text("dc_check_roll_mode").default("main"),
+  // When true, this roll requires the player to have the listed admin items
+  // in their inventory before it can be triggered. Each entry has shape
+  // { itemId: string, name: string, consumed: boolean }. Items where
+  // `consumed=true` are removed from the player's inventory after the roll
+  // executes. The `name` is denormalised so non-admin players can render
+  // the required-items list without needing access to the admin items API.
+  hasItemCost: boolean("has_item_cost").default(false).notNull(),
+  itemCosts: jsonb("item_costs").default([]).notNull(),
   fromTemplateRollId: varchar("from_template_roll_id").references(() => rollEntries.id, { onDelete: "set null" }),
   // When an inherited roll (one with fromTemplateRollId set) is edited on the
   // owning item/spell, the server flips this flag to true. Subsequent
