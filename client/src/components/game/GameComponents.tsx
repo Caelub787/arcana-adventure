@@ -42,6 +42,7 @@ import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
+import { CraftRecipesEditor } from './CraftRecipesEditor';
 import { TemplateManager } from './TemplateManager';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
@@ -26312,6 +26313,14 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
             )}
             {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && !isEditing && (
               <CraftSection item={currentData} character={character} canCraft={isOwner || isGM} />
+            )}
+            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && isEditing && (isGM || isOwner) && (
+              <div className="pt-4 border-t border-stone-700">
+                <CraftRecipesEditor
+                  itemId={currentData.templateItemId || currentData.id}
+                  systemSlug="aa-v2"
+                />
+              </div>
             )}
 
             <RollEntriesEditor 

@@ -6093,6 +6093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (item.itemType !== 'crafter') return res.json([]);
 
       let sourceId: string;
+      let sourceSystem: string | null = item.system ?? null;
       if (item.characterId) {
         const character = await storage.getCharacter(item.characterId);
         if (!character) return res.status(404).json({ error: "Character not found" });
@@ -6101,6 +6102,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isGM = !!campaign && campaign.gmUserId === userId;
         if (!isOwner && !isGM) return res.status(403).json({ error: "Not authorized" });
         sourceId = item.templateItemId || item.id;
+        if (item.templateItemId) {
+          const src = await storage.getItem(item.templateItemId);
+          sourceSystem = src?.system ?? sourceSystem;
+        }
+        if (campaign && campaign.system !== 'aa-v2') return res.status(400).json({ error: "Crafting is AA V2 only" });
       } else {
         const me = await storage.getUser(userId);
         const isAdmin = !!me?.isAdmin;
@@ -6110,6 +6116,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ error: "Not authorized" });
         }
         sourceId = item.id;
+      }
+      if (sourceSystem && sourceSystem !== 'aa-v2') {
+        return res.status(400).json({ error: "Crafting is AA V2 only" });
       }
       const recipes = await storage.getCraftRecipesByItem(sourceId);
       res.json(recipes);
@@ -6224,12 +6233,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Derive campaign authoritatively from character.
+      // Crafting is owner-only — GMs cannot craft with another player's character/inventory.
       const userId = req.session.userId!;
       const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
-      const isGM = !!campaign && campaign.gmUserId === userId;
-      const isOwner = character.userId === userId;
-      if (!isOwner && !isGM) {
-        return res.status(403).json({ error: "Not authorized to craft with this character" });
+      if (character.userId !== userId) {
+        return res.status(403).json({ error: "Only the character's owner can craft with their items" });
       }
 
       // AA V2 only — derived from authoritative campaign, not request.
@@ -6250,27 +6258,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Recipe does not belong to this Crafter" });
       }
 
-      // Match ingredients in inventory: strict template-first, name-only fallback
-      // when the ingredient has no templateItemId.
+      // Aggregate ingredient requirements by key so duplicate entries for the
+      // same ingredient sum into one total need; then match inventory using
+      // strict template-first / name-only fallback per requirement.
       const inventory = await storage.getItemsByCharacter(characterId);
-      type Match = { ingredient: typeof recipe.ingredients[number]; matches: { id: string; quantity: number }[]; have: number };
-      const matches: Match[] = [];
+      type AggReq = { key: string; itemId: string | null; itemName: string; need: number };
+      const aggMap = new Map<string, AggReq>();
       for (const ing of recipe.ingredients) {
+        const key = ing.itemId ? `id:${ing.itemId}` : `name:${ing.itemName || ''}`;
+        const cur = aggMap.get(key);
+        const qty = ing.quantity || 1;
+        if (cur) cur.need += qty;
+        else aggMap.set(key, { key, itemId: ing.itemId ?? null, itemName: ing.itemName || '', need: qty });
+      }
+      type Match = { req: AggReq; matches: { id: string; quantity: number }[]; have: number };
+      const matches: Match[] = [];
+      for (const req of Array.from(aggMap.values())) {
         const owned = inventory.filter(inv => {
-          if (ing.itemId) {
-            return inv.templateItemId === ing.itemId;
-          }
-          if (ing.itemName) {
-            return inv.name === ing.itemName;
-          }
+          if (req.itemId) return inv.templateItemId === req.itemId;
+          if (req.itemName) return inv.name === req.itemName;
           return false;
         });
         const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
-        matches.push({ ingredient: ing, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
+        matches.push({ req, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
       }
-      const missing = matches.filter(m => m.have < (m.ingredient.quantity || 1));
+      const missing = matches.filter(m => m.have < m.req.need);
       if (missing.length > 0) {
-        return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.ingredient.itemName, need: m.ingredient.quantity, have: m.have })) });
+        return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
       }
 
       // Roll server-side.
@@ -6280,13 +6294,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let rollText = '';
       const attrMod = (() => {
         if (!recipe.attribute || recipe.attribute === 'none') return 0;
+        const c = character as Record<string, unknown>;
         const map: Record<string, number> = {
-          might: (character as any).might ?? 0,
-          finesse: (character as any).finesse ?? 0,
-          wit: (character as any).wit ?? 0,
-          presence: (character as any).presence ?? 0,
-          will: (character as any).will ?? 0,
-          craft: (character as any).craft ?? 0,
+          might: (c.might as number) ?? 0,
+          finesse: (c.finesse as number) ?? 0,
+          wit: (c.wit as number) ?? 0,
+          presence: (c.presence as number) ?? 0,
+          will: (c.will as number) ?? 0,
+          craft: (c.craft as number) ?? 0,
         };
         return map[recipe.attribute] ?? 0;
       })();
@@ -6329,10 +6344,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const consume = chosen ? chosen.consumeIngredients : true;
       const outcomeLabel = chosen?.label || (chosen ? 'Crafted' : 'Crafted (default)');
 
-      // Consume ingredients if needed.
+      // Consume ingredients if needed (uses aggregated totals).
       if (consume) {
         for (const m of matches) {
-          let need = m.ingredient.quantity || 1;
+          let need = m.req.need;
           for (const owned of m.matches) {
             if (need <= 0) break;
             if (owned.quantity <= need) {
@@ -6347,12 +6362,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create output item by copying the source template.
-      let createdOutput: any = null;
+      let createdOutput: Item | null = null;
       if (outOutputItemId && outOutputQty > 0) {
         const srcOut = await storage.getItem(outOutputItemId);
         if (srcOut) {
-          const { id: _id, characterId: _ch, campaignId: _cid, isTemplate: _t, isLiveTemplate: _lt, createdByUserId: _cu, ...rest } = srcOut as any;
-          createdOutput = await storage.createItem({
+          const { id: _id, characterId: _ch, campaignId: _cid, isTemplate: _t, isLiveTemplate: _lt, createdByUserId: _cu, ...rest } = srcOut;
+          const payload = insertItemSchema.parse({
             ...rest,
             characterId,
             campaignId: null,
@@ -6362,7 +6377,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             durability: outOverrideDur ?? srcOut.durability ?? 10,
             templateItemId: srcOut.id,
             isEquipped: false,
-          } as any);
+          });
+          createdOutput = await storage.createItem(payload);
         }
       }
 
@@ -6376,13 +6392,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           consume ? '' : '(ingredients preserved)',
         ].filter(Boolean);
         try {
-          const chat = await storage.createChatMessage({
+          const chat = await storage.createChatMessage(insertChatMessageSchema.parse({
             campaignId,
             userId,
             sender: character.name || 'Unknown',
             text: lines.join('\n'),
             type: 'roll',
-          } as any);
+          }));
           broadcastToCampaign(campaignId, { type: 'chat_message', message: chat });
         } catch {}
       }
