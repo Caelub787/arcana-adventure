@@ -9947,6 +9947,7 @@ interface CampaignMenuProps {
 
 const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -12114,6 +12115,18 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
 
           </Tabs>
           )}
+
+          {/* Main Menu navigation - always at bottom */}
+          <div className="pt-3 mt-3 border-t border-stone-800">
+            <Button
+              variant="outline"
+              className="w-full bg-stone-900/50 hover:bg-stone-800/70 border-stone-700 text-stone-200 hover:text-amber-400 hover:border-amber-500/60"
+              onClick={() => navigate("/")}
+              data-testid="button-main-menu"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> Main Menu
+            </Button>
+          </div>
         </div>
       )}
       

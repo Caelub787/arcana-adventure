@@ -8,7 +8,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
+import { Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10652,51 +10652,11 @@ export default function Campaign() {
         );
       })()}
 
-      {/* Quick Search button (top-center, next to Map Controls) */}
-      {!spectatorMode && (
-        <div
-          className="absolute top-4 z-50 transition-all duration-300 ease-in-out pointer-events-auto"
-          style={{
-            left: (sidePanelOpen && !isMobile) ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
-            transform: 'translateX(calc(-50% - 90px))',
-          }}
-        >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setGlobalSearchOpen((v) => !v)}
-                  className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${globalSearchOpen ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-                  data-testid="button-global-search"
-                >
-                  <Search className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Quick Search (Alt+L)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      )}
-
       {/* Top Bar: Nav & Settings */}
       {!spectatorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
-        {/* Left Side - Back button and dice roller only */}
+        {/* Left Side - Dice roller and quick search */}
         <div className="pointer-events-auto flex flex-col gap-2">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => setLocation("/")} 
-            className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-            data-testid="button-back-home"
-          >
-            <ArrowLeft style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-          </Button>
-
           {!isSandbox && (
             <div className="relative">
               <TooltipProvider>
@@ -10706,10 +10666,10 @@ export default function Campaign() {
                       variant="ghost"
                       size="icon"
                       onClick={() => setDiceMenuOpen(!diceMenuOpen)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      className="bg-stone-900/70 hover:bg-stone-800/90 border border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white backdrop-blur-sm shadow-lg pointer-events-auto"
                       data-testid="button-dice-roller"
                     >
-                      <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      <Dices className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
@@ -10741,6 +10701,29 @@ export default function Campaign() {
               )}
             </div>
           )}
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setGlobalSearchOpen((v) => !v)}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
+                    globalSearchOpen
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'
+                  }`}
+                  data-testid="button-global-search"
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Quick Search (Alt+L)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
         </div>
         
