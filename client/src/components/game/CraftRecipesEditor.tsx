@@ -48,6 +48,17 @@ interface DraftRecipe {
   sortOrder?: number;
   ingredients: DraftIngredient[];
   outcomes: DraftOutcome[];
+  // Optional custom-skill restriction
+  requireCustomSkill?: boolean;
+  requiredSkillName?: string;
+  requiredSkillMinValue?: number;
+  // Optional resource costs
+  costEnergyEnabled?: boolean;
+  costEnergy?: number;
+  costManaEnabled?: boolean;
+  costMana?: number;
+  costHpEnabled?: boolean;
+  costHp?: number;
 }
 
 const ATTRIBUTES = ['none', 'might', 'finesse', 'wit', 'presence', 'will', 'craft'];
@@ -66,6 +77,15 @@ function newRecipe(): DraftRecipe {
     outcomes: [
       { triggerKind: 'range', minTotal: 10, maxTotal: null, label: 'Success', consumeIngredients: true },
     ],
+    requireCustomSkill: false,
+    requiredSkillName: '',
+    requiredSkillMinValue: 0,
+    costEnergyEnabled: false,
+    costEnergy: 0,
+    costManaEnabled: false,
+    costMana: 0,
+    costHpEnabled: false,
+    costHp: 0,
   };
 }
 
@@ -200,6 +220,15 @@ function RecipeRow({
       overrideOutputItemId: o.overrideOutputItemId, overrideOutputQuantity: o.overrideOutputQuantity,
       overrideDurability: o.overrideDurability, consumeIngredients: !!o.consumeIngredients, sortOrder: o.sortOrder,
     })),
+    requireCustomSkill: !!recipe.requireCustomSkill,
+    requiredSkillName: recipe.requiredSkillName || '',
+    requiredSkillMinValue: recipe.requiredSkillMinValue ?? 0,
+    costEnergyEnabled: !!recipe.costEnergyEnabled,
+    costEnergy: recipe.costEnergy ?? 0,
+    costManaEnabled: !!recipe.costManaEnabled,
+    costMana: recipe.costMana ?? 0,
+    costHpEnabled: !!recipe.costHpEnabled,
+    costHp: recipe.costHp ?? 0,
   }));
 
   const itemPicker = (value: string | null | undefined, onChange: (v: string | null, name: string) => void) => (
@@ -438,6 +467,76 @@ function RecipeRow({
                 </div>
               ))}
               {draft.outcomes.length === 0 && <p className="text-xs text-stone-500 italic">No outcomes — default success will be used</p>}
+            </div>
+          </div>
+
+          {/* Custom Skill Restriction */}
+          <div className="border border-stone-700 rounded p-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-amber-500">Skill Restriction</span>
+              <div className="flex items-center gap-2">
+                <Switch checked={!!draft.requireCustomSkill} onCheckedChange={(c) => setDraft({ ...draft, requireCustomSkill: !!c })} data-testid="switch-require-skill" />
+                <Label className="text-xs">Required</Label>
+              </div>
+            </div>
+            {draft.requireCustomSkill && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Custom Skill Name</Label>
+                  <Input
+                    value={draft.requiredSkillName || ''}
+                    onChange={(e) => setDraft({ ...draft, requiredSkillName: e.target.value })}
+                    placeholder="e.g. Smithing"
+                    className="bg-stone-800 border-stone-700 h-8"
+                    data-testid="input-required-skill-name"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Min Value</Label>
+                  <Input
+                    type="number"
+                    value={draft.requiredSkillMinValue ?? 0}
+                    onChange={(e) => setDraft({ ...draft, requiredSkillMinValue: parseInt(e.target.value) || 0 })}
+                    className="bg-stone-800 border-stone-700 h-8"
+                    data-testid="input-required-skill-min"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Resource Costs */}
+          <div className="border border-stone-700 rounded p-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-amber-500">Resource Costs</span>
+            </div>
+            <div className="space-y-2">
+              {([
+                ['costEnergyEnabled', 'costEnergy', 'Energy', 'energy'],
+                ['costManaEnabled', 'costMana', 'Mana', 'mana'],
+                ['costHpEnabled', 'costHp', 'Health (HP)', 'hp'],
+              ] as const).map(([enabledKey, valueKey, label, slug]) => (
+                <div key={slug} className="grid grid-cols-[110px_1fr_90px] gap-2 items-center">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!(draft as any)[enabledKey]}
+                      onCheckedChange={(c) => setDraft({ ...draft, [enabledKey]: !!c } as any)}
+                      data-testid={`switch-cost-${slug}`}
+                    />
+                    <Label className="text-xs">{label}</Label>
+                  </div>
+                  <div />
+                  <Input
+                    type="number"
+                    min={0}
+                    disabled={!(draft as any)[enabledKey]}
+                    value={(draft as any)[valueKey] ?? 0}
+                    onChange={(e) => setDraft({ ...draft, [valueKey]: Math.max(0, parseInt(e.target.value) || 0) } as any)}
+                    className="bg-stone-800 border-stone-700 h-8 disabled:opacity-50"
+                    data-testid={`input-cost-${slug}`}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

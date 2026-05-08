@@ -6287,6 +6287,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
       }
 
+      // Optional custom-skill restriction: gate by name + min value.
+      if ((recipe as any).requireCustomSkill && (recipe as any).requiredSkillName) {
+        const reqName = String((recipe as any).requiredSkillName).trim().toLowerCase();
+        const reqMin = (recipe as any).requiredSkillMinValue ?? 0;
+        const charSkills = await storage.getCharacterCustomSkills(characterId);
+        const matched = charSkills.find(s => (s.name || '').trim().toLowerCase() === reqName);
+        const have = matched?.value ?? null;
+        if (have == null || have < reqMin) {
+          return res.status(400).json({
+            error: `Requires custom skill "${(recipe as any).requiredSkillName}" at value ${reqMin}+`,
+            skillRequired: { name: (recipe as any).requiredSkillName, min: reqMin, have },
+          });
+        }
+      }
+
+      // Optional resource costs (energy / mana / hp). Validate up-front
+      // before consuming anything; deducted only after a successful craft.
+      const costEnergy = (recipe as any).costEnergyEnabled ? Math.max(0, (recipe as any).costEnergy ?? 0) : 0;
+      const costMana = (recipe as any).costManaEnabled ? Math.max(0, (recipe as any).costMana ?? 0) : 0;
+      const costHp = (recipe as any).costHpEnabled ? Math.max(0, (recipe as any).costHp ?? 0) : 0;
+      const charE = (character as any).energy ?? 0;
+      const charM = (character as any).mana ?? 0;
+      const charH = (character as any).hp ?? 0;
+      const insufficient: { stat: string; need: number; have: number }[] = [];
+      if (costEnergy > 0 && charE < costEnergy) insufficient.push({ stat: 'energy', need: costEnergy, have: charE });
+      if (costMana > 0 && charM < costMana) insufficient.push({ stat: 'mana', need: costMana, have: charM });
+      if (costHp > 0 && charH < costHp) insufficient.push({ stat: 'hp', need: costHp, have: charH });
+      if (insufficient.length > 0) {
+        return res.status(400).json({
+          error: `Not enough ${insufficient.map(i => i.stat).join(', ')}`,
+          insufficient,
+        });
+      }
+
       // Roll server-side.
       let mainDie = 0;
       let extraDice = 0;
@@ -6455,14 +6489,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Deduct resource costs (energy / mana / hp) once the craft has
+      // produced its output. Already validated up-front; clamp at 0.
+      let resourceDeductions: { stat: string; spent: number }[] = [];
+      if (costEnergy > 0 || costMana > 0 || costHp > 0) {
+        const patch: Record<string, number> = {};
+        if (costEnergy > 0) { patch.energy = Math.max(0, charE - costEnergy); resourceDeductions.push({ stat: 'energy', spent: costEnergy }); }
+        if (costMana > 0)   { patch.mana   = Math.max(0, charM - costMana);   resourceDeductions.push({ stat: 'mana',   spent: costMana }); }
+        if (costHp > 0)     { patch.hp     = Math.max(0, charH - costHp);     resourceDeductions.push({ stat: 'hp',     spent: costHp }); }
+        try {
+          await storage.updateCharacter(characterId, patch);
+          if (campaignId) broadcastToCampaign(campaignId, { type: 'character_updated', characterId });
+        } catch (resErr) {
+          console.error('[Crafter] failed to deduct resource costs:', resErr);
+        }
+      }
+
       // Post chat message.
       if (campaignId) {
+        const costLine = resourceDeductions.length > 0
+          ? `Spent: ${resourceDeductions.map(d => `${d.spent} ${d.stat}`).join(', ')}`
+          : '';
         const lines = [
           `🛠️ ${character.name} crafted "${recipe.name}"`,
           recipe.noRoll ? '(no roll required)' : `Roll: ${rollText}`,
           `Outcome: ${outcomeLabel}`,
           createdOutput ? `Produced: ${createdOutput.quantity}× ${createdOutput.name}` : 'No item produced',
           consume ? '' : '(ingredients preserved)',
+          costLine,
         ].filter(Boolean);
         try {
           const chat = await storage.createChatMessage(insertChatMessageSchema.parse({

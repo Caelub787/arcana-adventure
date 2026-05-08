@@ -25130,6 +25130,12 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     enabled: !!character?.id,
   });
 
+  const { data: customSkills = [] } = useQuery<any[]>({
+    queryKey: ['character-custom-skills', character?.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+    enabled: !!character?.id,
+  });
+
   const handleCraft = async (recipeId: string) => {
     setBusyId(recipeId);
     setLastResult(null);
@@ -25140,6 +25146,8 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
       });
       setLastResult(result);
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/characters', character.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
       toast({ title: 'Crafting complete', description: result?.outcome?.label || 'Done' });
     } catch (err: any) {
       const detail = err?.message || 'Craft failed';
@@ -25160,6 +25168,13 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     }, 0);
   };
 
+  const characterSkillValue = (name: string): number | null => {
+    if (!name) return null;
+    const target = name.trim().toLowerCase();
+    const found = customSkills.find((s: any) => (s.name || '').trim().toLowerCase() === target);
+    return found ? (found.value ?? 0) : null;
+  };
+
   return (
     <div className="pt-4 border-t border-stone-700">
       <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
@@ -25172,11 +25187,25 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
       <div className="space-y-2">
         {recipes.map((r: any) => {
           const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
+          // Skill check
+          const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
+          const skillMin = r.requiredSkillMinValue ?? 0;
+          const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
+          const skillOk = !skillRequired || (skillHave != null && skillHave >= skillMin);
+          // Resource cost checks
+          const charE = character?.energy ?? 0;
+          const charM = character?.mana ?? 0;
+          const charH = character?.hp ?? 0;
+          const energyOk = !r.costEnergyEnabled || (r.costEnergy ?? 0) <= charE;
+          const manaOk = !r.costManaEnabled || (r.costMana ?? 0) <= charM;
+          const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
+          const costsOk = energyOk && manaOk && hpOk;
+          const canDoIt = canCraft && allHave && skillOk && costsOk;
           return (
             <div key={r.id} className="border border-stone-700 rounded p-2 bg-stone-900/40">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-semibold text-stone-200">{r.name}</span>
-                <Button size="sm" disabled={!canCraft || !allHave || busyId === r.id} onClick={() => handleCraft(r.id)} className="bg-amber-700 hover:bg-amber-600 h-7" data-testid={`button-craft-${r.id}`}>
+                <Button size="sm" disabled={!canDoIt || busyId === r.id} onClick={() => handleCraft(r.id)} className="bg-amber-700 hover:bg-amber-600 h-7" data-testid={`button-craft-${r.id}`}>
                   {busyId === r.id ? 'Crafting…' : 'Craft'}
                 </Button>
               </div>
@@ -25184,32 +25213,48 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
               <div className="text-xs space-y-1">
                 {r.ingredients?.length > 0 && (
                   <div>
-                    <span className="text-stone-500">Needs: </span>
-                    {r.ingredients.map((ing: any, i: number) => {
-                      const have = ingredientHaveCount(ing);
-                      const need = ing.quantity || 1;
-                      const ok = have >= need;
-                      return (
-                        <span key={i} className={ok ? 'text-green-400' : 'text-red-400'}>
-                          {need}× {ing.itemName || '?'} ({have}){i < r.ingredients.length - 1 ? ', ' : ''}
-                        </span>
-                      );
-                    })}
+                    <div className="text-stone-500 mb-0.5">Ingredients:</div>
+                    <ul className="ml-3 space-y-0.5">
+                      {r.ingredients.map((ing: any, i: number) => {
+                        const have = ingredientHaveCount(ing);
+                        const need = ing.quantity || 1;
+                        const ok = have >= need;
+                        return (
+                          <li key={i} className={ok ? 'text-green-400' : 'text-red-400'} data-testid={`ingredient-${r.id}-${i}`}>
+                            • {need}× {ing.itemName || '?'} <span className="text-stone-500">— have {have}{!ok ? ` (need ${need - have} more)` : ''}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 )}
-                {(() => {
-                  const missing = (r.ingredients || [])
-                    .map((ing: any) => ({ name: ing.itemName || '?', need: ing.quantity || 1, have: ingredientHaveCount(ing) }))
-                    .filter((m: any) => m.have < m.need);
-                  if (missing.length === 0) return null;
-                  return (
-                    <div className="text-red-400">
-                      {missing.map((m: any, i: number) => (
-                        <div key={i}>Need {m.need - m.have} more of {m.name}</div>
-                      ))}
-                    </div>
-                  );
-                })()}
+                {skillRequired && (
+                  <div className={skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
+                    Requires: {r.requiredSkillName} {skillMin}+ <span className="text-stone-500">— have {skillHave == null ? 'none' : skillHave}</span>
+                  </div>
+                )}
+                {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
+                  <div>
+                    <div className="text-stone-500 mb-0.5">Costs:</div>
+                    <ul className="ml-3 space-y-0.5">
+                      {r.costEnergyEnabled && (
+                        <li className={energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
+                          • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {charE}</span>
+                        </li>
+                      )}
+                      {r.costManaEnabled && (
+                        <li className={manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
+                          • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {charM}</span>
+                        </li>
+                      )}
+                      {r.costHpEnabled && (
+                        <li className={hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
+                          • {r.costHp ?? 0} HP <span className="text-stone-500">— have {charH}</span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
                 {!r.noRoll && (
                   <div className="text-stone-500">
                     Roll: <span className="text-stone-300">{r.diceFormula}{r.mod ? ` ${r.mod >= 0 ? '+' : ''}${r.mod}` : ''}{r.attribute && r.attribute !== 'none' ? ` + ${r.attribute}` : ''}</span>

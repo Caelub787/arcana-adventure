@@ -554,6 +554,19 @@ export const craftRecipes = pgTable("craft_recipes", {
   diceFormula: text("dice_formula").default("1d20").notNull(),
   attribute: text("attribute").default("none").notNull(),
   mod: integer("mod").default(0).notNull(),
+  // Optional custom-skill restriction: blocks crafting unless the character
+  // has a custom skill matching `requiredSkillName` with value >= min.
+  requireCustomSkill: boolean("require_custom_skill").default(false).notNull(),
+  requiredSkillName: text("required_skill_name").default("").notNull(),
+  requiredSkillMinValue: integer("required_skill_min_value").default(0).notNull(),
+  // Optional resource costs (disabled by default). When enabled, the cost
+  // is required to be available, and is deducted on successful craft.
+  costEnergyEnabled: boolean("cost_energy_enabled").default(false).notNull(),
+  costEnergy: integer("cost_energy").default(0).notNull(),
+  costManaEnabled: boolean("cost_mana_enabled").default(false).notNull(),
+  costMana: integer("cost_mana").default(0).notNull(),
+  costHpEnabled: boolean("cost_hp_enabled").default(false).notNull(),
+  costHp: integer("cost_hp").default(0).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
 });
 export const insertCraftRecipeSchema = createInsertSchema(craftRecipes).omit({ id: true });
