@@ -6328,14 +6328,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Pick outcome — nat1/nat20 take precedence (only meaningful on 1d20).
+      // When noRoll is true, skip outcome matching entirely (deterministic
+      // auto-success uses the recipe's defaults).
       const isD20 = !recipe.noRoll && /^1d20$/i.test((recipe.diceFormula || '').trim());
       const ordered = [...recipe.outcomes].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      let chosen = ordered.find(o => o.triggerKind === 'nat20' && isD20 && mainDie === 20)
+      let chosen = recipe.noRoll ? null : (
+        ordered.find(o => o.triggerKind === 'nat20' && isD20 && mainDie === 20)
         || ordered.find(o => o.triggerKind === 'nat1' && isD20 && mainDie === 1)
         || ordered.find(o => o.triggerKind === 'range'
           && (o.minTotal == null || total >= o.minTotal)
           && (o.maxTotal == null || total <= o.maxTotal))
-        || null;
+        || null
+      );
 
       // Default outcome if no rule matches: produce the recipe's output, consume ingredients.
       const outOutputItemId = chosen?.overrideOutputItemId || recipe.outputItemId || null;
