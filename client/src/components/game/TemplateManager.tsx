@@ -14,6 +14,7 @@ import { Plus, Trash2, Pencil, Sword, Sparkles, X, Package } from "lucide-react"
 import { api } from "@/lib/api";
 import { RollEntriesEditor } from "./RollEntriesEditor";
 import { toast } from "@/hooks/use-toast";
+import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
 
 interface TemplateManagerProps {
   campaignId: string;
@@ -22,7 +23,6 @@ interface TemplateManagerProps {
 
 const ITEM_TYPES = ["weapon", "armor", "consumable", "utility", "container", "currency"];
 const RARITY_OPTIONS = ["common", "uncommon", "rare", "epic", "legendary"];
-const DAMAGE_TYPES = ["Sharp", "Blunt", "Piercing", "Flame", "Frost", "Storm", "Tide", "Stone", "Flux", "Light", "Dark", "Sound", "Energy", "Health"];
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
 
 const rarityColors: Record<string, string> = {
@@ -230,6 +230,7 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
         onOpenChange={setShowCreateItem}
         onSave={(data) => createItemMutation.mutate(data)}
         isPending={createItemMutation.isPending}
+        campaignSystem={campaignSystem}
       />
 
       <CreateSpellTemplateDialog
@@ -237,6 +238,7 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
         onOpenChange={setShowCreateSpell}
         onSave={(data) => createSpellMutation.mutate(data)}
         isPending={createSpellMutation.isPending}
+        campaignSystem={campaignSystem}
       />
 
       {editingItem && (
@@ -246,6 +248,7 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
           item={editingItem}
           onSave={(data) => updateItemMutation.mutate({ id: editingItem.id, data })}
           isPending={updateItemMutation.isPending}
+          campaignSystem={campaignSystem}
         />
       )}
 
@@ -256,6 +259,7 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
           spell={editingSpell}
           onSave={(data) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
           isPending={updateSpellMutation.isPending}
+          campaignSystem={campaignSystem}
         />
       )}
 
@@ -289,7 +293,7 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
   );
 }
 
-function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (data: any) => void; isPending: boolean }) {
+function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending, campaignSystem }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (data: any) => void; isPending: boolean; campaignSystem?: string }) {
   const [name, setName] = useState("");
   const [itemType, setItemType] = useState("weapon");
   const [rarity, setRarity] = useState("common");
@@ -358,12 +362,12 @@ function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending }: { o
               <Input value={damage} onChange={(e) => setDamage(e.target.value)} placeholder="1d8" className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
             <div>
-              <Label className="text-xs">Damage Type</Label>
+              <Label className="text-xs">{getEffectTypeLabel(campaignSystem)}</Label>
               <Select value={damageType || "_none"} onValueChange={(v) => setDamageType(v === "_none" ? "" : v)}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
                   <SelectItem value="_none" className="text-xs">None</SelectItem>
-                  {DAMAGE_TYPES.map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+                  {getEffectTypes(campaignSystem).map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -390,7 +394,7 @@ function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending }: { o
   );
 }
 
-function EditItemTemplateDialog({ open, onOpenChange, item, onSave, isPending }: { open: boolean; onOpenChange: (v: boolean) => void; item: any; onSave: (data: any) => void; isPending: boolean }) {
+function EditItemTemplateDialog({ open, onOpenChange, item, onSave, isPending, campaignSystem }: { open: boolean; onOpenChange: (v: boolean) => void; item: any; onSave: (data: any) => void; isPending: boolean; campaignSystem?: string }) {
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description || "");
   const [damage, setDamage] = useState(item.damage || "");
@@ -424,12 +428,12 @@ function EditItemTemplateDialog({ open, onOpenChange, item, onSave, isPending }:
               <Input value={damage} onChange={(e) => setDamage(e.target.value)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
             <div>
-              <Label className="text-xs">Damage Type</Label>
+              <Label className="text-xs">{getEffectTypeLabel(campaignSystem)}</Label>
               <Select value={damageType || "_none"} onValueChange={(v) => setDamageType(v === "_none" ? "" : v)}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
                   <SelectItem value="_none" className="text-xs">None</SelectItem>
-                  {DAMAGE_TYPES.map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+                  {getEffectTypes(campaignSystem).map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -455,7 +459,7 @@ function EditItemTemplateDialog({ open, onOpenChange, item, onSave, isPending }:
   );
 }
 
-function CreateSpellTemplateDialog({ open, onOpenChange, onSave, isPending }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (data: any) => void; isPending: boolean }) {
+function CreateSpellTemplateDialog({ open, onOpenChange, onSave, isPending, campaignSystem }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (data: any) => void; isPending: boolean; campaignSystem?: string }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [damageDice, setDamageDice] = useState("");
@@ -503,12 +507,12 @@ function CreateSpellTemplateDialog({ open, onOpenChange, onSave, isPending }: { 
               <Input value={damageDice} onChange={(e) => setDamageDice(e.target.value)} placeholder="2d6" className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
             <div>
-              <Label className="text-xs">Damage Type</Label>
+              <Label className="text-xs">{getEffectTypeLabel(campaignSystem)}</Label>
               <Select value={damageType || "_none"} onValueChange={(v) => setDamageType(v === "_none" ? "" : v)}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
                   <SelectItem value="_none" className="text-xs">None</SelectItem>
-                  {DAMAGE_TYPES.map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+                  {getEffectTypes(campaignSystem).map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -539,7 +543,7 @@ function CreateSpellTemplateDialog({ open, onOpenChange, onSave, isPending }: { 
   );
 }
 
-function EditSpellTemplateDialog({ open, onOpenChange, spell, onSave, isPending }: { open: boolean; onOpenChange: (v: boolean) => void; spell: any; onSave: (data: any) => void; isPending: boolean }) {
+function EditSpellTemplateDialog({ open, onOpenChange, spell, onSave, isPending, campaignSystem }: { open: boolean; onOpenChange: (v: boolean) => void; spell: any; onSave: (data: any) => void; isPending: boolean; campaignSystem?: string }) {
   const [name, setName] = useState(spell.name);
   const [description, setDescription] = useState(spell.description || "");
   const [damageDice, setDamageDice] = useState(spell.damageDice || "");
@@ -573,12 +577,12 @@ function EditSpellTemplateDialog({ open, onOpenChange, spell, onSave, isPending 
               <Input value={damageDice} onChange={(e) => setDamageDice(e.target.value)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
             <div>
-              <Label className="text-xs">Damage Type</Label>
+              <Label className="text-xs">{getEffectTypeLabel(campaignSystem)}</Label>
               <Select value={damageType || "_none"} onValueChange={(v) => setDamageType(v === "_none" ? "" : v)}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
                   <SelectItem value="_none" className="text-xs">None</SelectItem>
-                  {DAMAGE_TYPES.map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+                  {getEffectTypes(campaignSystem).map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

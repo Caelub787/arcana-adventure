@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
+import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16713,7 +16714,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     saveSuccessEffect: '',
   });
   
-  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison', 'Health', 'Energy'];
+  const spellDamageTypes = isAAv2(campaignSystem)
+    ? getEffectTypes(campaignSystem)
+    : ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison', 'Health', 'Energy'];
   const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
   
   const normalizeCastingTime = (ct: string | undefined | null): string => {
@@ -20204,7 +20207,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-stone-400 text-xs">Damage Type</Label>
+                                  <Label className="text-stone-400 text-xs">{getEffectTypeLabel(campaignSystem)}</Label>
                                   <Select value={spellDamageTypeLibraryFilter} onValueChange={setSpellDamageTypeLibraryFilter}>
                                     <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-damage-type-filter">
                                       <SelectValue />
@@ -20548,7 +20551,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
                           <div>
                             <div className="flex items-center gap-2">
-                              <Label>Damage Type</Label>
+                              <Label>{getEffectTypeLabel(campaignSystem)}</Label>
                               {!isGM && (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -24247,27 +24250,18 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                   <Input value={formData.damage} onChange={(e) => setFormData({...formData, damage: e.target.value})} placeholder="1d6" className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
-                  <Label>Damage Type</Label>
+                  <Label>{getEffectTypeLabel(campaignSystem)}</Label>
                   <Select value={formData.damageType} onValueChange={(v) => setFormData({...formData, damageType: v})}>
                     <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-type">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Sharp">Sharp</SelectItem>
-                      <SelectItem value="Blunt">Blunt</SelectItem>
-                      <SelectItem value="Piercing">Piercing</SelectItem>
-                      <SelectItem value="Flame">Flame</SelectItem>
-                      <SelectItem value="Frost">Frost</SelectItem>
-                      <SelectItem value="Storm">Storm</SelectItem>
-                      <SelectItem value="Tide">Tide</SelectItem>
-                      <SelectItem value="Stone">Stone</SelectItem>
-                      <SelectItem value="Flux">Flux</SelectItem>
-                      <SelectItem value="Light">Light</SelectItem>
-                      <SelectItem value="Dark">Dark</SelectItem>
-                      <SelectItem value="Sound">Sound</SelectItem>
-                      <SelectItem value="Mind">Mind</SelectItem>
-                      <SelectItem value="Poison">Poison</SelectItem>
-                      <SelectItem value="Health">Health</SelectItem>
+                      {(isAAv2(campaignSystem)
+                        ? getEffectTypes(campaignSystem)
+                        : ['Sharp','Blunt','Piercing','Flame','Frost','Storm','Tide','Stone','Flux','Light','Dark','Sound','Mind','Poison','Health']
+                      ).map((dt) => (
+                        <SelectItem key={dt} value={dt}>{dt}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

@@ -12549,7 +12549,7 @@ export default function Campaign() {
             { label: 'Weight', value: item.weight },
             { label: 'Value', value: item.value },
             { label: 'Damage', value: item.damage },
-            { label: 'Damage Type', value: item.damageType },
+            { label: campaignSystemSlug === 'aa-v2' ? 'Effect Type' : 'Damage Type', value: item.damageType },
             { label: 'Range', value: item.range },
           ]}
           defaultPosition={{ x: 100 + idx * 30, y: 120 + idx * 30 }}
@@ -12575,7 +12575,7 @@ export default function Campaign() {
             { label: 'Cast Time', value: spell.castTime },
             { label: 'Duration', value: spell.duration },
             { label: 'Damage', value: spell.damage },
-            { label: 'Damage Type', value: spell.damageType },
+            { label: campaignSystemSlug === 'aa-v2' ? 'Effect Type' : 'Damage Type', value: spell.damageType },
             { label: 'Attribute', value: spell.attribute },
           ]}
           defaultPosition={{ x: 140 + idx * 30, y: 160 + idx * 30 }}

@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
 import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder } from '@/lib/api';
+import { getEffectTypes, getEffectTypeLabel } from '@/lib/effectTypes';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -1248,6 +1249,7 @@ export default function AdminSettings() {
           onOpenChange={setShowAddTrait}
           onSave={(data) => createTraitMutation.mutate(data)}
           isLoading={createTraitMutation.isPending}
+          systemSlug={systemSlug}
         />
 
         {editingTrait && (
@@ -1257,6 +1259,7 @@ export default function AdminSettings() {
             onSave={(data) => updateTraitMutation.mutate({ id: editingTrait.id, data })}
             initialData={editingTrait}
             isLoading={updateTraitMutation.isPending}
+            systemSlug={systemSlug}
           />
         )}
 
@@ -1284,6 +1287,7 @@ export default function AdminSettings() {
           onOpenChange={setShowAddTokenEffect}
           onSave={(data) => createTokenEffectMutation.mutate(data)}
           isLoading={createTokenEffectMutation.isPending}
+          systemSlug={systemSlug}
         />
 
         {editingTokenEffect && (
@@ -1293,6 +1297,7 @@ export default function AdminSettings() {
             onSave={(data) => updateTokenEffectMutation.mutate({ id: editingTokenEffect.id, data })}
             initialData={editingTokenEffect}
             isLoading={updateTokenEffectMutation.isPending}
+            systemSlug={systemSlug}
           />
         )}
 
@@ -2909,11 +2914,10 @@ interface TraitFormDialogProps {
   onSave: (data: Partial<SystemTrait>) => void;
   initialData?: SystemTrait;
   isLoading?: boolean;
+  systemSlug?: string;
 }
 
-const DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison'];
-
-function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TraitFormDialogProps) {
+function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, systemSlug }: TraitFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -3091,7 +3095,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
           {formData.damageModifierType !== 'none' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-stone-300">Damage Type</Label>
+                <Label className="text-stone-300">{getEffectTypeLabel(systemSlug)}</Label>
                 <Select
                   value={formData.damageModifierDamageType}
                   onValueChange={(value) => setFormData({ ...formData, damageModifierDamageType: value })}
@@ -3100,7 +3104,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                     <SelectValue placeholder="Select type..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {DAMAGE_TYPES.map((type) => (
+                    {getEffectTypes(systemSlug).map((type) => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
                   </SelectContent>
@@ -3155,8 +3159,6 @@ interface TokenEffectsViewProps {
   onEditEffect: (effect: TokenEffect) => void;
   onDeleteEffect: (id: string) => void;
 }
-
-const TOKEN_EFFECT_DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Mind', 'Poison'];
 
 function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onAddEffect, onEditEffect, onDeleteEffect }: TokenEffectsViewProps) {
   return (
@@ -3262,9 +3264,10 @@ interface TokenEffectFormDialogProps {
   onSave: (data: Partial<TokenEffect>) => void;
   initialData?: TokenEffect;
   isLoading?: boolean;
+  systemSlug?: string;
 }
 
-function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TokenEffectFormDialogProps) {
+function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoading, systemSlug }: TokenEffectFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     imageUrl: string;
@@ -3483,7 +3486,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
             {formData.causesDamage && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-stone-300">Damage Type</Label>
+                  <Label className="text-stone-300">{getEffectTypeLabel(systemSlug)}</Label>
                   <Select
                     value={formData.damageType}
                     onValueChange={(value) => setFormData({ ...formData, damageType: value })}
@@ -3492,7 +3495,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                       <SelectValue placeholder="Select type..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {TOKEN_EFFECT_DAMAGE_TYPES.map((type) => (
+                      {getEffectTypes(systemSlug).map((type) => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>

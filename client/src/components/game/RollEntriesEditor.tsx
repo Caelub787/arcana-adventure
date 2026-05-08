@@ -8,6 +8,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy, RotateCcw, Folder as FolderIcon, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { sortRollsForDisplay, collectFolderNames, type RollDisplayNode } from "@/lib/rollSort";
+import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
 
 interface RollEntry {
   id: string;
@@ -107,11 +108,6 @@ const ROLL_TYPE_COLORS: Record<string, string> = {
   heal: "bg-green-700 text-green-100",
   effect: "bg-blue-700 text-blue-100",
 };
-
-const DAMAGE_TYPES = [
-  "Sharp", "Blunt", "Piercing", "Flame", "Frost", "Storm", "Mind", "Poison",
-  "Tide", "Stone", "Flux", "Light", "Dark", "Sound",
-];
 
 const SAVE_SUCCESS_EFFECT_OPTIONS = [
   { value: "half", label: "Half Damage" },
@@ -678,14 +674,14 @@ function RollForm({
           />
         </div>
         <div>
-          <Label className="text-xs text-stone-400">Damage Type</Label>
+          <Label className="text-xs text-stone-400">{getEffectTypeLabel(campaignSystem)}</Label>
           <Select value={form.damageType || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, damageType: v === "_none" ? "" : v }))}>
             <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-damageType`}>
               <SelectValue placeholder="None" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="_none">None</SelectItem>
-              {DAMAGE_TYPES.map((dt) => (
+              {getEffectTypes(campaignSystem).map((dt) => (
                 <SelectItem key={dt} value={dt}>{dt}</SelectItem>
               ))}
             </SelectContent>
