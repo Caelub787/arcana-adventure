@@ -25202,9 +25202,6 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                   </div>
                 )}
               </div>
-              {lastResult && lastResult.outcome && busyId === null && (
-                <></>
-              )}
             </div>
           );
         })}
@@ -26312,7 +26309,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </div>
             )}
             {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && !isEditing && (
-              <CraftSection item={currentData} character={character} canCraft={isOwner || isGM} />
+              <CraftSection item={currentData} character={character} canCraft={isOwner} />
             )}
             {/* Recipe editing only on library templates (no characterId).
                 Server admin endpoints reject edits on inventory copies, so
