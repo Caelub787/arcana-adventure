@@ -25117,6 +25117,8 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<any>(null);
+  const [search, setSearch] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: recipes = [], isLoading } = useQuery<any[]>({
     queryKey: ['craft-recipes-play', item.id],
@@ -25175,24 +25177,44 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     return found ? (found.value ?? 0) : null;
   };
 
+  const q = search.trim().toLowerCase();
+  const filteredRecipes = !q ? recipes : recipes.filter((r: any) => {
+    const hay = [r.name, r.description, r.outputItemName].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+
   return (
     <div className="pt-4 border-t border-stone-700">
       <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
         <Hammer className="h-4 w-4" /> Crafting
       </h3>
+
+      <div className="relative mb-2">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search craftable items…"
+          className="pl-7 h-8 text-xs bg-stone-800 border-stone-700"
+          data-testid="input-craft-search"
+        />
+      </div>
+
       {isLoading && <p className="text-xs text-stone-500">Loading recipes…</p>}
       {!isLoading && recipes.length === 0 && (
         <p className="text-xs text-stone-500 italic">No recipes available.</p>
       )}
-      <div className="space-y-2">
-        {recipes.map((r: any) => {
+      {!isLoading && recipes.length > 0 && filteredRecipes.length === 0 && (
+        <p className="text-xs text-stone-500 italic">No recipes match "{search}".</p>
+      )}
+
+      <div className="space-y-1.5">
+        {filteredRecipes.map((r: any) => {
           const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
-          // Skill check
           const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
           const skillMin = r.requiredSkillMinValue ?? 0;
           const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
           const skillOk = !skillRequired || (skillHave != null && skillHave >= skillMin);
-          // Resource cost checks
           const charE = character?.energy ?? 0;
           const charM = character?.mana ?? 0;
           const charH = character?.hp ?? 0;
@@ -25201,66 +25223,95 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
           const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
           const costsOk = energyOk && manaOk && hpOk;
           const canDoIt = canCraft && allHave && skillOk && costsOk;
+          const isOpen = expandedId === r.id;
           return (
-            <div key={r.id} className="border border-stone-700 rounded p-2 bg-stone-900/40">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-semibold text-stone-200">{r.name}</span>
-                <Button size="sm" disabled={!canDoIt || busyId === r.id} onClick={() => handleCraft(r.id)} className="bg-amber-700 hover:bg-amber-600 h-7" data-testid={`button-craft-${r.id}`}>
-                  {busyId === r.id ? 'Crafting…' : 'Craft'}
-                </Button>
-              </div>
-              {r.description && <p className="text-xs text-stone-400 mb-1">{r.description}</p>}
-              <div className="text-xs space-y-1">
-                {r.ingredients?.length > 0 && (
-                  <div>
-                    <div className="text-stone-500 mb-0.5">Ingredients:</div>
-                    <ul className="ml-3 space-y-0.5">
-                      {r.ingredients.map((ing: any, i: number) => {
-                        const have = ingredientHaveCount(ing);
-                        const need = ing.quantity || 1;
-                        const ok = have >= need;
-                        return (
-                          <li key={i} className={ok ? 'text-green-400' : 'text-red-400'} data-testid={`ingredient-${r.id}-${i}`}>
-                            • {need}× {ing.itemName || '?'} <span className="text-stone-500">— have {have}{!ok ? ` (need ${need - have} more)` : ''}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
+            <div key={r.id} className="border border-stone-700 rounded bg-stone-900/40 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setExpandedId(isOpen ? null : r.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-800/60 text-left"
+                data-testid={`button-toggle-recipe-${r.id}`}
+              >
+                {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-amber-500 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                <span className="text-sm font-semibold text-stone-200 flex-1 truncate" data-testid={`text-recipe-name-${r.id}`}>{r.name}</span>
+                {r.outputItemName && (
+                  <span className="text-[11px] text-stone-500 truncate hidden sm:inline">→ {r.outputQuantity || 1}× {r.outputItemName}</span>
                 )}
-                {skillRequired && (
-                  <div className={skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
-                    Requires: {r.requiredSkillName} {skillMin}+ <span className="text-stone-500">— have {skillHave == null ? 'none' : skillHave}</span>
+                {!allHave && <span className="text-[10px] text-red-400 shrink-0">missing</span>}
+              </button>
+              {isOpen && (
+                <div className="px-2 pb-2 pt-1 border-t border-stone-700/60">
+                  {r.description && <p className="text-xs text-stone-400 mb-1.5">{r.description}</p>}
+                  <div className="text-xs space-y-1.5">
+                    {r.outputItemName && (
+                      <div className="text-stone-400">
+                        Produces: <span className="text-amber-300 font-semibold">{r.outputQuantity || 1}× {r.outputItemName}</span>
+                      </div>
+                    )}
+                    {r.ingredients?.length > 0 && (
+                      <div>
+                        <div className="text-stone-500 mb-0.5">Ingredients:</div>
+                        <ul className="ml-3 space-y-0.5">
+                          {r.ingredients.map((ing: any, i: number) => {
+                            const have = ingredientHaveCount(ing);
+                            const need = ing.quantity || 1;
+                            const ok = have >= need;
+                            return (
+                              <li key={i} className={ok ? 'text-green-400' : 'text-red-400'} data-testid={`ingredient-${r.id}-${i}`}>
+                                • {need}× {ing.itemName || '?'} <span className="text-stone-500">— have {have}{!ok ? ` (need ${need - have} more)` : ''}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {skillRequired && (
+                      <div className={skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
+                        Requires: {r.requiredSkillName} {skillMin}+ <span className="text-stone-500">— have {skillHave == null ? 'none' : skillHave}</span>
+                      </div>
+                    )}
+                    {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
+                      <div>
+                        <div className="text-stone-500 mb-0.5">Costs:</div>
+                        <ul className="ml-3 space-y-0.5">
+                          {r.costEnergyEnabled && (
+                            <li className={energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
+                              • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {charE}</span>
+                            </li>
+                          )}
+                          {r.costManaEnabled && (
+                            <li className={manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
+                              • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {charM}</span>
+                            </li>
+                          )}
+                          {r.costHpEnabled && (
+                            <li className={hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
+                              • {r.costHp ?? 0} HP <span className="text-stone-500">— have {charH}</span>
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    {!r.noRoll && (
+                      <div className="text-stone-500">
+                        Roll: <span className="text-stone-300">{r.diceFormula}{r.mod ? ` ${r.mod >= 0 ? '+' : ''}${r.mod}` : ''}{r.attribute && r.attribute !== 'none' ? ` + ${r.attribute}` : ''}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
-                  <div>
-                    <div className="text-stone-500 mb-0.5">Costs:</div>
-                    <ul className="ml-3 space-y-0.5">
-                      {r.costEnergyEnabled && (
-                        <li className={energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
-                          • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {charE}</span>
-                        </li>
-                      )}
-                      {r.costManaEnabled && (
-                        <li className={manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
-                          • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {charM}</span>
-                        </li>
-                      )}
-                      {r.costHpEnabled && (
-                        <li className={hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
-                          • {r.costHp ?? 0} HP <span className="text-stone-500">— have {charH}</span>
-                        </li>
-                      )}
-                    </ul>
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      size="sm"
+                      disabled={!canDoIt || busyId === r.id}
+                      onClick={() => handleCraft(r.id)}
+                      className="bg-amber-700 hover:bg-amber-600 h-7"
+                      data-testid={`button-craft-${r.id}`}
+                    >
+                      <Hammer className="h-3 w-3 mr-1" />
+                      {busyId === r.id ? 'Crafting…' : 'Craft'}
+                    </Button>
                   </div>
-                )}
-                {!r.noRoll && (
-                  <div className="text-stone-500">
-                    Roll: <span className="text-stone-300">{r.diceFormula}{r.mod ? ` ${r.mod >= 0 ? '+' : ''}${r.mod}` : ''}{r.attribute && r.attribute !== 'none' ? ` + ${r.attribute}` : ''}</span>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}

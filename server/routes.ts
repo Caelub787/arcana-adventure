@@ -6121,7 +6121,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Crafting is AA V2 only" });
       }
       const recipes = await storage.getCraftRecipesByItem(sourceId);
-      res.json(recipes);
+      // Enrich with outputItemName so the player UI can list what each
+      // recipe produces without an extra round-trip per row.
+      const outIds = Array.from(new Set(recipes.map(r => r.outputItemId).filter(Boolean) as string[]));
+      const nameById = new Map<string, string>();
+      if (outIds.length > 0) {
+        await Promise.all(outIds.map(async (id) => {
+          const it = await storage.getItem(id);
+          if (it?.name) nameById.set(id, it.name);
+        }));
+      }
+      const enriched = recipes.map(r => ({
+        ...r,
+        outputItemName: r.outputItemId ? (nameById.get(r.outputItemId) || null) : null,
+      }));
+      res.json(enriched);
     } catch (err) {
       console.error('[Crafter] list recipes error:', err);
       res.status(500).json({ error: "Failed to load recipes" });
