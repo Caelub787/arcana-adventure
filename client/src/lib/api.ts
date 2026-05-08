@@ -1014,6 +1014,32 @@ class ApiClient {
     return this.request(`/items/${id}`, { method: 'DELETE' });
   }
 
+  // Crafter Recipes (AA V2 only)
+  async getCraftRecipes(itemId: string): Promise<any[]> {
+    return this.request(`/items/${itemId}/recipes`);
+  }
+  async createCraftRecipe(itemId: string, data: any): Promise<any> {
+    return this.request(`/admin/items/${itemId}/recipes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  async updateCraftRecipe(recipeId: string, data: any): Promise<any> {
+    return this.request(`/admin/recipes/${recipeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  async deleteCraftRecipe(recipeId: string): Promise<void> {
+    return this.request(`/admin/recipes/${recipeId}`, { method: 'DELETE' });
+  }
+  async craftRecipe(itemId: string, body: { recipeId: string; characterId: string }): Promise<any> {
+    return this.request(`/items/${itemId}/craft`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // Spells
   async getSpells(characterId: string): Promise<Spell[]> {
     return this.request(`/characters/${characterId}/spells`);

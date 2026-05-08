@@ -25,7 +25,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -24190,6 +24190,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     <SelectItem value="consumable">Consumable</SelectItem>
                     <SelectItem value="utility">Utility</SelectItem>
                     <SelectItem value="container">Container</SelectItem>
+                    {campaignSystem === 'aa-v2' && (
+                      <SelectItem value="crafter">Crafter</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -25109,6 +25112,113 @@ interface ItemDetailDialogProps {
   charPanelSuffix?: string;
 }
 
+function CraftSection({ item, character, canCraft }: { item: any; character: any; canCraft: boolean }) {
+  const queryClient = useQueryClient();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<any>(null);
+
+  const { data: recipes = [], isLoading } = useQuery<any[]>({
+    queryKey: ['craft-recipes-play', item.id],
+    queryFn: () => api.getCraftRecipes(item.id),
+    enabled: !!item.id,
+  });
+
+  const { data: inventory = [] } = useQuery<any[]>({
+    queryKey: ['items', character?.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character?.id,
+  });
+
+  const handleCraft = async (recipeId: string) => {
+    setBusyId(recipeId);
+    setLastResult(null);
+    try {
+      const result = await api.craftRecipe(item.id, {
+        recipeId,
+        characterId: character.id,
+      });
+      setLastResult(result);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      toast({ title: 'Crafting complete', description: result?.outcome?.label || 'Done' });
+    } catch (err: any) {
+      const detail = err?.message || 'Craft failed';
+      const missing = err?.body?.missing || [];
+      const missingTxt = missing.length > 0 ? ` Missing: ${missing.map((m: any) => `${m.name} (${m.have}/${m.need})`).join(', ')}` : '';
+      toast({ title: 'Craft failed', description: `${detail}${missingTxt}`, variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const ingredientHaveCount = (ing: any) => {
+    return inventory.reduce((sum, inv) => {
+      let match = false;
+      if (ing.itemId) match = inv.templateItemId === ing.itemId;
+      else if (ing.itemName) match = inv.name === ing.itemName;
+      return sum + (match ? (inv.quantity || 1) : 0);
+    }, 0);
+  };
+
+  return (
+    <div className="pt-4 border-t border-stone-700">
+      <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
+        <Hammer className="h-4 w-4" /> Crafting
+      </h3>
+      {isLoading && <p className="text-xs text-stone-500">Loading recipes…</p>}
+      {!isLoading && recipes.length === 0 && (
+        <p className="text-xs text-stone-500 italic">No recipes available.</p>
+      )}
+      <div className="space-y-2">
+        {recipes.map((r: any) => {
+          const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
+          return (
+            <div key={r.id} className="border border-stone-700 rounded p-2 bg-stone-900/40">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold text-stone-200">{r.name}</span>
+                <Button size="sm" disabled={!canCraft || !allHave || busyId === r.id} onClick={() => handleCraft(r.id)} className="bg-amber-700 hover:bg-amber-600 h-7" data-testid={`button-craft-${r.id}`}>
+                  {busyId === r.id ? 'Crafting…' : 'Craft'}
+                </Button>
+              </div>
+              {r.description && <p className="text-xs text-stone-400 mb-1">{r.description}</p>}
+              <div className="text-xs space-y-1">
+                {r.ingredients?.length > 0 && (
+                  <div>
+                    <span className="text-stone-500">Needs: </span>
+                    {r.ingredients.map((ing: any, i: number) => {
+                      const have = ingredientHaveCount(ing);
+                      const ok = have >= (ing.quantity || 1);
+                      return (
+                        <span key={i} className={ok ? 'text-green-400' : 'text-red-400'}>
+                          {ing.quantity}× {ing.itemName || '?'} ({have}){i < r.ingredients.length - 1 ? ', ' : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {!r.noRoll && (
+                  <div className="text-stone-500">
+                    Roll: <span className="text-stone-300">{r.diceFormula}{r.mod ? ` ${r.mod >= 0 ? '+' : ''}${r.mod}` : ''}{r.attribute && r.attribute !== 'none' ? ` + ${r.attribute}` : ''}</span>
+                  </div>
+                )}
+              </div>
+              {lastResult && lastResult.outcome && busyId === null && (
+                <></>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {lastResult && (
+        <div className="mt-2 text-xs border border-amber-900/50 bg-amber-950/20 rounded p-2">
+          <div className="text-amber-300 font-semibold">{lastResult.outcome?.label}</div>
+          {lastResult.roll && <div className="text-stone-400">{lastResult.roll.text}</div>}
+          {lastResult.producedItem && <div className="text-green-400">+ {lastResult.producedItem.quantity}× {lastResult.producedItem.name}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '' }: ItemDetailDialogProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -25524,6 +25634,9 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <SelectItem value="consumable">Consumable</SelectItem>
                         <SelectItem value="utility">Utility</SelectItem>
                         <SelectItem value="container">Container</SelectItem>
+                        {campaignSystem === 'aa-v2' && (
+                          <SelectItem value="crafter">Crafter</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   ) : (
@@ -26197,6 +26310,10 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 </div>
               </div>
             )}
+            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && !isEditing && (
+              <CraftSection item={currentData} character={character} canCraft={isOwner || isGM} />
+            )}
+
             <RollEntriesEditor 
               ownerType="item" 
               ownerId={item.id} 

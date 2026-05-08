@@ -22,6 +22,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box,
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
+import { CraftRecipesEditor } from '@/components/game/CraftRecipesEditor';
 
 type AdminView = 'dashboard' | 'items' | 'item-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
 
@@ -8305,6 +8306,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                     <SelectItem value="utility">Utility</SelectItem>
                     <SelectItem value="container">Container</SelectItem>
                     <SelectItem value="currency">Currency</SelectItem>
+                    {selectedSystem === 'A.A. V2' && (
+                      <SelectItem value="crafter">Crafter</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -8752,6 +8756,12 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                 campaignSystem={campaignSystem || 'arcana-adventure'}
               />
             </div>
+
+            {selectedSystem === 'A.A. V2' && formData.itemType === 'crafter' && (
+              <div className="pt-4 border-t border-stone-700">
+                <CraftRecipesEditor itemId={initialData?.id || ''} systemSlug="aa-v2" />
+              </div>
+            )}
           </div>
         </div>
 

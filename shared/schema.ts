@@ -539,6 +539,55 @@ export const insertItemTemplateLinkSchema = createInsertSchema(itemTemplateLinks
 export type InsertItemTemplateLink = z.infer<typeof insertItemTemplateLinkSchema>;
 export type ItemTemplateLink = typeof itemTemplateLinks.$inferSelect;
 
+// Crafter recipes — when an item's `itemType === 'crafter'`, GMs/admins
+// attach one or more recipes to it. Each recipe describes ingredients
+// required, the craft roll, and outcome rules keyed off the roll total.
+// All AA V2 only; non-AAv2 callers never read or write these tables.
+export const craftRecipes = pgTable("craft_recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  parentItemId: varchar("parent_item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  name: text("name").default("Recipe").notNull(),
+  outputItemId: varchar("output_item_id").references(() => items.id, { onDelete: "set null" }),
+  outputQuantity: integer("output_quantity").default(1).notNull(),
+  noRoll: boolean("no_roll").default(false).notNull(),
+  diceFormula: text("dice_formula").default("1d20").notNull(),
+  attribute: text("attribute").default("none").notNull(),
+  mod: integer("mod").default(0).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+export const insertCraftRecipeSchema = createInsertSchema(craftRecipes).omit({ id: true });
+export type InsertCraftRecipe = z.infer<typeof insertCraftRecipeSchema>;
+export type CraftRecipe = typeof craftRecipes.$inferSelect;
+
+export const craftRecipeIngredients = pgTable("craft_recipe_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").notNull().references(() => craftRecipes.id, { onDelete: "cascade" }),
+  itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }),
+  itemName: text("item_name").default("").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+export const insertCraftRecipeIngredientSchema = createInsertSchema(craftRecipeIngredients).omit({ id: true });
+export type InsertCraftRecipeIngredient = z.infer<typeof insertCraftRecipeIngredientSchema>;
+export type CraftRecipeIngredient = typeof craftRecipeIngredients.$inferSelect;
+
+export const craftRecipeOutcomes = pgTable("craft_recipe_outcomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").notNull().references(() => craftRecipes.id, { onDelete: "cascade" }),
+  triggerKind: text("trigger_kind").default("range").notNull(), // 'range' | 'nat1' | 'nat20'
+  minTotal: integer("min_total"),
+  maxTotal: integer("max_total"),
+  overrideOutputItemId: varchar("override_output_item_id").references(() => items.id, { onDelete: "set null" }),
+  overrideOutputQuantity: integer("override_output_quantity"),
+  overrideDurability: integer("override_durability"),
+  consumeIngredients: boolean("consume_ingredients").default(true).notNull(),
+  label: text("label"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+export const insertCraftRecipeOutcomeSchema = createInsertSchema(craftRecipeOutcomes).omit({ id: true });
+export type InsertCraftRecipeOutcome = z.infer<typeof insertCraftRecipeOutcomeSchema>;
+export type CraftRecipeOutcome = typeof craftRecipeOutcomes.$inferSelect;
+
 // System Species table (for race/species definitions in game systems)
 export const systemSpecies = pgTable("system_species", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

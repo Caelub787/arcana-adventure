@@ -73,6 +73,10 @@ import {
   type CharacterClassSkill, type InsertCharacterClassSkill,
   type WorldCollaborator, type InsertWorldCollaborator,
   type EntityAccess, type InsertEntityAccess,
+  type CraftRecipe, type InsertCraftRecipe,
+  type CraftRecipeIngredient, type InsertCraftRecipeIngredient,
+  type CraftRecipeOutcome, type InsertCraftRecipeOutcome,
+  craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
@@ -219,6 +223,13 @@ export interface IStorage {
   getSpellTemplateLinks(spellId: string): Promise<string[]>;
   addSpellTemplateLink(spellId: string, templateId: string): Promise<void>;
   removeSpellTemplateLink(spellId: string, templateId: string): Promise<void>;
+
+  // Crafter recipe operations
+  getCraftRecipesByItem(parentItemId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>>;
+  getCraftRecipe(id: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined>;
+  createCraftRecipe(recipe: InsertCraftRecipe, ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], outcomes: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>;
+  updateCraftRecipe(id: string, recipe: Partial<InsertCraftRecipe>, ingredients?: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], outcomes?: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined>;
+  deleteCraftRecipe(id: string): Promise<void>;
 
   // Roll Entry operations
   getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
@@ -4697,6 +4708,79 @@ export class DatabaseStorage implements IStorage {
   async createCharacterClassSkill(data: InsertCharacterClassSkill): Promise<CharacterClassSkill> {
     const [result] = await db.insert(characterClassSkills).values(data).returning();
     return result;
+  }
+
+  // ============================================
+  // CRAFTER RECIPE OPERATIONS
+  // ============================================
+
+  async getCraftRecipesByItem(parentItemId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>> {
+    const recipes = await db.select().from(craftRecipes)
+      .where(eq(craftRecipes.parentItemId, parentItemId))
+      .orderBy(craftRecipes.sortOrder);
+    if (recipes.length === 0) return [];
+    const ids = recipes.map(r => r.id);
+    const [allIng, allOut] = await Promise.all([
+      db.select().from(craftRecipeIngredients).where(inArray(craftRecipeIngredients.recipeId, ids)).orderBy(craftRecipeIngredients.sortOrder),
+      db.select().from(craftRecipeOutcomes).where(inArray(craftRecipeOutcomes.recipeId, ids)).orderBy(craftRecipeOutcomes.sortOrder),
+    ]);
+    return recipes.map(r => ({
+      ...r,
+      ingredients: allIng.filter(i => i.recipeId === r.id),
+      outcomes: allOut.filter(o => o.recipeId === r.id),
+    }));
+  }
+
+  async getCraftRecipe(id: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined> {
+    const [recipe] = await db.select().from(craftRecipes).where(eq(craftRecipes.id, id));
+    if (!recipe) return undefined;
+    const [ingredients, outcomes] = await Promise.all([
+      db.select().from(craftRecipeIngredients).where(eq(craftRecipeIngredients.recipeId, id)).orderBy(craftRecipeIngredients.sortOrder),
+      db.select().from(craftRecipeOutcomes).where(eq(craftRecipeOutcomes.recipeId, id)).orderBy(craftRecipeOutcomes.sortOrder),
+    ]);
+    return { ...recipe, ingredients, outcomes };
+  }
+
+  async createCraftRecipe(
+    recipe: InsertCraftRecipe,
+    ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[],
+    outcomes: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]
+  ): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }> {
+    const [created] = await db.insert(craftRecipes).values(recipe).returning();
+    const ingRows = ingredients.length > 0
+      ? await db.insert(craftRecipeIngredients).values(ingredients.map((ing, i) => ({ ...ing, recipeId: created.id, sortOrder: ing.sortOrder ?? i }))).returning()
+      : [];
+    const outRows = outcomes.length > 0
+      ? await db.insert(craftRecipeOutcomes).values(outcomes.map((o, i) => ({ ...o, recipeId: created.id, sortOrder: o.sortOrder ?? i }))).returning()
+      : [];
+    return { ...created, ingredients: ingRows, outcomes: outRows };
+  }
+
+  async updateCraftRecipe(
+    id: string,
+    recipe: Partial<InsertCraftRecipe>,
+    ingredients?: Omit<InsertCraftRecipeIngredient, 'recipeId'>[],
+    outcomes?: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]
+  ): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined> {
+    const [updated] = await db.update(craftRecipes).set(recipe).where(eq(craftRecipes.id, id)).returning();
+    if (!updated) return undefined;
+    if (ingredients !== undefined) {
+      await db.delete(craftRecipeIngredients).where(eq(craftRecipeIngredients.recipeId, id));
+      if (ingredients.length > 0) {
+        await db.insert(craftRecipeIngredients).values(ingredients.map((ing, i) => ({ ...ing, recipeId: id, sortOrder: ing.sortOrder ?? i })));
+      }
+    }
+    if (outcomes !== undefined) {
+      await db.delete(craftRecipeOutcomes).where(eq(craftRecipeOutcomes.recipeId, id));
+      if (outcomes.length > 0) {
+        await db.insert(craftRecipeOutcomes).values(outcomes.map((o, i) => ({ ...o, recipeId: id, sortOrder: o.sortOrder ?? i })));
+      }
+    }
+    return this.getCraftRecipe(id);
+  }
+
+  async deleteCraftRecipe(id: string): Promise<void> {
+    await db.delete(craftRecipes).where(eq(craftRecipes.id, id));
   }
 
   async deleteCharacterClassSkill(id: string): Promise<void> {

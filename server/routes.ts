@@ -6075,6 +6075,291 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // CRAFTER RECIPE ROUTES (AA V2 only)
+  // ============================================
+
+  // List recipes for a Crafter item. Authenticated users can read recipes
+  // for any Crafter item they can see (admin/library item, or a Crafter
+  // they own in their inventory — in which case we resolve via templateItemId).
+  app.get("/api/items/:itemId/recipes", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      // Source library item: prefer templateItemId for inventory copies, else self
+      const sourceId = (item.templateItemId && (item.itemType !== 'crafter' || item.characterId)) ? item.templateItemId : item.id;
+      const recipes = await storage.getCraftRecipesByItem(sourceId);
+      res.json(recipes);
+    } catch (err) {
+      console.error('[Crafter] list recipes error:', err);
+      res.status(500).json({ error: "Failed to load recipes" });
+    }
+  });
+
+  // Create a recipe on a Crafter item. Owner-of-library-item only.
+  app.post("/api/admin/items/:itemId/recipes", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Crafter item not found" });
+      if (item.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
+      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      const { ingredients = [], outcomes = [], ...recipeBody } = req.body || {};
+      const recipe = await storage.createCraftRecipe(
+        { ...recipeBody, parentItemId: item.id } as any,
+        ingredients,
+        outcomes,
+      );
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json(recipe);
+    } catch (err: any) {
+      console.error('[Crafter] create recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to create recipe" });
+    }
+  });
+
+  app.put("/api/admin/recipes/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getCraftRecipe(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Recipe not found" });
+      const parent = await storage.getItem(existing.parentItemId);
+      if (!parent) return res.status(404).json({ error: "Parent item missing" });
+      if (!await requireLibraryAaV2(req, res, parent.system)) return;
+      if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return;
+      const { ingredients, outcomes, ...recipeBody } = req.body || {};
+      const updated = await storage.updateCraftRecipe(req.params.id, recipeBody, ingredients, outcomes);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json(updated);
+    } catch (err: any) {
+      console.error('[Crafter] update recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to update recipe" });
+    }
+  });
+
+  app.delete("/api/admin/recipes/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getCraftRecipe(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Recipe not found" });
+      const parent = await storage.getItem(existing.parentItemId);
+      if (!parent) return res.status(404).json({ error: "Parent item missing" });
+      if (!await requireLibraryAaV2(req, res, parent.system)) return;
+      if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return;
+      await storage.deleteCraftRecipe(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[Crafter] delete recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to delete recipe" });
+    }
+  });
+
+  // Player-side craft execution. Body: { recipeId, characterId }
+  // The :itemId MUST be an inventory crafter (not a library template).
+  // Campaign context is derived from the character — never trusted from body.
+  // Validates ingredients, rolls server-side, picks outcome, decrements
+  // ingredients, creates output, posts a chat message.
+  app.post("/api/items/:itemId/craft", requireAuth, async (req, res) => {
+    try {
+      const { recipeId, characterId } = req.body || {};
+      if (!recipeId || !characterId) return res.status(400).json({ error: "recipeId and characterId required" });
+
+      const crafter = await storage.getItem(req.params.itemId);
+      if (!crafter) return res.status(404).json({ error: "Crafter item not found" });
+      if (crafter.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
+
+      const character = await storage.getCharacter(characterId);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+
+      // The opened item MUST be an inventory copy belonging to this character.
+      // Library templates (characterId null) are not craftable directly.
+      if (!crafter.characterId) {
+        return res.status(403).json({ error: "Cannot craft from a library template — open the inventory copy" });
+      }
+      if (crafter.characterId !== characterId) {
+        return res.status(403).json({ error: "Crafter item does not belong to this character" });
+      }
+
+      // Derive campaign authoritatively from character.
+      const userId = req.session.userId!;
+      const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
+      const isGM = !!campaign && campaign.gmUserId === userId;
+      const isOwner = character.userId === userId;
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Not authorized to craft with this character" });
+      }
+
+      // AA V2 only — derived from authoritative campaign, not request.
+      if (campaign && campaign.system !== 'aa-v2') {
+        return res.status(400).json({ error: "Crafting is AA V2 only" });
+      }
+      // For characters not bound to a campaign, fall back to the crafter's library system.
+      if (!campaign && crafter.system && crafter.system !== 'aa-v2') {
+        return res.status(400).json({ error: "Crafting is AA V2 only" });
+      }
+      const campaignId = character.campaignId;
+
+      const recipe = await storage.getCraftRecipe(recipeId);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      // Recipe must be attached to the source library item for this crafter
+      const sourceId = crafter.templateItemId || crafter.id;
+      if (recipe.parentItemId !== sourceId) {
+        return res.status(400).json({ error: "Recipe does not belong to this Crafter" });
+      }
+
+      // Match ingredients in inventory: strict template-first, name-only fallback
+      // when the ingredient has no templateItemId.
+      const inventory = await storage.getItemsByCharacter(characterId);
+      type Match = { ingredient: typeof recipe.ingredients[number]; matches: { id: string; quantity: number }[]; have: number };
+      const matches: Match[] = [];
+      for (const ing of recipe.ingredients) {
+        const owned = inventory.filter(inv => {
+          if (ing.itemId) {
+            return inv.templateItemId === ing.itemId;
+          }
+          if (ing.itemName) {
+            return inv.name === ing.itemName;
+          }
+          return false;
+        });
+        const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
+        matches.push({ ingredient: ing, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
+      }
+      const missing = matches.filter(m => m.have < (m.ingredient.quantity || 1));
+      if (missing.length > 0) {
+        return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.ingredient.itemName, need: m.ingredient.quantity, have: m.have })) });
+      }
+
+      // Roll server-side.
+      let mainDie = 0;
+      let extraDice = 0;
+      let total = 0;
+      let rollText = '';
+      const attrMod = (() => {
+        if (!recipe.attribute || recipe.attribute === 'none') return 0;
+        const map: Record<string, number> = {
+          might: (character as any).might ?? 0,
+          finesse: (character as any).finesse ?? 0,
+          wit: (character as any).wit ?? 0,
+          presence: (character as any).presence ?? 0,
+          will: (character as any).will ?? 0,
+          craft: (character as any).craft ?? 0,
+        };
+        return map[recipe.attribute] ?? 0;
+      })();
+
+      if (!recipe.noRoll) {
+        // Parse simple "NdM" formula, plus an optional 1d20 detection for nat1/nat20.
+        const formula = (recipe.diceFormula || '1d20').trim();
+        const m = formula.match(/^(\d+)d(\d+)$/i);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          const sides = parseInt(m[2], 10);
+          const rolls: number[] = [];
+          for (let i = 0; i < n; i++) rolls.push(1 + Math.floor(Math.random() * sides));
+          // For nat1/nat20 detection, treat first die as the "main" die when 1d20.
+          mainDie = rolls[0];
+          extraDice = rolls.slice(1).reduce((s, r) => s + r, 0);
+          const sum = rolls.reduce((s, r) => s + r, 0);
+          total = sum + (recipe.mod || 0) + attrMod;
+          rollText = `${formula}[${rolls.join(',')}]${(recipe.mod || 0) ? ` ${recipe.mod! >= 0 ? '+' : ''}${recipe.mod}` : ''}${attrMod ? ` ${attrMod >= 0 ? '+' : ''}${attrMod} (${recipe.attribute})` : ''} = ${total}`;
+        } else {
+          total = (recipe.mod || 0) + attrMod;
+          rollText = `${(recipe.mod || 0)}${attrMod ? ` + ${attrMod} (${recipe.attribute})` : ''} = ${total}`;
+        }
+      }
+
+      // Pick outcome — nat1/nat20 take precedence (only meaningful on 1d20).
+      const isD20 = !recipe.noRoll && /^1d20$/i.test((recipe.diceFormula || '').trim());
+      const ordered = [...recipe.outcomes].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      let chosen = ordered.find(o => o.triggerKind === 'nat20' && isD20 && mainDie === 20)
+        || ordered.find(o => o.triggerKind === 'nat1' && isD20 && mainDie === 1)
+        || ordered.find(o => o.triggerKind === 'range'
+          && (o.minTotal == null || total >= o.minTotal)
+          && (o.maxTotal == null || total <= o.maxTotal))
+        || null;
+
+      // Default outcome if no rule matches: produce the recipe's output, consume ingredients.
+      const outOutputItemId = chosen?.overrideOutputItemId || recipe.outputItemId || null;
+      const outOutputQty = chosen?.overrideOutputQuantity ?? recipe.outputQuantity ?? 1;
+      const outOverrideDur = chosen?.overrideDurability ?? null;
+      const consume = chosen ? chosen.consumeIngredients : true;
+      const outcomeLabel = chosen?.label || (chosen ? 'Crafted' : 'Crafted (default)');
+
+      // Consume ingredients if needed.
+      if (consume) {
+        for (const m of matches) {
+          let need = m.ingredient.quantity || 1;
+          for (const owned of m.matches) {
+            if (need <= 0) break;
+            if (owned.quantity <= need) {
+              await storage.deleteItem(owned.id);
+              need -= owned.quantity;
+            } else {
+              await storage.updateItem(owned.id, { quantity: owned.quantity - need });
+              need = 0;
+            }
+          }
+        }
+      }
+
+      // Create output item by copying the source template.
+      let createdOutput: any = null;
+      if (outOutputItemId && outOutputQty > 0) {
+        const srcOut = await storage.getItem(outOutputItemId);
+        if (srcOut) {
+          const { id: _id, characterId: _ch, campaignId: _cid, isTemplate: _t, isLiveTemplate: _lt, createdByUserId: _cu, ...rest } = srcOut as any;
+          createdOutput = await storage.createItem({
+            ...rest,
+            characterId,
+            campaignId: null,
+            isTemplate: false,
+            isLiveTemplate: false,
+            quantity: outOutputQty,
+            durability: outOverrideDur ?? srcOut.durability ?? 10,
+            templateItemId: srcOut.id,
+            isEquipped: false,
+          } as any);
+        }
+      }
+
+      // Post chat message.
+      if (campaignId) {
+        const lines = [
+          `🛠️ ${character.name} crafted "${recipe.name}"`,
+          recipe.noRoll ? '(no roll required)' : `Roll: ${rollText}`,
+          `Outcome: ${outcomeLabel}`,
+          createdOutput ? `Produced: ${createdOutput.quantity}× ${createdOutput.name}` : 'No item produced',
+          consume ? '' : '(ingredients preserved)',
+        ].filter(Boolean);
+        try {
+          const chat = await storage.createChatMessage({
+            campaignId,
+            userId,
+            sender: character.name || 'Unknown',
+            text: lines.join('\n'),
+            type: 'roll',
+          } as any);
+          broadcastToCampaign(campaignId, { type: 'chat_message', message: chat });
+        } catch {}
+      }
+
+      res.json({
+        success: true,
+        roll: recipe.noRoll ? null : { mainDie, total, formula: recipe.diceFormula, mod: recipe.mod, attribute: recipe.attribute, attrMod, text: rollText },
+        outcome: chosen ? {
+          id: chosen.id,
+          triggerKind: chosen.triggerKind,
+          label: outcomeLabel,
+          consumeIngredients: consume,
+        } : { triggerKind: 'default', label: outcomeLabel, consumeIngredients: consume },
+        producedItem: createdOutput,
+      });
+    } catch (err: any) {
+      console.error('[Crafter] craft error:', err);
+      res.status(500).json({ error: err?.message || "Craft failed" });
+    }
+  });
+
   app.post("/api/admin/system-items/:id/archive", requireAdmin, async (req, res) => {
     try {
       const item = await storage.updateItem(req.params.id, { isArchived: true });
