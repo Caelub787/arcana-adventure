@@ -10652,6 +10652,36 @@ export default function Campaign() {
         );
       })()}
 
+      {/* Quick Search button (top-center, next to Map Controls) */}
+      {!spectatorMode && (
+        <div
+          className="absolute top-4 z-50 transition-all duration-300 ease-in-out pointer-events-auto"
+          style={{
+            left: (sidePanelOpen && !isMobile) ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
+            transform: 'translateX(calc(-50% - 90px))',
+          }}
+        >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setGlobalSearchOpen((v) => !v)}
+                  className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${globalSearchOpen ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+                  data-testid="button-global-search"
+                >
+                  <Search className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Quick Search (Alt+L)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )}
+
       {/* Top Bar: Nav & Settings */}
       {!spectatorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
@@ -10721,25 +10751,6 @@ export default function Campaign() {
             transition: 'margin-right 0.3s ease'
           }}
         >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setGlobalSearchOpen((v) => !v)}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${globalSearchOpen ? 'text-amber-400 bg-white/10' : ''}`}
-                  data-testid="button-global-search"
-                >
-                  <Search className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Quick Search (Alt+L)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
