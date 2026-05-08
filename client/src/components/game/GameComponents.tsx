@@ -25187,15 +25187,29 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                     <span className="text-stone-500">Needs: </span>
                     {r.ingredients.map((ing: any, i: number) => {
                       const have = ingredientHaveCount(ing);
-                      const ok = have >= (ing.quantity || 1);
+                      const need = ing.quantity || 1;
+                      const ok = have >= need;
                       return (
                         <span key={i} className={ok ? 'text-green-400' : 'text-red-400'}>
-                          {ing.quantity}× {ing.itemName || '?'} ({have}){i < r.ingredients.length - 1 ? ', ' : ''}
+                          {need}× {ing.itemName || '?'} ({have}){i < r.ingredients.length - 1 ? ', ' : ''}
                         </span>
                       );
                     })}
                   </div>
                 )}
+                {(() => {
+                  const missing = (r.ingredients || [])
+                    .map((ing: any) => ({ name: ing.itemName || '?', need: ing.quantity || 1, have: ingredientHaveCount(ing) }))
+                    .filter((m: any) => m.have < m.need);
+                  if (missing.length === 0) return null;
+                  return (
+                    <div className="text-red-400">
+                      {missing.map((m: any, i: number) => (
+                        <div key={i}>Need {m.need - m.have} more of {m.name}</div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {!r.noRoll && (
                   <div className="text-stone-500">
                     Roll: <span className="text-stone-300">{r.diceFormula}{r.mod ? ` ${r.mod >= 0 ? '+' : ''}${r.mod}` : ''}{r.attribute && r.attribute !== 'none' ? ` + ${r.attribute}` : ''}</span>
