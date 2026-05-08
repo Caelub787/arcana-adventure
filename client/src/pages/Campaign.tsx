@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode } from "@/components/game/GameComponents";
+import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
@@ -6773,6 +6774,18 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
     }
   };
 
+  // Listen for global-search "open entity" requests and forward to new-tab opener.
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      if (detail.campaignId && detail.campaignId !== campaignId) return;
+      if (detail.entityId) handleOpenEntityInNewTab(detail.entityId, detail.title);
+    };
+    window.addEventListener('campaign-open-wiki-entity', handler);
+    return () => window.removeEventListener('campaign-open-wiki-entity', handler);
+  }, [wbTabs, campaignId]);
+
   const handleOpenEntityInCurrentTab = (entityId: string, title?: string) => {
     const resolvedTitle = title || getEntityTitle(entityId);
     if (activeWbTabId) {
@@ -7771,6 +7784,11 @@ export default function Campaign() {
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
   const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [sidePanelInitialNoteId, setSidePanelInitialNoteId] = useState<string | null>(null);
+  const sidePanelNoteOpenCounterRef = useRef(0);
+  const [searchPreviewItems, setSearchPreviewItems] = useState<any[]>([]);
+  const [searchPreviewSpells, setSearchPreviewSpells] = useState<any[]>([]);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | 'world' | null;
@@ -7972,6 +7990,18 @@ export default function Campaign() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [aoeTargetState.active]);
+
+  // Alt+L hotkey to toggle global search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.altKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        setGlobalSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   
   // Debounced viewport broadcasting - send viewport updates to other players every 200ms
   const lastViewportBroadcastRef = useRef<number>(0);
@@ -8043,6 +8073,7 @@ export default function Campaign() {
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v2';
 
   const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
+  const { data: campaignLinkedWorld } = useLinkedWorld(effectiveCampaignId);
   const showWorldButton = isAAV2 || role === 'gm' || !!playerLinkedWorld;
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
@@ -10696,6 +10727,25 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => setGlobalSearchOpen((v) => !v)}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${globalSearchOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-global-search"
+                >
+                  <Search className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Quick Search (Alt+L)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => {
                     if (activeSidePanel === 'chat' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
@@ -12440,6 +12490,107 @@ export default function Campaign() {
         />
       )}
 
+      {/* Global Search (Alt+L) */}
+      {!spectatorMode && effectiveCampaignId && (
+        <GlobalSearch
+          open={globalSearchOpen}
+          onClose={() => setGlobalSearchOpen(false)}
+          campaignId={effectiveCampaignId}
+          campaignSystem={(campaign as any)?.system}
+          worldId={(campaignLinkedWorld as any)?.id || (playerLinkedWorld as any)?.id || undefined}
+          onSelectNote={(noteId, _title, _type) => {
+            if (isAAV2) {
+              setFloatingNotesInitialNoteId(noteId);
+              setFloatingNotesOpen(true);
+              bringToFront('notes');
+            } else {
+              // Reset first to force prop change even if same noteId is reselected
+              sidePanelNoteOpenCounterRef.current += 1;
+              setSidePanelInitialNoteId(null);
+              setTimeout(() => setSidePanelInitialNoteId(noteId), 0);
+              setActiveSidePanel('notes');
+              setSidePanelMinimized(false);
+            }
+          }}
+          onSelectEntity={(entityId, title) => {
+            setActiveSidePanel('world');
+            setSidePanelMinimized(false);
+            // WorldBuilderContent listens for this and opens the entity in a new tab
+            window.dispatchEvent(
+              new CustomEvent('campaign-open-wiki-entity', {
+                detail: { entityId, title, campaignId: effectiveCampaignId },
+              }),
+            );
+          }}
+          onSelectCharacter={(char) => {
+            openCharacterSheet(char);
+          }}
+          onSelectItem={(item) => {
+            setSearchPreviewItems((prev) => {
+              if (prev.some((p) => p.id === item.id)) return prev;
+              return [...prev, item];
+            });
+          }}
+          onSelectSpell={(spell) => {
+            setSearchPreviewSpells((prev) => {
+              if (prev.some((p) => p.id === spell.id)) return prev;
+              return [...prev, spell];
+            });
+          }}
+        />
+      )}
+
+      {/* Search-opened Item preview panels */}
+      {searchPreviewItems.map((item, idx) => (
+        <SearchPreviewPanel
+          key={`search-item-${item.id}`}
+          panelKey={`search-item-${item.id}`}
+          title={item.name || 'Item'}
+          imageUrl={item.imageUrl || item.image || undefined}
+          subtitle={item.itemType || 'Item'}
+          description={item.description}
+          fields={[
+            { label: 'Type', value: item.itemType },
+            { label: 'Rarity', value: item.rarity },
+            { label: 'Weight', value: item.weight },
+            { label: 'Value', value: item.value },
+            { label: 'Damage', value: item.damage },
+            { label: 'Damage Type', value: item.damageType },
+            { label: 'Range', value: item.range },
+          ]}
+          defaultPosition={{ x: 100 + idx * 30, y: 120 + idx * 30 }}
+          zIndex={floatingZIndicesRef.current[`search-item-${item.id}`] || 10600}
+          onBringToFront={() => bringToFront(`search-item-${item.id}`)}
+          onClose={() => setSearchPreviewItems((prev) => prev.filter((p) => p.id !== item.id))}
+        />
+      ))}
+
+      {/* Search-opened Spell preview panels */}
+      {searchPreviewSpells.map((spell, idx) => (
+        <SearchPreviewPanel
+          key={`search-spell-${spell.id}`}
+          panelKey={`search-spell-${spell.id}`}
+          title={spell.name || 'Spell'}
+          imageUrl={spell.imageUrl || spell.image || undefined}
+          subtitle={spell.spellType || 'Spell'}
+          description={spell.description}
+          fields={[
+            { label: 'School', value: spell.school || spell.spellType },
+            { label: 'Range', value: spell.range },
+            { label: 'Cost', value: spell.cost ?? spell.manaCost ?? spell.energyCost },
+            { label: 'Cast Time', value: spell.castTime },
+            { label: 'Duration', value: spell.duration },
+            { label: 'Damage', value: spell.damage },
+            { label: 'Damage Type', value: spell.damageType },
+            { label: 'Attribute', value: spell.attribute },
+          ]}
+          defaultPosition={{ x: 140 + idx * 30, y: 160 + idx * 30 }}
+          zIndex={floatingZIndicesRef.current[`search-spell-${spell.id}`] || 10600}
+          onBringToFront={() => bringToFront(`search-spell-${spell.id}`)}
+          onClose={() => setSearchPreviewSpells((prev) => prev.filter((p) => p.id !== spell.id))}
+        />
+      ))}
+
       {/* Campaign Species Sheet (GM Only) */}
       {role === 'gm' && (
         <Sheet open={campaignSpeciesOpen} onOpenChange={setCampaignSpeciesOpen}>
@@ -13193,6 +13344,7 @@ export default function Campaign() {
                         });
                       }
                     }}
+                    initialNoteId={sidePanelInitialNoteId || undefined}
                     hideCloseButton={true}
                   />
                 </div>
