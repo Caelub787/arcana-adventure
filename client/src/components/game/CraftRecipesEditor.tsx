@@ -337,7 +337,8 @@ function RecipeRow({
                       <Label className="text-xs">Trigger</Label>
                       <Select value={o.triggerKind} onValueChange={(v) => {
                         const next = [...draft.outcomes];
-                        next[idx] = { ...next[idx], triggerKind: v as any };
+                        const kind = (v === 'nat1' || v === 'nat20' || v === 'range') ? v : 'range';
+                        next[idx] = { ...next[idx], triggerKind: kind };
                         setDraft({ ...draft, outcomes: next });
                       }}>
                         <SelectTrigger className="bg-stone-800 border-stone-700 h-8"><SelectValue /></SelectTrigger>

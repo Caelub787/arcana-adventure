@@ -26314,10 +26314,13 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
             {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && !isEditing && (
               <CraftSection item={currentData} character={character} canCraft={isOwner || isGM} />
             )}
-            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && isEditing && (isGM || isOwner) && (
+            {/* Recipe editing only on library templates (no characterId).
+                Server admin endpoints reject edits on inventory copies, so
+                hide the editor there to avoid a misleading edit surface. */}
+            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && isEditing && !currentData.characterId && isGM && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor
-                  itemId={currentData.templateItemId || currentData.id}
+                  itemId={currentData.id}
                   systemSlug="aa-v2"
                 />
               </div>
