@@ -77,6 +77,8 @@ import {
   type CraftRecipeIngredient, type InsertCraftRecipeIngredient,
   type CraftRecipeOutcome, type InsertCraftRecipeOutcome,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
+  crafterRecipeTemplates, crafterTemplateLinks,
+  type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
   spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
@@ -226,10 +228,23 @@ export interface IStorage {
 
   // Crafter recipe operations
   getCraftRecipesByItem(parentItemId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>>;
+  getCraftRecipesByTemplate(parentTemplateId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>>;
   getCraftRecipe(id: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined>;
   createCraftRecipe(recipe: InsertCraftRecipe, ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], outcomes: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>;
   updateCraftRecipe(id: string, recipe: Partial<InsertCraftRecipe>, ingredients?: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], outcomes?: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined>;
   deleteCraftRecipe(id: string): Promise<void>;
+  getCraftRecipesByTemplateRecipeId(fromTemplateRecipeId: string): Promise<CraftRecipe[]>;
+
+  // Crafter Recipe Templates
+  listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null }): Promise<CrafterRecipeTemplate[]>;
+  getCrafterRecipeTemplate(id: string): Promise<CrafterRecipeTemplate | undefined>;
+  createCrafterRecipeTemplate(data: InsertCrafterRecipeTemplate): Promise<CrafterRecipeTemplate>;
+  updateCrafterRecipeTemplate(id: string, patch: Partial<InsertCrafterRecipeTemplate>): Promise<CrafterRecipeTemplate | undefined>;
+  deleteCrafterRecipeTemplate(id: string): Promise<void>;
+  getCrafterTemplateLinks(itemId: string): Promise<string[]>;
+  getItemsLinkedToCrafterTemplate(templateId: string): Promise<string[]>;
+  addCrafterTemplateLink(itemId: string, templateId: string): Promise<void>;
+  removeCrafterTemplateLink(itemId: string, templateId: string): Promise<void>;
 
   // Roll Entry operations
   getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
@@ -4781,6 +4796,84 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCraftRecipe(id: string): Promise<void> {
     await db.delete(craftRecipes).where(eq(craftRecipes.id, id));
+  }
+
+  async getCraftRecipesByTemplate(parentTemplateId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>> {
+    const recipes = await db.select().from(craftRecipes)
+      .where(eq(craftRecipes.parentTemplateId, parentTemplateId))
+      .orderBy(craftRecipes.sortOrder);
+    if (recipes.length === 0) return [];
+    const ids = recipes.map(r => r.id);
+    const [allIng, allOut] = await Promise.all([
+      db.select().from(craftRecipeIngredients).where(inArray(craftRecipeIngredients.recipeId, ids)).orderBy(craftRecipeIngredients.sortOrder),
+      db.select().from(craftRecipeOutcomes).where(inArray(craftRecipeOutcomes.recipeId, ids)).orderBy(craftRecipeOutcomes.sortOrder),
+    ]);
+    return recipes.map(r => ({
+      ...r,
+      ingredients: allIng.filter(i => i.recipeId === r.id),
+      outcomes: allOut.filter(o => o.recipeId === r.id),
+    }));
+  }
+
+  async getCraftRecipesByTemplateRecipeId(fromTemplateRecipeId: string): Promise<CraftRecipe[]> {
+    return db.select().from(craftRecipes).where(eq(craftRecipes.fromTemplateRecipeId, fromTemplateRecipeId));
+  }
+
+  // ============================================
+  // CRAFTER RECIPE TEMPLATES
+  // ============================================
+  async listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null }): Promise<CrafterRecipeTemplate[]> {
+    const conds: any[] = [];
+    if (opts.system) conds.push(eq(crafterRecipeTemplates.system, opts.system));
+    if (opts.ownerScope === null) {
+      conds.push(isNull(crafterRecipeTemplates.ownerUserId));
+    } else if (Array.isArray(opts.ownerScope) && opts.ownerScope.length > 0) {
+      conds.push(or(isNull(crafterRecipeTemplates.ownerUserId), inArray(crafterRecipeTemplates.ownerUserId, opts.ownerScope)));
+    }
+    const q = db.select().from(crafterRecipeTemplates);
+    return (conds.length ? await q.where(and(...conds)) : await q).sort((a, b) => (a.sortOrder - b.sortOrder) || (a.name.localeCompare(b.name)));
+  }
+
+  async getCrafterRecipeTemplate(id: string): Promise<CrafterRecipeTemplate | undefined> {
+    const [row] = await db.select().from(crafterRecipeTemplates).where(eq(crafterRecipeTemplates.id, id));
+    return row;
+  }
+
+  async createCrafterRecipeTemplate(data: InsertCrafterRecipeTemplate): Promise<CrafterRecipeTemplate> {
+    const [row] = await db.insert(crafterRecipeTemplates).values(data).returning();
+    return row;
+  }
+
+  async updateCrafterRecipeTemplate(id: string, patch: Partial<InsertCrafterRecipeTemplate>): Promise<CrafterRecipeTemplate | undefined> {
+    const [row] = await db.update(crafterRecipeTemplates).set(patch).where(eq(crafterRecipeTemplates.id, id)).returning();
+    return row;
+  }
+
+  async deleteCrafterRecipeTemplate(id: string): Promise<void> {
+    await db.delete(crafterRecipeTemplates).where(eq(crafterRecipeTemplates.id, id));
+  }
+
+  async getCrafterTemplateLinks(itemId: string): Promise<string[]> {
+    const rows = await db.select({ templateId: crafterTemplateLinks.templateId })
+      .from(crafterTemplateLinks).where(eq(crafterTemplateLinks.itemId, itemId));
+    return rows.map(r => r.templateId);
+  }
+
+  async getItemsLinkedToCrafterTemplate(templateId: string): Promise<string[]> {
+    const rows = await db.select({ itemId: crafterTemplateLinks.itemId })
+      .from(crafterTemplateLinks).where(eq(crafterTemplateLinks.templateId, templateId));
+    return rows.map(r => r.itemId);
+  }
+
+  async addCrafterTemplateLink(itemId: string, templateId: string): Promise<void> {
+    await db.insert(crafterTemplateLinks).values({ itemId, templateId }).onConflictDoNothing();
+  }
+
+  async removeCrafterTemplateLink(itemId: string, templateId: string): Promise<void> {
+    await db.delete(crafterTemplateLinks).where(and(
+      eq(crafterTemplateLinks.itemId, itemId),
+      eq(crafterTemplateLinks.templateId, templateId),
+    ));
   }
 
   async deleteCharacterClassSkill(id: string): Promise<void> {

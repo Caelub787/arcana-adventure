@@ -1040,6 +1040,32 @@ class ApiClient {
     });
   }
 
+  // Crafter Recipe Templates (AA V2 only)
+  async listCrafterRecipeTemplates(system: string = 'aa-v2'): Promise<any[]> {
+    return this.request(`/admin/crafter-recipe-templates?system=${encodeURIComponent(system)}`);
+  }
+  async getCrafterRecipeTemplate(id: string): Promise<any> {
+    return this.request(`/admin/crafter-recipe-templates/${id}`);
+  }
+  async createCrafterRecipeTemplate(data: any): Promise<any> {
+    return this.request(`/admin/crafter-recipe-templates`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateCrafterRecipeTemplate(id: string, patch: any): Promise<any> {
+    return this.request(`/admin/crafter-recipe-templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  }
+  async deleteCrafterRecipeTemplate(id: string): Promise<void> {
+    return this.request(`/admin/crafter-recipe-templates/${id}`, { method: 'DELETE' });
+  }
+  async createCrafterTemplateRecipe(templateId: string, data: any): Promise<any> {
+    return this.request(`/admin/crafter-recipe-templates/${templateId}/recipes`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async getCrafterTemplateLinks(itemId: string): Promise<{ templateIds: string[] }> {
+    return this.request(`/admin/items/${itemId}/crafter-template-links`);
+  }
+  async setCrafterTemplateLinks(itemId: string, templateIds: string[]): Promise<{ templateIds: string[] }> {
+    return this.request(`/admin/items/${itemId}/crafter-template-links`, { method: 'PUT', body: JSON.stringify({ templateIds }) });
+  }
+
   // Spells
   async getSpells(characterId: string): Promise<Spell[]> {
     return this.request(`/characters/${characterId}/spells`);

@@ -10,7 +10,8 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown } f
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
-  itemId: string;
+  itemId?: string;
+  templateId?: string;
   systemSlug: string;
 }
 
@@ -89,10 +90,12 @@ function newRecipe(): DraftRecipe {
   };
 }
 
-export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
+export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const isTemplateMode = !!templateId;
+  const queryKey = isTemplateMode ? ['craft-recipes-template', templateId] : ['craft-recipes', itemId];
 
   const { data: systemItems = [] } = useQuery<any[]>({
     queryKey: ['system-items-picker', systemSlug],
@@ -100,15 +103,23 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
   });
 
   const { data: recipes = [], isLoading } = useQuery<any[]>({
-    queryKey: ['craft-recipes', itemId],
-    queryFn: () => api.getCraftRecipes(itemId),
-    enabled: !!itemId,
+    queryKey,
+    queryFn: async () => {
+      if (isTemplateMode) {
+        const tpl = await api.getCrafterRecipeTemplate(templateId!);
+        return tpl?.recipes || [];
+      }
+      return api.getCraftRecipes(itemId!);
+    },
+    enabled: isTemplateMode ? !!templateId : !!itemId,
   });
 
   const createMut = useMutation({
-    mutationFn: (data: DraftRecipe) => api.createCraftRecipe(itemId, data),
+    mutationFn: (data: DraftRecipe) => isTemplateMode
+      ? api.createCrafterTemplateRecipe(templateId!, data)
+      : api.createCraftRecipe(itemId!, data),
     onSuccess: (created: any) => {
-      queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] });
+      queryClient.invalidateQueries({ queryKey });
       setExpandedId(created.id);
     },
   });
@@ -116,19 +127,19 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: DraftRecipe }) => api.updateCraftRecipe(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] });
+      queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Recipe saved' });
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCraftRecipe(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
   const reorderMut = useMutation({
     mutationFn: ({ id, sortOrder }: { id: string; sortOrder: number }) => api.updateCraftRecipe(id, { sortOrder }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
   const moveRecipe = (idx: number, dir: -1 | 1) => {
@@ -144,8 +155,11 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
 
   const handleAdd = () => createMut.mutate({ ...newRecipe(), sortOrder: recipes.length });
 
-  if (!itemId) {
+  if (!isTemplateMode && !itemId) {
     return <p className="text-xs text-stone-500">Save the Crafter item first to add recipes.</p>;
+  }
+  if (isTemplateMode && !templateId) {
+    return <p className="text-xs text-stone-500">Save the template first to add recipes.</p>;
   }
 
   return (

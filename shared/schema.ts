@@ -539,13 +539,47 @@ export const insertItemTemplateLinkSchema = createInsertSchema(itemTemplateLinks
 export type InsertItemTemplateLink = z.infer<typeof insertItemTemplateLinkSchema>;
 export type ItemTemplateLink = typeof itemTemplateLinks.$inferSelect;
 
+// Crafter Recipe Templates — admin-managed shared recipe lists that can be
+// linked to multiple crafter items. Mirrors the roll-template pattern: when a
+// template is linked to a crafter item, the template's recipes are copied
+// onto the item with `from_template_recipe_id` provenance, and subsequent
+// edits to the template fan out to every linked item automatically. AA V2 only.
+export const crafterRecipeTemplates = pgTable("crafter_recipe_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  system: text("system").default("aa-v2").notNull(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCrafterRecipeTemplateSchema = createInsertSchema(crafterRecipeTemplates).omit({ id: true, createdAt: true });
+export type InsertCrafterRecipeTemplate = z.infer<typeof insertCrafterRecipeTemplateSchema>;
+export type CrafterRecipeTemplate = typeof crafterRecipeTemplates.$inferSelect;
+
+// Crafter item ↔ recipe template join (many-to-many).
+export const crafterTemplateLinks = pgTable("crafter_template_links", {
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").notNull().references(() => crafterRecipeTemplates.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.itemId, t.templateId] }),
+}));
+export const insertCrafterTemplateLinkSchema = createInsertSchema(crafterTemplateLinks);
+export type InsertCrafterTemplateLink = z.infer<typeof insertCrafterTemplateLinkSchema>;
+export type CrafterTemplateLink = typeof crafterTemplateLinks.$inferSelect;
+
 // Crafter recipes — when an item's `itemType === 'crafter'`, GMs/admins
 // attach one or more recipes to it. Each recipe describes ingredients
 // required, the craft roll, and outcome rules keyed off the roll total.
+// Recipes can also live on a Crafter Recipe Template (parentTemplateId)
+// instead of an item; recipes copied from a template carry
+// `fromTemplateRecipeId` provenance so template edits fan out.
 // All AA V2 only; non-AAv2 callers never read or write these tables.
 export const craftRecipes = pgTable("craft_recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  parentItemId: varchar("parent_item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  parentItemId: varchar("parent_item_id").references(() => items.id, { onDelete: "cascade" }),
+  parentTemplateId: varchar("parent_template_id").references(() => crafterRecipeTemplates.id, { onDelete: "cascade" }),
+  fromTemplateRecipeId: varchar("from_template_recipe_id"),
   name: text("name").default("Recipe").notNull(),
   description: text("description").default("").notNull(),
   outputItemId: varchar("output_item_id").references(() => items.id, { onDelete: "set null" }),

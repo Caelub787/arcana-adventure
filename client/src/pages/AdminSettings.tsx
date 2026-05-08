@@ -18,13 +18,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
 import { CraftRecipesEditor } from '@/components/game/CraftRecipesEditor';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -142,7 +142,7 @@ export default function AdminSettings() {
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
 
   // Non-admin GMs are scoped to their AA V2 private library
-  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
   useEffect(() => {
     if (!isAdmin && selectedSystem !== 'A.A. V2') setSelectedSystem('A.A. V2');
   }, [isAdmin, selectedSystem]);
@@ -895,6 +895,7 @@ export default function AdminSettings() {
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
                currentView === 'item-templates' ? 'Roll Templates' :
+               currentView === 'crafter-recipe-templates' ? 'Crafter Recipe Templates' :
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? 'Custom Skills' : 
@@ -960,6 +961,10 @@ export default function AdminSettings() {
             }}
             copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
           />
+        )}
+
+        {currentView === 'crafter-recipe-templates' && (
+          <CrafterRecipeTemplatesView systemSlug={systemSlug} />
         )}
 
         {currentView === 'item-templates' && (
@@ -1623,6 +1628,22 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <CardTitle className="text-amber-500">Roll Templates</CardTitle>
           <CardDescription className="text-stone-400">
             Create live roll templates whose roll edits propagate to every linked item and spell, even on character sheets
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('crafter-recipe-templates')}
+        data-testid="card-crafter-recipe-templates"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <Hammer className="h-6 w-6 text-amber-500" />
+          </div>
+          <CardTitle className="text-amber-500">Crafter Recipe Templates</CardTitle>
+          <CardDescription className="text-stone-400">
+            Build shared recipe lists and link them to crafter items. Edits propagate to every linked crafter automatically.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -8757,6 +8778,12 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               />
             </div>
 
+            {selectedSystem === 'A.A. V2' && formData.itemType === 'crafter' && initialData?.id && (
+              <div className="pt-4 border-t border-stone-700">
+                <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug="aa-v2" />
+              </div>
+            )}
+
             {selectedSystem === 'A.A. V2' && formData.itemType === 'crafter' && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor itemId={initialData?.id || ''} systemSlug="aa-v2" />
@@ -10692,5 +10719,339 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============================================================
+// CRAFTER RECIPE TEMPLATES (AA V2 only)
+// ============================================================
+
+function CrafterRecipeTemplatesView({ systemSlug }: { systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const { data: templates = [], isLoading } = useQuery<any[]>({
+    queryKey: ['crafter-recipe-templates', systemSlug],
+    queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
+    enabled: systemSlug === 'aa-v2',
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: 'aa-v2' }),
+    onSuccess: (created: any) => {
+      queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] });
+      setCreating(false);
+      setEditingId(created.id);
+    },
+    onError: (err: any) => toast({ title: 'Create failed', description: err?.message || String(err), variant: 'destructive' }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.deleteCrafterRecipeTemplate(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] }),
+    onError: (err: any) => toast({ title: 'Delete failed', description: err?.message || String(err), variant: 'destructive' }),
+  });
+
+  if (systemSlug !== 'aa-v2') {
+    return (
+      <Card className="bg-stone-900 border-stone-700">
+        <CardContent className="py-12 text-center text-stone-400">
+          Crafter Recipe Templates are an A.A. V2 feature.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const filtered = (templates || []).filter((t: any) => !search || t.name?.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
+        <div>
+          <CardTitle className="text-amber-500">Crafter Recipe Templates</CardTitle>
+          <CardDescription className="text-stone-400 mt-1">
+            Build a shared recipe list, then link the template to any crafter item. Edits to a template's recipes propagate to every linked crafter automatically.
+          </CardDescription>
+        </div>
+        <Button onClick={() => setCreating(true)} className="bg-amber-700 hover:bg-amber-600" data-testid="button-add-crafter-template">
+          <Plus className="h-4 w-4 mr-2" /> New Template
+        </Button>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+          <Input
+            placeholder="Search templates..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-stone-800 border-stone-700"
+            data-testid="input-search-crafter-templates"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading templates...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Hammer className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No crafter recipe templates yet</p>
+            <p className="text-sm mt-2">Create one and start adding recipes.</p>
+          </div>
+        ) : (
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-2">
+              {filtered.map((t: any) => (
+                <div
+                  key={t.id}
+                  className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`crafter-template-row-${t.id}`}
+                >
+                  <Hammer className="h-5 w-5 text-amber-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm sm:text-base" data-testid={`text-crafter-template-name-${t.id}`}>{t.name}</span>
+                      <Badge className="bg-amber-700/30 text-amber-300 text-xs border border-amber-700/50">Template</Badge>
+                    </div>
+                    {t.description && <div className="text-xs text-stone-400 mt-0.5 line-clamp-1">{t.description}</div>}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" onClick={() => setEditingId(t.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8" data-testid={`button-edit-crafter-template-${t.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon"
+                      onClick={() => { if (confirm(`Delete template "${t.name}"? Inherited recipes on linked crafters will be removed.`)) deleteMut.mutate(t.id); }}
+                      className="text-stone-400 hover:text-red-500 h-8 w-8"
+                      data-testid={`button-delete-crafter-template-${t.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+
+      {creating && (
+        <CrafterRecipeTemplateCreateDialog
+          open={creating}
+          onOpenChange={setCreating}
+          onCreate={(data) => createMut.mutate(data)}
+          isPending={createMut.isPending}
+        />
+      )}
+      {editingId && (
+        <CrafterRecipeTemplateEditDialog
+          open={!!editingId}
+          templateId={editingId}
+          onOpenChange={(o) => { if (!o) setEditingId(null); }}
+        />
+      )}
+    </Card>
+  );
+}
+
+function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPending }: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onCreate: (data: { name: string; description: string }) => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md">
+        <DialogHeader><DialogTitle className="text-amber-500">New Crafter Recipe Template</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <Label>Name *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-new-crafter-template-name" />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-new-crafter-template-description" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">Cancel</Button>
+          <Button
+            onClick={() => name.trim() && onCreate({ name: name.trim(), description: description.trim() })}
+            disabled={isPending || !name.trim()}
+            className="bg-amber-700 hover:bg-amber-600"
+            data-testid="button-confirm-create-crafter-template"
+          >
+            {isPending ? 'Creating…' : 'Create'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CrafterRecipeTemplateEditDialog({ open, templateId, onOpenChange }: {
+  open: boolean;
+  templateId: string;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: template, isLoading } = useQuery<any>({
+    queryKey: ['crafter-recipe-template', templateId],
+    queryFn: () => api.getCrafterRecipeTemplate(templateId),
+    enabled: !!templateId,
+  });
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  useEffect(() => {
+    if (template) {
+      setName(template.name || '');
+      setDescription(template.description || '');
+    }
+  }, [template?.id]);
+
+  const saveMut = useMutation({
+    mutationFn: () => api.updateCrafterRecipeTemplate(templateId, { name: name.trim(), description: description.trim() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['crafter-recipe-template', templateId] });
+      toast({ title: 'Template saved' });
+    },
+    onError: (err: any) => toast({ title: 'Save failed', description: err?.message || String(err), variant: 'destructive' }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-amber-500">Edit Crafter Recipe Template</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto pr-2 min-h-0 space-y-4 py-2">
+          {isLoading || !template ? (
+            <div className="text-center py-8 text-stone-400">Loading…</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <Label>Name *</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-edit-crafter-template-name" />
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Input value={description} onChange={(e) => setDescription(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-edit-crafter-template-description" />
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()} className="bg-amber-700 hover:bg-amber-600" data-testid="button-save-crafter-template">
+                    <Save className="h-4 w-4 mr-1" /> Save details
+                  </Button>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-stone-700">
+                <CraftRecipesEditor templateId={templateId} systemSlug="aa-v2" />
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CrafterTemplateLinksPanel({ itemId, systemSlug }: { itemId: string; systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const { data: templates = [] } = useQuery<any[]>({
+    queryKey: ['crafter-recipe-templates', systemSlug],
+    queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
+    enabled: systemSlug === 'aa-v2',
+  });
+
+  const { data: linksData } = useQuery<{ templateIds: string[] }>({
+    queryKey: ['crafter-template-links', itemId],
+    queryFn: () => api.getCrafterTemplateLinks(itemId),
+    enabled: !!itemId,
+  });
+  const selected: string[] = linksData?.templateIds || [];
+
+  const setLinksMut = useMutation({
+    mutationFn: (next: string[]) => api.setCrafterTemplateLinks(itemId, next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crafter-template-links', itemId] });
+      queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] });
+      setPendingId(null);
+    },
+    onError: (err: any) => {
+      setPendingId(null);
+      toast({ title: 'Failed to update template links', description: err?.message || String(err), variant: 'destructive' });
+    },
+  });
+
+  const toggle = (id: string) => {
+    setPendingId(id);
+    const next = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
+    setLinksMut.mutate(next);
+  };
+
+  const summary = selected.length === 0
+    ? 'No recipe templates linked'
+    : `${selected.length} template${selected.length === 1 ? '' : 's'} linked`;
+
+  return (
+    <div data-testid="panel-crafter-template-links">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-2 rounded bg-stone-800/60 hover:bg-stone-800 border border-stone-700 text-left"
+        data-testid="button-toggle-crafter-template-links"
+      >
+        <div className="flex items-center gap-2">
+          {expanded ? <ChevronDown className="h-4 w-4 text-amber-500" /> : <ChevronRight className="h-4 w-4 text-amber-500" />}
+          <Hammer className="h-4 w-4 text-amber-500" />
+          <span className="text-sm font-medium text-amber-500">Crafter Recipe Templates</span>
+          <span className="text-xs text-stone-400">({summary})</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-2 p-3 rounded border border-stone-700 bg-stone-900/40">
+          <p className="text-xs text-stone-500 mb-3">
+            Tick a template to copy its recipes onto this crafter. Untick to remove the inherited copies. Future edits to template recipes propagate automatically.
+          </p>
+          {templates.length === 0 ? (
+            <p className="text-xs text-stone-500">No crafter recipe templates exist yet. Create one in the Crafter Recipe Templates view.</p>
+          ) : (
+            <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+              {templates.map((t: any) => {
+                const checked = selected.includes(t.id);
+                const isPending = setLinksMut.isPending && pendingId === t.id;
+                return (
+                  <label
+                    key={t.id}
+                    className={`flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 ${setLinksMut.isPending ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
+                    data-testid={`label-crafter-template-link-${t.id}`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={setLinksMut.isPending}
+                      onCheckedChange={() => toggle(t.id)}
+                      data-testid={`checkbox-crafter-template-link-${t.id}`}
+                    />
+                    <span className="text-sm text-stone-200">{t.name}</span>
+                    {isPending && <span className="text-xs text-amber-500 ml-auto">Saving…</span>}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

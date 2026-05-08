@@ -74,6 +74,8 @@ function SiteUpdateBanner() {
               'spell-effects': [['system-spells'], ['token-effects']],
               'item-effects': [['system-items'], ['system-items-summary'], ['token-effects']],
               'item-templates': [['item-templates'], ['system-items'], ['system-items-summary']],
+              'crafter-recipe-templates': [['crafter-recipe-templates'], ['crafter-recipe-template'], ['crafter-template-links']],
+              'craft-recipes': [['craft-recipes'], ['craft-recipes-template'], ['crafter-recipe-template']],
             };
             const keys = entityQueryMap[data.entity];
             if (keys) {

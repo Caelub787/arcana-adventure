@@ -1,13 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
 import { db } from "./db";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, or, isNull } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import multer from "multer";
@@ -6159,17 +6159,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Resolve auth + system for a recipe whose parent is either an item OR a
+  // crafter recipe template. Returns {ok:true, recipe, system} on success or
+  // sends a 4xx and returns {ok:false} on failure.
+  async function authorizeRecipeWrite(req: any, res: any, recipeId: string) {
+    const recipe = await storage.getCraftRecipe(recipeId);
+    if (!recipe) { res.status(404).json({ error: "Recipe not found" }); return { ok: false as const }; }
+    if (recipe.parentTemplateId) {
+      const tpl = await storage.getCrafterRecipeTemplate(recipe.parentTemplateId);
+      if (!tpl) { res.status(404).json({ error: "Parent template missing" }); return { ok: false as const }; }
+      if (!await requireLibraryAaV2(req, res, tpl.system)) return { ok: false as const };
+      if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return { ok: false as const };
+      return { ok: true as const, recipe, parentTemplateId: tpl.id };
+    }
+    if (!recipe.parentItemId) { res.status(400).json({ error: "Recipe has no parent" }); return { ok: false as const }; }
+    const parent = await storage.getItem(recipe.parentItemId);
+    if (!parent) { res.status(404).json({ error: "Parent item missing" }); return { ok: false as const }; }
+    if (!await requireLibraryAaV2(req, res, parent.system)) return { ok: false as const };
+    if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return { ok: false as const };
+    return { ok: true as const, recipe, parentTemplateId: null };
+  }
+
+  // Copy all template recipes onto a target crafter item with
+  // fromTemplateRecipeId provenance pointers. Idempotent skip if a copy
+  // already exists for the same source recipe on the same item.
+  async function copyCrafterTemplateRecipesToItem(templateId: string, itemId: string) {
+    const tplRecipes = await storage.getCraftRecipesByTemplate(templateId);
+    if (tplRecipes.length === 0) return;
+    const existing = await storage.getCraftRecipesByItem(itemId);
+    const alreadyHas = new Set(existing.filter(r => r.fromTemplateRecipeId).map(r => r.fromTemplateRecipeId));
+    for (const tr of tplRecipes) {
+      if (alreadyHas.has(tr.id)) continue;
+      const { id: _i, parentItemId: _p, parentTemplateId: _pt, fromTemplateRecipeId: _f, ingredients, outcomes, ...rest } = tr;
+      await storage.createCraftRecipe(
+        { ...rest, parentItemId: itemId, parentTemplateId: null, fromTemplateRecipeId: tr.id } as any,
+        ingredients.map(({ id: _, recipeId: __, ...x }: any) => x),
+        outcomes.map(({ id: _, recipeId: __, ...x }: any) => x),
+      );
+    }
+  }
+
+  // Remove inherited recipes on a crafter item that originated from a given
+  // template (used on unlink and on template delete cascade).
+  async function removeInheritedRecipesFromItem(itemId: string, templateId: string) {
+    const tplRecipes = await storage.getCraftRecipesByTemplate(templateId);
+    if (tplRecipes.length === 0) return;
+    const tplRecipeIds = new Set(tplRecipes.map(r => r.id));
+    const itemRecipes = await storage.getCraftRecipesByItem(itemId);
+    for (const r of itemRecipes) {
+      if (r.fromTemplateRecipeId && tplRecipeIds.has(r.fromTemplateRecipeId)) {
+        await storage.deleteCraftRecipe(r.id);
+      }
+    }
+  }
+
   app.put("/api/admin/recipes/:id", requireAuth, async (req, res) => {
     try {
-      const existing = await storage.getCraftRecipe(req.params.id);
-      if (!existing) return res.status(404).json({ error: "Recipe not found" });
-      const parent = await storage.getItem(existing.parentItemId);
-      if (!parent) return res.status(404).json({ error: "Parent item missing" });
-      if (!await requireLibraryAaV2(req, res, parent.system)) return;
-      if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return;
+      const auth = await authorizeRecipeWrite(req, res, req.params.id);
+      if (!auth.ok) return;
       const { ingredients, outcomes, ...recipeBody } = req.body || {};
       const parsedRecipe = insertCraftRecipeSchema
-        .omit({ parentItemId: true })
+        .omit({ parentItemId: true, parentTemplateId: true, fromTemplateRecipeId: true })
         .partial()
         .parse(recipeBody);
       const parsedIngredients = ingredients === undefined ? undefined :
@@ -6181,6 +6231,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
         );
       const updated = await storage.updateCraftRecipe(req.params.id, parsedRecipe, parsedIngredients, parsedOutcomes);
+      // Fan out template-recipe edits to all inherited copies
+      if (auth.parentTemplateId) {
+        const inherited = await storage.getCraftRecipesByTemplateRecipeId(req.params.id);
+        for (const inh of inherited) {
+          await storage.updateCraftRecipe(inh.id, parsedRecipe, parsedIngredients, parsedOutcomes);
+        }
+      }
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
       res.json(updated);
     } catch (err: any) {
@@ -6191,18 +6248,190 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/admin/recipes/:id", requireAuth, async (req, res) => {
     try {
-      const existing = await storage.getCraftRecipe(req.params.id);
-      if (!existing) return res.status(404).json({ error: "Recipe not found" });
-      const parent = await storage.getItem(existing.parentItemId);
-      if (!parent) return res.status(404).json({ error: "Parent item missing" });
-      if (!await requireLibraryAaV2(req, res, parent.system)) return;
-      if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return;
+      const auth = await authorizeRecipeWrite(req, res, req.params.id);
+      if (!auth.ok) return;
+      // If template recipe, cascade-delete all inherited copies first
+      if (auth.parentTemplateId) {
+        const inherited = await storage.getCraftRecipesByTemplateRecipeId(req.params.id);
+        for (const inh of inherited) {
+          await storage.deleteCraftRecipe(inh.id);
+        }
+      }
       await storage.deleteCraftRecipe(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
       res.json({ success: true });
     } catch (err: any) {
       console.error('[Crafter] delete recipe error:', err);
       res.status(400).json({ error: err?.message || "Failed to delete recipe" });
+    }
+  });
+
+  // ============================================
+  // CRAFTER RECIPE TEMPLATES (AA V2 only)
+  // ============================================
+
+  app.get("/api/admin/crafter-recipe-templates", requireAuth, async (req, res) => {
+    try {
+      const system = (req.query.system as string) || 'aa-v2';
+      if (system !== 'aa-v2') return res.json([]);
+      const isA = await isAdminUser(req.session.userId);
+      const ownerScope = isA ? undefined : [req.session.userId!];
+      const list = await storage.listCrafterRecipeTemplates({ system, ownerScope });
+      res.json(list);
+    } catch (err: any) {
+      console.error('[CrafterTemplates] list error:', err);
+      res.status(500).json({ error: "Failed to list templates" });
+    }
+  });
+
+  app.get("/api/admin/crafter-recipe-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const tpl = await storage.getCrafterRecipeTemplate(req.params.id);
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (!await enforceLibraryRead(req, res, tpl.ownerUserId)) return;
+      const recipes = await storage.getCraftRecipesByTemplate(tpl.id);
+      res.json({ ...tpl, recipes });
+    } catch (err: any) {
+      console.error('[CrafterTemplates] get error:', err);
+      res.status(500).json({ error: "Failed to fetch template" });
+    }
+  });
+
+  app.post("/api/admin/crafter-recipe-templates", requireAuth, async (req, res) => {
+    try {
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const data = insertCrafterRecipeTemplateSchema.parse({ ...body, system: 'aa-v2' });
+      const created = await storage.createCrafterRecipeTemplate(data);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'crafter-recipe-templates' });
+      res.json(created);
+    } catch (err: any) {
+      console.error('[CrafterTemplates] create error:', err);
+      res.status(400).json({ error: err?.message || "Failed to create template" });
+    }
+  });
+
+  app.patch("/api/admin/crafter-recipe-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const tpl = await storage.getCrafterRecipeTemplate(req.params.id);
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return;
+      const { ownerUserId: _o, system: _s, id: _i, createdAt: _c, ...patch } = req.body || {};
+      const updated = await storage.updateCrafterRecipeTemplate(req.params.id, patch);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'crafter-recipe-templates' });
+      res.json(updated);
+    } catch (err: any) {
+      console.error('[CrafterTemplates] update error:', err);
+      res.status(400).json({ error: err?.message || "Failed to update template" });
+    }
+  });
+
+  app.delete("/api/admin/crafter-recipe-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const tpl = await storage.getCrafterRecipeTemplate(req.params.id);
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return;
+      // Cascade-delete inherited copies on linked items first
+      const linkedItems = await storage.getItemsLinkedToCrafterTemplate(tpl.id);
+      for (const itemId of linkedItems) {
+        await removeInheritedRecipesFromItem(itemId, tpl.id);
+      }
+      await storage.deleteCrafterRecipeTemplate(tpl.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'crafter-recipe-templates' });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[CrafterTemplates] delete error:', err);
+      res.status(400).json({ error: err?.message || "Failed to delete template" });
+    }
+  });
+
+  // Create a recipe ON a template (and fan out copies to all linked items)
+  app.post("/api/admin/crafter-recipe-templates/:id/recipes", requireAuth, async (req, res) => {
+    try {
+      const tpl = await storage.getCrafterRecipeTemplate(req.params.id);
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return;
+      const { ingredients = [], outcomes = [], ...recipeBody } = req.body || {};
+      const parsedRecipe = insertCraftRecipeSchema
+        .omit({ parentItemId: true, parentTemplateId: true, fromTemplateRecipeId: true })
+        .parse(recipeBody);
+      const parsedIngredients = ingredients.map((ing: unknown) =>
+        insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
+      );
+      const parsedOutcomes = outcomes.map((o: unknown) =>
+        insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
+      );
+      const created = await storage.createCraftRecipe(
+        { ...parsedRecipe, parentTemplateId: tpl.id, parentItemId: null } as any,
+        parsedIngredients,
+        parsedOutcomes,
+      );
+      // Fan out to all linked items
+      const linkedItems = await storage.getItemsLinkedToCrafterTemplate(tpl.id);
+      for (const itemId of linkedItems) {
+        await storage.createCraftRecipe(
+          { ...parsedRecipe, parentItemId: itemId, parentTemplateId: null, fromTemplateRecipeId: created.id } as any,
+          parsedIngredients,
+          parsedOutcomes,
+        );
+      }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json(created);
+    } catch (err: any) {
+      console.error('[CrafterTemplates] create recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to create template recipe" });
+    }
+  });
+
+  // Get / set crafter template links on a crafter library item
+  app.get("/api/admin/items/:itemId/crafter-template-links", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      if (!await enforceLibraryRead(req, res, item.createdByUserId)) return;
+      const templateIds = await storage.getCrafterTemplateLinks(item.id);
+      res.json({ templateIds });
+    } catch (err: any) {
+      console.error('[CrafterTemplates] get links error:', err);
+      res.status(500).json({ error: "Failed to fetch links" });
+    }
+  });
+
+  app.put("/api/admin/items/:itemId/crafter-template-links", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      if (item.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
+      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      const incoming: string[] = Array.isArray(req.body?.templateIds) ? req.body.templateIds : [];
+      const current = new Set(await storage.getCrafterTemplateLinks(item.id));
+      const next = new Set(incoming);
+      // Removed links → drop inherited copies
+      for (const tplId of Array.from(current)) {
+        if (!next.has(tplId)) {
+          await removeInheritedRecipesFromItem(item.id, tplId);
+          await storage.removeCrafterTemplateLink(item.id, tplId);
+        }
+      }
+      // Added links → copy template recipes onto item
+      for (const tplId of Array.from(next)) {
+        if (!current.has(tplId)) {
+          // Verify caller can read the template (own it or admin-owned)
+          const tpl = await storage.getCrafterRecipeTemplate(tplId);
+          if (!tpl) continue;
+          if (!await enforceLibraryRead(req, res, tpl.ownerUserId)) return;
+          await storage.addCrafterTemplateLink(item.id, tplId);
+          await copyCrafterTemplateRecipesToItem(tplId, item.id);
+        }
+      }
+      const finalIds = await storage.getCrafterTemplateLinks(item.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json({ templateIds: finalIds });
+    } catch (err: any) {
+      console.error('[CrafterTemplates] set links error:', err);
+      res.status(400).json({ error: err?.message || "Failed to set links" });
     }
   });
 
