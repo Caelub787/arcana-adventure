@@ -6370,6 +6370,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (outOutputItemId && outOutputQty > 0) {
         const srcOut = await storage.getItem(outOutputItemId);
         if (srcOut) {
+          // Determine if we should link this output to the source as a template
+          // (mirrors POST /api/characters/:characterId/items behavior).
+          let linkToTemplate = false;
+          if (srcOut.isTemplate) {
+            if (srcOut.isLiveTemplate && !srcOut.campaignId && !srcOut.characterId) {
+              if (!srcOut.system || character.system === srcOut.system) {
+                linkToTemplate = true;
+              }
+            } else if (srcOut.campaignId && character.campaignId === srcOut.campaignId) {
+              linkToTemplate = true;
+            }
+          }
+
           const { id: _id, characterId: _ch, campaignId: _cid, isTemplate: _t, isLiveTemplate: _lt, createdByUserId: _cu, ...rest } = srcOut;
           const payload = insertItemSchema.parse({
             ...rest,
@@ -6379,10 +6392,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isLiveTemplate: false,
             quantity: outOutputQty,
             durability: outOverrideDur ?? srcOut.durability ?? 10,
-            templateItemId: srcOut.id,
+            templateItemId: linkToTemplate ? srcOut.id : undefined,
             isEquipped: false,
           });
           createdOutput = await storage.createItem(payload);
+
+          // Copy roll entries from the source template so crafted items
+          // inherit the same roll behavior as items added through the
+          // normal "add from template" flow.
+          if (linkToTemplate && createdOutput) {
+            try {
+              const templateRolls = await storage.getRollEntries('item', srcOut.id);
+              if (templateRolls.length > 0) {
+                const newOutputId = createdOutput.id;
+                const rollEntriesToInsert: InsertRollEntry[] = templateRolls.map(roll => ({
+                  ownerType: 'item' as const,
+                  ownerId: newOutputId,
+                  name: roll.name,
+                  rollType: roll.rollType,
+                  diceFormula: roll.diceFormula,
+                  mod: roll.mod,
+                  damageType: roll.damageType,
+                  attribute: roll.attribute,
+                  applyToStat: roll.applyToStat,
+                  sortOrder: roll.sortOrder,
+                  range: roll.range,
+                  aoeShape: roll.aoeShape,
+                  aoeRange: roll.aoeRange,
+                  requiresSave: roll.requiresSave,
+                  saveAttribute: roll.saveAttribute,
+                  saveDc: roll.saveDc,
+                  saveSuccessEffect: roll.saveSuccessEffect,
+                  saveDcType: roll.saveDcType,
+                  saveDcAttribute: roll.saveDcAttribute,
+                  statDirection: roll.statDirection,
+                  gainEnergy: roll.gainEnergy,
+                  isAttack: roll.isAttack,
+                  isAoe: roll.isAoe,
+                  passesThroughWalls: roll.passesThroughWalls,
+                  primaryColor: roll.primaryColor,
+                  requiresEnergy: roll.requiresEnergy,
+                  energyCost: roll.energyCost,
+                  requiresMana: roll.requiresMana,
+                  manaCost: roll.manaCost,
+                  noRoll: roll.noRoll,
+                  enableChatMessage: roll.enableChatMessage,
+                  chatMessage: roll.chatMessage,
+                  applyTokenEffects: roll.applyTokenEffects,
+                  tokenEffectIds: roll.tokenEffectIds,
+                  effectTriggerCondition: roll.effectTriggerCondition,
+                  isHidden: roll.isHidden,
+                  requiredSkillId: roll.requiredSkillId,
+                  requiredSkillValue: roll.requiredSkillValue,
+                  fromTemplateRollId: roll.id,
+                })) as InsertRollEntry[];
+                await storage.createRollEntriesBulk(rollEntriesToInsert);
+              }
+            } catch (rollErr) {
+              console.error('[Crafter] failed to copy template roll entries to craft output:', rollErr);
+            }
+          }
         }
       }
 
