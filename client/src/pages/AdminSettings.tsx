@@ -8327,7 +8327,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                     <SelectItem value="utility">Utility</SelectItem>
                     <SelectItem value="container">Container</SelectItem>
                     <SelectItem value="currency">Currency</SelectItem>
-                    {selectedSystem === 'A.A. V2' && (
+                    {isAaV2 && (
                       <SelectItem value="crafter">Crafter</SelectItem>
                     )}
                   </SelectContent>
@@ -8778,13 +8778,13 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               />
             </div>
 
-            {selectedSystem === 'A.A. V2' && formData.itemType === 'crafter' && initialData?.id && (
+            {isAaV2 && formData.itemType === 'crafter' && initialData?.id && (
               <div className="pt-4 border-t border-stone-700">
                 <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug="aa-v2" />
               </div>
             )}
 
-            {selectedSystem === 'A.A. V2' && formData.itemType === 'crafter' && (
+            {isAaV2 && formData.itemType === 'crafter' && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor itemId={initialData?.id || ''} systemSlug="aa-v2" />
               </div>
