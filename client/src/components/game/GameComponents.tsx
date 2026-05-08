@@ -22187,6 +22187,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 characterLevel={liveCharacter.level}
                 isAAV2={isAAV2}
                 campaignSystem={campaignSystem}
+                campaignId={campaignId}
               />
             )}
           </div>
@@ -22205,7 +22206,8 @@ function FeatTreeViewerGrid({
   isGM = false,
   characterLevel = 1,
   isAAV2 = false,
-  campaignSystem
+  campaignSystem,
+  campaignId,
 }: { 
   treeData: FeatTreeWithData;
   characterFeats: CharacterFeat[];
@@ -22215,13 +22217,20 @@ function FeatTreeViewerGrid({
   characterLevel?: number;
   isAAV2?: boolean;
   campaignSystem?: string;
+  campaignId?: string;
 }) {
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['public-spells', campaignSystem],
-    queryFn: () => fetch(`/api/spells${campaignSystem ? `?system=${encodeURIComponent(campaignSystem)}` : ''}`, { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['public-spells', campaignSystem, campaignId],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (campaignSystem) qs.set('system', campaignSystem);
+      if (campaignId) qs.set('campaignId', campaignId);
+      const s = qs.toString();
+      return fetch(`/api/spells${s ? `?${s}` : ''}`, { credentials: 'include' }).then(r => r.json());
+    },
   });
   
   const { data: systemTraits = [] } = useQuery({
@@ -22235,8 +22244,14 @@ function FeatTreeViewerGrid({
   });
 
   const { data: systemItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', campaignSystem],
-    queryFn: () => fetch(`/api/system-items${campaignSystem ? `?system=${campaignSystem}` : ''}`, { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['/api/system-items', campaignSystem, campaignId],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (campaignSystem) qs.set('system', campaignSystem);
+      if (campaignId) qs.set('campaignId', campaignId);
+      const s = qs.toString();
+      return fetch(`/api/system-items${s ? `?${s}` : ''}`, { credentials: 'include' }).then(r => r.json());
+    },
   });
   
   const getFeatDescription = (feat: Feat): string | undefined => {

@@ -6790,8 +6790,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/system-items/:id/archive", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-items/:id/archive", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getItem(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Item not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).createdByUserId)) return;
       const item = await storage.updateItem(req.params.id, { isArchived: true });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(item);
@@ -6800,8 +6803,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/system-items/:id/restore", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-items/:id/restore", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getItem(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Item not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).createdByUserId)) return;
       const item = await storage.updateItem(req.params.id, { isArchived: false });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(item);
@@ -7422,8 +7428,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/system-spells/:id/archive", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-spells/:id/archive", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getSystemSpell(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Spell not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const spell = await storage.updateSystemSpell(req.params.id, { isArchived: true });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
@@ -7432,8 +7441,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/system-spells/:id/restore", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-spells/:id/restore", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getSystemSpell(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Spell not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const spell = await storage.updateSystemSpell(req.params.id, { isArchived: false });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);

@@ -10905,6 +10905,27 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => window.open('/admin', '_blank')}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-panel-my-library"
+                  >
+                    <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>My Library</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => { setShowMapPinEditor(prev => !prev); bringToFront('map-pins'); }}
                     className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showMapPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
                     data-testid="button-map-pins"
