@@ -547,6 +547,7 @@ export const craftRecipes = pgTable("craft_recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   parentItemId: varchar("parent_item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
   name: text("name").default("Recipe").notNull(),
+  description: text("description").default("").notNull(),
   outputItemId: varchar("output_item_id").references(() => items.id, { onDelete: "set null" }),
   outputQuantity: integer("output_quantity").default(1).notNull(),
   noRoll: boolean("no_roll").default(false).notNull(),

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -6079,15 +6079,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // CRAFTER RECIPE ROUTES (AA V2 only)
   // ============================================
 
-  // List recipes for a Crafter item. Authenticated users can read recipes
-  // for any Crafter item they can see (admin/library item, or a Crafter
-  // they own in their inventory — in which case we resolve via templateItemId).
+  // List recipes for a Crafter item. Visibility rules:
+  //   - Inventory crafter (characterId set): caller must own the character
+  //     OR be GM of the character's campaign. Resolves to templateItemId.
+  //   - Library crafter (characterId null, isTemplate true): caller must
+  //     own the library row, OR be admin, OR the library is admin-system
+  //     (createdByUserId null).
   app.get("/api/items/:itemId/recipes", requireAuth, async (req, res) => {
     try {
+      const userId = req.session.userId!;
       const item = await storage.getItem(req.params.itemId);
       if (!item) return res.status(404).json({ error: "Item not found" });
-      // Source library item: prefer templateItemId for inventory copies, else self
-      const sourceId = (item.templateItemId && (item.itemType !== 'crafter' || item.characterId)) ? item.templateItemId : item.id;
+      if (item.itemType !== 'crafter') return res.json([]);
+
+      let sourceId: string;
+      if (item.characterId) {
+        const character = await storage.getCharacter(item.characterId);
+        if (!character) return res.status(404).json({ error: "Character not found" });
+        const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
+        const isOwner = character.userId === userId;
+        const isGM = !!campaign && campaign.gmUserId === userId;
+        if (!isOwner && !isGM) return res.status(403).json({ error: "Not authorized" });
+        sourceId = item.templateItemId || item.id;
+      } else {
+        const me = await storage.getUser(userId);
+        const isAdmin = !!me?.isAdmin;
+        const isAdminSystem = !item.createdByUserId;
+        const isOwn = item.createdByUserId === userId;
+        if (!isAdmin && !isAdminSystem && !isOwn) {
+          return res.status(403).json({ error: "Not authorized" });
+        }
+        sourceId = item.id;
+      }
       const recipes = await storage.getCraftRecipesByItem(sourceId);
       res.json(recipes);
     } catch (err) {
@@ -6105,10 +6128,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!await requireLibraryAaV2(req, res, item.system)) return;
       if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       const { ingredients = [], outcomes = [], ...recipeBody } = req.body || {};
+      const parsedRecipe = insertCraftRecipeSchema
+        .omit({ parentItemId: true })
+        .parse(recipeBody);
+      const parsedIngredients = ingredients.map((ing: unknown) =>
+        insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
+      );
+      const parsedOutcomes = outcomes.map((o: unknown) =>
+        insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
+      );
       const recipe = await storage.createCraftRecipe(
-        { ...recipeBody, parentItemId: item.id } as any,
-        ingredients,
-        outcomes,
+        { ...parsedRecipe, parentItemId: item.id },
+        parsedIngredients,
+        parsedOutcomes,
       );
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
       res.json(recipe);
@@ -6127,7 +6159,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!await requireLibraryAaV2(req, res, parent.system)) return;
       if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return;
       const { ingredients, outcomes, ...recipeBody } = req.body || {};
-      const updated = await storage.updateCraftRecipe(req.params.id, recipeBody, ingredients, outcomes);
+      const parsedRecipe = insertCraftRecipeSchema
+        .omit({ parentItemId: true })
+        .partial()
+        .parse(recipeBody);
+      const parsedIngredients = ingredients === undefined ? undefined :
+        (ingredients as unknown[]).map((ing) =>
+          insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
+        );
+      const parsedOutcomes = outcomes === undefined ? undefined :
+        (outcomes as unknown[]).map((o) =>
+          insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
+        );
+      const updated = await storage.updateCraftRecipe(req.params.id, parsedRecipe, parsedIngredients, parsedOutcomes);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
       res.json(updated);
     } catch (err: any) {

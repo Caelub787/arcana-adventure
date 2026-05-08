@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Trash2, ChevronDown, ChevronRight, Hammer } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
@@ -106,7 +106,23 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] }),
   });
 
-  const handleAdd = () => createMut.mutate(newRecipe());
+  const reorderMut = useMutation({
+    mutationFn: ({ id, sortOrder }: { id: string; sortOrder: number }) => api.updateCraftRecipe(id, { sortOrder }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['craft-recipes', itemId] }),
+  });
+
+  const moveRecipe = (idx: number, dir: -1 | 1) => {
+    const next = idx + dir;
+    if (next < 0 || next >= recipes.length) return;
+    const a = recipes[idx];
+    const b = recipes[next];
+    const aOrder = a.sortOrder ?? idx;
+    const bOrder = b.sortOrder ?? next;
+    reorderMut.mutate({ id: a.id, sortOrder: bOrder });
+    reorderMut.mutate({ id: b.id, sortOrder: aOrder });
+  };
+
+  const handleAdd = () => createMut.mutate({ ...newRecipe(), sortOrder: recipes.length });
 
   if (!itemId) {
     return <p className="text-xs text-stone-500">Save the Crafter item first to add recipes.</p>;
@@ -125,7 +141,7 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
 
       {isLoading && <p className="text-xs text-stone-500">Loading…</p>}
 
-      {recipes.map((r: any) => (
+      {recipes.map((r: any, idx: number) => (
         <RecipeRow
           key={r.id}
           recipe={r}
@@ -136,6 +152,8 @@ export function CraftRecipesEditor({ itemId, systemSlug }: Props) {
           onDelete={() => {
             if (confirm(`Delete recipe "${r.name}"?`)) deleteMut.mutate(r.id);
           }}
+          onMoveUp={idx > 0 ? () => moveRecipe(idx, -1) : undefined}
+          onMoveDown={idx < recipes.length - 1 ? () => moveRecipe(idx, 1) : undefined}
         />
       ))}
 
@@ -153,6 +171,8 @@ function RecipeRow({
   onToggle,
   onSave,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   recipe: any;
   systemItems: any[];
@@ -160,6 +180,8 @@ function RecipeRow({
   onToggle: () => void;
   onSave: (data: DraftRecipe) => void;
   onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   const [draft, setDraft] = useState<DraftRecipe>(() => ({
     name: recipe.name,
@@ -208,9 +230,17 @@ function RecipeRow({
             {draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'} · {draft.outcomes.length} outcome{draft.outcomes.length === 1 ? '' : 's'}
           </span>
         </button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDelete} className="h-7 w-7 p-0 text-red-400 hover:text-red-300" data-testid={`button-delete-recipe-${recipe.id}`}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button type="button" size="sm" variant="ghost" onClick={onMoveUp} disabled={!onMoveUp} className="h-7 w-7 p-0 text-stone-400 disabled:opacity-30" data-testid={`button-move-up-recipe-${recipe.id}`}>
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onMoveDown} disabled={!onMoveDown} className="h-7 w-7 p-0 text-stone-400 disabled:opacity-30" data-testid={`button-move-down-recipe-${recipe.id}`}>
+            <ArrowDown className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDelete} className="h-7 w-7 p-0 text-red-400 hover:text-red-300" data-testid={`button-delete-recipe-${recipe.id}`}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {expanded && (
@@ -383,7 +413,23 @@ function RecipeRow({
                       }} className="bg-stone-800 border-stone-700 h-8" />
                     </div>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-1">
+                      <Button type="button" size="sm" variant="ghost" disabled={idx === 0} onClick={() => {
+                        const next = [...draft.outcomes];
+                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                        setDraft({ ...draft, outcomes: next.map((o, i) => ({ ...o, sortOrder: i })) });
+                      }} className="h-7 w-7 p-0 text-stone-400 disabled:opacity-30" data-testid={`button-move-up-outcome-${idx}`}>
+                        <ArrowUp className="h-3 w-3" />
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" disabled={idx === draft.outcomes.length - 1} onClick={() => {
+                        const next = [...draft.outcomes];
+                        [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                        setDraft({ ...draft, outcomes: next.map((o, i) => ({ ...o, sortOrder: i })) });
+                      }} className="h-7 w-7 p-0 text-stone-400 disabled:opacity-30" data-testid={`button-move-down-outcome-${idx}`}>
+                        <ArrowDown className="h-3 w-3" />
+                      </Button>
+                    </div>
                     <Button type="button" size="sm" variant="ghost" onClick={() => setDraft({ ...draft, outcomes: draft.outcomes.filter((_, i) => i !== idx) })} className="h-7 text-red-400">
                       <Trash2 className="h-3 w-3 mr-1" /> Remove outcome
                     </Button>
