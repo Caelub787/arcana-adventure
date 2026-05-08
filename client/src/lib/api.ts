@@ -1074,9 +1074,12 @@ class ApiClient {
   }
 
   // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
-  async getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/system-items/summary${params}`);
+  async getSystemItemSummaries(system?: string, campaignId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/system-items/summary${s ? `?${s}` : ''}`);
   }
 
   async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[] }> {
@@ -1089,14 +1092,18 @@ class ApiClient {
   }
 
   // Admin System Items
-  async getSystemItems(system?: string): Promise<Item[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/system-items${params}`);
+  async getSystemItems(system?: string, campaignId?: string): Promise<Item[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/admin/system-items${s ? `?${s}` : ''}`);
   }
 
   // Public System Items (for notes graph and entity references)
-  async getPublicSystemItems(): Promise<Item[]> {
-    return this.request('/system-items');
+  async getPublicSystemItems(campaignId?: string): Promise<Item[]> {
+    const params = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
+    return this.request(`/system-items${params}`);
   }
 
   // Get all characters the user has access to (for notes graph)
@@ -1267,9 +1274,12 @@ class ApiClient {
   }
 
   // Admin System Species
-  async getSystemSpecies(systemName?: string): Promise<SystemSpecies[]> {
-    const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
-    return this.request(`/admin/system-species${params}`);
+  async getSystemSpecies(systemName?: string, campaignId?: string): Promise<SystemSpecies[]> {
+    const qs = new URLSearchParams();
+    if (systemName) qs.set('system', systemName);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/admin/system-species${s ? `?${s}` : ''}`);
   }
 
   async createSystemSpecies(species: Partial<SystemSpecies>): Promise<SystemSpecies> {
@@ -1291,9 +1301,12 @@ class ApiClient {
   }
 
   // Public species (for character creation)
-  async getSpecies(systemName?: string): Promise<SystemSpecies[]> {
-    const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
-    return this.request(`/species${params}`);
+  async getSpecies(systemName?: string, campaignId?: string): Promise<SystemSpecies[]> {
+    const qs = new URLSearchParams();
+    if (systemName) qs.set('system', systemName);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/species${s ? `?${s}` : ''}`);
   }
 
   // Campaign Species (GM-managed species for the campaign)
@@ -1420,9 +1433,12 @@ class ApiClient {
   }
 
   // Lightweight summaries (no icon base64, no effects jsonb) for fast loading
-  async getSystemSpellSummaries(system?: string): Promise<any[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/system-spells/summary${params}`);
+  async getSystemSpellSummaries(system?: string, campaignId?: string): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/system-spells/summary${s ? `?${s}` : ''}`);
   }
 
   // Lazy-load individual spell icon for spell pickers
@@ -1682,8 +1698,9 @@ class ApiClient {
   }
 
   // Public character templates (for campaign use)
-  async getPublicCharacterTemplates(): Promise<Character[]> {
-    return this.request('/character-templates');
+  async getPublicCharacterTemplates(campaignId?: string): Promise<Character[]> {
+    const params = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
+    return this.request(`/character-templates${params}`);
   }
 
   async copyTemplateToCompany(campaignId: string, templateId: string): Promise<Character> {
@@ -1693,9 +1710,12 @@ class ApiClient {
   }
 
   // Admin Feat Trees
-  async getFeatTrees(system?: string): Promise<FeatTree[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/feat-trees${params}`);
+  async getFeatTrees(system?: string, campaignId?: string): Promise<FeatTree[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (campaignId) qs.set('campaignId', campaignId);
+    const s = qs.toString();
+    return this.request(`/admin/feat-trees${s ? `?${s}` : ''}`);
   }
 
   async getFeatTree(id: string): Promise<FeatTreeWithData> {

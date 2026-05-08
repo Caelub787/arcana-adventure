@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -5703,6 +5703,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
+  // Library scope helpers — let GMs maintain a private AAv2 library that's
+  // visible to players inside the GM's own campaigns. Admins see everything.
+  // ownerScope semantics for storage methods:
+  //   undefined        → no filter (admin sees all)
+  //   string[]         → include rows where ownerUserId IS NULL OR ownerUserId IN (...)
+  const getLibraryScope = async (userId: string | undefined, campaignId?: string): Promise<string[] | undefined> => {
+    if (!userId) return [];
+    if (await isAdminUser(userId)) return undefined;
+    const ids = [userId];
+    if (campaignId) {
+      const c = await storage.getCampaign(campaignId);
+      if (c?.gmUserId) {
+        // Only expose the campaign GM's library to confirmed campaign participants
+        // (the GM themselves or a member). Otherwise ignore campaignId silently.
+        const isMember = c.gmUserId === userId
+          || !!(await storage.getCampaignMembership(userId, campaignId));
+        if (isMember && !ids.includes(c.gmUserId)) ids.push(c.gmUserId);
+      }
+    }
+    return ids;
+  };
+  const enforceLibraryWrite = async (req: any, res: any, ownerUserId: string | null | undefined): Promise<boolean> => {
+    if (await isAdminUser(req.session.userId)) return true;
+    if (ownerUserId && ownerUserId === req.session.userId) return true;
+    res.status(403).json({ error: "You can only modify your own library entries" });
+    return false;
+  };
+  // Read-side enforcement for admin-namespace GET-by-id endpoints. Non-admins
+  // may read admin-owned (null ownerUserId) rows and rows they own. Cross-GM
+  // reads happen exclusively through list endpoints scoped by campaignId.
+  const enforceLibraryRead = async (req: any, res: any, ownerUserId: string | null | undefined): Promise<boolean> => {
+    if (await isAdminUser(req.session.userId)) return true;
+    if (!ownerUserId) return true;
+    if (ownerUserId === req.session.userId) return true;
+    res.status(403).json({ error: "Not authorized to view this library entry" });
+    return false;
+  };
+  const requireLibraryAaV2 = async (req: any, res: any, system: string | undefined): Promise<boolean> => {
+    if (await isAdminUser(req.session.userId)) return true;
+    if (system && system !== 'aa-v2') {
+      res.status(400).json({ error: "Personal library is only available for the AA V2 system" });
+      return false;
+    }
+    return true;
+  };
+
   // Helper to sanitize user object (exclude password)
   const sanitizeUserForAdmin = (user: any) => ({
     id: user.id,
@@ -5901,7 +5947,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system-items/summary", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const summaries = await storage.getSystemItemSummaries(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const summaries = await storage.getSystemItemSummaries(system, scope);
       console.log('[Summary] System items:', summaries.length);
       res.json(summaries);
     } catch (err) {
@@ -5942,17 +5990,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/system-items", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const items = await storage.getSystemItems(system);
+      const scope = await getLibraryScope(req.session.userId);
+      const items = await storage.getSystemItems(system, scope);
       res.json(items);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system items" });
     }
   });
 
-  app.post("/api/admin/system-items", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-items", requireAuth, async (req, res) => {
     try {
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
-        ...req.body,
+        ...body,
         isTemplate: true,
         characterId: null,
         campaignId: null
@@ -5978,12 +6030,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/system-items/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/system-items/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "System item not found" });
       }
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       const updatedItem = await storage.updateItem(req.params.id, req.body);
       
       if (updatedItem) {
@@ -6007,12 +6060,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/system-items/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/system-items/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "System item not found" });
       }
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       await storage.deleteItem(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true });
@@ -6074,12 +6128,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/system-items/:id/duplicate", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-items/:id/duplicate", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isTemplate) return res.status(404).json({ error: "System item not found" });
+      const isA = await isAdminUser(req.session.userId);
+      if (!isA && item.createdByUserId && item.createdByUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Cannot duplicate this item" });
+      }
       const { id, createdAt, ...itemData } = item as any;
-      const newItem = await storage.createItem({ ...itemData, name: `${item.name} (Copy)` });
+      const newItem = await storage.createItem({
+        ...itemData,
+        name: `${item.name} (Copy)`,
+        ...(isA ? {} : { system: 'aa-v2', createdByUserId: req.session.userId }),
+      });
       const sourceRolls = await storage.getRollEntries('item', req.params.id);
       if (sourceRolls.length > 0) {
         await db.insert(rollEntries).values(sourceRolls.map(re => {
@@ -6106,32 +6168,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== Item Templates (admin-managed live templates) =====
-  app.get("/api/admin/item-templates", requireAdmin, async (req, res) => {
+  app.get("/api/admin/item-templates", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const templates = await storage.getSystemItemTemplates(system);
+      const scope = await getLibraryScope(req.session.userId);
+      const templates = await storage.getSystemItemTemplates(system, scope);
       res.json(templates);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch item templates" });
     }
   });
 
-  app.get("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/item-templates/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "Item template not found" });
       }
+      if (!await enforceLibraryRead(req, res, (item as any).createdByUserId)) return;
       res.json(item);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch item template" });
     }
   });
 
-  app.post("/api/admin/item-templates", requireAdmin, async (req, res) => {
+  app.post("/api/admin/item-templates", requireAuth, async (req, res) => {
     try {
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
-        ...req.body,
+        ...body,
         isTemplate: true,
         isLiveTemplate: true,
         characterId: null,
@@ -6156,12 +6223,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/item-templates/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "Item template not found" });
       }
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       // Don't let updates flip the template flags away
       const { isLiveTemplate: _i, isTemplate: _t, characterId: _c, campaignId: _cm, ...updates } = req.body;
       const updatedItem = await storage.updateItem(req.params.id, updates);
@@ -6216,12 +6284,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/item-templates/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/item-templates/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
       if (!item || !item.isLiveTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "Item template not found" });
       }
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       // Per spec: deleting a template removes inherited rolls and template links from
       // every affected item AND spell, while preserving each owner's independent
       // rolls and other fields. Cleanup is provenance-driven so character-owned
@@ -6765,19 +6834,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin system species routes
-  app.get("/api/admin/system-species", requireAdmin, async (req, res) => {
+  app.get("/api/admin/system-species", requireAuth, async (req, res) => {
     try {
       const systemName = req.query.system as string | undefined;
-      const species = await storage.getSystemSpecies(systemName);
+      const scope = await getLibraryScope(req.session.userId);
+      const species = await storage.getSystemSpecies(systemName, scope);
       res.json(species);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system species" });
     }
   });
 
-  app.post("/api/admin/system-species", requireAdmin, async (req, res) => {
+  app.post("/api/admin/system-species", requireAuth, async (req, res) => {
     try {
-      const species = await storage.createSystemSpecies(req.body);
+      const isA = await isAdminUser(req.session.userId);
+      if (!isA && req.body.systemName && req.body.systemName !== 'A.A. V2') {
+        return res.status(400).json({ error: "Personal library is only available for the AA V2 system" });
+      }
+      const body = isA ? req.body : { ...req.body, systemName: 'A.A. V2', ownerUserId: req.session.userId };
+      const species = await storage.createSystemSpecies(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(species);
     } catch (err) {
@@ -6785,12 +6860,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/system-species/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/system-species/:id", requireAuth, async (req, res) => {
     try {
       const species = await storage.getSystemSpeciesById(req.params.id);
       if (!species) {
         return res.status(404).json({ error: "Species not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (species as any).ownerUserId)) return;
       const updated = await storage.updateSystemSpecies(req.params.id, req.body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(updated);
@@ -6799,12 +6875,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/system-species/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/system-species/:id", requireAuth, async (req, res) => {
     try {
       const species = await storage.getSystemSpeciesById(req.params.id);
       if (!species) {
         return res.status(404).json({ error: "Species not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (species as any).ownerUserId)) return;
       await storage.deleteSystemSpecies(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json({ success: true });
@@ -6817,7 +6894,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/species", requireAuth, async (req, res) => {
     try {
       const systemName = req.query.system as string || "Arcana Adventure";
-      const species = await storage.getSystemSpecies(systemName);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const species = await storage.getSystemSpecies(systemName, scope);
       res.json(species);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch species" });
@@ -6892,19 +6971,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== CLASS ROUTES (AA V2) ====================
 
-  app.get("/api/admin/classes", requireAdmin, async (req, res) => {
+  app.get("/api/admin/classes", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      const result = await storage.getClasses(system);
+      const scope = await getLibraryScope(req.session.userId);
+      const result = await storage.getClasses(system, scope);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch classes" });
     }
   });
 
-  app.post("/api/admin/classes", requireAdmin, async (req, res) => {
+  app.post("/api/admin/classes", requireAuth, async (req, res) => {
     try {
-      const newClass = await storage.createClass(req.body);
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const newClass = await storage.createClass(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json(newClass);
     } catch (err) {
@@ -6912,8 +6995,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/classes/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/classes/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getClass(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Class not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const updated = await storage.updateClass(req.params.id, req.body);
       if (!updated) return res.status(404).json({ error: "Class not found" });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
@@ -6923,8 +7009,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/classes/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/classes/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getClass(req.params.id);
+      if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteClass(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json({ success: true });
@@ -6933,7 +7021,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/classes/:id/nodes", requireAdmin, async (req, res) => {
+  app.get("/api/admin/classes/:id/nodes", requireAuth, async (req, res) => {
     try {
       const nodes = await storage.getClassSkillNodes(req.params.id);
       res.json(nodes);
@@ -6942,8 +7030,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/classes/:id/nodes", requireAdmin, async (req, res) => {
+  app.post("/api/admin/classes/:id/nodes", requireAuth, async (req, res) => {
     try {
+      const parent = await storage.getClass(req.params.id);
+      if (!parent) return res.status(404).json({ error: "Class not found" });
+      if (!await enforceLibraryWrite(req, res, (parent as any).ownerUserId)) return;
       const node = await storage.createClassSkillNode({ ...req.body, classId: req.params.id });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json(node);
@@ -6952,8 +7043,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/classes/:id/nodes/:nodeId", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/classes/:id/nodes/:nodeId", requireAuth, async (req, res) => {
     try {
+      const parent = await storage.getClass(req.params.id);
+      if (parent && !await enforceLibraryWrite(req, res, (parent as any).ownerUserId)) return;
       const updated = await storage.updateClassSkillNode(req.params.nodeId, req.body);
       if (!updated) return res.status(404).json({ error: "Node not found" });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
@@ -6963,8 +7056,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/classes/:id/nodes/:nodeId", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/classes/:id/nodes/:nodeId", requireAuth, async (req, res) => {
     try {
+      const parent = await storage.getClass(req.params.id);
+      if (parent && !await enforceLibraryWrite(req, res, (parent as any).ownerUserId)) return;
       await storage.deleteClassSkillNode(req.params.nodeId);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json({ success: true });
@@ -6973,7 +7068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/classes/:id/connections", requireAdmin, async (req, res) => {
+  app.get("/api/admin/classes/:id/connections", requireAuth, async (req, res) => {
     try {
       const connections = await storage.getClassSkillConnections(req.params.id);
       res.json(connections);
@@ -6982,8 +7077,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/classes/:id/connections", requireAdmin, async (req, res) => {
+  app.post("/api/admin/classes/:id/connections", requireAuth, async (req, res) => {
     try {
+      const parent = await storage.getClass(req.params.id);
+      if (!parent) return res.status(404).json({ error: "Class not found" });
+      if (!await enforceLibraryWrite(req, res, (parent as any).ownerUserId)) return;
       const connection = await storage.createClassSkillConnection({ ...req.body, classId: req.params.id });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json(connection);
@@ -6992,8 +7090,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/classes/:id/connections/:connectionId", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/classes/:id/connections/:connectionId", requireAuth, async (req, res) => {
     try {
+      const parent = await storage.getClass(req.params.id);
+      if (parent && !await enforceLibraryWrite(req, res, (parent as any).ownerUserId)) return;
       await storage.deleteClassSkillConnection(req.params.connectionId);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json({ success: true });
@@ -7005,7 +7105,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/classes", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      const result = await storage.getClasses(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const result = await storage.getClasses(system, scope);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch classes" });
@@ -7366,10 +7468,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== FEAT TREE ROUTES ====================
 
-  app.get("/api/admin/feat-trees", requireAdmin, async (req, res) => {
+  app.get("/api/admin/feat-trees", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const trees = await storage.getFeatTrees(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const trees = await storage.getFeatTrees(system, scope);
       res.json(trees);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feat trees" });
@@ -7377,12 +7481,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get a single feat tree with its feats and connections
-  app.get("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/feat-trees/:id", requireAuth, async (req, res) => {
     try {
       const tree = await storage.getFeatTree(req.params.id);
       if (!tree) {
         return res.status(404).json({ error: "Feat tree not found" });
       }
+      if (!await enforceLibraryRead(req, res, (tree as any).ownerUserId)) return;
       const [featsData, connections] = await Promise.all([
         storage.getFeats(req.params.id),
         storage.getFeatConnections(req.params.id)
@@ -7394,9 +7499,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a new feat tree
-  app.post("/api/admin/feat-trees", requireAdmin, async (req, res) => {
+  app.post("/api/admin/feat-trees", requireAuth, async (req, res) => {
     try {
-      const tree = await storage.createFeatTree(req.body);
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const tree = await storage.createFeatTree(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(tree);
     } catch (err) {
@@ -7405,12 +7513,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update a feat tree
-  app.patch("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/feat-trees/:id", requireAuth, async (req, res) => {
     try {
       const tree = await storage.getFeatTree(req.params.id);
       if (!tree) {
         return res.status(404).json({ error: "Feat tree not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       const updated = await storage.updateFeatTree(req.params.id, req.body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(updated);
@@ -7420,12 +7529,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a feat tree
-  app.delete("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/feat-trees/:id", requireAuth, async (req, res) => {
     try {
       const tree = await storage.getFeatTree(req.params.id);
       if (!tree) {
         return res.status(404).json({ error: "Feat tree not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       await storage.deleteFeatTree(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json({ success: true });
@@ -7435,12 +7545,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a feat within a tree
-  app.post("/api/admin/feat-trees/:treeId/feats", requireAdmin, async (req, res) => {
+  app.post("/api/admin/feat-trees/:treeId/feats", requireAuth, async (req, res) => {
     try {
       const tree = await storage.getFeatTree(req.params.treeId);
       if (!tree) {
         return res.status(404).json({ error: "Feat tree not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       const feat = await storage.createFeat({ ...req.body, treeId: req.params.treeId });
       
       // Auto-save to library: create a template if one doesn't exist with this name
@@ -7471,12 +7582,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update a feat
-  app.patch("/api/admin/feats/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/feats/:id", requireAuth, async (req, res) => {
     try {
       const feat = await storage.getFeat(req.params.id);
       if (!feat) {
         return res.status(404).json({ error: "Feat not found" });
       }
+      const tree = await storage.getFeatTree((feat as any).treeId);
+      if (tree && !await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       const updated = await storage.updateFeat(req.params.id, req.body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feats' });
       res.json(updated);
@@ -7486,12 +7599,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a feat
-  app.delete("/api/admin/feats/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/feats/:id", requireAuth, async (req, res) => {
     try {
       const feat = await storage.getFeat(req.params.id);
       if (!feat) {
         return res.status(404).json({ error: "Feat not found" });
       }
+      const tree = await storage.getFeatTree((feat as any).treeId);
+      if (tree && !await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       // Delete connections first, then the feat
       await storage.deleteFeatConnectionsByFeat(req.params.id);
       await storage.deleteFeat(req.params.id);
@@ -7503,12 +7618,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a connection between feats
-  app.post("/api/admin/feat-trees/:treeId/connections", requireAdmin, async (req, res) => {
+  app.post("/api/admin/feat-trees/:treeId/connections", requireAuth, async (req, res) => {
     try {
       const tree = await storage.getFeatTree(req.params.treeId);
       if (!tree) {
         return res.status(404).json({ error: "Feat tree not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
       const connection = await storage.createFeatConnection({ 
         ...req.body, 
         treeId: req.params.treeId 
@@ -7521,8 +7637,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a connection
-  app.delete("/api/admin/feat-connections/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/feat-connections/:id", requireAuth, async (req, res) => {
     try {
+      const [conn] = await db.select({ treeId: featConnections.treeId })
+        .from(featConnections).where(eq(featConnections.id, req.params.id)).limit(1);
+      if (conn?.treeId) {
+        const tree = await storage.getFeatTree(conn.treeId);
+        if (tree && !await enforceLibraryWrite(req, res, (tree as any).ownerUserId)) return;
+      } else if (!(await isAdminUser(req.session.userId))) {
+        return res.status(403).json({ error: "Cannot delete this connection" });
+      }
       await storage.deleteFeatConnection(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-connections' });
       res.json({ success: true });
@@ -7535,7 +7659,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/feat-trees", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const trees = await storage.getFeatTrees(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const trees = await storage.getFeatTrees(system, scope);
       res.json(trees);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feat trees" });
@@ -7841,10 +7967,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // System Spell routes (admin)
-  app.get("/api/admin/spells", requireAdmin, async (req, res) => {
+  app.get("/api/admin/spells", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const spellList = await storage.getSystemSpells(system);
+      const scope = await getLibraryScope(req.session.userId);
+      const spellList = await storage.getSystemSpells(system, scope);
       res.json(spellList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spells" });
@@ -7855,7 +7982,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system-spells/summary", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const summaries = await storage.getSystemSpellSummaries(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const summaries = await storage.getSystemSpellSummaries(system, scope);
       res.json(summaries);
     } catch (err) {
       console.error('[Summary] Error fetching system spells:', err);
@@ -7876,21 +8005,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/spells/:id", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getSystemSpell(req.params.id);
       if (!spell) {
         return res.status(404).json({ error: "Spell not found" });
       }
+      if (!await enforceLibraryRead(req, res, (spell as any).ownerUserId)) return;
       res.json(spell);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spell" });
     }
   });
 
-  app.post("/api/admin/spells", requireAdmin, async (req, res) => {
+  app.post("/api/admin/spells", requireAuth, async (req, res) => {
     try {
-      const spell = await storage.createSystemSpell(req.body);
+      const isA = await isAdminUser(req.session.userId);
+      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const spell = await storage.createSystemSpell(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
     } catch (err) {
@@ -7898,8 +8031,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/spells/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getSystemSpell(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Spell not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const spell = await storage.updateSystemSpell(req.params.id, req.body);
       if (!spell) {
         return res.status(404).json({ error: "Spell not found" });
@@ -7911,8 +8047,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/spells/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getSystemSpell(req.params.id);
+      if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       // Cleanup any spell-template-link rows that reference this SystemSpell
       // (the join table has no FK on spellId so we must clean it explicitly).
       await db.delete(spellTemplateLinks).where(eq(spellTemplateLinks.spellId, req.params.id));
@@ -7946,12 +8084,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/spells/:id/duplicate", requireAdmin, async (req, res) => {
+  app.post("/api/admin/spells/:id/duplicate", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getSystemSpell(req.params.id);
       if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const isA = await isAdminUser(req.session.userId);
+      if (!isA && (spell as any).ownerUserId && (spell as any).ownerUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Cannot duplicate this spell" });
+      }
       const { id, createdAt, ...spellData } = spell as any;
-      const newSpell = await storage.createSystemSpell({ ...spellData, name: `${spell.name} (Copy)` });
+      const newSpell = await storage.createSystemSpell({
+        ...spellData,
+        name: `${spell.name} (Copy)`,
+        ...(isA ? {} : { system: 'aa-v2', ownerUserId: req.session.userId }),
+      });
       const sourceRolls = await storage.getRollEntries('spell', req.params.id);
       if (sourceRolls.length > 0) {
         await db.insert(rollEntries).values(sourceRolls.map(re => {
@@ -8023,30 +8169,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Character Template routes (admin)
-  app.get("/api/admin/character-templates", requireAdmin, async (req, res) => {
+  app.get("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
-      const templates = await storage.getCharacterTemplates();
+      const scope = await getLibraryScope(req.session.userId);
+      const templates = await storage.getCharacterTemplates(scope);
       res.json(templates);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch character templates" });
     }
   });
 
-  app.get("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/character-templates/:id", requireAuth, async (req, res) => {
     try {
       const template = await storage.getCharacterTemplate(req.params.id);
       if (!template) {
         return res.status(404).json({ error: "Character template not found" });
       }
+      if (!await enforceLibraryRead(req, res, (template as any).ownerUserId)) return;
       res.json(template);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch character template" });
     }
   });
 
-  app.post("/api/admin/character-templates", requireAdmin, async (req, res) => {
+  app.post("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
-      const template = await storage.createCharacterTemplate(req.body);
+      const isA = await isAdminUser(req.session.userId);
+      const body = isA ? req.body : { ...req.body, ownerUserId: req.session.userId };
+      const template = await storage.createCharacterTemplate(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
     } catch (err) {
@@ -8054,8 +8204,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/character-templates/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getCharacterTemplate(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Character template not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const template = await storage.updateCharacterTemplate(req.params.id, req.body);
       if (!template) {
         return res.status(404).json({ error: "Character template not found" });
@@ -8067,8 +8220,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/character-templates/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getCharacterTemplate(req.params.id);
+      if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteCharacterTemplate(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json({ success: true });
@@ -8192,7 +8347,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public character templates route (for adding to campaigns)
   app.get("/api/character-templates", requireAuth, async (req, res) => {
     try {
-      const templates = await storage.getCharacterTemplates();
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const templates = await storage.getCharacterTemplates(scope);
       res.json(templates);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch character templates" });
@@ -8664,7 +8821,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/spells", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const spellList = await storage.getSystemSpells(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const spellList = await storage.getSystemSpells(system, scope);
       res.json(spellList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spells" });
@@ -8675,7 +8834,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system-items", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const itemList = await storage.getSystemItems(system);
+      const campaignId = req.query.campaignId as string | undefined;
+      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const itemList = await storage.getSystemItems(system, scope);
       res.json(itemList);
     } catch (err) {
       console.error('[system-items] Error fetching system items:', err);

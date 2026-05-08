@@ -135,9 +135,19 @@ export default function AdminSettings() {
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
+    if (!isAdmin) return 'A.A. V2';
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
+
+  // Non-admin GMs are scoped to their AA V2 private library
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
+  useEffect(() => {
+    if (!isAdmin && selectedSystem !== 'A.A. V2') setSelectedSystem('A.A. V2');
+  }, [isAdmin, selectedSystem]);
+  useEffect(() => {
+    if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
+  }, [isAdmin, currentView]);
   
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -182,20 +192,20 @@ export default function AdminSettings() {
   const { data: systemItemSummaries = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items-summary', systemSlug],
     queryFn: () => api.getSystemItemSummaries(systemSlug),
-    enabled: isAdmin && currentView === 'items',
+    enabled: currentView === 'items',
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: systemSpecies = [], isLoading: speciesLoading } = useQuery({
     queryKey: ['system-species', selectedSystem],
     queryFn: () => api.getSystemSpecies(selectedSystem),
-    enabled: isAdmin && currentView === 'species',
+    enabled: currentView === 'species',
   });
 
   const { data: systemSpells = [], isLoading: spellsLoading } = useQuery({
     queryKey: ['system-spells-summary', systemSlug],
     queryFn: () => api.getSystemSpellSummaries(systemSlug),
-    enabled: isAdmin && currentView === 'spells',
+    enabled: currentView === 'spells',
   });
 
   const { data: systemSkills = [], isLoading: skillsLoading } = useQuery({
@@ -213,13 +223,13 @@ export default function AdminSettings() {
   const { data: characterTemplates = [], isLoading: charactersLoading } = useQuery({
     queryKey: ['character-templates'],
     queryFn: () => api.getCharacterTemplates(),
-    enabled: isAdmin && currentView === 'characters',
+    enabled: currentView === 'characters',
   });
 
   const { data: templateFolders = [], isLoading: templateFoldersLoading } = useQuery({
     queryKey: ['character-template-folders'],
     queryFn: () => api.getCharacterTemplateFolders(),
-    enabled: isAdmin && currentView === 'characters',
+    enabled: currentView === 'characters',
   });
 
   const { data: tokenEffects = [], isLoading: tokenEffectsLoading } = useQuery({
@@ -231,7 +241,6 @@ export default function AdminSettings() {
   const { data: allFeatTrees = [] } = useQuery({
     queryKey: ['feat-trees', systemSlug],
     queryFn: () => api.getFeatTrees(systemSlug),
-    enabled: isAdmin,
   });
 
   const createItemMutation = useMutation({
@@ -298,7 +307,7 @@ export default function AdminSettings() {
   const { data: itemTemplates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ['item-templates', systemSlug],
     queryFn: () => api.getItemTemplates(systemSlug),
-    enabled: isAdmin && currentView === 'item-templates',
+    enabled: currentView === 'item-templates',
     staleTime: 5 * 60 * 1000,
   });
 
@@ -799,19 +808,6 @@ export default function AdminSettings() {
     },
   });
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Access Denied</h1>
-          <p className="text-stone-400 mb-6">You do not have permission to access this page.</p>
-          <Button onClick={() => setLocation('/')} variant="outline">
-            Return Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
   const debouncedSpeciesSearchQuery = useDebouncedValue(speciesSearchQuery, 150);
@@ -893,7 +889,7 @@ export default function AdminSettings() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-amber-500">Admin Settings</h1>
+            <h1 className="text-2xl font-bold text-amber-500">{isAdmin ? 'Admin Settings' : 'My Library'}</h1>
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
@@ -911,21 +907,23 @@ export default function AdminSettings() {
                (currentView === 'feat-trees' && systemSlug === 'aa-v2') ? 'Skill Trees' : 'Feat Trees'}
             </p>
           </div>
-          <div className="w-[200px]">
-            <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); localStorage.setItem('admin-selected-system', val); }}>
-              <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">
-                <SelectValue placeholder="Select System" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
-                <SelectItem value="A.A. V2">A.A. V2</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {isAdmin && (
+            <div className="w-[200px]">
+              <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); localStorage.setItem('admin-selected-system', val); }}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">
+                  <SelectValue placeholder="Select System" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
+                  <SelectItem value="A.A. V2">A.A. V2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         {currentView === 'dashboard' && (
-          <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} />
+          <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} />
         )}
 
         {currentView === 'items' && (
@@ -1593,7 +1591,7 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNav
   );
 }
 
-function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminView) => void; systemSlug: string }) {
+function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card 
@@ -1660,6 +1658,7 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
         </CardHeader>
       </Card>
 
+      {isAdmin && (<>
       <Card 
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
         onClick={() => onNavigate('skills')}
@@ -1791,6 +1790,7 @@ function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminVie
           </CardDescription>
         </CardHeader>
       </Card>
+      </>)}
 
     </div>
   );

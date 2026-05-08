@@ -16515,7 +16515,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   
   useQuery({
     queryKey: campaignId ? ['template-items-summary', campaignId] : ['system-items-summary', campaignSystem],
-    queryFn: () => campaignId ? api.getTemplateItemSummaries(campaignId) : api.getSystemItemSummaries(campaignSystem),
+    queryFn: () => campaignId ? api.getTemplateItemSummaries(campaignId) : api.getSystemItemSummaries(campaignSystem, campaignId),
     staleTime: 10 * 60 * 1000,
   });
   const [showManageTemplates, setShowManageTemplates] = useState(false);
@@ -17441,8 +17441,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // Fetch system spell library for adding from library - cached for 5 minutes, filtered by campaign system
   // Uses summaries (no icon base64, no effects jsonb) for fast loading; icons load lazily per row
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['system-spells-summary', campaignSystem],
-    queryFn: () => api.getSystemSpellSummaries(campaignSystem),
+    queryKey: ['system-spells-summary', campaignSystem, campaignId],
+    queryFn: () => api.getSystemSpellSummaries(campaignSystem, campaignId),
     staleTime: 5 * 60 * 1000,
   });
 

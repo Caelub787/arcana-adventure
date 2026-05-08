@@ -994,15 +994,26 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
         <span className="text-xs text-stone-500">{messages.length} messages</span>
         {role === 'gm' && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleClearChat}
-            className="border-red-700/50 hover:bg-red-900/30 text-red-400 hover:text-red-300 h-7 text-xs"
-            data-testid="button-clear-chat"
-          >
-            <Trash2 className="h-3 w-3 mr-1" /> Clear
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => window.open('/admin', '_blank')}
+              className="border-amber-700/50 hover:bg-amber-900/30 text-amber-400 hover:text-amber-300 h-7 text-xs"
+              data-testid="button-my-library"
+            >
+              <BookOpen className="h-3 w-3 mr-1" /> My Library
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleClearChat}
+              className="border-red-700/50 hover:bg-red-900/30 text-red-400 hover:text-red-300 h-7 text-xs"
+              data-testid="button-clear-chat"
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Clear
+            </Button>
+          </div>
         )}
       </div>
       <ScrollArea className="flex-1 px-4 mb-2" ref={scrollAreaRef}>

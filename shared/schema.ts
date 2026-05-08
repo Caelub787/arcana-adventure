@@ -252,6 +252,7 @@ export const characters = pgTable("characters", {
   showEnergyBar: boolean("show_energy_bar").notNull().default(true),
   showManaBar: boolean("show_mana_bar").notNull().default(true),
   classSkillPoints: integer("class_skill_points").notNull().default(0),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   // New Attributes (range -2 to 5, mod equals value)
   might: integer("might").notNull().default(0),
   finesse: integer("finesse").notNull().default(0),
@@ -565,6 +566,7 @@ export const systemSpecies = pgTable("system_species", {
   visionType: text("vision_type").default("normal").notNull(),
   dayVisionDistance: integer("day_vision_distance").default(60).notNull(),
   nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -885,6 +887,7 @@ export const featTrees = pgTable("feat_trees", {
   defaultViewX: integer("default_view_x"),
   defaultViewY: integer("default_view_y"),
   defaultViewZoom: real("default_view_zoom"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1007,6 +1010,7 @@ export const systemSpells = pgTable("system_spells", {
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1908,6 +1912,7 @@ export const classes = pgTable("classes", {
   defaultViewX: integer("default_view_x"),
   defaultViewY: integer("default_view_y"),
   defaultViewZoom: real("default_view_zoom"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

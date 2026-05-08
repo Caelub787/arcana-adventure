@@ -1285,10 +1285,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Character Template operations (admin-created character sheets)
-  async getCharacterTemplates(): Promise<Character[]> {
+  async getCharacterTemplates(ownerScope?: string[]): Promise<Character[]> {
+    const conditions: any[] = [eq(characters.isTemplate, true)];
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${characters.ownerUserId} IS NULL`, inArray(characters.ownerUserId, ownerScope))!
+          : sql`${characters.ownerUserId} IS NULL`
+      );
+    }
     return await db.select()
       .from(characters)
-      .where(eq(characters.isTemplate, true))
+      .where(and(...conditions))
       .orderBy(characters.name);
   }
 
@@ -1869,7 +1877,7 @@ export class DatabaseStorage implements IStorage {
     return item ? this.convertLegacyItemPrice(item) : undefined;
   }
 
-  async getSystemItems(system?: string): Promise<Item[]> {
+  async getSystemItems(system?: string, ownerScope?: string[]): Promise<Item[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -1878,13 +1886,20 @@ export class DatabaseStorage implements IStorage {
       sql`${items.campaignId} IS NULL`,
     ];
     if (system) conditions.push(eq(items.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+          : sql`${items.createdByUserId} IS NULL`
+      );
+    }
     const result = await db.select()
       .from(items)
       .where(and(...conditions)) as Item[];
     return result.map(item => this.convertLegacyItemPrice(item));
   }
 
-  async getSystemItemTemplates(system?: string): Promise<Item[]> {
+  async getSystemItemTemplates(system?: string, ownerScope?: string[]): Promise<Item[]> {
     const conditions = [
       eq(items.isLiveTemplate, true),
       eq(items.isArchived, false),
@@ -1892,6 +1907,13 @@ export class DatabaseStorage implements IStorage {
       sql`${items.campaignId} IS NULL`,
     ];
     if (system) conditions.push(eq(items.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+          : sql`${items.createdByUserId} IS NULL`
+      );
+    }
     const result = await db.select()
       .from(items)
       .where(and(...conditions)) as Item[];
@@ -1916,7 +1938,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lightweight summaries for faster item picker loading (no images to avoid Neon 507 response size limit)
-  async getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
+  async getSystemItemSummaries(system?: string, ownerScope?: string[]): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -1925,6 +1947,13 @@ export class DatabaseStorage implements IStorage {
       sql`${items.campaignId} IS NULL`,
     ];
     if (system) conditions.push(eq(items.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+          : sql`${items.createdByUserId} IS NULL`
+      );
+    }
     return await db.select({
       id: items.id,
       name: items.name,
@@ -2490,15 +2519,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Species operations
-  async getSystemSpecies(systemName?: string): Promise<SystemSpecies[]> {
-    if (systemName) {
-      return await db.select()
-        .from(systemSpecies)
-        .where(eq(systemSpecies.systemName, systemName))
-        .orderBy(systemSpecies.name);
+  async getSystemSpecies(systemName?: string, ownerScope?: string[]): Promise<SystemSpecies[]> {
+    const conditions: any[] = [];
+    if (systemName) conditions.push(eq(systemSpecies.systemName, systemName));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${systemSpecies.ownerUserId} IS NULL`, inArray(systemSpecies.ownerUserId, ownerScope))!
+          : sql`${systemSpecies.ownerUserId} IS NULL`
+      );
+    }
+    if (conditions.length === 0) {
+      return await db.select().from(systemSpecies).orderBy(systemSpecies.name);
     }
     return await db.select()
       .from(systemSpecies)
+      .where(and(...conditions))
       .orderBy(systemSpecies.name);
   }
 
@@ -2605,11 +2641,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Feat Tree operations
-  async getFeatTrees(system?: string): Promise<FeatTree[]> {
-    if (system) {
-      return await db.select().from(featTrees).where(eq(featTrees.system, system)).orderBy(featTrees.name);
+  async getFeatTrees(system?: string, ownerScope?: string[]): Promise<FeatTree[]> {
+    const conditions: any[] = [];
+    if (system) conditions.push(eq(featTrees.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${featTrees.ownerUserId} IS NULL`, inArray(featTrees.ownerUserId, ownerScope))!
+          : sql`${featTrees.ownerUserId} IS NULL`
+      );
     }
-    return await db.select().from(featTrees).orderBy(featTrees.name);
+    if (conditions.length === 0) {
+      return await db.select().from(featTrees).orderBy(featTrees.name);
+    }
+    return await db.select().from(featTrees).where(and(...conditions)).orderBy(featTrees.name);
   }
 
   async getFeatTree(id: string): Promise<FeatTree | undefined> {
@@ -2733,9 +2778,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Spell operations
-  async getSystemSpells(system?: string): Promise<SystemSpell[]> {
+  async getSystemSpells(system?: string, ownerScope?: string[]): Promise<SystemSpell[]> {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
+          : sql`${systemSpells.ownerUserId} IS NULL`
+      );
+    }
     return await db.select()
       .from(systemSpells)
       .where(and(...conditions))
@@ -2743,9 +2795,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lightweight summaries for fast spell list/picker loading (no icon base64, no effects jsonb)
-  async getSystemSpellSummaries(system?: string): Promise<any[]> {
+  async getSystemSpellSummaries(system?: string, ownerScope?: string[]): Promise<any[]> {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
+          : sql`${systemSpells.ownerUserId} IS NULL`
+      );
+    }
     return await db.select({
       id: systemSpells.id,
       name: systemSpells.name,
@@ -4544,8 +4603,16 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(shopHaggleRolls.pinId, pinId), eq(shopHaggleRolls.characterId, characterId)));
   }
 
-  async getClasses(systemName: string): Promise<GameClass[]> {
-    return db.select().from(classes).where(eq(classes.system, systemName));
+  async getClasses(systemName: string, ownerScope?: string[]): Promise<GameClass[]> {
+    const conditions: any[] = [eq(classes.system, systemName)];
+    if (ownerScope) {
+      conditions.push(
+        ownerScope.length > 0
+          ? or(sql`${classes.ownerUserId} IS NULL`, inArray(classes.ownerUserId, ownerScope))!
+          : sql`${classes.ownerUserId} IS NULL`
+      );
+    }
+    return db.select().from(classes).where(and(...conditions));
   }
 
   async getClass(id: string): Promise<GameClass | undefined> {
