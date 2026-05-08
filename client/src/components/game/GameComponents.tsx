@@ -19214,6 +19214,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         const baseNumericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
                         const skillFeatBonus = featBonuses.skills[skill.key] || 0;
                         const numericValue = baseNumericValue + skillFeatBonus;
+                        const SKILL_ATTR_ABBREV: Record<string, string> = {
+                          FIN: 'finesse', MIG: 'might', WIT: 'wit', WIL: 'will',
+                          CRA: 'craft', PRE: 'presence',
+                        };
+                        const attrKey = SKILL_ATTR_ABBREV[skill.attr] || skill.attr.toLowerCase();
+                        const attrValue = (liveCharacter[attrKey as keyof typeof liveCharacter] as number) || 0;
+                        const total = numericValue + attrValue;
+                        const totalStr = total >= 0 ? `+${total}` : `${total}`;
                         return (
                           <Badge 
                             key={skill.key} 
@@ -19268,6 +19276,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <span className="font-bold ml-2">
                               {numericValue >= 0 ? `+${numericValue}` : numericValue}
                               {skillFeatBonus > 0 && <span className="text-purple-400 text-[10px]"> (+{skillFeatBonus})</span>}
+                              <span className="text-amber-400 text-[10px] ml-1">= {totalStr}</span>
                             </span>
                           </Badge>
                         );
@@ -19463,6 +19472,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="flex items-center gap-1">
                             <span className="font-bold">
                               {skillValue >= 0 ? `+${skillValue}` : skillValue}
+                              <span className="text-amber-400 text-[10px] ml-1">
+                                = {totalMod >= 0 ? `+${totalMod}` : totalMod}
+                              </span>
                             </span>
                             {isGM && (
                               <Button
