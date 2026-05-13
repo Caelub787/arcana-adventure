@@ -39,6 +39,16 @@ export type {
   FeatDraft, FeatConnectionDraft, FeatEffectDraft,
   FeatTreeCanvasValue, FeatTreeCanvasProps,
 } from "./components/FeatTreeCanvas";
+export { ClassDialog } from "./dialogs/ClassDialog";
+export type { ClassDraft } from "./dialogs/ClassDialog";
+export {
+  SkillTreeEditor, ClassSkillsPanel,
+  stripLocalIds as stripSkillTreeLocalIds,
+} from "./components/SkillTreeEditor";
+export type {
+  SkillNodeDraft, SkillConnectionDraft, SkillNodeEffectDraft,
+  SkillTreeValue, SkillTreeEditorProps, ClassSkillsPanelProps,
+} from "./components/SkillTreeEditor";
 
 // Reusable nested editors
 export { RollEntriesEditor } from "./components/RollEntriesEditor";

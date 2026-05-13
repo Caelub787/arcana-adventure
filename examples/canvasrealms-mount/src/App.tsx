@@ -13,7 +13,7 @@ import * as React from "react";
 import {
   ItemDialog, RollTemplateDialog, SpellDialog,
   CharacterDialog, CharacterTemplateDialog,
-  SpeciesDialog, FeatTreeDialog,
+  SpeciesDialog, FeatTreeDialog, ClassDialog,
   minimalHostAdapter, type HostAdapter,
 } from "@arcana/library-dialogs";
 
@@ -49,6 +49,7 @@ export const App: React.FC = () => {
   const [showCharTemplate, setShowCharTemplate] = React.useState(false);
   const [showSpecies, setShowSpecies] = React.useState(false);
   const [showFeatTree, setShowFeatTree] = React.useState(false);
+  const [showClass, setShowClass] = React.useState(false);
 
   return (
     <div className="cr-launcher" data-ld-root="" data-testid="canvasrealms-launcher">
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
         <button onClick={() => setShowCharTemplate(true)} data-testid="button-open-character-template">Create Character Template</button>
         <button onClick={() => setShowSpecies(true)} data-testid="button-open-species">Create Species</button>
         <button onClick={() => setShowFeatTree(true)} data-testid="button-open-feat-tree">Create Feat Tree</button>
+        <button onClick={() => setShowClass(true)} data-testid="button-open-class">Create Class</button>
       </div>
 
       <div id="ld-toast" style={{
@@ -135,6 +137,13 @@ export const App: React.FC = () => {
           host={host}
           campaignSystem="aa-v2"
           onSaved={(saved) => console.log("Saved feat tree:", saved)}
+        />
+        <ClassDialog
+          open={showClass}
+          onOpenChange={setShowClass}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved class:", saved)}
         />
       </div>
     </div>

@@ -5,11 +5,12 @@ Same fields, prompts, conditionals, and nested editors as the live Arcana UI —
 but framework-agnostic, theme-free, and persisted via the existing
 `@arcana/aa-sync-sdk`.
 
-> **This release ships the foundation + Item, Roll-Template, Spell,
-> Character, Character-Template, Species, and Feat-Tree dialogs (with
-> the standalone `<FeatTreeCanvas>`).** The Class dialog follows in a
-> subsequent release. The HostAdapter contract, theming surface, and
-> transport wiring established here are stable.
+> **This release (0.5.0) ships the full library: Item, Roll-Template, Spell,
+> Character, Character-Template, Species, Feat-Tree, and Class dialogs —
+> plus the standalone `<FeatTreeCanvas>`, `<SkillTreeEditor>`, and
+> `<ClassSkillsPanel>` editors.** The HostAdapter contract, theming
+> surface, and transport wiring are stable; Arcana itself migrates onto
+> the package in 1.0.0.
 
 ---
 
@@ -107,7 +108,7 @@ Two factories ship out-of-the-box:
 
 ---
 
-## What's in this release (0.1.0)
+## What's in this release (0.5.0)
 
 ### Dialogs
 - `<ItemDialog>` — full create/edit dialog for the `items` table, including
@@ -159,6 +160,28 @@ Two factories ship out-of-the-box:
   tier / cost / position / effects (matching `Feat.effects` jsonb
   shape). Maintains stable `_localId`s so brand-new feats can be
   referenced by brand-new connections in the same bundled save.
+- `<ClassDialog>` — full create/edit dialog for the `classes` table
+  (`kind="class"`). Renders class identity (name, description, image,
+  system), an optional feat-tree picker for `skillTreeId`, the
+  skill-tree grid layout fields (gridWidth/Height + default-view
+  X/Y/Zoom), and embeds both `<SkillTreeEditor>` (graph view) and
+  `<ClassSkillsPanel>` (flat-list view) over the same underlying
+  `class_skill_nodes` array. Save bundles `skillNodes[]` +
+  `skillConnections[]` into a single `host.transport.upsert("class", …)`.
+  The server's `replaceClassChildren` writes the parent + both child
+  tables in one bundled write with FK ID remapping so connections
+  referencing brand-new nodes resolve correctly. `ClassDraft.classSkills`
+  is accepted as a convenience alias for `skillNodes` on input; saves
+  always send the canonical `skillNodes` key.
+- `<SkillTreeEditor>` — standalone graph editor for `class_skill_nodes`
+  + `class_skill_connections`. Same drag-to-place + click-to-connect
+  interaction model as `<FeatTreeCanvas>`, with per-node inline editor
+  for name / description / icon / image / class-level gate (tier) /
+  cost / position / effects. Click a connection to delete it.
+- `<ClassSkillsPanel>` — flat-list view over the same skill-tree value
+  as `<SkillTreeEditor>`. Convenient when a partner UI prefers a
+  list-style admin alongside (or instead of) the graph; deleting a
+  row scrubs orphan connections automatically.
 - `<SpellDialog>` — full create/edit dialog for AAv2 system spells
   (`kind="spell"` → `system_spells`). Renders the union of Arcana's two
   canonical spell editors: the admin form (name, description, icon,
@@ -272,7 +295,7 @@ npm run dev
 | ------- | ----------------------------------------------------------------- |
 | 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels (shipped) |
 | 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>` (shipped) |
-| 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`                              |
+| 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`, `<ClassSkillsPanel>` (shipped) |
 | 1.0.0   | Arcana itself migrates to consume the package internally          |
 
 ### Mounting `<CharacterDialog>` and `<CharacterTemplateDialog>`
@@ -342,6 +365,58 @@ const [tree, setTree] = useState<FeatTreeCanvasValue>({ feats: [], connections: 
 
 Drop the canvas into your own multi-pane editor and bundle its output
 (`tree.feats`, `tree.connections`) into whatever upsert you want.
+
+### Mounting `<ClassDialog>`
+
+```tsx
+import { ClassDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+
+const host = minimalHostAdapter({ baseUrl, accessToken });
+
+// Create a new class — embeds <SkillTreeEditor> for the graph view and
+// <ClassSkillsPanel> for the flat list view (toggle inside the dialog)
+<ClassDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+
+// Edit an existing one — `id` is REQUIRED on initialValue for edit mode
+<ClassDialog
+  open={open}
+  onOpenChange={setOpen}
+  host={host}
+  campaignSystem="aa-v2"
+  mode="edit"
+  initialValue={{ id: "01HW...", name: "" }}
+  onSaved={(cls) => console.log(cls)}
+/>
+```
+
+Save fires `host.transport.upsert("class", { ...classFields, skillNodes, skillConnections })`.
+The server's `replaceClassChildren` writes `class_skill_nodes` + `class_skill_connections`
+in the same single-request bundled write with full FK ID remapping — brand-new
+connections that reference brand-new nodes resolve to the freshly-inserted child
+rows without any client follow-up.
+
+> **Schema note.** In the Arcana data model "class skills" and "skill tree nodes"
+> are the same record (`class_skill_nodes`). `<SkillTreeEditor>` and
+> `<ClassSkillsPanel>` are two views of one underlying array — edits in either
+> propagate. `ClassDraft.classSkills` is accepted as a convenience alias for
+> `skillNodes` on input; saves always send the canonical `skillNodes` key.
+
+### Standalone `<SkillTreeEditor>` and `<ClassSkillsPanel>`
+
+```tsx
+import {
+  SkillTreeEditor, ClassSkillsPanel, type SkillTreeValue,
+} from "@arcana/library-dialogs";
+
+const [tree, setTree] = useState<SkillTreeValue>({ skillNodes: [], skillConnections: [] });
+
+// Pick whichever metaphor your UI prefers — both edit the same array.
+<SkillTreeEditor value={tree} onChange={setTree} gridWidth={7} gridHeight={10} />
+<ClassSkillsPanel value={tree} onChange={setTree} />
+```
+
+Drop either component into your own multi-pane editor and bundle the output
+(`tree.skillNodes`, `tree.skillConnections`) into whatever upsert you want.
 
 ---
 
