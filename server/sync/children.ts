@@ -394,9 +394,11 @@ async function replaceCharacterChildren(characterId: string, children: Record<st
 
   // Traits must be inserted before hotbars so freshly-created trait rows can be
   // referenced by hotbars.traitId via traitIdRemap (mirrors items/spells flow).
+  // hotbars.traitId FK has onDelete:"set null", so untouched hotbars (when the
+  // caller omits children.hotbars) gracefully null their traitId and the rest
+  // of the row is preserved — matching the documented "omit child key to leave
+  // untouched" semantics for partial PATCH callers.
   if (children.traits !== undefined) {
-    // Hotbars FK to traits via traitId — clear hotbars defensively before deleting traits.
-    await db.delete(hotbars).where(eq(hotbars.characterId, characterId));
     await db.delete(characterTraits).where(eq(characterTraits.characterId, characterId));
     if (children.traits.length > 0) {
       for (const t of children.traits) {
