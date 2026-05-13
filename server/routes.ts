@@ -15489,6 +15489,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin-only sync status dashboard endpoints
+  // Note: webhook job lifecycle uses status='dead' for jobs that exhausted
+  // MAX_ATTEMPTS retries (a.k.a. "failed" deliveries from the operator's
+  // perspective). The response aliases `failed` → `dead` so admin tooling
+  // and external docs that say "failed" continue to work unchanged.
   app.get("/api/admin/sync-status", requireAdmin, async (_req, res) => {
     try {
       const summary = await getRecentJobsSummary(50);

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
@@ -1845,8 +1846,8 @@ function SyncStatusCard() {
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="border-stone-700" onClick={() => refetch()} data-testid="button-sync-refresh">Refresh</Button>
-            <Button size="sm" className="bg-amber-700 hover:bg-amber-600" onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending || c.dead === 0} data-testid="button-sync-retry-dead">
-              Retry Dead ({c.dead})
+            <Button size="sm" className="bg-amber-700 hover:bg-amber-600" onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending || c.dead === 0} data-testid="button-sync-retry-failed">
+              Retry Failed ({c.dead})
             </Button>
           </div>
         </div>

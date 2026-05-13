@@ -128,6 +128,10 @@ export async function getRecentJobsSummary(limit = 50) {
     .limit(limit);
   const counts = { pending: 0, sending: 0, succeeded: 0, failed: 0, dead: 0 };
   for (const r of rows) (counts as any)[r.status] = ((counts as any)[r.status] || 0) + 1;
+  // `failed` is an external-facing alias for `dead` — webhook jobs that
+  // have exhausted MAX_ATTEMPTS retries are operationally "failed" deliveries.
+  // Keep both keys populated so dashboards/docs using either term agree.
+  counts.failed = counts.dead;
   return { rows, counts };
 }
 

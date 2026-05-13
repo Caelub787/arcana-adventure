@@ -68,6 +68,30 @@ export async function enforceLibraryRead(
  * Personal library is AA V2 only for non-admins. Sends 400 + returns false
  * when a non-admin tries to use a different system; returns true otherwise.
  */
+/**
+ * Pure (non-HTTP) library read/write predicates. The HTTP-aware
+ * `enforceLibraryRead` / `enforceLibraryWrite` above are thin wrappers
+ * around these. Sync (bearer-auth) handlers use these directly so the
+ * sync ACL and the REST ACL can never drift.
+ */
+export function canReadLibraryRow(
+  user: { id: string; isAdmin: boolean },
+  ownerUserId: string | null | undefined,
+): boolean {
+  if (user.isAdmin) return true;
+  if (ownerUserId == null) return true; // global admin row visible to all
+  return ownerUserId === user.id;
+}
+
+export function canWriteLibraryRow(
+  user: { id: string; isAdmin: boolean },
+  ownerUserId: string | null | undefined,
+): boolean {
+  if (user.isAdmin) return true;
+  if (ownerUserId == null) return false; // non-admin cannot write to global admin rows
+  return ownerUserId === user.id;
+}
+
 export async function requireLibraryAaV2(
   req: any,
   res: any,

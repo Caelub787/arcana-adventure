@@ -3,7 +3,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { externalEntityLinks, outgoingWebhooks, oauthAccessTokens, oauthRefreshTokens, users, characters } from "@shared/schema";
 import { and, eq, or, isNull, inArray, sql } from "drizzle-orm";
-import { isAdminUser as sharedIsAdminUser } from "../lib/library-acl";
+import { isAdminUser as sharedIsAdminUser, canReadLibraryRow, canWriteLibraryRow } from "../lib/library-acl";
 import crypto from "node:crypto";
 import { resolveBearer } from "./oauth";
 import { emitLibraryChange } from "./webhooks";
@@ -48,25 +48,33 @@ type Kind = keyof typeof KIND_PLURAL;
 export const SYNC_KINDS = Object.keys(KIND_PLURAL) as Kind[];
 export function pluralFor(kind: Kind): string { return KIND_PLURAL[kind]; }
 
-const KIND_META: Record<Kind, { ownerCol: "ownerUserId" | "createdByUserId" }> = {
-  "item": { ownerCol: "createdByUserId" },
-  "spell": { ownerCol: "ownerUserId" },
-  "character": { ownerCol: "ownerUserId" },
-  "species": { ownerCol: "ownerUserId" },
-  "class": { ownerCol: "ownerUserId" },
-  "feat-tree": { ownerCol: "ownerUserId" },
-  "character-template": { ownerCol: "ownerUserId" },
-  "roll-template": { ownerCol: "createdByUserId" },
+// Per-kind owner+system routing config. `systemCol` and `aaV2Value` exist
+// because not every entity uses the same field name / value: e.g. species
+// uses `systemName` with the human-readable value `"A.A. V2"`, while items,
+// spells, characters, classes, feat-trees use `system` = `"aa-v2"`.
+const KIND_META: Record<Kind, {
+  ownerCol: "ownerUserId" | "createdByUserId";
+  systemCol: "system" | "systemName";
+  aaV2Value: string;
+}> = {
+  "item":               { ownerCol: "createdByUserId", systemCol: "system",     aaV2Value: "aa-v2" },
+  "spell":              { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
+  "character":          { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
+  "species":            { ownerCol: "ownerUserId",     systemCol: "systemName", aaV2Value: "A.A. V2" },
+  "class":              { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
+  "feat-tree":          { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
+  "character-template": { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
+  "roll-template":      { ownerCol: "createdByUserId", systemCol: "system",     aaV2Value: "aa-v2" },
 };
 
 function applyOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmin: boolean }) {
-  const { ownerCol } = KIND_META[kind];
+  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind];
   const out = { ...body };
   if (syncUser.isAdmin) {
     out[ownerCol] = null;
   } else {
     out[ownerCol] = syncUser.id;
-    out.system = "aa-v2";
+    out[systemCol] = aaV2Value;
   }
   if (kind === "roll-template") {
     out.isLiveTemplate = true;
@@ -76,14 +84,13 @@ function applyOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmi
 
 /**
  * For non-admin PATCH writes we cannot allow the row to be moved out of the
- * AA V2 namespace or away from the caller. Strip / pin those fields.
+ * AA V2 namespace or away from the caller. Pin owner + system field per kind.
  */
 function applyPatchOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmin: boolean }) {
-  const { ownerCol } = KIND_META[kind];
+  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind];
   const out = { ...body };
   if (!syncUser.isAdmin) {
-    // Force AA V2 + own ownership; reject any attempt to move the row.
-    out.system = "aa-v2";
+    out[systemCol] = aaV2Value;
     out[ownerCol] = syncUser.id;
   }
   return out;
@@ -218,17 +225,10 @@ const adapters: Record<Kind, {
   },
 };
 
-function canRead(syncUser: { id: string; isAdmin: boolean }, owner: string | null | undefined): boolean {
-  if (syncUser.isAdmin) return true;
-  if (owner == null) return true; // global admin row visible to all
-  return owner === syncUser.id;
-}
-
-function canWrite(syncUser: { id: string; isAdmin: boolean }, owner: string | null | undefined): boolean {
-  if (syncUser.isAdmin) return true;
-  if (owner == null) return false; // non-admin cannot write to global admin rows
-  return owner === syncUser.id;
-}
+// ACL predicates re-exported from server/lib/library-acl.ts so sync and the
+// REST app share one authorization source of truth.
+const canRead = canReadLibraryRow;
+const canWrite = canWriteLibraryRow;
 
 function staleCheck(req: Request, existing: any): boolean {
   const ext = req.body?.externalUpdatedAt || req.headers["x-external-updated-at"];
