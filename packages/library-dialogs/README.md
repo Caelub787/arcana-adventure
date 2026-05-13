@@ -115,14 +115,20 @@ Two factories ship out-of-the-box:
 - `<RollTemplateDialog>` — admin live-template editor (an `items` row with
   `isLiveTemplate=true`); roll edits propagate to every linked item and spell
   via the existing server-side fanout.
-- `<SpellDialog>` — full create/edit dialog for the `spells` table. Mirrors
-  Arcana's canonical in-game spell editor field-for-field: name, image,
-  description, damage dice, damage/effect type (with the `Energy → gainEnergy`
-  conditional), energy cost, AAv2 mana cost, action type, duration, range,
-  attribute, `Attack?` toggle, `Area of Effect` toggle (with shape, range,
-  passes-through-walls), and `Requires Save` toggle (with save attribute,
-  save DC, on-successful-save effect). Plus the AAv2-only
-  `<ItemTemplateLinksPanel>` for spell↔roll-template linking.
+- `<SpellDialog>` — full create/edit dialog for AAv2 system spells
+  (`kind="spell"` → `system_spells`). Renders the union of Arcana's two
+  canonical spell editors: the admin form (name, description, icon,
+  action type, duration, range, attribute) AND the in-game form (damage
+  dice, damage/effect type with `Energy → gainEnergy` conditional,
+  healing dice, flat modifier, energy cost, AAv2 mana cost, `Attack?`
+  toggle, `Area of Effect` toggle with shape/range/area-size/passes-through-walls,
+  `Requires Save` toggle with save attribute/DC/on-success effect
+  including `Quarter Damage`). Plus the schema-only fields (school,
+  level, components, target type, concentration, ritual, saving-throw
+  text, raw effects JSON) so partner apps get full `system_spells`
+  column coverage on create. Reuses `<RollEntriesEditor ownerType="spell">`
+  for nested rolls and the AAv2-only `<ItemTemplateLinksPanel>` for
+  spell↔roll-template links.
 
 ### Reusable nested editors
 - `<RollEntriesEditor>` — full draft-mode editor for `roll_entries` rows
