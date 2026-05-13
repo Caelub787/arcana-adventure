@@ -12,3 +12,9 @@ id = "IwKmO1wbDS9LoloLvRcy7"
 uri = "file://INTEGRATION.md"
 type = "text"
 title = "Arcana Sync Integration Guide"
+
+[[outputs]]
+id = "-iNBgSlnGXhjcy7m5uuPy"
+uri = "file://.local/exports/arcana-packages.tar.gz"
+type = "unspecified"
+title = "Arcana packages bundle (library-dialogs 0.6.0 + aa-sync-sdk 1.0.0)"
