@@ -1,6 +1,6 @@
 {
   "name": "@arcana/library-dialogs",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Drop-in React dialogs (Item / Spell / Character / etc.) for Arcana Adventure-compatible apps. Persistence via @arcana/aa-sync-sdk.",
   "type": "module",
   "main": "dist/index.js",

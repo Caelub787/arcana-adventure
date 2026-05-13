@@ -2,17 +2,43 @@
  * @arcana/library-dialogs — public type surface
  *
  * The HostAdapter is the single injection seam. Partner apps fill it in
- * to provide transport (a configured @arcana/aa-sync-sdk client),
- * notifications, an optional image picker, and an optional modal slot.
+ * to provide transport (any object satisfying `LibraryTransport` —
+ * typically a configured `@arcana/aa-sync-sdk` client OR a host-supplied
+ * shim that wraps existing in-app REST routes), notifications, an
+ * optional image picker, and an optional modal slot.
  *
  * Theme is NOT carried on this object — theming is exclusively driven by
  * CSS custom properties (see `theme.css`). This keeps re-skinning a
  * one-line override on the consumer's root element.
  */
 import type { ReactNode, ComponentType } from "react";
-import type { ArcanaSyncClient, SyncKind } from "@arcana/aa-sync-sdk";
+import type { ArcanaSyncClient, SyncKind, SyncEnvelope } from "@arcana/aa-sync-sdk";
 
 export type NotifyLevel = "info" | "success" | "warning" | "error";
+
+/**
+ * Minimum transport surface the dialogs use. `ArcanaSyncClient` already
+ * satisfies this structurally, so OAuth-based mounts continue to work
+ * unchanged. Hosts that prefer session-cookie auth (e.g. Arcana itself)
+ * can supply a shim that wraps their existing `api.*` REST methods —
+ * see `arcanaSessionHostAdapter`.
+ */
+export interface LibraryTransport {
+  list<T = any>(kind: SyncKind): Promise<{ data: T[] }>;
+  get<T = any>(kind: SyncKind, id: string): Promise<SyncEnvelope<T>>;
+  upsert<T = any>(
+    kind: SyncKind,
+    body: T & { externalId?: string; externalUpdatedAt?: string },
+  ): Promise<SyncEnvelope<T>>;
+  patch<T = any>(
+    kind: SyncKind,
+    id: string,
+    body: Partial<T> & { externalUpdatedAt?: string },
+  ): Promise<SyncEnvelope<T>>;
+  delete(kind: SyncKind, id: string): Promise<{ ok: true }>;
+  /** Optional — only required for hosts that round-trip externalId. */
+  getByExternal?<T = any>(kind: SyncKind, externalId: string): Promise<SyncEnvelope<T>>;
+}
 
 export interface ImagePickerOpts {
   title?: string;
@@ -33,8 +59,12 @@ export interface HostModalProps {
 export type HostModalComponent = ComponentType<HostModalProps>;
 
 export interface HostAdapter {
-  /** Pre-configured SDK instance. Library calls go through it. */
-  transport: ArcanaSyncClient;
+  /**
+   * Pre-configured transport. Typically an `ArcanaSyncClient`, but any
+   * object satisfying `LibraryTransport` works — letting hosts wire the
+   * dialogs to existing in-app REST routes via a thin shim.
+   */
+  transport: LibraryTransport;
 
   /**
    * Toast / snackbar entry-point. Package surfaces validation errors,
@@ -87,4 +117,4 @@ export interface DialogProps<T = unknown> {
   campaignSystem?: string;
 }
 
-export type { ArcanaSyncClient, SyncKind };
+export type { ArcanaSyncClient, SyncKind, SyncEnvelope };

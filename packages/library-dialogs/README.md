@@ -5,12 +5,15 @@ Same fields, prompts, conditionals, and nested editors as the live Arcana UI —
 but framework-agnostic, theme-free, and persisted via the existing
 `@arcana/aa-sync-sdk`.
 
-> **This release (0.5.0) ships the full library: Item, Roll-Template, Spell,
+> **This release (0.6.0) ships the full library: Item, Roll-Template, Spell,
 > Character, Character-Template, Species, Feat-Tree, and Class dialogs —
 > plus the standalone `<FeatTreeCanvas>`, `<SkillTreeEditor>`, and
-> `<ClassSkillsPanel>` editors.** The HostAdapter contract, theming
-> surface, and transport wiring are stable; Arcana itself migrates onto
-> the package in 1.0.0.
+> `<ClassSkillsPanel>` editors.** 0.6.0 adds the
+> `arcanaSessionHostAdapter` factory + `LibraryTransport` interface so
+> Arcana itself can mount the dialogs against its existing
+> session-cookie REST routes without OAuth tokens — see `MIGRATION.md`.
+> The HostAdapter contract, theming surface, and transport wiring are
+> stable; per-dialog migration in Arcana lands across follow-up tasks.
 
 ---
 

@@ -1,20 +1,34 @@
 /**
- * Arcana host adapter factory.
+ * Arcana host adapter factories.
  *
- * Used by the Arcana app itself (in the future migration task #61) to
- * mount the package's dialogs against its own infra: existing toast
- * system, image browser, dialog chrome, and a same-origin sync client
- * authenticated via session.
+ * Two flavors:
  *
- * Partners should NOT use this — it assumes Arcana-side dependencies
- * exist. Use `minimalHostAdapter` instead.
+ * 1. `arcanaHostAdapter(...)` — same-origin OAuth flow. Mints an
+ *    `ArcanaSyncClient` against the bearer token belonging to the user's
+ *    session. Used when the calling code already has a token in hand.
  *
- * NOTE: this factory only wires the seams that don't require Arcana's
+ * 2. `arcanaSessionHostAdapter(...)` — cookie-auth flow. Takes a
+ *    host-supplied `LibraryTransport` shim that wraps the app's existing
+ *    `api.*` REST methods (which authenticate via session cookies). This
+ *    is the path the Arcana app itself uses when migrating its inline
+ *    dialogs over to the package — no new backend routes required, no
+ *    OAuth round-trip, no token storage.
+ *
+ * Partners should NOT use either of these — both assume Arcana-side
+ * dependencies exist. Use `minimalHostAdapter` instead.
+ *
+ * NOTE: these factories only wire the seams that don't require Arcana's
  * runtime to be loaded. Anything Arcana-specific (toast hook, image
- * browser component, modal component) must be supplied by the caller
- * at the migration site so this file stays dependency-free.
+ * browser component, modal component, REST client) must be supplied by
+ * the caller at the migration site so this file stays dependency-free.
  */
-import type { HostAdapter, NotifyLevel, ImagePickerOpts, HostModalComponent } from "../types";
+import type {
+  HostAdapter,
+  LibraryTransport,
+  NotifyLevel,
+  ImagePickerOpts,
+  HostModalComponent,
+} from "../types";
 import { ArcanaSyncClient } from "@arcana/aa-sync-sdk";
 
 export interface ArcanaHostOptions {
@@ -39,6 +53,39 @@ export function arcanaHostAdapter(opts: ArcanaHostOptions): HostAdapter {
   });
   return {
     transport,
+    notify: opts.notify,
+    imagePicker: opts.imagePicker,
+    modal: opts.modal,
+  };
+}
+
+export interface ArcanaSessionHostOptions {
+  /**
+   * Host-supplied transport shim. Implementations typically wrap the
+   * app's existing REST `api.*` methods (which authenticate via session
+   * cookies) and translate dialog kinds → endpoint paths. Must satisfy
+   * `LibraryTransport`'s list/get/upsert/patch/delete contract.
+   */
+  transport: LibraryTransport;
+  /** Bridge to Arcana's toast system. */
+  notify: (level: NotifyLevel, message: string) => void;
+  /** Bridge to Arcana's <ImageBrowser>. */
+  imagePicker?: (opts: ImagePickerOpts) => Promise<{ url: string } | null>;
+  /** Bridge to Arcana's existing Dialog chrome (Radix-based). */
+  modal?: HostModalComponent;
+}
+
+/**
+ * Cookie-auth host adapter. The caller assembles a `LibraryTransport`
+ * shim from existing in-app REST methods and hands it in directly — no
+ * OAuth token, no SDK instance, no new backend routes. The shim's
+ * methods can return either `SyncEnvelope`-shaped objects or already
+ * unwrapped raw rows; dialogs key off `data` when present and fall back
+ * to the row itself otherwise.
+ */
+export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAdapter {
+  return {
+    transport: opts.transport,
     notify: opts.notify,
     imagePicker: opts.imagePicker,
     modal: opts.modal,

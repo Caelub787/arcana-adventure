@@ -12,14 +12,14 @@
  * to re-skin globally.
  */
 export type {
-  HostAdapter, NotifyLevel, ImagePickerOpts, HostModalProps,
+  HostAdapter, LibraryTransport, NotifyLevel, ImagePickerOpts, HostModalProps,
   HostModalComponent, DialogProps,
 } from "./types";
 
 export { minimalHostAdapter } from "./host/minimal";
 export type { MinimalHostOptions } from "./host/minimal";
-export { arcanaHostAdapter } from "./host/arcana";
-export type { ArcanaHostOptions } from "./host/arcana";
+export { arcanaHostAdapter, arcanaSessionHostAdapter } from "./host/arcana";
+export type { ArcanaHostOptions, ArcanaSessionHostOptions } from "./host/arcana";
 
 // Dialogs
 export { ItemDialog } from "./dialogs/ItemDialog";
