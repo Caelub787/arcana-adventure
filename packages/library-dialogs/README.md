@@ -123,7 +123,7 @@ Two factories ship out-of-the-box:
   `replaceCharacterChildren` understands: `items`, `spells`, `hotbars`,
   `customSkills`, `traits`, `feats`, `classes`, `classSkills`. Save
   bundles all eight into a single `host.transport.upsert("character", …)`;
-  the server's children-aware handler atomically replaces existing
+  the server's children-aware handler replaces existing
   children and performs FK ID remaps so brand-new hotbars referencing
   brand-new items / spells resolve correctly.
 - `<CharacterTemplateDialog>` — same dialog, pinned to
@@ -178,7 +178,7 @@ Two factories ship out-of-the-box:
 
 All saves bundle their nested children in one upsert against
 `/api/sync/v1/{kind}s`. The server's children-aware `applyChildren` writes
-the parent + the children atomically. **No new backend routes are required.**
+the parent + the children in a single bundled write. **No new backend routes are required.**
 
 ```
 ItemDialog.handleSave
@@ -227,7 +227,7 @@ const host = minimalHostAdapter({ baseUrl, accessToken });
 
 Save fires `host.transport.upsert("spell", { ...spellFields, rolls, templateLinks })`.
 The server's `applyChildren` writes `roll_entries` and `spell_template_links`
-in the same atomic request — no extra round-trips.
+in the same single-request bundled write — no extra round-trips.
 
 ```bash
 cd examples/canvasrealms-mount
@@ -265,7 +265,7 @@ const host = minimalHostAdapter({ baseUrl, accessToken });
 
 Save fires `host.transport.upsert("character" | "character-template", { …characterFields, items, spells, hotbars, customSkills, traits, feats, classes, classSkills })`.
 The server's `replaceCharacterChildren` writes the parent + every child
-table in the same atomic request, with full FK ID remapping across
+table in the same single-request bundled write, with full FK ID remapping across
 items, spells, and traits — so hotbars referencing brand-new embedded
 items, spells, or traits all resolve to the freshly-inserted child rows
 without any client follow-up.

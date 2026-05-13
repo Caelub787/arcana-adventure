@@ -13,7 +13,7 @@
  * classes, classSkills.
  *
  * Save bundles the character row + all eight child arrays into a single
- * sync upsert. The server's children-aware handler atomically deletes
+ * sync upsert. The server's children-aware handler deletes
  * existing children and re-inserts the new set, performing FK ID remaps
  * on items+spells so hotbars referencing brand-new child rows resolve
  * correctly.
