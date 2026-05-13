@@ -3,10 +3,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { externalEntityLinks, outgoingWebhooks, oauthAccessTokens, oauthRefreshTokens, users, characters } from "@shared/schema";
 import { and, eq, or, isNull, inArray, sql } from "drizzle-orm";
-
-// Mirror the routes.ts ADMIN_EMAILS allowlist so sync admin detection
-// matches the rest of the app (some valid admins are flagged via email).
-const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
+import { isAdminUser as sharedIsAdminUser } from "../lib/library-acl";
 import crypto from "node:crypto";
 import { resolveBearer } from "./oauth";
 import { emitLibraryChange } from "./webhooks";
@@ -29,7 +26,9 @@ export const requireSyncAuth = (requiredScope?: string) => async (req: Request, 
   }
   const [u] = await db.select().from(users).where(eq(users.id, auth.userId));
   if (!u) return res.status(401).json({ error: "user_not_found" });
-  const isAdmin = !!u.isAdmin || ADMIN_EMAILS.includes((u.email || "").toLowerCase());
+  // Reuse the shared admin detection helper so sync and the rest of the app
+  // can never drift on admin allowlist behaviour.
+  const isAdmin = await sharedIsAdminUser(u.id);
   req.syncUser = { id: u.id, clientId: auth.clientId, scopes: auth.scopes, isAdmin };
   next();
 };
@@ -73,6 +72,32 @@ function applyOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmi
     out.isLiveTemplate = true;
   }
   return out;
+}
+
+/**
+ * For non-admin PATCH writes we cannot allow the row to be moved out of the
+ * AA V2 namespace or away from the caller. Strip / pin those fields.
+ */
+function applyPatchOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmin: boolean }) {
+  const { ownerCol } = KIND_META[kind];
+  const out = { ...body };
+  if (!syncUser.isAdmin) {
+    // Force AA V2 + own ownership; reject any attempt to move the row.
+    out.system = "aa-v2";
+    out[ownerCol] = syncUser.id;
+  }
+  return out;
+}
+
+/** Reverse-lookup externalId for a row so GET/PATCH responses always include it when known. */
+async function externalIdFor(kind: Kind, internalId: string, userId: string): Promise<string | null> {
+  const [row] = await db.select().from(externalEntityLinks).where(and(
+    eq(externalEntityLinks.integration, INTEGRATION),
+    eq(externalEntityLinks.entityKind, kind),
+    eq(externalEntityLinks.internalId, internalId),
+    eq(externalEntityLinks.userId, userId),
+  ));
+  return row?.externalId || null;
 }
 
 async function lookupExternal(kind: Kind, externalId: string, userId: string) {
@@ -287,7 +312,8 @@ export function registerSyncRoutes(app: Express) {
       if (!row) return res.status(404).json({ error: "not_found" });
       const u = req.syncUser!;
       if (!canRead(u, a.getOwner(row))) return res.status(403).json({ error: "forbidden" });
-      res.json(envelope(kind, row));
+      const ext = await externalIdFor(kind, row.id, u.id);
+      res.json(envelope(kind, row, ext || undefined));
     });
 
     app.post(base, requireSyncAuth("library:write"), async (req: Request, res: Response) => {
@@ -324,10 +350,14 @@ export function registerSyncRoutes(app: Express) {
         const existing = await a.get(req.params.id);
         if (!existing) return res.status(404).json({ error: "not_found" });
         if (!canWrite(u, a.getOwner(existing))) return res.status(403).json({ error: "forbidden" });
-        if (staleCheck(req, existing)) return res.status(200).json({ skipped: "stale", ...envelope(kind, existing) });
-        const updated = await a.update(req.params.id, dropMeta(req.body));
-        await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, userId: a.getOwner(updated), data: updated, sourceClientId: originClient(req) });
-        res.json(envelope(kind, updated));
+        const ext = await externalIdFor(kind, existing.id, u.id);
+        if (staleCheck(req, existing)) return res.status(200).json({ skipped: "stale", ...envelope(kind, existing, ext || undefined) });
+        // Non-admin PATCHes are pinned to AA V2 + own ownership so the row
+        // cannot be moved out of the user's personal library.
+        const patchBody = applyPatchOwnerRouting(kind, dropMeta(req.body), u);
+        const updated = await a.update(req.params.id, patchBody);
+        await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, externalId: ext || undefined, userId: a.getOwner(updated), data: updated, sourceClientId: originClient(req) });
+        res.json(envelope(kind, updated, ext || undefined));
       } catch (err: any) {
         res.status(400).json({ error: "update_failed", message: err?.message });
       }

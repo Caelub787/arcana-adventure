@@ -2373,15 +2373,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Admin emails for system-wide access (defined early for use in checkCharacterAccess)
-  const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
-
-  // Helper to check if user is admin (defined early for use in checkCharacterAccess)
-  const isAdminUser = async (userId: string | undefined): Promise<boolean> => {
-    if (!userId) return false;
-    const user = await storage.getUser(userId);
-    return user ? (user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())) : false;
-  };
+  // Admin allowlist + admin detection moved to server/lib/library-acl.ts as
+  // the single source of truth shared with the sync API. Re-exported here so
+  // existing in-file references keep working.
+  const { ADMIN_EMAILS, isAdminUser } = await import("./lib/library-acl");
 
   const hasGmAccess = async (userId: string, campaignId: string, gmUserId: string, req?: any): Promise<boolean> => {
     // Spectator mode always reports as a player so GM-only data is never returned.
@@ -5727,46 +5722,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ownerScope semantics for storage methods:
   //   undefined        → no filter (admin sees all)
   //   string[]         → include rows where ownerUserId IS NULL OR ownerUserId IN (...)
-  const getLibraryScope = async (userId: string | undefined, campaignId?: string): Promise<string[] | undefined> => {
-    if (!userId) return [];
-    if (await isAdminUser(userId)) return undefined;
-    const ids = [userId];
-    if (campaignId) {
-      const c = await storage.getCampaign(campaignId);
-      if (c?.gmUserId) {
-        // Only expose the campaign GM's library to confirmed campaign participants
-        // (the GM themselves or a member). Otherwise ignore campaignId silently.
-        const isMember = c.gmUserId === userId
-          || !!(await storage.getCampaignMembership(userId, campaignId));
-        if (isMember && !ids.includes(c.gmUserId)) ids.push(c.gmUserId);
-      }
-    }
-    return ids;
-  };
-  const enforceLibraryWrite = async (req: any, res: any, ownerUserId: string | null | undefined): Promise<boolean> => {
-    if (await isAdminUser(req.session.userId)) return true;
-    if (ownerUserId && ownerUserId === req.session.userId) return true;
-    res.status(403).json({ error: "You can only modify your own library entries" });
-    return false;
-  };
-  // Read-side enforcement for admin-namespace GET-by-id endpoints. Non-admins
-  // may read admin-owned (null ownerUserId) rows and rows they own. Cross-GM
-  // reads happen exclusively through list endpoints scoped by campaignId.
-  const enforceLibraryRead = async (req: any, res: any, ownerUserId: string | null | undefined): Promise<boolean> => {
-    if (await isAdminUser(req.session.userId)) return true;
-    if (!ownerUserId) return true;
-    if (ownerUserId === req.session.userId) return true;
-    res.status(403).json({ error: "Not authorized to view this library entry" });
-    return false;
-  };
-  const requireLibraryAaV2 = async (req: any, res: any, system: string | undefined): Promise<boolean> => {
-    if (await isAdminUser(req.session.userId)) return true;
-    if (system && system !== 'aa-v2') {
-      res.status(400).json({ error: "Personal library is only available for the AA V2 system" });
-      return false;
-    }
-    return true;
-  };
+  // Library ACL helpers moved to server/lib/library-acl.ts (single source of
+  // truth shared with the sync API). Imported here so existing references
+  // continue to work unchanged.
+  const { getLibraryScope, enforceLibraryWrite, enforceLibraryRead, requireLibraryAaV2 } = await import("./lib/library-acl");
 
   // Helper to sanitize user object (exclude password)
   const sanitizeUserForAdmin = (user: any) => ({
