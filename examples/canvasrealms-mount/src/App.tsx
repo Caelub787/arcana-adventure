@@ -50,6 +50,7 @@ export const App: React.FC = () => {
   const [showSpecies, setShowSpecies] = React.useState(false);
   const [showFeatTree, setShowFeatTree] = React.useState(false);
   const [showClass, setShowClass] = React.useState(false);
+  const [editClassId, setEditClassId] = React.useState<string | null>(null);
 
   return (
     <div className="cr-launcher" data-ld-root="" data-testid="canvasrealms-launcher">
@@ -75,6 +76,15 @@ export const App: React.FC = () => {
         <button onClick={() => setShowSpecies(true)} data-testid="button-open-species">Create Species</button>
         <button onClick={() => setShowFeatTree(true)} data-testid="button-open-feat-tree">Create Feat Tree</button>
         <button onClick={() => setShowClass(true)} data-testid="button-open-class">Create Class</button>
+        <button
+          onClick={() => {
+            const id = window.prompt("Class id to edit (loads its skill tree):");
+            if (id) setEditClassId(id);
+          }}
+          data-testid="button-edit-skill-tree"
+        >
+          Edit Skill Tree
+        </button>
       </div>
 
       <div id="ld-toast" style={{
@@ -144,6 +154,15 @@ export const App: React.FC = () => {
           host={host}
           campaignSystem="aa-v2"
           onSaved={(saved) => console.log("Saved class:", saved)}
+        />
+        <ClassDialog
+          open={!!editClassId}
+          onOpenChange={(o) => { if (!o) setEditClassId(null); }}
+          host={host}
+          campaignSystem="aa-v2"
+          mode="edit"
+          initialValue={editClassId ? { id: editClassId, name: "" } : undefined}
+          onSaved={(saved) => { console.log("Updated class + skill tree:", saved); setEditClassId(null); }}
         />
       </div>
     </div>
