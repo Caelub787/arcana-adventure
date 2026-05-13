@@ -1,35 +1,3 @@
-/**
- * <SpellDialog>
- *
- * Full create/edit dialog for AAv2 system spells. Targets the
- * `system_spells` table via the sync API (`kind="spell"` is wired in
- * `server/sync/api.ts` to `storage.{create,update,get}SystemSpell`).
- *
- * The form exposes the union of every persisted column on `system_spells`
- * plus the conditional behavior copied verbatim from Arcana's two
- * canonical spell editors:
- *  - admin (`client/src/pages/AdminSettings.tsx` `SpellFormDialog` ~7495):
- *    name, description, icon, action type, duration, range, attribute,
- *    AAv2 template-links panel.
- *  - in-game (`client/src/components/game/GameComponents.tsx` ~20463):
- *    damageDice, damageType (with `Energy → gainEnergy` conditional),
- *    energyCost, AAv2 manaCost, isAttack toggle, isAoe (with shape +
- *    range + passes-through-walls), requiresSave (with saveAttribute,
- *    saveDc, saveSuccessEffect including the `quarter` "Quarter Damage"
- *    option).
- *
- * In addition, the schema-only fields not currently rendered by either
- * Arcana dialog but persisted on `system_spells` are exposed so partner
- * apps (CanvasRealms) get full table coverage on create: school, level,
- * components, concentration, ritual, targetType, areaSize, savingThrow,
- * healingDice, mod, effects (raw JSON edit). The `aoe` legacy text
- * column and `isArchived` are round-tripped through the draft.
- *
- * Save flow: bundles `rolls` and `templateLinks` into a single
- * `transport.upsert/patch("spell", ...)` call. The server's
- * `applyChildren` writes `roll_entries` (for kind="spell"); template
- * links are replaced by `replaceSpellTemplateLinks`.
- */
 import * as React from "react";
 import {
   Button, Input, Textarea, Label, Checkbox, Select, SelectItem,
@@ -49,8 +17,6 @@ const DURATIONS = [
   "1 Year", "Permanent",
 ] as const;
 const AOE_SHAPES = ["circle", "sphere", "square", "cube", "cone", "line"] as const;
-// Mirrors GameComponents.tsx ~20872-20880 (`half`, `none`, `no_effect`,
-// `quarter`) — the in-game spell editor's full save-success option set.
 const SAVE_SUCCESS = [
   { value: "half", label: "Half Damage" },
   { value: "quarter", label: "Quarter Damage" },
@@ -64,12 +30,10 @@ export interface SpellDraft {
   externalId?: string;
   externalUpdatedAt?: string;
 
-  // Basics (admin form parity)
   name: string;
   description?: string | null;
   icon?: string | null;
 
-  // Classification (system_spells columns)
   school?: string | null;
   level?: number;
   components?: string | null;
@@ -78,14 +42,12 @@ export interface SpellDraft {
   targetType?: string | null;
   areaSize?: string | null;
 
-  // Cast / range
   castingTime?: string | null;
   duration?: string | null;
   rangeNum?: number | null;
-  range?: string | null; // dual-write "X ft" string
+  range?: string | null;
   attribute?: string | null;
 
-  // Damage / cost (in-game form parity)
   damageDice?: string | null;
   damageType?: string | null;
   gainEnergy?: boolean;
@@ -94,33 +56,35 @@ export interface SpellDraft {
   energyCost?: number;
   manaCost?: number;
 
-  // Behavior toggles
   isAttack?: boolean;
   isAoe?: boolean;
   aoeShape?: string | null;
   aoeRange?: number | null;
   passesThroughWalls?: boolean;
-  aoe?: string | null; // legacy text column, round-tripped
+  aoe?: string | null;
 
-  // Save throw
   requiresSave?: boolean;
   saveAttribute?: string | null;
   saveDc?: number | null;
   saveSuccessEffect?: string | null;
   savingThrow?: string | null;
 
-  // Generic JSON effects (advanced — raw JSON textarea)
   effects?: unknown;
 
-  // Routing / state
   system?: string;
   isArchived?: boolean;
   isLiveTemplate?: boolean;
   ownerUserId?: string | null;
 
-  // Children
   rolls?: RollEntryDraft[];
   templateLinks?: string[];
+}
+
+// Server enriches GET responses with rolls + templateLinks and may
+// return templateLinks as either bare ids or {templateId} objects.
+interface SpellApiPayload extends Omit<SpellDraft, "rolls" | "templateLinks"> {
+  rolls?: RollEntryDraft[];
+  templateLinks?: Array<string | { templateId?: string }>;
 }
 
 const FRESH: SpellDraft = {
@@ -161,18 +125,17 @@ const FRESH: SpellDraft = {
   templateLinks: [],
 };
 
-// AdminSettings normalizers — keep legacy free-text in sync with controlled dropdowns.
 function normalizeCastingTime(ct: string | undefined | null): string {
   if (!ct) return "action";
-  const lower = ct.toLowerCase();
-  if (lower.includes("bonus")) return "bonus action";
-  return "action";
+  return ct.toLowerCase().includes("bonus") ? "bonus action" : "action";
 }
 function normalizeDuration(d: string | undefined | null): string {
   if (!d) return "Instant";
   const lower = d.toLowerCase();
-  if (lower === "instantaneous" || lower === "instant") return "Instant";
-  return d;
+  return (lower === "instantaneous" || lower === "instant") ? "Instant" : d;
+}
+function normalizeTemplateLinks(links: SpellApiPayload["templateLinks"]): string[] {
+  return (links ?? []).map(l => typeof l === "string" ? l : (l?.templateId ?? "")).filter(s => !!s);
 }
 
 export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
@@ -187,11 +150,8 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const damageTypes = getEffectTypes(campaignSystem ?? draft.system);
   const damageTypeLabel = getEffectTypeLabel(campaignSystem ?? draft.system);
-  // Explicit `mode` wins; otherwise infer from initialValue.id. Edit
-  // requires initialValue.id so the load + patch can resolve the row.
   const editing = mode ? mode === "edit" : !!initialValue?.id;
 
-  // ---- Load on open ----
   React.useEffect(() => {
     if (!open) return;
     if (!initialValue?.id) {
@@ -207,20 +167,16 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
       return;
     }
     setLoading(true);
-    host.transport.get<SpellDraft>("spell", initialValue.id)
+    host.transport.get<SpellApiPayload>("spell", initialValue.id)
       .then(env => {
-        // Same envelope-handling idiom as ItemDialog/RollTemplateDialog
-        // (transport returns `{ data }` for upserts and raw rows for GET).
-        const data: any = env.data ?? env;
+        const data = env.data;
         const next: SpellDraft = {
           ...FRESH,
           ...data,
           castingTime: normalizeCastingTime(data.castingTime),
           duration: normalizeDuration(data.duration),
-          rolls: ((data.rolls as RollEntryDraft[] | undefined) ?? []).map((r: RollEntryDraft) => ({ ...r, _localId: r.id })),
-          templateLinks: ((data.templateLinks as unknown[] | undefined) ?? []).map((l: unknown) =>
-            typeof l === "string" ? l : (l as { templateId?: string })?.templateId ?? "",
-          ).filter((s: string) => !!s),
+          rolls: (data.rolls ?? []).map(r => ({ ...r, _localId: r.id })),
+          templateLinks: normalizeTemplateLinks(data.templateLinks),
         };
         setDraft(next);
         setEffectsText(JSON.stringify(next.effects ?? [], null, 2));
@@ -232,7 +188,6 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
 
   const set = (patch: Partial<SpellDraft>) => setDraft(d => ({ ...d, ...patch }));
 
-  // Mirror the in-game form's handleSpellNumericChange.
   const numChange = (field: keyof SpellDraft, value: string, fallback: number = 0) => {
     if (value === "") return set({ [field]: fallback } as Partial<SpellDraft>);
     const n = parseInt(value, 10);
@@ -250,47 +205,42 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
     }
     setSaving(true);
     try {
-      // Whitelist: strip nested-children keys before parent insert.
-      // server/sync/children.ts CHILD_KEYS["spell"] = ["rolls", "templateLinks"].
-      const { rolls: _rolls, templateLinks: _tl, ...parentFields } = draft;
-      // `payload: any` matches ItemDialog/RollTemplateDialog (package
-      // convention) — the children-aware sync envelope expects the
-      // base parent shape PLUS optional `rolls`/`templateLinks` arrays
-      // that aren't in the SyncEnvelope generic.
-      const payload: any = { ...parentFields };
+      const { rolls, templateLinks, ...parentFields } = draft;
 
-      // Mirror AdminSettings: dual-write `range` ("X ft" string) and `rangeNum` (int).
+      let parsedEffects: unknown = draft.effects ?? [];
+      try { parsedEffects = effectsText.trim() ? JSON.parse(effectsText) : []; } catch { /* fallback above */ }
+
+      const norm = (v: string | null | undefined) => (v && v !== "_none" ? v : "");
+
+      const payload: SpellApiPayload = {
+        ...parentFields,
+        attribute: norm(draft.attribute),
+        saveAttribute: norm(draft.saveAttribute),
+        damageType: norm(draft.damageType),
+        aoeShape: draft.isAoe ? norm(draft.aoeShape) : "",
+        targetType: draft.targetType || "single",
+        effects: parsedEffects,
+        rolls: (rolls ?? []).map(r => {
+          const { _localId, templateName, templatePriority, templateUseOwnOrder, templateOwnerKey, ...rest } = r;
+          return rest;
+        }),
+        templateLinks: templateLinks ?? [],
+      };
       if (typeof draft.rangeNum === "number") {
         payload.rangeNum = draft.rangeNum;
         payload.range = `${draft.rangeNum} ft`;
       }
-      // "_none"/empty normalization (matches admin + in-game forms).
-      payload.attribute = draft.attribute && draft.attribute !== "_none" ? draft.attribute : "";
-      payload.saveAttribute = draft.saveAttribute && draft.saveAttribute !== "_none" ? draft.saveAttribute : "";
-      payload.damageType = draft.damageType && draft.damageType !== "_none" ? draft.damageType : "";
-      payload.aoeShape = draft.isAoe && draft.aoeShape && draft.aoeShape !== "_none" ? draft.aoeShape : "";
-      payload.targetType = draft.targetType || "single";
-
-      // Effects: parse the textarea JSON; fall back to draft.effects if empty.
-      try {
-        payload.effects = effectsText.trim() ? JSON.parse(effectsText) : [];
-      } catch {
-        payload.effects = draft.effects ?? [];
-      }
-
-      payload.rolls = (draft.rolls ?? []).map(r => {
-        const {
-          _localId: _l, templateName: _tn, templatePriority: _tp,
-          templateUseOwnOrder: _tu, templateOwnerKey: _tk, ...rest
-        } = r;
-        return rest;
-      });
-      payload.templateLinks = draft.templateLinks ?? [];
 
       const env = editing
-        ? await host.transport.patch<SpellDraft>("spell", draft.id!, payload)
-        : await host.transport.upsert<SpellDraft>("spell", payload);
-      const saved: any = env.data ?? env;
+        ? await host.transport.patch<SpellApiPayload>("spell", draft.id!, payload)
+        : await host.transport.upsert<SpellApiPayload>("spell", payload);
+      const saved: SpellDraft & { id: string; externalId?: string | null } = {
+        ...env.data,
+        id: env.id,
+        externalId: env.externalId ?? undefined,
+        rolls: env.data.rolls,
+        templateLinks: normalizeTemplateLinks(env.data.templateLinks),
+      };
       host.notify("success", editing ? "Spell updated." : "Spell created.");
       onSaved?.(saved);
       onOpenChange(false);
@@ -308,7 +258,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
       open={open}
       onOpenChange={(o) => { if (!o) onCancel?.(); onOpenChange(o); }}
       title={editing ? "Edit Spell" : "Create Spell"}
-      description="Mirrors Arcana's admin + in-game spell editors with full system_spells column coverage."
+      description="Mirrors Arcana's admin + in-game spell editors with full system_spells coverage."
       footer={<SaveCancelFooter onCancel={() => { onCancel?.(); onOpenChange(false); }} onSave={handleSave} saving={saving} />}
     >
       {loading ? <div className="ld-subtle">Loading…</div> : (
@@ -317,13 +267,8 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
             <Stack gap="sm">
               <div>
                 <Label required>Name</Label>
-                <Input
-                  value={draft.name}
-                  onChange={e => set({ name: e.target.value })}
-                  data-testid="input-spell-name"
-                />
+                <Input value={draft.name} onChange={e => set({ name: e.target.value })} data-testid="input-spell-name" />
               </div>
-
               <div>
                 <Label>Spell Icon</Label>
                 <Row>
@@ -347,7 +292,6 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   )}
                 </Row>
               </div>
-
               <div>
                 <Label>Description</Label>
                 <Textarea
@@ -375,9 +319,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                 <div>
                   <Label>Level</Label>
                   <Input
-                    type="number"
-                    min={0}
-                    max={9}
+                    type="number" min={0} max={9}
                     value={draft.level ?? 1}
                     onChange={e => numChange("level", e.target.value, 1)}
                     data-testid="input-spell-level"
@@ -448,7 +390,6 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Select>
                 </div>
               </Grid2>
-
               <Grid2>
                 <div>
                   <Label>Healing Dice</Label>
@@ -470,7 +411,6 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   />
                 </div>
               </Grid2>
-
               {draft.damageType === "Energy" && (
                 <Row>
                   <Checkbox
@@ -481,13 +421,11 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   <Label>Gain Energy? (If checked, roll adds energy instead of subtracting)</Label>
                 </Row>
               )}
-
               <Grid2>
                 <div>
                   <Label>Energy Cost</Label>
                   <Input
-                    type="number"
-                    min={0}
+                    type="number" min={0}
                     value={draft.energyCost ?? 0}
                     onChange={e => numChange("energyCost", e.target.value, 0)}
                     data-testid="input-spell-energy-cost"
@@ -497,8 +435,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   <div>
                     <Label>Mana Cost</Label>
                     <Input
-                      type="number"
-                      min={0}
+                      type="number" min={0}
                       value={draft.manaCost ?? 0}
                       onChange={e => numChange("manaCost", e.target.value, 0)}
                       data-testid="input-spell-mana-cost"
@@ -535,13 +472,11 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Select>
                 </div>
               </Grid2>
-
               <Grid2>
                 <div>
                   <Label>Range (ft)</Label>
                   <Input
-                    type="number"
-                    min={0}
+                    type="number" min={0}
                     value={draft.rangeNum ?? 30}
                     onChange={e => numChange("rangeNum", e.target.value, 30)}
                     data-testid="input-spell-range"
@@ -556,9 +491,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   >
                     <SelectItem value="">None</SelectItem>
                     {SPELL_ATTRIBUTES.map(a => (
-                      <SelectItem key={a} value={a}>
-                        {a.charAt(0).toUpperCase() + a.slice(1)}
-                      </SelectItem>
+                      <SelectItem key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</SelectItem>
                     ))}
                   </Select>
                 </div>
@@ -603,8 +536,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     <div>
                       <Label>AoE Range (feet)</Label>
                       <Input
-                        type="number"
-                        min={0}
+                        type="number" min={0}
                         value={draft.aoeRange ?? 15}
                         onChange={e => numChange("aoeRange", e.target.value, 15)}
                         placeholder="e.g. 15"
@@ -656,17 +588,14 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                       >
                         <SelectItem value="">None</SelectItem>
                         {SPELL_ATTRIBUTES.map(a => (
-                          <SelectItem key={a} value={a}>
-                            {a.charAt(0).toUpperCase() + a.slice(1)}
-                          </SelectItem>
+                          <SelectItem key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</SelectItem>
                         ))}
                       </Select>
                     </div>
                     <div>
                       <Label>Save DC</Label>
                       <Input
-                        type="number"
-                        min={1}
+                        type="number" min={1}
                         value={draft.saveDc ?? 15}
                         onChange={e => numChange("saveDc", e.target.value, 15)}
                         placeholder="e.g. 15"
@@ -717,8 +646,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
               />
               {effectsError && <div style={{ color: "#ef4444", fontSize: "12px" }}>{effectsError}</div>}
               <div className="ld-subtle">
-                Token effects payload (jsonb on system_spells.effects). Leave as
-                <code> []</code> if you don't need spell-driven token effects.
+                Token effects payload (jsonb on system_spells.effects). Leave as <code>[]</code> if unused.
               </div>
             </Stack>
           </Section>
@@ -733,11 +661,6 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
             />
           </Section>
 
-          {/*
-            Spell↔roll-template links (AAv2 only). Hidden on live templates
-            themselves. Roll-templates for spells live in the unified
-            `items.isLiveTemplate=true` pool (same source as item links).
-          */}
           {aav2 && !draft.isLiveTemplate && (
             <Section title="Linked Roll Templates">
               <ItemTemplateLinksPanel
