@@ -242,6 +242,7 @@ npm run dev
 
 | Version | Adds                                                              |
 | ------- | ----------------------------------------------------------------- |
+| 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels (shipped) |
 | 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>`         |
 | 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`                              |
 | 1.0.0   | Arcana itself migrates to consume the package internally          |
