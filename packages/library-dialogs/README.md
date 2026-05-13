@@ -116,11 +116,13 @@ Two factories ship out-of-the-box:
   `isLiveTemplate=true`); roll edits propagate to every linked item and spell
   via the existing server-side fanout.
 - `<SpellDialog>` — full create/edit dialog for the `spells` table. Mirrors
-  Arcana's admin spell editor (name, description, image, action type,
-  duration, range, attribute) plus reuses `<RollEntriesEditor ownerType="spell">`
-  for nested rolls and `<ItemTemplateLinksPanel>` for AAv2 spell↔roll-template
-  links. All other spell columns are round-tripped through the draft so an
-  edit never drops schema fields.
+  Arcana's canonical in-game spell editor field-for-field: name, image,
+  description, damage dice, damage/effect type (with the `Energy → gainEnergy`
+  conditional), energy cost, AAv2 mana cost, action type, duration, range,
+  attribute, `Attack?` toggle, `Area of Effect` toggle (with shape, range,
+  passes-through-walls), and `Requires Save` toggle (with save attribute,
+  save DC, on-successful-save effect). Plus the AAv2-only
+  `<ItemTemplateLinksPanel>` for spell↔roll-template linking.
 
 ### Reusable nested editors
 - `<RollEntriesEditor>` — full draft-mode editor for `roll_entries` rows
