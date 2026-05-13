@@ -127,6 +127,13 @@
       "when": 1778889600000,
       "tag": "0017_crafter_recipe_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1747094400000,
+      "tag": "0018_external_sync_oauth",
+      "breakpoints": true
     }
   ]
 }

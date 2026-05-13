@@ -15443,11 +15443,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/account/connected-apps", requireAuth, async (req: any, res) => {
     try {
       const userId = req.session.userId;
-      const { oauthAccessTokens, oauthClients } = await import("@shared/schema");
-      const tokens = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.userId, userId));
+      const { oauthAccessTokens, oauthRefreshTokens, oauthClients } = await import("@shared/schema");
+      // A connected app is anything with an active access OR refresh token
+      // grant. Listing only access tokens hides apps whose access token has
+      // expired but whose refresh grant is still valid (which is the normal
+      // long-lived state for an installed integration), and would make those
+      // apps un-revokable from the UI.
+      const [accessTokens, refreshTokens] = await Promise.all([
+        db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.userId, userId)),
+        db.select().from(oauthRefreshTokens).where(eq(oauthRefreshTokens.userId, userId)),
+      ]);
       const now = Date.now();
       const byClient = new Map<string, { clientId: string; scopes: Set<string>; lastUsedAt: Date | null; createdAt: Date; tokenCount: number }>();
-      for (const t of tokens) {
+      for (const t of accessTokens) {
         if (t.revokedAt) continue;
         if (t.expiresAt.getTime() < now) continue;
         const e = byClient.get(t.clientId) || { clientId: t.clientId, scopes: new Set<string>(), lastUsedAt: null, createdAt: t.createdAt, tokenCount: 0 };
@@ -15456,6 +15464,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!e.lastUsedAt || (t.lastUsedAt && t.lastUsedAt > e.lastUsedAt)) e.lastUsedAt = t.lastUsedAt;
         if (t.createdAt < e.createdAt) e.createdAt = t.createdAt;
         byClient.set(t.clientId, e);
+      }
+      for (const r of refreshTokens) {
+        if (r.revokedAt) continue;
+        if (r.expiresAt.getTime() < now) continue;
+        // Surface the app even if there is no current access token entry.
+        const e = byClient.get(r.clientId) || { clientId: r.clientId, scopes: new Set<string>(), lastUsedAt: null, createdAt: r.createdAt, tokenCount: 0 };
+        for (const s of r.scopes || []) e.scopes.add(s);
+        if (r.createdAt < e.createdAt) e.createdAt = r.createdAt;
+        byClient.set(r.clientId, e);
       }
       const clientRows = await db.select().from(oauthClients);
       const nameByClient = new Map(clientRows.map(c => [c.clientId, c.name]));
