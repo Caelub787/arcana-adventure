@@ -84,13 +84,16 @@ export interface SpellDraft {
   saveDc?: number | null;
   saveSuccessEffect?: string | null;
 
-  // Round-tripped (preserved through edit; not currently rendered)
-  damage?: string | null;
-  healingDice?: string | null;
-  aoe?: string | null;
+  // Classification (rendered)
   level?: number;
   school?: string | null;
+  // Damage extras (rendered)
+  healingDice?: string | null;
   mod?: number | null;
+
+  // Round-tripped (preserved through edit; no UI in canonical Arcana form)
+  damage?: string | null;
+  aoe?: string | null;
   isEquipped?: boolean;
   isTemplate?: boolean;
   isLiveTemplate?: boolean;
@@ -127,6 +130,9 @@ const FRESH: SpellDraft = {
   saveDc: 15,
   saveSuccessEffect: "half",
   level: 0,
+  school: "",
+  healingDice: "",
+  mod: 0,
   rolls: [],
   templateLinks: [],
   system: "aa-v2",
@@ -175,19 +181,20 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
       return;
     }
     setLoading(true);
-    host.transport.get<SpellDraft & { rolls?: unknown[]; templateLinks?: unknown[] }>("spell", initialValue.id)
+    host.transport.get<SpellDraft>("spell", initialValue.id)
       .then(env => {
-        const envelope = env as unknown as { data?: SpellDraft & { rolls?: unknown[]; templateLinks?: unknown[] } };
-        const data = (envelope.data ?? env) as SpellDraft & { rolls?: unknown[]; templateLinks?: unknown[] };
+        // Mirrors ItemDialog's load pattern (transport envelopes wrap the
+        // row in `{ data }` for upserts but return raw rows for GET).
+        const data: any = env.data ?? env;
         setDraft({
           ...FRESH,
           ...data,
           castingTime: normalizeCastingTime(data.castingTime),
           duration: normalizeDuration(data.duration),
-          rolls: ((data.rolls as RollEntryDraft[] | undefined) ?? []).map(r => ({ ...r, _localId: r.id })),
-          templateLinks: ((data.templateLinks as unknown[] | undefined) ?? []).map(l =>
+          rolls: ((data.rolls as RollEntryDraft[] | undefined) ?? []).map((r: RollEntryDraft) => ({ ...r, _localId: r.id })),
+          templateLinks: ((data.templateLinks as unknown[] | undefined) ?? []).map((l: unknown) =>
             typeof l === "string" ? l : (l as { templateId?: string })?.templateId ?? "",
-          ).filter((s): s is string => !!s),
+          ).filter((s: string) => !!s),
         });
       })
       .catch(e => host.notify("error", `Failed to load spell: ${e?.message ?? e}`))
@@ -315,6 +322,31 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
             </Stack>
           </Section>
 
+          <Section title="Classification">
+            <Grid2>
+              <div>
+                <Label>Spell Level</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={9}
+                  value={draft.level ?? 0}
+                  onChange={e => numChange("level", e.target.value, 0)}
+                  data-testid="input-spell-level"
+                />
+              </div>
+              <div>
+                <Label>School</Label>
+                <Input
+                  value={draft.school ?? ""}
+                  onChange={e => set({ school: e.target.value })}
+                  placeholder="e.g. evocation, abjuration"
+                  data-testid="input-spell-school"
+                />
+              </div>
+            </Grid2>
+          </Section>
+
           <Section title="Damage & cost">
             <Stack gap="sm">
               <Grid2>
@@ -337,6 +369,28 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     <SelectItem value="">None</SelectItem>
                     {damageTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
+                </div>
+              </Grid2>
+
+              <Grid2>
+                <div>
+                  <Label>Healing Dice</Label>
+                  <Input
+                    value={draft.healingDice ?? ""}
+                    onChange={e => set({ healingDice: e.target.value })}
+                    placeholder="e.g. 1d8"
+                    data-testid="input-spell-healing-dice"
+                  />
+                </div>
+                <div>
+                  <Label>Flat Modifier</Label>
+                  <Input
+                    type="number"
+                    value={draft.mod ?? 0}
+                    onChange={e => numChange("mod", e.target.value, 0)}
+                    placeholder="Bonus added after dice roll"
+                    data-testid="input-spell-mod"
+                  />
                 </div>
               </Grid2>
 
