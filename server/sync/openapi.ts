@@ -13,6 +13,18 @@ import {
   insertSystemSpeciesSchema,
   insertClassSchema,
   insertFeatTreeSchema,
+  insertRollEntrySchema,
+  insertHotbarSchema,
+  insertCharacterCustomSkillSchema,
+  insertCharacterTraitSchema,
+  insertCharacterFeatSchema,
+  insertCharacterClassSchema,
+  insertCharacterClassSkillSchema,
+  insertClassSkillNodeSchema,
+  insertClassSkillConnectionSchema,
+  insertFeatSchema,
+  insertFeatConnectionSchema,
+  insertSpellSchema,
 } from "@shared/schema";
 
 extendZodWithOpenApi(z);
@@ -67,23 +79,131 @@ function buildSpec() {
       description: "ISO timestamp of the source-of-truth row. If older than the server's current updatedAt the write is skipped (stale-skip). May also be sent via the X-External-Updated-At header.",
     }),
   };
+  // ---- Child sub-schemas (rolls, embedded items/spells, feats, classes,
+  // skill nodes & connections, etc.) so the partner-side schema-driven UI
+  // can render the FULL entity dialog, not just the parent's flat columns.
+  const childOptId = { id: z.string().optional() };
+  const rollSchema = registry.register(
+    "SyncRollEntry",
+    unwrapToObject(insertRollEntrySchema as any).extend(childOptId).openapi("SyncRollEntry", {
+      description: "Roll entry attached to an item, spell, or roll-template (polymorphic via ownerType+ownerId; server fills both).",
+    }),
+  );
+  const embeddedItemSchema = registry.register(
+    "SyncEmbeddedItem",
+    unwrapToObject(insertItemSchema as any).extend({
+      ...childOptId,
+      rolls: z.array(rollSchema).optional().openapi({ description: "Rolls attached to this item." }),
+    }).openapi("SyncEmbeddedItem", { description: "Item embedded in a character's inventory; carries its own rolls." }),
+  );
+  const embeddedSpellSchema = registry.register(
+    "SyncEmbeddedSpell",
+    unwrapToObject(insertSpellSchema as any).extend({
+      ...childOptId,
+      rolls: z.array(rollSchema).optional().openapi({ description: "Rolls attached to this spell." }),
+    }).openapi("SyncEmbeddedSpell", { description: "Spell embedded in a character's spellbook; carries its own rolls." }),
+  );
+  const hotbarSchema = registry.register(
+    "SyncHotbar",
+    unwrapToObject(insertHotbarSchema as any).extend(childOptId).openapi("SyncHotbar"),
+  );
+  const customSkillSchema = registry.register(
+    "SyncCharacterCustomSkill",
+    unwrapToObject(insertCharacterCustomSkillSchema as any).extend(childOptId).openapi("SyncCharacterCustomSkill"),
+  );
+  const traitSchema = registry.register(
+    "SyncCharacterTrait",
+    unwrapToObject(insertCharacterTraitSchema as any).extend(childOptId).openapi("SyncCharacterTrait"),
+  );
+  const charFeatSchema = registry.register(
+    "SyncCharacterFeat",
+    unwrapToObject(insertCharacterFeatSchema as any).extend(childOptId).openapi("SyncCharacterFeat"),
+  );
+  const charClassSchema = registry.register(
+    "SyncCharacterClass",
+    unwrapToObject(insertCharacterClassSchema as any).extend(childOptId).openapi("SyncCharacterClass"),
+  );
+  const charClassSkillSchema = registry.register(
+    "SyncCharacterClassSkill",
+    unwrapToObject(insertCharacterClassSkillSchema as any).extend(childOptId).openapi("SyncCharacterClassSkill"),
+  );
+  const classNodeSchema = registry.register(
+    "SyncClassSkillNode",
+    unwrapToObject(insertClassSkillNodeSchema as any).extend(childOptId).openapi("SyncClassSkillNode"),
+  );
+  const classConnSchema = registry.register(
+    "SyncClassSkillConnection",
+    unwrapToObject(insertClassSkillConnectionSchema as any).extend(childOptId).openapi("SyncClassSkillConnection", {
+      description: "Connection between two skill nodes. fromNodeId/toNodeId may use the partner-side ids on first upload — the server remaps them to the freshly-inserted node ids.",
+    }),
+  );
+  const featSchema = registry.register(
+    "SyncFeat",
+    unwrapToObject(insertFeatSchema as any).extend(childOptId).openapi("SyncFeat"),
+  );
+  const featConnSchema = registry.register(
+    "SyncFeatConnection",
+    unwrapToObject(insertFeatConnectionSchema as any).extend(childOptId).openapi("SyncFeatConnection", {
+      description: "Connection between two feats. fromFeatId/toFeatId may use the partner-side ids on first upload — the server remaps them to the freshly-inserted feat ids.",
+    }),
+  );
+
+  // Per-kind nested children (sent on POST/PATCH; returned on GET).
+  // Sending a child-array key replaces the existing children for that kind
+  // atomically; omitting the key leaves them untouched.
+  const childrenByKind: Record<string, Record<string, z.ZodTypeAny>> = {
+    "item": { rolls: z.array(rollSchema).optional() },
+    "spell": { rolls: z.array(rollSchema).optional() },
+    "roll-template": { rolls: z.array(rollSchema).optional() },
+    "character": {
+      items: z.array(embeddedItemSchema).optional(),
+      spells: z.array(embeddedSpellSchema).optional(),
+      hotbars: z.array(hotbarSchema).optional(),
+      customSkills: z.array(customSkillSchema).optional(),
+      traits: z.array(traitSchema).optional(),
+      feats: z.array(charFeatSchema).optional(),
+      classes: z.array(charClassSchema).optional(),
+      classSkills: z.array(charClassSkillSchema).optional(),
+    },
+    "character-template": {
+      items: z.array(embeddedItemSchema).optional(),
+      spells: z.array(embeddedSpellSchema).optional(),
+      hotbars: z.array(hotbarSchema).optional(),
+      customSkills: z.array(customSkillSchema).optional(),
+      traits: z.array(traitSchema).optional(),
+      feats: z.array(charFeatSchema).optional(),
+      classes: z.array(charClassSchema).optional(),
+      classSkills: z.array(charClassSkillSchema).optional(),
+    },
+    "class": {
+      skillNodes: z.array(classNodeSchema).optional(),
+      skillConnections: z.array(classConnSchema).optional(),
+    },
+    "feat-tree": {
+      feats: z.array(featSchema).optional(),
+      connections: z.array(featConnSchema).optional(),
+    },
+    "species": {},
+  };
+
   const refByKind: Record<string, any> = {};
   const partialRefByKind: Record<string, any> = {};
   for (const kind of KINDS) {
     const compName = toComponentName(kind);
     const base = KIND_ZOD[kind] as any;
     const inner = unwrapToObject(base);
-    const fullWithMeta = inner.extend(syncMeta);
+    const childExt = childrenByKind[kind] || {};
+    const fullWithMeta = inner.extend({ ...syncMeta, ...childExt });
     refByKind[kind] = registry.register(
       compName,
       fullWithMeta.openapi(compName, {
-        description: `Sync upsert payload for ${kind}. Derived from insert${compName.replace(/^Sync/, "")}Schema + sync meta fields (externalId, externalUpdatedAt).`,
+        description: `Sync upsert payload for ${kind}. Derived from insert${compName.replace(/^Sync/, "")}Schema + sync meta fields (externalId, externalUpdatedAt) + nested children. Sending a children array (e.g. rolls) replaces the existing children atomically; omit it to leave them untouched.`,
       }),
     );
     partialRefByKind[kind] = registry.register(
       `${compName}Patch`,
-      inner.partial().extend({ externalUpdatedAt: syncMeta.externalUpdatedAt }).openapi(`${compName}Patch`, {
-        description: `Partial PATCH payload for ${kind} (all fields optional). Send externalUpdatedAt for stale-skip semantics.`,
+      inner.partial().extend({ externalUpdatedAt: syncMeta.externalUpdatedAt, ...childExt }).openapi(`${compName}Patch`, {
+        description: `Partial PATCH payload for ${kind} (all fields optional). Send externalUpdatedAt for stale-skip semantics. Children arrays follow the same replace-on-send semantics as POST.`,
       }),
     );
   }

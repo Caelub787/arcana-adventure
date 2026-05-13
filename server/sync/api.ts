@@ -7,6 +7,7 @@ import { isAdminUser as sharedIsAdminUser, canReadLibraryRow, canWriteLibraryRow
 import crypto from "node:crypto";
 import { resolveBearer } from "./oauth";
 import { emitLibraryChange } from "./webhooks";
+import { serializeWithChildren, serializeListWithChildren, extractChildren, applyChildren, cascadeChildrenDelete } from "./children";
 
 declare global {
   namespace Express {
@@ -44,7 +45,7 @@ const KIND_PLURAL: Record<string, string> = {
   "character-template": "character-templates",
   "roll-template": "roll-templates",
 };
-type Kind = keyof typeof KIND_PLURAL;
+export type Kind = keyof typeof KIND_PLURAL;
 export const SYNC_KINDS = Object.keys(KIND_PLURAL) as Kind[];
 export function pluralFor(kind: Kind): string { return KIND_PLURAL[kind]; }
 
@@ -317,7 +318,8 @@ export function registerSyncRoutes(app: Express) {
       try {
         const u = req.syncUser!;
         const rows = await a.list(u.id, u.isAdmin);
-        res.json({ data: rows });
+        const enriched = await serializeListWithChildren(kind, rows);
+        res.json({ data: enriched });
       } catch (err: any) {
         res.status(500).json({ error: "list_failed", message: err?.message });
       }
@@ -330,7 +332,8 @@ export function registerSyncRoutes(app: Express) {
       const row = await a.get(link.internalId);
       if (!row) return res.status(404).json({ error: "not_found" });
       if (!canRead(u, a.getOwner(row))) return res.status(403).json({ error: "forbidden" });
-      res.json(envelope(kind, row, req.params.externalId));
+      const enriched = await serializeWithChildren(kind, row);
+      res.json(envelope(kind, enriched, req.params.externalId));
     });
 
     app.get(`${base}/:id`, requireSyncAuth("library:read"), async (req: Request, res: Response) => {
@@ -339,7 +342,8 @@ export function registerSyncRoutes(app: Express) {
       const u = req.syncUser!;
       if (!canRead(u, a.getOwner(row))) return res.status(403).json({ error: "forbidden" });
       const ext = await externalIdFor(kind, row.id, u.id);
-      res.json(envelope(kind, row, ext || undefined));
+      const enriched = await serializeWithChildren(kind, row);
+      res.json(envelope(kind, enriched, ext || undefined));
     });
 
     app.post(base, requireSyncAuth("library:write"), async (req: Request, res: Response) => {
@@ -351,20 +355,28 @@ export function registerSyncRoutes(app: Express) {
           const link = await lookupExternal(kind, externalId, u.id);
           if (link) existing = await a.get(link.internalId);
         }
-        const inputData = applyOwnerRouting(kind, dropMeta(req.body), u);
+        const cleanedBody = applyOwnerRouting(kind, dropMeta(req.body), u);
+        const { parentBody, children } = extractChildren(kind, cleanedBody);
 
         if (existing) {
           if (!canWrite(u, a.getOwner(existing))) return res.status(403).json({ error: "forbidden" });
-          if (staleCheck(req, existing)) return res.status(200).json({ skipped: "stale", ...envelope(kind, existing, externalId) });
-          const updated = await a.update(existing.id, inputData);
-          await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, externalId, userId: a.getOwner(updated), data: updated, sourceClientId: originClient(req) });
-          return res.status(200).json(envelope(kind, updated, externalId));
+          if (staleCheck(req, existing)) {
+            const enriched = await serializeWithChildren(kind, existing);
+            return res.status(200).json({ skipped: "stale", ...envelope(kind, enriched, externalId) });
+          }
+          const updated = await a.update(existing.id, parentBody);
+          await applyChildren(kind, updated.id, children);
+          const enriched = await serializeWithChildren(kind, updated);
+          await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, externalId, userId: a.getOwner(updated), data: enriched, sourceClientId: originClient(req) });
+          return res.status(200).json(envelope(kind, enriched, externalId));
         }
 
-        const created = await a.create(inputData);
+        const created = await a.create(parentBody);
+        await applyChildren(kind, created.id, children);
         if (externalId) await upsertLink(kind, externalId, created.id, u.id);
-        await emitLibraryChange({ event: `library.${kind}.created`, kind, action: "created", id: created.id, externalId, userId: a.getOwner(created), data: created, sourceClientId: originClient(req) });
-        res.status(201).json(envelope(kind, created, externalId));
+        const enriched = await serializeWithChildren(kind, created);
+        await emitLibraryChange({ event: `library.${kind}.created`, kind, action: "created", id: created.id, externalId, userId: a.getOwner(created), data: enriched, sourceClientId: originClient(req) });
+        res.status(201).json(envelope(kind, enriched, externalId));
       } catch (err: any) {
         res.status(400).json({ error: "create_failed", message: err?.message });
       }
@@ -377,13 +389,19 @@ export function registerSyncRoutes(app: Express) {
         if (!existing) return res.status(404).json({ error: "not_found" });
         if (!canWrite(u, a.getOwner(existing))) return res.status(403).json({ error: "forbidden" });
         const ext = await externalIdFor(kind, existing.id, u.id);
-        if (staleCheck(req, existing)) return res.status(200).json({ skipped: "stale", ...envelope(kind, existing, ext || undefined) });
+        if (staleCheck(req, existing)) {
+          const enriched = await serializeWithChildren(kind, existing);
+          return res.status(200).json({ skipped: "stale", ...envelope(kind, enriched, ext || undefined) });
+        }
         // Non-admin PATCHes are pinned to AA V2 + own ownership so the row
         // cannot be moved out of the user's personal library.
-        const patchBody = applyPatchOwnerRouting(kind, dropMeta(req.body), u);
-        const updated = await a.update(req.params.id, patchBody);
-        await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, externalId: ext || undefined, userId: a.getOwner(updated), data: updated, sourceClientId: originClient(req) });
-        res.json(envelope(kind, updated, ext || undefined));
+        const cleanedBody = applyPatchOwnerRouting(kind, dropMeta(req.body), u);
+        const { parentBody, children } = extractChildren(kind, cleanedBody);
+        const updated = await a.update(req.params.id, parentBody);
+        await applyChildren(kind, updated.id, children);
+        const enriched = await serializeWithChildren(kind, updated);
+        await emitLibraryChange({ event: `library.${kind}.updated`, kind, action: "updated", id: updated.id, externalId: ext || undefined, userId: a.getOwner(updated), data: enriched, sourceClientId: originClient(req) });
+        res.json(envelope(kind, enriched, ext || undefined));
       } catch (err: any) {
         res.status(400).json({ error: "update_failed", message: err?.message });
       }
@@ -395,6 +413,7 @@ export function registerSyncRoutes(app: Express) {
         const existing = await a.get(req.params.id);
         if (!existing) return res.status(404).json({ error: "not_found" });
         if (!canWrite(u, a.getOwner(existing))) return res.status(403).json({ error: "forbidden" });
+        await cascadeChildrenDelete(kind, req.params.id);
         await a.delete(req.params.id);
         await deleteLinkByInternalId(kind, req.params.id, u.id);
         await emitLibraryChange({ event: `library.${kind}.deleted`, kind, action: "deleted", id: req.params.id, userId: a.getOwner(existing), sourceClientId: originClient(req) });
