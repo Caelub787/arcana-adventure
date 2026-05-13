@@ -264,9 +264,10 @@ const host = minimalHostAdapter({ baseUrl, accessToken });
 
 Save fires `host.transport.upsert("character" | "character-template", { …characterFields, items, spells, hotbars, customSkills, traits, feats, classes, classSkills })`.
 The server's `replaceCharacterChildren` writes the parent + every child
-table in the same atomic request, including FK ID remapping so
-hotbars referencing brand-new embedded items / spells resolve
-correctly.
+table in the same atomic request, with full FK ID remapping across
+items, spells, and traits — so hotbars referencing brand-new embedded
+items, spells, or traits all resolve to the freshly-inserted child rows
+without any client follow-up.
 
 Each release is byte-compatible with Arcana's data model — created entities
 round-trip identically across both UIs.

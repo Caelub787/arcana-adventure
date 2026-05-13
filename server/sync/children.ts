@@ -329,11 +329,13 @@ async function replaceCharacterChildren(characterId: string, children: Record<st
   // Order matters because of FKs and ID remaps:
   //   1. Items   (replace) -> remap oldId -> newId, attach rolls
   //   2. Spells  (replace) -> remap oldId -> newId, attach rolls
-  //   3. Hotbars (replace) -> rewrite itemId/spellId via remaps
-  //   4. CustomSkills, Traits, Feats, Classes, ClassSkills (replace)
+  //   3. Traits  (replace) -> remap oldId -> newId so hotbars can resolve traitId
+  //   4. Hotbars (replace) -> rewrite itemId/spellId/traitId via remaps
+  //   5. CustomSkills, Feats, Classes, ClassSkills (replace)
 
   let itemIdRemap = new Map<string, string>();
   let spellIdRemap = new Map<string, string>();
+  let traitIdRemap = new Map<string, string>();
 
   if (children.items !== undefined) {
     // Hotbars FK to items+spells -> delete hotbars first (defensive even though FK has no cascade decl shown).
@@ -390,16 +392,36 @@ async function replaceCharacterChildren(characterId: string, children: Record<st
     }
   }
 
+  // Traits must be inserted before hotbars so freshly-created trait rows can be
+  // referenced by hotbars.traitId via traitIdRemap (mirrors items/spells flow).
+  if (children.traits !== undefined) {
+    // Hotbars FK to traits via traitId — clear hotbars defensively before deleting traits.
+    await db.delete(hotbars).where(eq(hotbars.characterId, characterId));
+    await db.delete(characterTraits).where(eq(characterTraits.characterId, characterId));
+    if (children.traits.length > 0) {
+      for (const t of children.traits) {
+        const oldId = (t as any).id as string | undefined;
+        const cleaned = stripCommon(t, ["characterId"]);
+        const [created] = await db
+          .insert(characterTraits)
+          .values({ ...(cleaned as any), characterId })
+          .returning();
+        if (oldId && created?.id) traitIdRemap.set(oldId, created.id);
+      }
+    }
+  }
+
   if (children.hotbars !== undefined) {
     await db.delete(hotbars).where(eq(hotbars.characterId, characterId));
     if (children.hotbars.length > 0) {
       const rows = children.hotbars.map((hb: any) => {
-        const cleaned = stripCommon(hb, ["characterId", "itemId", "spellId"]);
+        const cleaned = stripCommon(hb, ["characterId", "itemId", "spellId", "traitId"]);
         return {
           ...cleaned,
           characterId,
           itemId: hb.itemId ? (itemIdRemap.get(hb.itemId) || hb.itemId) : null,
           spellId: hb.spellId ? (spellIdRemap.get(hb.spellId) || hb.spellId) : null,
+          traitId: hb.traitId ? (traitIdRemap.get(hb.traitId) || hb.traitId) : null,
         };
       });
       await db.insert(hotbars).values(rows as any);
@@ -411,14 +433,6 @@ async function replaceCharacterChildren(characterId: string, children: Record<st
     if (children.customSkills.length > 0) {
       const rows = children.customSkills.map((s: any) => ({ ...stripCommon(s, ["characterId"]), characterId }));
       await db.insert(characterCustomSkills).values(rows as any);
-    }
-  }
-
-  if (children.traits !== undefined) {
-    await db.delete(characterTraits).where(eq(characterTraits.characterId, characterId));
-    if (children.traits.length > 0) {
-      const rows = children.traits.map((t: any) => ({ ...stripCommon(t, ["characterId"]), characterId }));
-      await db.insert(characterTraits).values(rows as any);
     }
   }
 
