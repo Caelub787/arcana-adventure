@@ -506,8 +506,22 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
             </Stack>
           </Section>
 
-          <Section title="Inventory items"><CharacterItemsEditor value={draft.items ?? []} onChange={v => set({ items: v })} /></Section>
-          <Section title="Known spells"><CharacterSpellsEditor value={draft.spells ?? []} onChange={v => set({ spells: v })} /></Section>
+          <Section title="Inventory items">
+            <CharacterItemsEditor
+              value={draft.items ?? []}
+              onChange={v => set({ items: v })}
+              host={host}
+              campaignSystem={campaignSystem}
+            />
+          </Section>
+          <Section title="Known spells">
+            <CharacterSpellsEditor
+              value={draft.spells ?? []}
+              onChange={v => set({ spells: v })}
+              host={host}
+              campaignSystem={campaignSystem}
+            />
+          </Section>
           <Section title="Hotbars">
             <CharacterHotbarsEditor
               value={draft.hotbars ?? []}

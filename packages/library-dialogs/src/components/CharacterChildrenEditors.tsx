@@ -1,18 +1,17 @@
 /**
- * Embedded child-row editors for <CharacterDialog>.
+ * Host-driven embedded child-row editors mounted by <CharacterDialog>.
+ * One panel per child collection that the server's
+ * `replaceCharacterChildren` understands.
  *
- * The full Arcana inventory / spell / hotbar / trait / feat / class panels
- * are several thousand lines and tightly coupled to the live game runtime
- * (battle map, websockets, drag-and-drop). Partner apps that mount the
- * library-dialogs package only need a faithful editor for the persisted
- * row shape, not the live UX, so each editor here is a focused
- * add / remove / inline-edit list keyed on the child table's columns.
+ * Items and spells additionally mount the foundation `RollEntriesEditor`
+ * inline, so per-character roll collections are fully editable here and
+ * round-trip through the same single sync upsert.
  *
  * Server `replaceCharacterChildren` performs FK ID remapping on items+
  * spells (oldId -> newId) so client-side ids on hotbars/etc. that point
  * at child rows in the same payload are rewritten correctly. Each editor
- * therefore preserves the child row's `id` (or assigns a stable
- * placeholder for create) when emitting onChange.
+ * preserves the child row's `id` (or assigns a stable placeholder for
+ * create) when emitting onChange so the remap can find them.
  */
 import * as React from "react";
 import {
@@ -20,6 +19,8 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { optionalNum, uid } from "../lib/utils";
+import { RollEntriesEditor, type RollEntryDraft } from "./RollEntriesEditor";
+import type { HostAdapter } from "../types";
 
 const ATTRIBUTES = ["might", "finesse", "wit", "presence", "will", "craft"] as const;
 const HOTBAR_TYPES = [
@@ -43,9 +44,10 @@ export interface CharItemDraft {
   /** Parent container item id for nested inventory; preserved verbatim
    *  through the upsert so server-side ID remap rewrites it correctly. */
   containerId?: string | null;
-  /** Per-item roll entries. Server `replaceCharacterChildren` strips and
+  /** Per-item roll entries; edited inline via the foundation
+   *  `RollEntriesEditor`. Server `replaceCharacterChildren` strips and
    *  re-inserts these against the freshly-remapped item id. */
-  rolls?: unknown[];
+  rolls?: RollEntryDraft[];
 }
 export interface CharSpellDraft {
   id?: string;
@@ -58,9 +60,10 @@ export interface CharSpellDraft {
   manaCost?: number;
   isEquipped?: boolean;
   description?: string | null;
-  /** Per-spell roll entries. Server `replaceCharacterChildren` strips and
+  /** Per-spell roll entries; edited inline via the foundation
+   *  `RollEntriesEditor`. Server `replaceCharacterChildren` strips and
    *  re-inserts these against the freshly-remapped spell id. */
-  rolls?: unknown[];
+  rolls?: RollEntryDraft[];
 }
 export interface CharHotbarDraft {
   id?: string;
@@ -112,7 +115,9 @@ export interface CharClassSkillDraft {
 export const CharacterItemsEditor: React.FC<{
   value: CharItemDraft[];
   onChange: (next: CharItemDraft[]) => void;
-}> = ({ value, onChange }) => {
+  host: HostAdapter;
+  campaignSystem?: string;
+}> = ({ value, onChange, host, campaignSystem }) => {
   const set = (i: number, patch: Partial<CharItemDraft>) => {
     const next = value.slice();
     next[i] = { ...next[i], ...patch };
@@ -162,6 +167,16 @@ export const CharacterItemsEditor: React.FC<{
               <div><Label>Description</Label>
                 <Textarea value={it.description ?? ""} onChange={e => set(i, { description: e.target.value })} />
               </div>
+              <div>
+                <Label>Rolls (round-trip with the embedded item)</Label>
+                <RollEntriesEditor
+                  value={it.rolls ?? []}
+                  onChange={rolls => set(i, { rolls })}
+                  ownerType="item"
+                  campaignSystem={campaignSystem}
+                  host={host}
+                />
+              </div>
               <Row><Button variant="danger" size="sm" onClick={() => remove(i)} data-testid={`button-remove-charitem-${i}`}>Remove</Button></Row>
             </Stack>
           </Panel>
@@ -176,7 +191,9 @@ export const CharacterItemsEditor: React.FC<{
 export const CharacterSpellsEditor: React.FC<{
   value: CharSpellDraft[];
   onChange: (next: CharSpellDraft[]) => void;
-}> = ({ value, onChange }) => {
+  host: HostAdapter;
+  campaignSystem?: string;
+}> = ({ value, onChange, host, campaignSystem }) => {
   const set = (i: number, patch: Partial<CharSpellDraft>) => {
     const next = value.slice();
     next[i] = { ...next[i], ...patch };
@@ -223,6 +240,16 @@ export const CharacterSpellsEditor: React.FC<{
               </Grid3>
               <div><Label>Description</Label>
                 <Textarea value={sp.description ?? ""} onChange={e => set(i, { description: e.target.value })} />
+              </div>
+              <div>
+                <Label>Rolls (round-trip with the embedded spell)</Label>
+                <RollEntriesEditor
+                  value={sp.rolls ?? []}
+                  onChange={rolls => set(i, { rolls })}
+                  ownerType="spell"
+                  campaignSystem={campaignSystem}
+                  host={host}
+                />
               </div>
               <Row><Button variant="danger" size="sm" onClick={() => remove(i)} data-testid={`button-remove-charspell-${i}`}>Remove</Button></Row>
             </Stack>

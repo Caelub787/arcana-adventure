@@ -157,10 +157,13 @@ Two factories ship out-of-the-box:
 - `<CharacterItemsEditor>`, `<CharacterSpellsEditor>`, `<CharacterHotbarsEditor>`,
   `<CharacterCustomSkillsEditor>`, `<CharacterTraitsEditor>`,
   `<CharacterFeatsEditor>`, `<CharacterClassesEditor>`,
-  `<CharacterClassSkillsEditor>` — focused add / remove / inline-edit
-  panels for each of the eight `characters`-owned child tables. Mounted
-  by `<CharacterDialog>`; also exported standalone so partner apps can
-  build their own composite character editors.
+  `<CharacterClassSkillsEditor>` — host-driven panels for each of the
+  eight `characters`-owned child tables. Mounted by `<CharacterDialog>`;
+  also exported standalone so partner apps can build their own composite
+  character editors. The items and spells panels nest the foundation
+  `<RollEntriesEditor>` inline, so per-character roll collections are
+  fully editable in place and round-trip through the same single sync
+  upsert.
 
 ### Building blocks
 - `DefaultModal`, `HostModal`, `SaveCancelFooter` — the package's modal slot
