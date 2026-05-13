@@ -13,6 +13,8 @@
   },
   "notes": "removed framer motion dependency",
   "dependencies": {
+    "@arcana/aa-sync-sdk": "file:packages/aa-sync-sdk",
+    "@arcana/library-dialogs": "file:packages/library-dialogs",
     "@asteasolutions/zod-to-openapi": "^7.3.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
