@@ -5,10 +5,10 @@ Same fields, prompts, conditionals, and nested editors as the live Arcana UI —
 but framework-agnostic, theme-free, and persisted via the existing
 `@arcana/aa-sync-sdk`.
 
-> **This release (0.1.0) ships the *foundation* + the first two dialogs.**
-> Spell, Character, Character-Template, Species, Class, and Feat-Tree dialogs
-> follow in subsequent releases. The HostAdapter contract, theming surface,
-> and transport wiring established here are stable.
+> **This release ships the foundation + Item, Roll-Template, and Spell dialogs.**
+> Character, Character-Template, Species, Class, and Feat-Tree dialogs follow
+> in subsequent releases. The HostAdapter contract, theming surface, and
+> transport wiring established here are stable.
 
 ---
 
@@ -115,6 +115,12 @@ Two factories ship out-of-the-box:
 - `<RollTemplateDialog>` — admin live-template editor (an `items` row with
   `isLiveTemplate=true`); roll edits propagate to every linked item and spell
   via the existing server-side fanout.
+- `<SpellDialog>` — full create/edit dialog for the `spells` table. Mirrors
+  Arcana's admin spell editor (name, description, image, action type,
+  duration, range, attribute) plus reuses `<RollEntriesEditor ownerType="spell">`
+  for nested rolls and `<ItemTemplateLinksPanel>` for AAv2 spell↔roll-template
+  links. All other spell columns are round-tripped through the draft so an
+  edit never drops schema fields.
 
 ### Reusable nested editors
 - `<RollEntriesEditor>` — full draft-mode editor for `roll_entries` rows
@@ -158,9 +164,36 @@ enriched payload (the server's `serializeWithChildren`).
 ## Browser example
 
 A runnable smoke test lives in `examples/canvasrealms-mount/`. It mounts
-`<ItemDialog>` and `<RollTemplateDialog>` behind buttons against a live
-Arcana instance using a partner OAuth bearer token, and ships with a
-CanvasRealms-flavored skin so you can see end-to-end re-theming.
+`<ItemDialog>`, `<RollTemplateDialog>`, and `<SpellDialog>` behind buttons
+against a live Arcana instance using a partner OAuth bearer token, and ships
+with a CanvasRealms-flavored skin so you can see end-to-end re-theming.
+
+### Mounting `<SpellDialog>`
+
+```tsx
+import { SpellDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+
+const host = minimalHostAdapter({ baseUrl, accessToken });
+
+// Create a new spell
+<SpellDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+
+// Edit an existing one — `id` is REQUIRED on initialValue for edit mode
+// (the transport keys writes on the internal id, not externalId).
+<SpellDialog
+  open={open}
+  onOpenChange={setOpen}
+  host={host}
+  campaignSystem="aa-v2"
+  mode="edit"
+  initialValue={{ id: "01HW...", name: "" }}
+  onSaved={(spell) => console.log(spell)}
+/>
+```
+
+Save fires `host.transport.upsert("spell", { ...spellFields, rolls, templateLinks })`.
+The server's `applyChildren` writes `roll_entries` and `spell_template_links`
+in the same atomic request — no extra round-trips.
 
 ```bash
 cd examples/canvasrealms-mount
@@ -175,7 +208,6 @@ npm run dev
 
 | Version | Adds                                                              |
 | ------- | ----------------------------------------------------------------- |
-| 0.2.0   | `<SpellDialog>`                                                   |
 | 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels |
 | 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>`         |
 | 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`                              |

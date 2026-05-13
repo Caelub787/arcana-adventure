@@ -11,7 +11,7 @@
  */
 import * as React from "react";
 import {
-  ItemDialog, RollTemplateDialog,
+  ItemDialog, RollTemplateDialog, SpellDialog,
   minimalHostAdapter, type HostAdapter,
 } from "@arcana/library-dialogs";
 
@@ -42,6 +42,7 @@ export const App: React.FC = () => {
 
   const [showItem, setShowItem] = React.useState(false);
   const [showTemplate, setShowTemplate] = React.useState(false);
+  const [showSpell, setShowSpell] = React.useState(false);
 
   return (
     <div className="cr-launcher" data-ld-root="" data-testid="canvasrealms-launcher">
@@ -61,6 +62,7 @@ export const App: React.FC = () => {
       <div className="row" style={{ marginTop: 20 }}>
         <button onClick={() => setShowItem(true)} data-testid="button-open-item">Create Item</button>
         <button onClick={() => setShowTemplate(true)} data-testid="button-open-template">Create Roll Template</button>
+        <button onClick={() => setShowSpell(true)} data-testid="button-open-spell">Create Spell</button>
       </div>
 
       <div id="ld-toast" style={{
@@ -88,6 +90,13 @@ export const App: React.FC = () => {
           host={host}
           campaignSystem="aa-v2"
           onSaved={(saved) => console.log("Saved roll template:", saved)}
+        />
+        <SpellDialog
+          open={showSpell}
+          onOpenChange={setShowSpell}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved spell:", saved)}
         />
       </div>
     </div>

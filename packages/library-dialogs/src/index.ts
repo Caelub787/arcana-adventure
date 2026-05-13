@@ -26,6 +26,8 @@ export { ItemDialog } from "./dialogs/ItemDialog";
 export type { ItemDraft } from "./dialogs/ItemDialog";
 export { RollTemplateDialog } from "./dialogs/RollTemplateDialog";
 export type { RollTemplateDraft } from "./dialogs/RollTemplateDialog";
+export { SpellDialog } from "./dialogs/SpellDialog";
+export type { SpellDraft } from "./dialogs/SpellDialog";
 
 // Reusable nested editors
 export { RollEntriesEditor } from "./components/RollEntriesEditor";
