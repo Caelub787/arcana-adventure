@@ -122,18 +122,20 @@ export function GlobalSearch({
     staleTime: 30_000,
   });
 
-  // System items (public — available in libraries to all users)
+  // System items (public — available in libraries to all users; pass campaignId
+  // so the campaign GM's private library entries are included for members)
   const itemsQuery = useQuery<Item[]>({
-    queryKey: ["global-search-items"],
-    queryFn: () => api.getPublicSystemItems(),
+    queryKey: ["global-search-items", campaignId],
+    queryFn: () => api.getPublicSystemItems(campaignId),
     enabled: open && (filter === "all" || filter === "item"),
     staleTime: 60_000,
   });
 
-  // System spells (public — available in libraries to all users)
+  // System spells (public — available in libraries to all users; pass campaignId
+  // so the campaign GM's private library entries are included for members)
   const spellsQuery = useQuery<SystemSpell[]>({
-    queryKey: ["global-search-spells"],
-    queryFn: () => api.getPublicSpells(),
+    queryKey: ["global-search-spells", campaignId],
+    queryFn: () => api.getPublicSpells(campaignId),
     enabled: open && (filter === "all" || filter === "spell"),
     staleTime: 60_000,
   });

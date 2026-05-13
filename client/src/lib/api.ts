@@ -1641,8 +1641,9 @@ class ApiClient {
   }
 
   // Public spells (for character sheet and feat effects)
-  async getPublicSpells(): Promise<SystemSpell[]> {
-    return this.request('/spells');
+  async getPublicSpells(campaignId?: string): Promise<SystemSpell[]> {
+    const params = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
+    return this.request(`/spells${params}`);
   }
 
   // Admin Character Templates
