@@ -1,0 +1,9 @@
+{
+  "name": "@arcana/aa-sync-sdk",
+  "version": "1.0.0",
+  "description": "TypeScript client for Arcana Adventure two-way library sync (OAuth2 + bearer + signed webhooks).",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "MIT"
+}

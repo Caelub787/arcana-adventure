@@ -1812,9 +1812,97 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           </CardDescription>
         </CardHeader>
       </Card>
+
+      <SyncStatusCard />
       </>)}
 
     </div>
+  );
+}
+
+function SyncStatusCard() {
+  const { data, isLoading, refetch } = useQuery<{ counts: Record<string, number>; rows: any[] }>({
+    queryKey: ['/api/admin/sync-status'],
+    refetchInterval: 15000,
+  });
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/admin/sync-status/retry', {});
+      return res.json();
+    },
+    onSuccess: () => refetch(),
+  });
+  const c = data?.counts || { pending: 0, sending: 0, succeeded: 0, failed: 0, dead: 0 };
+  return (
+    <Card className="bg-stone-900 border-stone-700 col-span-full" data-testid="card-sync-status">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-amber-500">External Sync</CardTitle>
+            <CardDescription className="text-stone-400">
+              Outbound webhook delivery to CanvasRealms and other partner apps. Auto-refreshes every 15s.
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="border-stone-700" onClick={() => refetch()} data-testid="button-sync-refresh">Refresh</Button>
+            <Button size="sm" className="bg-amber-700 hover:bg-amber-600" onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending || c.dead === 0} data-testid="button-sync-retry-dead">
+              Retry Dead ({c.dead})
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-stone-500 py-6 text-center">Loading…</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-5 gap-3 mb-4">
+              {(['pending','sending','succeeded','failed','dead'] as const).map(k => (
+                <div key={k} className="bg-stone-950 border border-stone-800 rounded-md p-3 text-center" data-testid={`stat-sync-${k}`}>
+                  <div className="text-2xl font-bold text-amber-400">{c[k] || 0}</div>
+                  <div className="text-xs text-stone-500 capitalize mt-1">{k}</div>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs text-stone-500 mb-2">Recent jobs (last 50):</div>
+            <div className="max-h-64 overflow-y-auto border border-stone-800 rounded-md">
+              <table className="w-full text-xs">
+                <thead className="bg-stone-950 sticky top-0">
+                  <tr className="text-stone-400">
+                    <th className="text-left p-2">Status</th>
+                    <th className="text-left p-2">Event</th>
+                    <th className="text-left p-2">Attempts</th>
+                    <th className="text-left p-2">Updated</th>
+                    <th className="text-left p-2">Last Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data?.rows || []).map((r: any) => (
+                    <tr key={r.id} className="border-t border-stone-800" data-testid={`row-sync-${r.id}`}>
+                      <td className="p-2">
+                        <span className={
+                          r.status === 'succeeded' ? 'text-emerald-400' :
+                          r.status === 'dead' ? 'text-red-400' :
+                          r.status === 'failed' ? 'text-amber-400' :
+                          'text-stone-300'
+                        }>{r.status}</span>
+                      </td>
+                      <td className="p-2 text-stone-300">{r.payload?.event || '—'} <span className="text-stone-500">/ {r.payload?.kind}</span></td>
+                      <td className="p-2 text-stone-400">{r.attempts}</td>
+                      <td className="p-2 text-stone-500">{new Date(r.updatedAt).toLocaleTimeString()}</td>
+                      <td className="p-2 text-red-400 max-w-[280px] truncate">{r.lastError || ''}</td>
+                    </tr>
+                  ))}
+                  {(data?.rows || []).length === 0 && (
+                    <tr><td colSpan={5} className="p-4 text-center text-stone-500">No webhook deliveries yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

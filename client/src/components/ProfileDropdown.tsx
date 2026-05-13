@@ -194,6 +194,14 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
             <Users className="mr-2 h-4 w-4 text-stone-400" />
             <span>Friends</span>
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setLocation('/account')}
+            className="cursor-pointer hover:bg-stone-800 focus:bg-stone-800"
+            data-testid="menu-item-account"
+          >
+            <Edit2 className="mr-2 h-4 w-4 text-stone-400" />
+            <span>Connected Apps</span>
+          </DropdownMenuItem>
           {isAdmin && (
             <>
               <DropdownMenuSeparator className="bg-stone-800" />
