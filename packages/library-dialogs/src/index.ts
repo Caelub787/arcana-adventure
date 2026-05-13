@@ -30,6 +30,15 @@ export { SpellDialog } from "./dialogs/SpellDialog";
 export type { SpellDraft } from "./dialogs/SpellDialog";
 export { CharacterDialog, CharacterTemplateDialog } from "./dialogs/CharacterDialog";
 export type { CharacterDraft } from "./dialogs/CharacterDialog";
+export { SpeciesDialog } from "./dialogs/SpeciesDialog";
+export type { SpeciesDraft } from "./dialogs/SpeciesDialog";
+export { FeatTreeDialog } from "./dialogs/FeatTreeDialog";
+export type { FeatTreeDraft } from "./dialogs/FeatTreeDialog";
+export { FeatTreeCanvas, stripLocalIds as stripFeatTreeLocalIds } from "./components/FeatTreeCanvas";
+export type {
+  FeatDraft, FeatConnectionDraft, FeatEffectDraft,
+  FeatTreeCanvasValue, FeatTreeCanvasProps,
+} from "./components/FeatTreeCanvas";
 
 // Reusable nested editors
 export { RollEntriesEditor } from "./components/RollEntriesEditor";

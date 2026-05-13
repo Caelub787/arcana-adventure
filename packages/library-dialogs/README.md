@@ -6,9 +6,10 @@ but framework-agnostic, theme-free, and persisted via the existing
 `@arcana/aa-sync-sdk`.
 
 > **This release ships the foundation + Item, Roll-Template, Spell,
-> Character, and Character-Template dialogs.** Species, Class, and
-> Feat-Tree dialogs follow in subsequent releases. The HostAdapter contract,
-> theming surface, and transport wiring established here are stable.
+> Character, Character-Template, Species, and Feat-Tree dialogs (with
+> the standalone `<FeatTreeCanvas>`).** The Class dialog follows in a
+> subsequent release. The HostAdapter contract, theming surface, and
+> transport wiring established here are stable.
 
 ---
 
@@ -131,6 +132,33 @@ Two factories ship out-of-the-box:
   campaign / user scope fields (templates live in the global admin
   library). Created templates can be cloned by GMs into player
   characters.
+- `<SpeciesDialog>` — full create/edit dialog for the `system_species`
+  table (`kind="species"`). Renders every flat column (identity,
+  description, default token image, lifespan, speed/flySpeed, size,
+  naturalArmor, sizeBonus, the three start/max/per-level pool triplets
+  for HP / energy / mana, carryWeight, and vision fields) and exposes
+  a feat-tree picker fed from `host.transport.list("feat-tree")` so
+  the species' progression tree can be linked without inventing a
+  resolver.
+- `<FeatTreeDialog>` — full create/edit dialog for the `feat_trees`
+  table (`kind="feat-tree"`). Renders tree metadata (name,
+  description, gridWidth, gridHeight, system, default view) and
+  embeds `<FeatTreeCanvas>` for graphical editing. Save bundles the
+  tree row + `feats[]` + `connections[]` into a single
+  `host.transport.upsert("feat-tree", …)`. The server's
+  `replaceFeatTreeChildren` writes parent + both child tables in one
+  bundled write with FK ID remapping so connections referencing
+  brand-new feats resolve correctly.
+- `<FeatTreeCanvas>` — standalone, controlled drag-to-place +
+  click-to-connect grid editor. Exported on its own so partners can
+  drop it into their own multi-pane editors. SVG-based with a
+  pattern-fill grid; click-to-select, drag-to-reposition,
+  Connect-Mode toggle for click-two-nodes-to-wire-prerequisites,
+  per-edge required/optional toggle (click the line to flip), and
+  an inline per-feat editor for name / description / icon / image /
+  tier / cost / position / effects (matching `Feat.effects` jsonb
+  shape). Maintains stable `_localId`s so brand-new feats can be
+  referenced by brand-new connections in the same bundled save.
 - `<SpellDialog>` — full create/edit dialog for AAv2 system spells
   (`kind="spell"` → `system_spells`). Renders the union of Arcana's two
   canonical spell editors: the admin form (name, description, icon,
@@ -243,7 +271,7 @@ npm run dev
 | Version | Adds                                                              |
 | ------- | ----------------------------------------------------------------- |
 | 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels (shipped) |
-| 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>`         |
+| 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>` (shipped) |
 | 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`                              |
 | 1.0.0   | Arcana itself migrates to consume the package internally          |
 
@@ -272,6 +300,48 @@ without any client follow-up.
 
 Each release is byte-compatible with Arcana's data model — created entities
 round-trip identically across both UIs.
+
+### Mounting `<SpeciesDialog>` and `<FeatTreeDialog>`
+
+```tsx
+import {
+  SpeciesDialog, FeatTreeDialog, minimalHostAdapter,
+} from "@arcana/library-dialogs";
+
+const host = minimalHostAdapter({ baseUrl, accessToken });
+
+// Create a species — feat-tree picker is auto-populated from
+// host.transport.list("feat-tree")
+<SpeciesDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+
+// Create a feat tree — embeds <FeatTreeCanvas> for graphical editing
+<FeatTreeDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+```
+
+`<FeatTreeDialog>` save fires
+`host.transport.upsert("feat-tree", { ...treeFields, feats, connections })`.
+Server writes the tree row + every feat + every connection in one
+bundled request with FK ID remapping, so brand-new connections that
+reference brand-new feats resolve to the freshly-inserted child rows
+without any client follow-up.
+
+### Standalone `<FeatTreeCanvas>`
+
+```tsx
+import { FeatTreeCanvas, type FeatTreeCanvasValue } from "@arcana/library-dialogs";
+
+const [tree, setTree] = useState<FeatTreeCanvasValue>({ feats: [], connections: [] });
+
+<FeatTreeCanvas
+  value={tree}
+  onChange={setTree}
+  gridWidth={7}
+  gridHeight={10}
+/>
+```
+
+Drop the canvas into your own multi-pane editor and bundle its output
+(`tree.feats`, `tree.connections`) into whatever upsert you want.
 
 ---
 

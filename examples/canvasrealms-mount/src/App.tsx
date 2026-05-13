@@ -13,6 +13,7 @@ import * as React from "react";
 import {
   ItemDialog, RollTemplateDialog, SpellDialog,
   CharacterDialog, CharacterTemplateDialog,
+  SpeciesDialog, FeatTreeDialog,
   minimalHostAdapter, type HostAdapter,
 } from "@arcana/library-dialogs";
 
@@ -46,6 +47,8 @@ export const App: React.FC = () => {
   const [showSpell, setShowSpell] = React.useState(false);
   const [showCharacter, setShowCharacter] = React.useState(false);
   const [showCharTemplate, setShowCharTemplate] = React.useState(false);
+  const [showSpecies, setShowSpecies] = React.useState(false);
+  const [showFeatTree, setShowFeatTree] = React.useState(false);
 
   return (
     <div className="cr-launcher" data-ld-root="" data-testid="canvasrealms-launcher">
@@ -68,6 +71,8 @@ export const App: React.FC = () => {
         <button onClick={() => setShowSpell(true)} data-testid="button-open-spell">Create Spell</button>
         <button onClick={() => setShowCharacter(true)} data-testid="button-open-character">Create Character</button>
         <button onClick={() => setShowCharTemplate(true)} data-testid="button-open-character-template">Create Character Template</button>
+        <button onClick={() => setShowSpecies(true)} data-testid="button-open-species">Create Species</button>
+        <button onClick={() => setShowFeatTree(true)} data-testid="button-open-feat-tree">Create Feat Tree</button>
       </div>
 
       <div id="ld-toast" style={{
@@ -116,6 +121,20 @@ export const App: React.FC = () => {
           host={host}
           campaignSystem="aa-v2"
           onSaved={(saved) => console.log("Saved character template:", saved)}
+        />
+        <SpeciesDialog
+          open={showSpecies}
+          onOpenChange={setShowSpecies}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved species:", saved)}
+        />
+        <FeatTreeDialog
+          open={showFeatTree}
+          onOpenChange={setShowFeatTree}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved feat tree:", saved)}
         />
       </div>
     </div>
