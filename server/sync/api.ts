@@ -137,6 +137,23 @@ async function deleteLinkByInternalId(kind: Kind, internalId: string, userId: st
   ));
 }
 
+// Per-kind row predicates ensure /api/sync/v1/{kind}/{id} can never operate
+// on a row from a different kind even if the caller knows the raw UUID.
+// `item` and `roll-template` share the items table; `character` and
+// `character-template` share the characters table — so without these guards
+// a partner could PATCH/DELETE a non-template character via the
+// character-template endpoint (or vice versa).
+const matchesKind: Record<Kind, (row: any) => boolean> = {
+  "item":               (r) => !!r && !r.isLiveTemplate,
+  "spell":              (r) => !!r,
+  "character":          (r) => !!r && !r.isTemplate,
+  "species":            (r) => !!r,
+  "class":              (r) => !!r,
+  "feat-tree":          (r) => !!r,
+  "character-template": (r) => !!r && r.isTemplate === true,
+  "roll-template":      (r) => !!r && r.isLiveTemplate === true,
+};
+
 const adapters: Record<Kind, {
   list: (userId: string, isAdmin: boolean) => Promise<any[]>;
   get: (id: string) => Promise<any | undefined>;
@@ -147,7 +164,10 @@ const adapters: Record<Kind, {
 }> = {
   "item": {
     list: (uid, admin) => storage.getSystemItems("aa-v2", admin ? undefined : [uid]),
-    get: (id) => storage.getSystemItem(id),
+    get: async (id) => {
+      const r = await storage.getSystemItem(id);
+      return matchesKind["item"](r) ? r : undefined;
+    },
     create: (d) => storage.createSystemItem(d),
     update: (id, d) => storage.updateSystemItem(id, d),
     delete: (id) => storage.deleteSystemItem(id),
@@ -209,7 +229,10 @@ const adapters: Record<Kind, {
   },
   "character-template": {
     list: (uid, admin) => storage.getCharacterTemplates(admin ? undefined : [uid]),
-    get: (id) => storage.getCharacter(id),
+    get: async (id) => {
+      const r = await storage.getCharacter(id);
+      return matchesKind["character-template"](r) ? r : undefined;
+    },
     create: (d) => storage.createCharacter({ ...d, isTemplate: true }),
     update: (id, d) => storage.updateCharacter(id, d),
     delete: (id) => storage.deleteCharacter(id),
@@ -217,7 +240,10 @@ const adapters: Record<Kind, {
   },
   "roll-template": {
     list: (uid, admin) => storage.getItemTemplates("aa-v2", admin ? undefined : [uid]),
-    get: (id) => storage.getSystemItem(id),
+    get: async (id) => {
+      const r = await storage.getSystemItem(id);
+      return matchesKind["roll-template"](r) ? r : undefined;
+    },
     create: (d) => storage.createSystemItem({ ...d, isLiveTemplate: true, isTemplate: true }),
     update: (id, d) => storage.updateSystemItem(id, d),
     delete: (id) => storage.deleteSystemItem(id),

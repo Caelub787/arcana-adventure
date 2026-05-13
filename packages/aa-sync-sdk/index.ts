@@ -62,9 +62,14 @@ export interface SyncEnvelope<T = any> {
 export interface ArcanaSyncClientOptions {
   baseUrl: string;
   accessToken: string;
+  /**
+   * Optional refresh credentials. Required only if you want the SDK to
+   * auto-refresh on 401. Minimal usage works without them:
+   *   `createClient({ baseUrl, accessToken })`
+   */
   refreshToken?: string;
-  clientId: string;
-  clientSecret: string;
+  clientId?: string;
+  clientSecret?: string;
   /** Identifier echoed in `X-Sync-Origin` so this client's own writes don't trigger inbound webhook fanout to itself. */
   originId?: string;
   /** Called whenever the access token is auto-refreshed so the caller can persist it. */
@@ -104,6 +109,9 @@ export class ArcanaSyncClient {
 
   async refresh(): Promise<void> {
     if (!this.refreshToken) throw new ArcanaSyncError(401, "no_refresh_token", "No refresh token configured");
+    if (!this.opts.clientId || !this.opts.clientSecret) {
+      throw new ArcanaSyncError(401, "no_client_credentials", "clientId and clientSecret are required to refresh");
+    }
     const url = this.opts.baseUrl.replace(/\/$/, "") + "/oauth/token";
     const body = new URLSearchParams({
       grant_type: "refresh_token",
