@@ -3,7 +3,22 @@
   "version": "1.0.0",
   "description": "TypeScript client for Arcana Adventure two-way library sync (OAuth2 + bearer + signed webhooks).",
   "type": "module",
-  "main": "index.ts",
-  "types": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "index.ts", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pack:tarball": "npm run build && npm pack --pack-destination=./dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
   "license": "MIT"
 }

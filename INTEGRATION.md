@@ -15,6 +15,7 @@ The following entity kinds are mirrored bidirectionally:
 |------------------------|----------------------------------------------|
 | `item`                 | `/api/sync/v1/items`                         |
 | `spell`                | `/api/sync/v1/spells`                        |
+| `character`            | `/api/sync/v1/characters`                    |
 | `species`              | `/api/sync/v1/species`                       |
 | `class`                | `/api/sync/v1/classes`                       |
 | `feat-tree`            | `/api/sync/v1/feat-trees`                    |

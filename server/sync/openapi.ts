@@ -1,8 +1,9 @@
 import type { Express, Request, Response } from "express";
 
 const KIND_PLURAL: Record<string, string> = {
-  "item": "items", "spell": "spells", "species": "species", "class": "classes",
-  "feat-tree": "feat-trees", "character-template": "character-templates", "roll-template": "roll-templates",
+  "item": "items", "spell": "spells", "character": "characters", "species": "species",
+  "class": "classes", "feat-tree": "feat-trees",
+  "character-template": "character-templates", "roll-template": "roll-templates",
 };
 const KINDS = Object.keys(KIND_PLURAL);
 
@@ -93,6 +94,7 @@ function buildSpec() {
   const schemas: any = {
     SyncItem: genericEntity({ itemType: { type: "string" }, isLiveTemplate: { type: "boolean" } }),
     SyncSpell: genericEntity({ spellType: { type: "string" }, manaCost: { type: "integer" } }),
+    SyncCharacter: genericEntity({ isTemplate: { type: "boolean" } }),
     SyncSpecies: genericEntity(),
     SyncClass: genericEntity(),
     SyncFeatTree: genericEntity(),
@@ -109,9 +111,9 @@ function buildSpec() {
       schemas,
     },
     tags: [
-      { name: "Item" }, { name: "Spell" }, { name: "Species" }, { name: "Class" },
-      { name: "FeatTree" }, { name: "CharacterTemplate" }, { name: "RollTemplate" },
-      { name: "Webhooks" }, { name: "OAuth" },
+      { name: "Item" }, { name: "Spell" }, { name: "Character" }, { name: "Species" },
+      { name: "Class" }, { name: "FeatTree" }, { name: "CharacterTemplate" },
+      { name: "RollTemplate" }, { name: "Webhooks" }, { name: "OAuth" },
     ],
     paths,
   };

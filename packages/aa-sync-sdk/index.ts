@@ -25,6 +25,7 @@
 export type SyncKind =
   | "item"
   | "spell"
+  | "character"
   | "species"
   | "class"
   | "feat-tree"
@@ -34,6 +35,7 @@ export type SyncKind =
 const KIND_PLURAL: Record<SyncKind, string> = {
   "item": "items",
   "spell": "spells",
+  "character": "characters",
   "species": "species",
   "class": "classes",
   "feat-tree": "feat-trees",
@@ -41,6 +43,14 @@ const KIND_PLURAL: Record<SyncKind, string> = {
   "roll-template": "roll-templates",
 };
 function pluralize(kind: SyncKind): string { return KIND_PLURAL[kind]; }
+
+/**
+ * One-line factory: `const client = createClient({ baseUrl, accessToken });`
+ * For full OAuth refresh support, pass `clientId`, `clientSecret`, and `refreshToken`.
+ */
+export function createClient(opts: ArcanaSyncClientOptions): ArcanaSyncClient {
+  return new ArcanaSyncClient(opts);
+}
 
 export interface SyncEnvelope<T = any> {
   kind: SyncKind;

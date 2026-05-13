@@ -1,8 +1,12 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-import { externalEntityLinks, outgoingWebhooks, oauthAccessTokens, oauthRefreshTokens, users } from "@shared/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { externalEntityLinks, outgoingWebhooks, oauthAccessTokens, oauthRefreshTokens, users, characters } from "@shared/schema";
+import { and, eq, or, isNull, inArray, sql } from "drizzle-orm";
+
+// Mirror the routes.ts ADMIN_EMAILS allowlist so sync admin detection
+// matches the rest of the app (some valid admins are flagged via email).
+const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
 import crypto from "node:crypto";
 import { resolveBearer } from "./oauth";
 import { emitLibraryChange } from "./webhooks";
@@ -25,7 +29,8 @@ export const requireSyncAuth = (requiredScope?: string) => async (req: Request, 
   }
   const [u] = await db.select().from(users).where(eq(users.id, auth.userId));
   if (!u) return res.status(401).json({ error: "user_not_found" });
-  req.syncUser = { id: u.id, clientId: auth.clientId, scopes: auth.scopes, isAdmin: !!u.isAdmin };
+  const isAdmin = !!u.isAdmin || ADMIN_EMAILS.includes((u.email || "").toLowerCase());
+  req.syncUser = { id: u.id, clientId: auth.clientId, scopes: auth.scopes, isAdmin };
   next();
 };
 
@@ -33,6 +38,7 @@ export const requireSyncAuth = (requiredScope?: string) => async (req: Request, 
 const KIND_PLURAL: Record<string, string> = {
   "item": "items",
   "spell": "spells",
+  "character": "characters",
   "species": "species",
   "class": "classes",
   "feat-tree": "feat-trees",
@@ -46,6 +52,7 @@ export function pluralFor(kind: Kind): string { return KIND_PLURAL[kind]; }
 const KIND_META: Record<Kind, { ownerCol: "ownerUserId" | "createdByUserId" }> = {
   "item": { ownerCol: "createdByUserId" },
   "spell": { ownerCol: "ownerUserId" },
+  "character": { ownerCol: "ownerUserId" },
   "species": { ownerCol: "ownerUserId" },
   "class": { ownerCol: "ownerUserId" },
   "feat-tree": { ownerCol: "ownerUserId" },
@@ -144,6 +151,28 @@ const adapters: Record<Kind, {
     create: (d) => storage.createFeatTree(d),
     update: (id, d) => storage.updateFeatTree(id, d),
     delete: (id) => storage.deleteFeatTree(id),
+    getOwner: (r) => r?.ownerUserId,
+  },
+  "character": {
+    // Player/GM characters (non-template). Direct query because storage
+    // doesn't expose a per-owner non-template character listing.
+    list: async (uid, admin) => {
+      if (admin) {
+        return await db.select().from(characters).where(eq(characters.isTemplate, false));
+      }
+      return await db.select().from(characters).where(and(
+        eq(characters.isTemplate, false),
+        eq(characters.ownerUserId, uid),
+      ));
+    },
+    get: async (id) => {
+      const row = await storage.getCharacter(id);
+      if (!row || row.isTemplate) return undefined;
+      return row;
+    },
+    create: (d) => storage.createCharacter({ ...d, isTemplate: false }),
+    update: (id, d) => storage.updateCharacter(id, d),
+    delete: (id) => storage.deleteCharacter(id),
     getOwner: (r) => r?.ownerUserId,
   },
   "character-template": {
