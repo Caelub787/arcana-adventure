@@ -30,7 +30,8 @@ import type { Kind } from "./api";
 
 // `craftRecipes` and `templateLinks` were added in 11/2025 to support
 // the @arcana/library-dialogs ItemDialog (foundation slice).
-// `templateLinks` is also accepted on `spell` and `roll-template` for parity.
+// `templateLinks` is also accepted on `spell` for parity. (`roll-template`
+// is itself a template — it has no template links of its own.)
 const CHILD_KEYS: Partial<Record<Kind, string[]>> = {
   "item": ["rolls", "craftRecipes", "templateLinks"],
   "spell": ["rolls", "templateLinks"],
