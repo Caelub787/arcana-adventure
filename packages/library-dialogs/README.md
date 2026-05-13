@@ -98,7 +98,7 @@ A single object the partner fills in:
 
 | Field         | Type                                                  | Required | Notes                                              |
 | ------------- | ----------------------------------------------------- | -------- | -------------------------------------------------- |
-| `transport`   | `ArcanaSyncClient` (from `@arcana/aa-sync-sdk`)       | yes      | Pre-configured. `minimalHostAdapter` builds it.    |
+| `transport`   | `LibraryTransport` (typically an `ArcanaSyncClient` from `@arcana/aa-sync-sdk`, or any object implementing the same `list`/`get`/`upsert`/`patch`/`delete` surface) | yes | Pre-configured. `minimalHostAdapter` builds it from an OAuth token; `arcanaSessionHostAdapter` accepts a host-supplied shim that wraps existing in-app REST methods (no token, session-cookie auth). |
 | `notify`      | `(level, message) => void`                            | yes      | Bridge to your toast system.                       |
 | `imagePicker` | `(opts) => Promise<{url}|null>`                       | no       | Falls back to a plain URL input.                   |
 | `modal`       | React component matching `HostModalProps`             | no       | Falls back to centered overlay (`DefaultModal`).   |
@@ -111,7 +111,7 @@ Two factories ship out-of-the-box:
 
 ---
 
-## What's in this release (0.5.0)
+## What's in this release (0.6.0)
 
 ### Dialogs
 - `<ItemDialog>` — full create/edit dialog for the `items` table, including
@@ -299,6 +299,7 @@ npm run dev
 | 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels (shipped) |
 | 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>` (shipped) |
 | 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`, `<ClassSkillsPanel>` (shipped) |
+| 0.6.0   | `LibraryTransport` interface + `arcanaSessionHostAdapter` (session-cookie mount path; shipped) |
 | 1.0.0   | Arcana itself migrates to consume the package internally          |
 
 ### Mounting `<CharacterDialog>` and `<CharacterTemplateDialog>`

@@ -78,10 +78,11 @@ export interface ArcanaSessionHostOptions {
 /**
  * Cookie-auth host adapter. The caller assembles a `LibraryTransport`
  * shim from existing in-app REST methods and hands it in directly — no
- * OAuth token, no SDK instance, no new backend routes. The shim's
- * methods can return either `SyncEnvelope`-shaped objects or already
- * unwrapped raw rows; dialogs key off `data` when present and fall back
- * to the row itself otherwise.
+ * OAuth token, no SDK instance, no new backend routes. The shim MUST
+ * return `SyncEnvelope`-shaped objects from `get`/`upsert`/`patch`
+ * (`{ kind, id, externalId, data }`), matching `LibraryTransport`'s
+ * declared signature. Hosts that have raw row data should wrap it
+ * inside a `data` field at the shim boundary — see `MIGRATION.md`.
  */
 export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAdapter {
   return {
