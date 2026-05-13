@@ -18,6 +18,9 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
+import { SpeciesDialog } from '@arcana/library-dialogs';
+import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
+import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
@@ -130,6 +133,47 @@ const rarityColors: Record<string, string> = {
 
 const sizeOptions = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
 
+function toSpeciesDraft(s: SystemSpecies): SpeciesDraft {
+  const extra = s as unknown as {
+    energyPerLevel?: number;
+    startingMana?: number;
+    startingMaxMana?: number;
+    manaPerLevel?: number;
+    visionType?: string;
+    dayVisionDistance?: number;
+    nightVisionDistance?: number;
+    ownerUserId?: string | null;
+  };
+  return {
+    id: s.id,
+    systemName: s.systemName,
+    name: s.name,
+    description: s.description ?? "",
+    defaultImage: s.defaultImage ?? "",
+    lifespan: s.lifespan,
+    speed: s.speed,
+    flySpeed: s.flySpeed,
+    size: s.size,
+    naturalArmor: s.naturalArmor,
+    sizeBonus: s.sizeBonus,
+    startingHp: s.startingHp,
+    startingMaxHp: s.startingMaxHp,
+    hpPerLevel: s.hpPerLevel,
+    startingEnergy: s.startingEnergy,
+    startingMaxEnergy: s.startingMaxEnergy,
+    energyPerLevel: extra.energyPerLevel ?? 6,
+    startingMana: extra.startingMana ?? 0,
+    startingMaxMana: extra.startingMaxMana ?? 0,
+    manaPerLevel: extra.manaPerLevel ?? 0,
+    carryWeight: s.carryWeight,
+    featTree: s.featTree ?? "",
+    visionType: extra.visionType ?? "normal",
+    dayVisionDistance: extra.dayVisionDistance ?? 60,
+    nightVisionDistance: extra.nightVisionDistance ?? 30,
+    ownerUserId: extra.ownerUserId ?? null,
+  };
+}
+
 export default function AdminSettings() {
   const [, setLocation] = useLocation();
   const { isAdmin } = useAuth();
@@ -141,6 +185,7 @@ export default function AdminSettings() {
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
+  const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem);
 
   // Non-admin GMs are scoped to their AA V2 private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
@@ -431,30 +476,6 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item-templates'] });
       toast({ title: 'Template Duplicated', description: 'A copy has been created' });
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
-  });
-
-  const createSpeciesMutation = useMutation({
-    mutationFn: (species: Partial<SystemSpecies>) => api.createSystemSpecies({ ...species, systemName: selectedSystem }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['system-species'] });
-      setShowAddSpecies(false);
-      toast({ title: 'Species Created', description: 'Species created successfully' });
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
-  });
-
-  const updateSpeciesMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<SystemSpecies> }) => api.updateSystemSpecies(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['system-species'] });
-      setEditingSpecies(null);
-      toast({ title: 'Species Updated', description: 'Species updated successfully' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -1192,26 +1213,27 @@ export default function AdminSettings() {
           />
         )}
 
-        <SpeciesFormDialog
+        <SpeciesDialog
           open={showAddSpecies}
           onOpenChange={setShowAddSpecies}
-          onSave={(data) => createSpeciesMutation.mutate(data)}
-          isLoading={createSpeciesMutation.isPending}
-          featTrees={allFeatTrees}
-          systemSlug={systemSlug}
+          mode="create"
+          host={libraryDialogsHost}
+          campaignSystem={systemSlug}
+          onSaved={() => setShowAddSpecies(false)}
         />
 
         {editingSpecies && (
-          <SpeciesFormDialog
+          <SpeciesDialog
             open={!!editingSpecies}
-            onOpenChange={() => setEditingSpecies(null)}
-            onSave={(data) => updateSpeciesMutation.mutate({ id: editingSpecies.id, data })}
-            initialData={editingSpecies}
-            isLoading={updateSpeciesMutation.isPending}
-            featTrees={allFeatTrees}
-            systemSlug={systemSlug}
+            onOpenChange={(open) => { if (!open) setEditingSpecies(null); }}
+            mode="edit"
+            initialValue={toSpeciesDraft(editingSpecies)}
+            host={libraryDialogsHost}
+            campaignSystem={systemSlug}
+            onSaved={() => setEditingSpecies(null)}
           />
         )}
+        {libraryDialogsImageBrowser}
 
         <SpellFormDialog
           open={showAddSpell}
@@ -6837,493 +6859,6 @@ function SaveAsTemplateDialog({ open, onOpenChange, feat, onSave, isLoading }: S
   );
 }
 
-interface SpeciesFormDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSave: (data: Partial<SystemSpecies>) => void;
-  initialData?: SystemSpecies;
-  isLoading?: boolean;
-  featTrees?: FeatTree[];
-  systemSlug?: string;
-}
-
-// Calculate size bonus based on size
-const getSizeBonusFromSize = (size: string): number => {
-  const sizeBonusMap: Record<string, number> = {
-    'Tiny': 2,
-    'Small': 1,
-    'Medium': 0,
-    'Large': -1,
-    'Giant': -2,
-    'Colossal': -3,
-  };
-  return sizeBonusMap[size] ?? 0;
-};
-
-function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [], systemSlug }: SpeciesFormDialogProps) {
-  const [formData, setFormData] = useState<{
-    name: string;
-    description: string;
-    defaultImage: string;
-    lifespan: number | string;
-    speed: number | string;
-    flySpeed: number | string;
-    size: string;
-    naturalArmor: number | string;
-    sizeBonus: number;
-    startingHp: number | string;
-    startingMaxHp: number | string;
-    hpPerLevel: number | string;
-    startingEnergy: number | string;
-    startingMaxEnergy: number | string;
-    energyPerLevel: number | string;
-    startingMana: number | string;
-    startingMaxMana: number | string;
-    manaPerLevel: number | string;
-    carryWeight: number | string;
-    featTree: string;
-    visionType: string;
-    dayVisionDistance: number | string;
-    nightVisionDistance: number | string;
-  }>({
-    name: initialData?.name || '',
-    description: initialData?.description || '',
-    defaultImage: initialData?.defaultImage || '',
-    lifespan: initialData?.lifespan ?? '',
-    speed: initialData?.speed ?? '',
-    flySpeed: initialData?.flySpeed ?? '',
-    size: initialData?.size || 'Medium',
-    naturalArmor: initialData?.naturalArmor ?? '',
-    sizeBonus: initialData?.sizeBonus ?? getSizeBonusFromSize(initialData?.size || 'Medium'),
-    startingHp: initialData?.startingHp ?? '',
-    startingMaxHp: initialData?.startingMaxHp ?? '',
-    hpPerLevel: initialData?.hpPerLevel ?? '',
-    startingEnergy: initialData?.startingEnergy ?? '',
-    startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
-    energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
-    startingMana: (initialData as any)?.startingMana ?? 0,
-    startingMaxMana: (initialData as any)?.startingMaxMana ?? 0,
-    manaPerLevel: (initialData as any)?.manaPerLevel ?? 0,
-    carryWeight: initialData?.carryWeight ?? '',
-    featTree: initialData?.featTree || '',
-    visionType: (initialData as any)?.visionType || 'normal',
-    dayVisionDistance: (initialData as any)?.dayVisionDistance ?? 120,
-    nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
-  });
-  
-  const [showSpeciesImageBrowser, setShowSpeciesImageBrowser] = useState(false);
-  const speciesImageInputRef = useRef<HTMLInputElement>(null);
-  
-  const handleSpeciesImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setFormData({ ...formData, defaultImage: event.target?.result as string });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
-  // Helper to handle numeric input - allows empty string
-  const handleNumericChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
-  };
-  
-  // Auto-update size bonus when size changes
-  const handleSizeChange = (newSize: string) => {
-    setFormData({ 
-      ...formData, 
-      size: newSize, 
-      sizeBonus: getSizeBonusFromSize(newSize) 
-    });
-  };
-
-  const handleSubmit = () => {
-    if (!formData.name.trim()) {
-      toast({ title: 'Error', description: 'Species name is required', variant: 'destructive' });
-      return;
-    }
-    // Convert string values to numbers, using defaults for empty strings
-    onSave({
-      ...formData,
-      defaultImage: formData.defaultImage || undefined,
-      lifespan: Number(formData.lifespan) || 100,
-      speed: Number(formData.speed) || 30,
-      flySpeed: Number(formData.flySpeed) || 0,
-      naturalArmor: Number(formData.naturalArmor) || 5,
-      startingHp: Number(formData.startingHp) || 10,
-      startingMaxHp: Number(formData.startingMaxHp) || 10,
-      hpPerLevel: Number(formData.hpPerLevel) || 5,
-      startingEnergy: Number(formData.startingEnergy) || 10,
-      startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
-      energyPerLevel: Number(formData.energyPerLevel) || 6,
-      startingMana: Number(formData.startingMana) || 0,
-      startingMaxMana: Number(formData.startingMaxMana) || 0,
-      manaPerLevel: Number(formData.manaPerLevel) || 0,
-      carryWeight: Number(formData.carryWeight) || 50,
-      visionType: formData.visionType || 'normal',
-      dayVisionDistance: Number(formData.dayVisionDistance) || 120,
-      nightVisionDistance: Number(formData.nightVisionDistance) || 60,
-    });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="shrink-0">
-          <DialogTitle className="text-emerald-500">
-            {initialData ? 'Edit Species' : 'Create Species'}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto pr-4 min-h-0">
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label>Name *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-name"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="bg-stone-800 border-stone-700 min-h-[80px]"
-                  data-testid="textarea-species-description"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <Label>Default Token Image</Label>
-                <div className="flex items-center gap-4">
-                  {formData.defaultImage ? (
-                    <div className="relative">
-                      <img src={formData.defaultImage} alt="Species" className="h-16 w-16 rounded-full object-cover border border-stone-600" />
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, defaultImage: '' })}
-                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-5 w-5 text-xs flex items-center justify-center hover:bg-red-500"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="h-16 w-16 rounded-full bg-stone-700 flex items-center justify-center border border-stone-600">
-                      <User className="h-8 w-8 text-stone-500" />
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input
-                      ref={speciesImageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleSpeciesImageUpload}
-                      className="hidden"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => speciesImageInputRef.current?.click()}
-                      className="border-stone-600"
-                    >
-                      Upload Image
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowSpeciesImageBrowser(true)}
-                      className="border-stone-600"
-                      data-testid="button-species-browse-library"
-                    >
-                      <Library className="h-4 w-4 mr-1" />
-                      Libraries
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">
-                  This image will be used as the default token for characters of this species.
-                </p>
-              </div>
-
-              <ImageBrowser
-                open={showSpeciesImageBrowser}
-                onOpenChange={setShowSpeciesImageBrowser}
-                onSelect={(imageBase64) => {
-                  setFormData({ ...formData, defaultImage: imageBase64 });
-                  setShowSpeciesImageBrowser(false);
-                }}
-                title="Select Species Default Image"
-              />
-
-              <div>
-                <Label>Size</Label>
-                <Select value={formData.size} onValueChange={handleSizeChange}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-size">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sizeOptions.map((size) => (
-                      <SelectItem key={size} value={size}>{size}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Lifespan (years)</Label>
-                <Input
-                  type="number"
-                  value={formData.lifespan}
-                  onChange={(e) => handleNumericChange('lifespan', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-lifespan"
-                />
-              </div>
-
-              <div>
-                <Label>Speed (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.speed}
-                  onChange={(e) => handleNumericChange('speed', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-speed"
-                />
-              </div>
-
-              <div>
-                <Label>Fly Speed (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.flySpeed}
-                  onChange={(e) => handleNumericChange('flySpeed', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-flyspeed"
-                />
-              </div>
-
-              <div>
-                <Label>Natural Armor</Label>
-                <Input
-                  type="number"
-                  value={formData.naturalArmor}
-                  onChange={(e) => handleNumericChange('naturalArmor', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-armor"
-                />
-              </div>
-
-              <div>
-                <Label>Size Bonus (auto-calculated)</Label>
-                <Input
-                  type="number"
-                  value={formData.sizeBonus}
-                  readOnly
-                  className="bg-stone-800 border-stone-700 opacity-70"
-                  data-testid="input-species-sizebonus"
-                />
-              </div>
-
-              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                <Label className="text-sm font-semibold text-red-400">HP</Label>
-              </div>
-              <div>
-                <Label>Starting HP</Label>
-                <Input
-                  type="number"
-                  value={formData.startingHp}
-                  onChange={(e) => handleNumericChange('startingHp', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-startinghp"
-                />
-              </div>
-              <div>
-                <Label>Starting Max HP</Label>
-                <Input
-                  type="number"
-                  value={formData.startingMaxHp}
-                  onChange={(e) => handleNumericChange('startingMaxHp', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-startingmaxhp"
-                />
-              </div>
-              <div>
-                <Label>HP Per Level</Label>
-                <Input
-                  type="number"
-                  value={formData.hpPerLevel}
-                  onChange={(e) => handleNumericChange('hpPerLevel', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-hpperlevel"
-                />
-              </div>
-
-              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                <Label className="text-sm font-semibold text-cyan-400">Energy</Label>
-              </div>
-              <div>
-                <Label>Starting Energy</Label>
-                <Input
-                  type="number"
-                  value={formData.startingEnergy}
-                  onChange={(e) => handleNumericChange('startingEnergy', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-startingenergy"
-                />
-              </div>
-              <div>
-                <Label>Starting Max Energy</Label>
-                <Input
-                  type="number"
-                  value={formData.startingMaxEnergy}
-                  onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-startingmaxenergy"
-                />
-              </div>
-              {systemSlug !== 'aa-v2' && (
-                <div>
-                  <Label>Energy Per Level</Label>
-                  <Input
-                    type="number"
-                    value={formData.energyPerLevel}
-                    onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-species-energyperlevel"
-                  />
-                </div>
-              )}
-
-              {systemSlug === 'aa-v2' && (
-                <>
-                  <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                    <Label className="text-sm font-semibold text-violet-400">Mana</Label>
-                  </div>
-                  <div>
-                    <Label>Starting Mana</Label>
-                    <Input
-                      type="number"
-                      value={formData.startingMana}
-                      onChange={(e) => handleNumericChange('startingMana', e.target.value)}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-species-startingmana"
-                    />
-                  </div>
-                  <div>
-                    <Label>Starting Max Mana</Label>
-                    <Input
-                      type="number"
-                      value={formData.startingMaxMana}
-                      onChange={(e) => handleNumericChange('startingMaxMana', e.target.value)}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-species-startingmaxmana"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <Label>Base Carry Weight</Label>
-                <Input
-                  type="number"
-                  value={formData.carryWeight}
-                  onChange={(e) => handleNumericChange('carryWeight', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-carryweight"
-                />
-              </div>
-
-              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                <Label className="text-sm font-semibold text-stone-300">Vision</Label>
-              </div>
-
-              <div className="col-span-2">
-                <Label>Vision Type</Label>
-                <Select value={formData.visionType} onValueChange={(value) => setFormData({ ...formData, visionType: value })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-visiontype">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="darkvision">Darkvision</SelectItem>
-                    <SelectItem value="blindsight">Blindsight</SelectItem>
-                    <SelectItem value="truesight">Truesight</SelectItem>
-                    <SelectItem value="tremorsense">Tremorsense</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Day Vision Distance (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.dayVisionDistance}
-                  onChange={(e) => handleNumericChange('dayVisionDistance', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-dayvision"
-                />
-              </div>
-
-              <div>
-                <Label>Night Vision Distance (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.nightVisionDistance}
-                  onChange={(e) => handleNumericChange('nightVisionDistance', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-nightvision"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <Label>{systemSlug === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
-                <Select 
-                  value={formData.featTree || "_none"} 
-                  onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
-                >
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
-                    <SelectValue placeholder={systemSlug === 'aa-v2' ? 'Select a skill tree...' : 'Select a feat tree...'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {featTrees.map((tree) => (
-                      <SelectItem key={tree.id} value={tree.id}>
-                        {tree.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="bg-emerald-700 hover:bg-emerald-600"
-            data-testid="button-save-species"
-          >
-            {isLoading ? 'Saving...' : initialData ? 'Update Species' : 'Create Species'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function SpellEffectsSection({ spellId }: { spellId: string }) {
   const { data: spellEffects, refetch } = useQuery({
