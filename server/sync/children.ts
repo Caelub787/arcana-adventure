@@ -23,7 +23,7 @@ import {
   feats, featConnections,
   itemTemplateLinks, spellTemplateLinks,
   type InsertRollEntry, type InsertItem, type InsertSpell,
-  type InsertCraftRecipeIngredient, type InsertCraftRecipeOutcome,
+  type InsertCraftRecipe, type InsertCraftRecipeIngredient, type InsertCraftRecipeOutcome,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { Kind } from "./api";
@@ -225,11 +225,12 @@ async function replaceCraftRecipes(parentItemId: string, recipes: any[] | undefi
       Array.isArray(r.outcomes)
         ? r.outcomes.map((o: any) => stripCommon(o, ["recipeId"]))
         : [];
-    await storage.createCraftRecipe(
-      { ...cleaned, parentItemId, parentTemplateId: null } as any,
-      ingredients,
-      outcomes,
-    );
+    const recipe: InsertCraftRecipe = {
+      ...(cleaned as Omit<InsertCraftRecipe, "parentItemId" | "parentTemplateId">),
+      parentItemId,
+      parentTemplateId: null,
+    };
+    await storage.createCraftRecipe(recipe, ingredients, outcomes);
   }
 }
 

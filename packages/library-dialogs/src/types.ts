@@ -66,7 +66,14 @@ export interface DialogProps<T = unknown> {
    * back-compat. Pass it explicitly when you want unambiguous behavior.
    */
   mode?: "create" | "edit";
-  /** When `mode === "edit"`, must contain at least an `id` or `externalId`. */
+  /**
+   * When `mode === "edit"`, MUST include an internal `id` (the dialog's
+   * transport methods key on internal id). Hosts that only have an
+   * `externalId` should resolve it to an internal id (e.g. via
+   * `host.transport.getByExternal(...)`) BEFORE opening the dialog.
+   * `externalId` is accepted on the shape for round-tripping but is not
+   * used to drive the load/patch path.
+   */
   initialValue?: T & { id?: string; externalId?: string };
   /** Called after the entity is persisted via `host.transport`. */
   onSaved?: (saved: T & { id: string; externalId?: string | null }) => void;
