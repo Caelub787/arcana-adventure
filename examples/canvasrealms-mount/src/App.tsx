@@ -12,6 +12,7 @@
 import * as React from "react";
 import {
   ItemDialog, RollTemplateDialog, SpellDialog,
+  CharacterDialog, CharacterTemplateDialog,
   minimalHostAdapter, type HostAdapter,
 } from "@arcana/library-dialogs";
 
@@ -43,6 +44,8 @@ export const App: React.FC = () => {
   const [showItem, setShowItem] = React.useState(false);
   const [showTemplate, setShowTemplate] = React.useState(false);
   const [showSpell, setShowSpell] = React.useState(false);
+  const [showCharacter, setShowCharacter] = React.useState(false);
+  const [showCharTemplate, setShowCharTemplate] = React.useState(false);
 
   return (
     <div className="cr-launcher" data-ld-root="" data-testid="canvasrealms-launcher">
@@ -63,6 +66,8 @@ export const App: React.FC = () => {
         <button onClick={() => setShowItem(true)} data-testid="button-open-item">Create Item</button>
         <button onClick={() => setShowTemplate(true)} data-testid="button-open-template">Create Roll Template</button>
         <button onClick={() => setShowSpell(true)} data-testid="button-open-spell">Create Spell</button>
+        <button onClick={() => setShowCharacter(true)} data-testid="button-open-character">Create Character</button>
+        <button onClick={() => setShowCharTemplate(true)} data-testid="button-open-character-template">Create Character Template</button>
       </div>
 
       <div id="ld-toast" style={{
@@ -97,6 +102,20 @@ export const App: React.FC = () => {
           host={host}
           campaignSystem="aa-v2"
           onSaved={(saved) => console.log("Saved spell:", saved)}
+        />
+        <CharacterDialog
+          open={showCharacter}
+          onOpenChange={setShowCharacter}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved character:", saved)}
+        />
+        <CharacterTemplateDialog
+          open={showCharTemplate}
+          onOpenChange={setShowCharTemplate}
+          host={host}
+          campaignSystem="aa-v2"
+          onSaved={(saved) => console.log("Saved character template:", saved)}
         />
       </div>
     </div>

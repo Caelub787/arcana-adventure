@@ -28,6 +28,8 @@ export { RollTemplateDialog } from "./dialogs/RollTemplateDialog";
 export type { RollTemplateDraft } from "./dialogs/RollTemplateDialog";
 export { SpellDialog } from "./dialogs/SpellDialog";
 export type { SpellDraft } from "./dialogs/SpellDialog";
+export { CharacterDialog, CharacterTemplateDialog } from "./dialogs/CharacterDialog";
+export type { CharacterDraft } from "./dialogs/CharacterDialog";
 
 // Reusable nested editors
 export { RollEntriesEditor } from "./components/RollEntriesEditor";
@@ -36,6 +38,16 @@ export { CraftRecipesEditor } from "./components/CraftRecipesEditor";
 export type { CraftRecipeDraft, CraftRecipeIngredientDraft, CraftRecipesEditorProps } from "./components/CraftRecipesEditor";
 export { ItemTemplateLinksPanel } from "./components/ItemTemplateLinksPanel";
 export type { ItemTemplateLinksPanelProps } from "./components/ItemTemplateLinksPanel";
+export {
+  CharacterItemsEditor, CharacterSpellsEditor, CharacterHotbarsEditor,
+  CharacterCustomSkillsEditor, CharacterTraitsEditor, CharacterFeatsEditor,
+  CharacterClassesEditor, CharacterClassSkillsEditor,
+} from "./components/CharacterChildrenEditors";
+export type {
+  CharItemDraft, CharSpellDraft, CharHotbarDraft,
+  CharCustomSkillDraft, CharTraitDraft, CharFeatRefDraft,
+  CharClassDraft, CharClassSkillDraft,
+} from "./components/CharacterChildrenEditors";
 
 // Default modal — exported so partners can opt-in or wrap it.
 export { DefaultModal, HostModal, SaveCancelFooter } from "./ui/DefaultModal";

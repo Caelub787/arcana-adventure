@@ -5,10 +5,10 @@ Same fields, prompts, conditionals, and nested editors as the live Arcana UI —
 but framework-agnostic, theme-free, and persisted via the existing
 `@arcana/aa-sync-sdk`.
 
-> **This release ships the foundation + Item, Roll-Template, and Spell dialogs.**
-> Character, Character-Template, Species, Class, and Feat-Tree dialogs follow
-> in subsequent releases. The HostAdapter contract, theming surface, and
-> transport wiring established here are stable.
+> **This release ships the foundation + Item, Roll-Template, Spell,
+> Character, and Character-Template dialogs.** Species, Class, and
+> Feat-Tree dialogs follow in subsequent releases. The HostAdapter contract,
+> theming surface, and transport wiring established here are stable.
 
 ---
 
@@ -115,6 +115,22 @@ Two factories ship out-of-the-box:
 - `<RollTemplateDialog>` — admin live-template editor (an `items` row with
   `isLiveTemplate=true`); roll edits propagate to every linked item and spell
   via the existing server-side fanout.
+- `<CharacterDialog>` — full create/edit dialog for the `characters`
+  table. Renders every flat column (identity, pools HP/energy/mana,
+  new + legacy attributes, all `skill_*` columns, vision, exhaustion,
+  level-up bonus tracking, biography, GM notes) and mounts embedded
+  editors for the eight child collections that
+  `replaceCharacterChildren` understands: `items`, `spells`, `hotbars`,
+  `customSkills`, `traits`, `feats`, `classes`, `classSkills`. Save
+  bundles all eight into a single `host.transport.upsert("character", …)`;
+  the server's children-aware handler atomically replaces existing
+  children and performs FK ID remaps so brand-new hotbars referencing
+  brand-new items / spells resolve correctly.
+- `<CharacterTemplateDialog>` — same dialog, pinned to
+  `kind="character-template"`. Forces `isTemplate=true` and hides
+  campaign / user scope fields (templates live in the global admin
+  library). Created templates can be cloned by GMs into player
+  characters.
 - `<SpellDialog>` — full create/edit dialog for AAv2 system spells
   (`kind="spell"` → `system_spells`). Renders the union of Arcana's two
   canonical spell editors: the admin form (name, description, icon,
@@ -138,6 +154,13 @@ Two factories ship out-of-the-box:
   items (AAv2 only).
 - `<ItemTemplateLinksPanel>` — checkbox list to toggle which roll templates
   the item or spell inherits from (AAv2 only).
+- `<CharacterItemsEditor>`, `<CharacterSpellsEditor>`, `<CharacterHotbarsEditor>`,
+  `<CharacterCustomSkillsEditor>`, `<CharacterTraitsEditor>`,
+  `<CharacterFeatsEditor>`, `<CharacterClassesEditor>`,
+  `<CharacterClassSkillsEditor>` — focused add / remove / inline-edit
+  panels for each of the eight `characters`-owned child tables. Mounted
+  by `<CharacterDialog>`; also exported standalone so partner apps can
+  build their own composite character editors.
 
 ### Building blocks
 - `DefaultModal`, `HostModal`, `SaveCancelFooter` — the package's modal slot
@@ -216,10 +239,31 @@ npm run dev
 
 | Version | Adds                                                              |
 | ------- | ----------------------------------------------------------------- |
-| 0.3.0   | `<CharacterDialog>`, `<CharacterTemplateDialog>`, embedded panels |
 | 0.4.0   | `<SpeciesDialog>`, `<FeatTreeDialog>`, `<FeatTreeCanvas>`         |
 | 0.5.0   | `<ClassDialog>`, `<SkillTreeEditor>`                              |
 | 1.0.0   | Arcana itself migrates to consume the package internally          |
+
+### Mounting `<CharacterDialog>` and `<CharacterTemplateDialog>`
+
+```tsx
+import {
+  CharacterDialog, CharacterTemplateDialog, minimalHostAdapter,
+} from "@arcana/library-dialogs";
+
+const host = minimalHostAdapter({ baseUrl, accessToken });
+
+// Player character (kind="character" — needs campaignId + userId in normal use)
+<CharacterDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+
+// Admin character template (kind="character-template" — isTemplate=true, no scope fields)
+<CharacterTemplateDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+```
+
+Save fires `host.transport.upsert("character" | "character-template", { …characterFields, items, spells, hotbars, customSkills, traits, feats, classes, classSkills })`.
+The server's `replaceCharacterChildren` writes the parent + every child
+table in the same atomic request, including FK ID remapping so
+hotbars referencing brand-new embedded items / spells resolve
+correctly.
 
 Each release is byte-compatible with Arcana's data model — created entities
 round-trip identically across both UIs.
