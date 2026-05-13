@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "aboCULwqWtXay1K4e3i4n"
+uri = "file://packages/aa-sync-sdk/dist/arcana-aa-sync-sdk-1.0.0.zip"
+type = "unspecified"
+title = "Arcana Sync SDK v1.0.0 (unzip to get .tgz)"
+
+[[outputs]]
+id = "IwKmO1wbDS9LoloLvRcy7"
+uri = "file://INTEGRATION.md"
+type = "text"
+title = "Arcana Sync Integration Guide"
