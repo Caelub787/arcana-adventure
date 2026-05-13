@@ -110,14 +110,15 @@ const FRESH: ItemDraft = {
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
-  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem,
+  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem, mode,
 }) => {
   const [draft, setDraft] = React.useState<ItemDraft>(FRESH);
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
-  const editing = !!initialValue?.id;
+  // Explicit `mode` prop wins; otherwise infer from initialValue.id.
+  const editing = mode ? mode === "edit" : !!initialValue?.id;
 
   // ---- Load on open ----
   React.useEffect(() => {

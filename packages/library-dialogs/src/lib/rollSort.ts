@@ -22,7 +22,8 @@
 // effective priority. Same logic recurses inside a template-group block.
 
 export interface RollLike {
-  id: string;
+  // Optional so client-only drafts (pre-server-id) can be sorted/grouped too.
+  id?: string;
   priority?: number | null;
   sortOrder?: number | null;
   folder?: string | null;

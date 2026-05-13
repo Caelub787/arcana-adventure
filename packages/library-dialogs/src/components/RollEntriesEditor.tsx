@@ -161,8 +161,35 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
   // sync API and isn't reachable through ArcanaSyncClient. The "(modified)"
   // badge still surfaces overridden status so users aren't misled.
 
-  const sorted = React.useMemo(() => sortRollsForDisplay(value as any), [value]);
-  const folders = React.useMemo(() => collectFolderNames(value as any), [value]);
+  const sorted = React.useMemo(() => sortRollsForDisplay<RollEntryDraft>(value), [value]);
+  const folders = React.useMemo(() => collectFolderNames(value), [value]);
+
+  // Resolve a sorted roll back to its index in the source `value` array so
+  // edits/removes target the right entry. Prefer client-only `_localId`
+  // (stable across server-id assignment), fall back to server `id`.
+  const indexOf = React.useCallback(
+    (r: RollEntryDraft) => value.findIndex(v => (v._localId ?? v.id) === (r._localId ?? r.id)),
+    [value],
+  );
+
+  const renderRoll = (r: RollEntryDraft) => {
+    const idx = indexOf(r);
+    if (idx < 0) return null;
+    const roll = value[idx];
+    return (
+      <RollRow
+        key={roll._localId ?? roll.id ?? idx}
+        roll={roll}
+        damageTypes={damageTypes}
+        aav2={aav2}
+        adminItems={adminItems}
+        ensureAdminItems={ensureAdminItems}
+        knownFolders={folders}
+        onChange={(patch) => updateAt(idx, patch)}
+        onRemove={() => removeAt(idx)}
+      />
+    );
+  };
 
   return (
     <Stack data-testid="roll-entries-editor">
@@ -175,22 +202,52 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
         <div className="ld-subtle" style={{ padding: "10px 0" }}>No rolls yet.</div>
       )}
 
-      {sorted.map((sortedRoll: any) => {
-        const idx = value.findIndex(r => (r._localId ?? r.id) === (sortedRoll._localId ?? sortedRoll.id));
-        if (idx < 0) return null;
-        const roll = value[idx];
+      {sorted.map((node, nodeIdx) => {
+        if (node.kind === "roll") {
+          return renderRoll(node.roll);
+        }
+        if (node.kind === "folder") {
+          return (
+            <div
+              key={`folder-${node.folder}-${nodeIdx}`}
+              data-testid={`folder-${node.folder}`}
+              style={{ borderLeft: "2px solid var(--ld-border)", paddingLeft: 10 }}
+            >
+              <div className="ld-label" style={{ marginBottom: 6 }}>📁 {node.folder}</div>
+              <Stack>{node.rolls.map(renderRoll)}</Stack>
+            </div>
+          );
+        }
+        // template-group: contiguous block of inherited rolls anchored at templatePriority
         return (
-          <RollRow
-            key={roll._localId ?? roll.id ?? idx}
-            roll={roll}
-            damageTypes={damageTypes}
-            aav2={aav2}
-            adminItems={adminItems}
-            ensureAdminItems={ensureAdminItems}
-            knownFolders={folders}
-            onChange={(patch) => updateAt(idx, patch)}
-            onRemove={() => removeAt(idx)}
-          />
+          <div
+            key={`tg-${node.templateOwnerKey}-${nodeIdx}`}
+            data-testid={`template-group-${node.templateOwnerKey}`}
+            style={{
+              borderLeft: "2px solid var(--ld-accent)",
+              paddingLeft: 10,
+              background: "rgba(168,85,247,0.04)",
+            }}
+          >
+            <div className="ld-label" style={{ marginBottom: 6, color: "var(--ld-accent)" }}>
+              ⛬ {node.templateName ?? "Template group"}
+            </div>
+            <Stack>
+              {node.children.map((child, ci) => {
+                if (child.kind === "roll") return renderRoll(child.roll);
+                return (
+                  <div
+                    key={`tg-folder-${child.folder}-${ci}`}
+                    data-testid={`folder-${child.folder}`}
+                    style={{ borderLeft: "1px dashed var(--ld-border)", paddingLeft: 8 }}
+                  >
+                    <div className="ld-label" style={{ marginBottom: 4 }}>📁 {child.folder}</div>
+                    <Stack>{child.rolls.map(renderRoll)}</Stack>
+                  </div>
+                );
+              })}
+            </Stack>
+          </div>
         );
       })}
     </Stack>
@@ -290,7 +347,7 @@ const RollRow: React.FC<{
             </div>
             <div>
               <Label>Apply to Stat</Label>
-              <Select value={roll.applyToStat ?? "none"} onValueChange={v => onChange({ applyToStat: v as any })}>
+              <Select value={roll.applyToStat ?? "none"} onValueChange={v => onChange({ applyToStat: v as RollEntryDraft["applyToStat"] })}>
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="hp">HP</SelectItem>
                 <SelectItem value="energy">Energy</SelectItem>
@@ -299,7 +356,7 @@ const RollRow: React.FC<{
             </div>
             <div>
               <Label>Direction</Label>
-              <Select value={roll.statDirection ?? "subtract"} onValueChange={v => onChange({ statDirection: v as any })}>
+              <Select value={roll.statDirection ?? "subtract"} onValueChange={v => onChange({ statDirection: v as RollEntryDraft["statDirection"] })}>
                 <SelectItem value="subtract">Subtract</SelectItem>
                 <SelectItem value="add">Add (heal)</SelectItem>
               </Select>
@@ -403,7 +460,7 @@ const RollRow: React.FC<{
                   </Select>
                 </div>
                 <div><Label>DC Type</Label>
-                  <Select value={roll.saveDcType ?? "value"} onValueChange={v => onChange({ saveDcType: v as any })}>
+                  <Select value={roll.saveDcType ?? "value"} onValueChange={v => onChange({ saveDcType: v as RollEntryDraft["saveDcType"] })}>
                     <SelectItem value="value">Static value</SelectItem>
                     <SelectItem value="caster">8 + Caster mod</SelectItem>
                   </Select>
@@ -432,13 +489,13 @@ const RollRow: React.FC<{
             {roll.hasDcCheck && (
               <Grid3 style={{ marginTop: 8 }}>
                 <div><Label>Roll Mode</Label>
-                  <Select value={roll.dcCheckRollMode ?? "main"} onValueChange={v => onChange({ dcCheckRollMode: v as any })}>
+                  <Select value={roll.dcCheckRollMode ?? "main"} onValueChange={v => onChange({ dcCheckRollMode: v as RollEntryDraft["dcCheckRollMode"] })}>
                     <SelectItem value="main">Compare main roll</SelectItem>
                     <SelectItem value="separate">Roll separate d20</SelectItem>
                   </Select>
                 </div>
                 <div><Label>DC Type</Label>
-                  <Select value={roll.dcToSucceedType ?? "value"} onValueChange={v => onChange({ dcToSucceedType: v as any })}>
+                  <Select value={roll.dcToSucceedType ?? "value"} onValueChange={v => onChange({ dcToSucceedType: v as RollEntryDraft["dcToSucceedType"] })}>
                     <SelectItem value="value">Static value</SelectItem>
                     <SelectItem value="caster">8 + Caster mod</SelectItem>
                     <SelectItem value="target">Target's DC</SelectItem>

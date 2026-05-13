@@ -44,12 +44,12 @@ const FRESH: RollTemplateDraft = {
 };
 
 export const RollTemplateDialog: React.FC<DialogProps<RollTemplateDraft>> = ({
-  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem,
+  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem, mode,
 }) => {
   const [draft, setDraft] = React.useState<RollTemplateDraft>(FRESH);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const editing = !!initialValue?.id;
+  const editing = mode ? mode === "edit" : !!initialValue?.id;
 
   React.useEffect(() => {
     if (!open) return;

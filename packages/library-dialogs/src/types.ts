@@ -57,10 +57,16 @@ export interface HostAdapter {
 }
 
 /** Stable prop signature shared by every dialog the package exports. */
-export interface DialogProps<T = any> {
+export interface DialogProps<T = unknown> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Edit if `initialValue?.id` is set, otherwise create. */
+  /**
+   * Explicit create/edit selector. If omitted, the dialog infers the mode
+   * from `initialValue?.id` (id present = edit, absent = create) for
+   * back-compat. Pass it explicitly when you want unambiguous behavior.
+   */
+  mode?: "create" | "edit";
+  /** When `mode === "edit"`, must contain at least an `id` or `externalId`. */
   initialValue?: T & { id?: string; externalId?: string };
   /** Called after the entity is persisted via `host.transport`. */
   onSaved?: (saved: T & { id: string; externalId?: string | null }) => void;
