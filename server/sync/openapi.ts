@@ -51,27 +51,39 @@ function buildSpec() {
   // Register every kind's payload schema (full + partial-for-PATCH) so $refs resolve.
   // Some insert schemas wrap a ZodObject in .refine() (ZodEffects), which lacks
   // .partial(); unwrap to the inner ZodObject when needed.
+  // We also extend each insert schema with the sync meta fields
+  // (`externalId` + `externalUpdatedAt`) so the published contract matches
+  // the upsert / stale-skip behavior in server/sync/api.ts.
   const unwrapToObject = (s: any): z.ZodObject<any> => {
     let cur = s;
     while (cur && typeof cur.partial !== "function" && cur._def?.schema) cur = cur._def.schema;
     return cur as z.ZodObject<any>;
+  };
+  const syncMeta = {
+    externalId: z.string().optional().openapi({
+      description: "Partner-side stable id. When present on POST, the request becomes an upsert keyed on (clientId, kind, externalId) via external_entity_links.",
+    }),
+    externalUpdatedAt: z.string().datetime().optional().openapi({
+      description: "ISO timestamp of the source-of-truth row. If older than the server's current updatedAt the write is skipped (stale-skip). May also be sent via the X-External-Updated-At header.",
+    }),
   };
   const refByKind: Record<string, any> = {};
   const partialRefByKind: Record<string, any> = {};
   for (const kind of KINDS) {
     const compName = toComponentName(kind);
     const base = KIND_ZOD[kind] as any;
+    const inner = unwrapToObject(base);
+    const fullWithMeta = inner.extend(syncMeta);
     refByKind[kind] = registry.register(
       compName,
-      base.openapi(compName, {
-        description: `Sync payload for ${kind}. Derived from insert${compName.replace(/^Sync/, "")}Schema in shared/schema.ts.`,
+      fullWithMeta.openapi(compName, {
+        description: `Sync upsert payload for ${kind}. Derived from insert${compName.replace(/^Sync/, "")}Schema + sync meta fields (externalId, externalUpdatedAt).`,
       }),
     );
-    const inner = unwrapToObject(base);
     partialRefByKind[kind] = registry.register(
       `${compName}Patch`,
-      inner.partial().openapi(`${compName}Patch`, {
-        description: `Partial PATCH payload for ${kind} (all fields optional).`,
+      inner.partial().extend({ externalUpdatedAt: syncMeta.externalUpdatedAt }).openapi(`${compName}Patch`, {
+        description: `Partial PATCH payload for ${kind} (all fields optional). Send externalUpdatedAt for stale-skip semantics.`,
       }),
     );
   }

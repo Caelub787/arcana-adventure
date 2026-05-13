@@ -165,12 +165,12 @@ const adapters: Record<Kind, {
   "item": {
     list: (uid, admin) => storage.getSystemItems("aa-v2", admin ? undefined : [uid]),
     get: async (id) => {
-      const r = await storage.getSystemItem(id);
+      const r = await storage.getItem(id);
       return matchesKind["item"](r) ? r : undefined;
     },
-    create: (d) => storage.createSystemItem(d),
-    update: (id, d) => storage.updateSystemItem(id, d),
-    delete: (id) => storage.deleteSystemItem(id),
+    create: (d) => storage.createItem(d),
+    update: (id, d) => storage.updateItem(id, d),
+    delete: (id) => storage.deleteItem(id),
     getOwner: (r) => r?.createdByUserId,
   },
   "spell": {
@@ -239,14 +239,14 @@ const adapters: Record<Kind, {
     getOwner: (r) => r?.ownerUserId,
   },
   "roll-template": {
-    list: (uid, admin) => storage.getItemTemplates("aa-v2", admin ? undefined : [uid]),
+    list: (uid, admin) => storage.getSystemItemTemplates("aa-v2", admin ? undefined : [uid]),
     get: async (id) => {
-      const r = await storage.getSystemItem(id);
+      const r = await storage.getItem(id);
       return matchesKind["roll-template"](r) ? r : undefined;
     },
-    create: (d) => storage.createSystemItem({ ...d, isLiveTemplate: true, isTemplate: true }),
-    update: (id, d) => storage.updateSystemItem(id, d),
-    delete: (id) => storage.deleteSystemItem(id),
+    create: (d) => storage.createItem({ ...d, isLiveTemplate: true, isTemplate: true }),
+    update: (id, d) => storage.updateItem(id, d),
+    delete: (id) => storage.deleteItem(id),
     getOwner: (r) => r?.createdByUserId,
   },
 };
