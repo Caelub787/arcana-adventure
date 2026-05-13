@@ -21,14 +21,19 @@ import {
   characterClasses, characterClassSkills,
   classSkillNodes, classSkillConnections,
   feats, featConnections,
+  itemTemplateLinks, spellTemplateLinks,
   type InsertRollEntry, type InsertItem, type InsertSpell,
+  type InsertCraftRecipeIngredient, type InsertCraftRecipeOutcome,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { Kind } from "./api";
 
+// `craftRecipes` and `templateLinks` were added in 11/2025 to support
+// the @arcana/library-dialogs ItemDialog (foundation slice).
+// `templateLinks` is also accepted on `spell` and `roll-template` for parity.
 const CHILD_KEYS: Partial<Record<Kind, string[]>> = {
-  "item": ["rolls"],
-  "spell": ["rolls"],
+  "item": ["rolls", "craftRecipes", "templateLinks"],
+  "spell": ["rolls", "templateLinks"],
   "roll-template": ["rolls"],
   "character": ["items", "spells", "hotbars", "customSkills", "traits", "feats", "classes", "classSkills"],
   "character-template": ["items", "spells", "hotbars", "customSkills", "traits", "feats", "classes", "classSkills"],
@@ -65,16 +70,23 @@ async function replaceRolls(ownerType: string, ownerId: string, rolls: any[] | u
 
 // ---- Serialize (read path) ----
 
-async function serializeItemWithRolls(item: any) {
+async function serializeItemWithRolls(item: any, includeItemChildren = false) {
   if (!item) return item;
   const rolls = await getRolls("item", item.id);
-  return { ...item, rolls };
+  if (!includeItemChildren) return { ...item, rolls };
+  const [craftRecipes, templateLinks] = await Promise.all([
+    storage.getCraftRecipesByItem(item.id).catch(() => []),
+    storage.getItemTemplateLinks(item.id).catch(() => []),
+  ]);
+  return { ...item, rolls, craftRecipes, templateLinks };
 }
 
-async function serializeSpellWithRolls(spell: any) {
+async function serializeSpellWithRolls(spell: any, includeSpellChildren = false) {
   if (!spell) return spell;
   const rolls = await getRolls("spell", spell.id);
-  return { ...spell, rolls };
+  if (!includeSpellChildren) return { ...spell, rolls };
+  const templateLinks = await storage.getSpellTemplateLinks(spell.id).catch(() => []);
+  return { ...spell, rolls, templateLinks };
 }
 
 async function serializeCharacter(row: any) {
@@ -88,8 +100,8 @@ async function serializeCharacter(row: any) {
     storage.getCharacterFeats(row.id),
     storage.getCharacterClasses(row.id),
   ]);
-  const itemsWithRolls = await Promise.all(chItems.map(serializeItemWithRolls));
-  const spellsWithRolls = await Promise.all(chSpells.map(serializeSpellWithRolls));
+  const itemsWithRolls = await Promise.all(chItems.map((it) => serializeItemWithRolls(it)));
+  const spellsWithRolls = await Promise.all(chSpells.map((sp) => serializeSpellWithRolls(sp)));
   // Per-class skills (flatten across all classes the character has).
   const classSkills: any[] = [];
   for (const cc of chClasses) {
@@ -129,8 +141,9 @@ async function serializeFeatTree(row: any) {
 
 export async function serializeWithChildren(kind: Kind, row: any): Promise<any> {
   if (!row) return row;
-  if (kind === "item" || kind === "roll-template") return await serializeItemWithRolls(row);
-  if (kind === "spell") return await serializeSpellWithRolls(row);
+  if (kind === "item") return await serializeItemWithRolls(row, true);
+  if (kind === "roll-template") return await serializeItemWithRolls(row, false);
+  if (kind === "spell") return await serializeSpellWithRolls(row, true);
   if (kind === "character" || kind === "character-template") return await serializeCharacter(row);
   if (kind === "class") return await serializeClass(row);
   if (kind === "feat-tree") return await serializeFeatTree(row);
@@ -163,12 +176,19 @@ export async function applyChildren(
   parentId: string,
   children: Record<string, any[] | undefined>,
 ): Promise<void> {
-  if (kind === "item" || kind === "roll-template") {
+  if (kind === "item") {
+    await replaceRolls("item", parentId, children.rolls);
+    await replaceCraftRecipes(parentId, children.craftRecipes);
+    await replaceItemTemplateLinks(parentId, children.templateLinks);
+    return;
+  }
+  if (kind === "roll-template") {
     await replaceRolls("item", parentId, children.rolls);
     return;
   }
   if (kind === "spell") {
     await replaceRolls("spell", parentId, children.rolls);
+    await replaceSpellTemplateLinks(parentId, children.templateLinks);
     return;
   }
   if (kind === "character" || kind === "character-template") {
@@ -182,6 +202,60 @@ export async function applyChildren(
   if (kind === "feat-tree") {
     await replaceFeatTreeChildren(parentId, children);
     return;
+  }
+}
+
+// Replace the full set of craft recipes (and their nested ingredients/outcomes)
+// for a crafter item. Caller may omit (undefined) to leave existing recipes
+// untouched; an empty array clears them.
+async function replaceCraftRecipes(parentItemId: string, recipes: any[] | undefined) {
+  if (!Array.isArray(recipes)) return;
+  const existing = await storage.getCraftRecipesByItem(parentItemId).catch(() => []);
+  for (const r of existing) {
+    await storage.deleteCraftRecipe(r.id);
+  }
+  if (recipes.length === 0) return;
+  for (const r of recipes) {
+    const cleaned = stripCommon(r, ["parentItemId", "parentTemplateId", "ingredients", "outcomes"]);
+    const ingredients: Omit<InsertCraftRecipeIngredient, "recipeId">[] =
+      Array.isArray(r.ingredients)
+        ? r.ingredients.map((ing: any) => stripCommon(ing, ["recipeId"]))
+        : [];
+    const outcomes: Omit<InsertCraftRecipeOutcome, "recipeId">[] =
+      Array.isArray(r.outcomes)
+        ? r.outcomes.map((o: any) => stripCommon(o, ["recipeId"]))
+        : [];
+    await storage.createCraftRecipe(
+      { ...cleaned, parentItemId, parentTemplateId: null } as any,
+      ingredients,
+      outcomes,
+    );
+  }
+}
+
+// Replace item↔roll-template link set. Caller may omit (undefined) to leave
+// existing links untouched; an empty array clears them.
+async function replaceItemTemplateLinks(itemId: string, links: any[] | undefined) {
+  if (!Array.isArray(links)) return;
+  await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.itemId, itemId));
+  if (links.length === 0) return;
+  // Accept either bare strings (template ids) or { templateId } objects.
+  const ids = links.map(l => (typeof l === "string" ? l : l?.templateId)).filter((id): id is string => !!id);
+  if (ids.length === 0) return;
+  // Use the storage helper so propagation/copy semantics are honored if implemented.
+  for (const templateId of ids) {
+    await storage.addItemTemplateLink(itemId, templateId);
+  }
+}
+
+async function replaceSpellTemplateLinks(spellId: string, links: any[] | undefined) {
+  if (!Array.isArray(links)) return;
+  await db.delete(spellTemplateLinks).where(eq(spellTemplateLinks.spellId, spellId));
+  if (links.length === 0) return;
+  const ids = links.map(l => (typeof l === "string" ? l : l?.templateId)).filter((id): id is string => !!id);
+  if (ids.length === 0) return;
+  for (const templateId of ids) {
+    await storage.addSpellTemplateLink(spellId, templateId);
   }
 }
 

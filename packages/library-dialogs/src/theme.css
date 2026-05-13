@@ -1,0 +1,170 @@
+/*
+ * @arcana/library-dialogs — default theme
+ *
+ * Re-skin by overriding any of these CSS custom properties on a parent
+ * element (or :root). All package components style themselves entirely
+ * from this contract — no Tailwind required at consume time.
+ */
+:where([data-ld-root]) {
+  /* Surface palette */
+  --ld-bg:            #1c1917;            /* page-level backdrop */
+  --ld-surface:       #292524;            /* card/panel surface */
+  --ld-surface-2:     #1c1917;            /* nested input surface */
+  --ld-surface-3:     #44403c;            /* hover surface */
+  --ld-border:        #44403c;
+  --ld-border-strong: #57534e;
+
+  /* Text palette */
+  --ld-text:          #e7e5e4;
+  --ld-text-muted:    #a8a29e;
+  --ld-text-subtle:   #78716c;
+
+  /* Brand / state */
+  --ld-accent:        #f59e0b;            /* amber-500 — Arcana default */
+  --ld-accent-hover:  #d97706;
+  --ld-accent-text:   #fafaf9;
+  --ld-danger:        #ef4444;
+  --ld-success:       #10b981;
+  --ld-warning:       #f59e0b;
+  --ld-info:          #3b82f6;
+  --ld-violet:        #8b5cf6;
+
+  /* Focus ring */
+  --ld-focus:         var(--ld-accent);
+  --ld-focus-ring:    0 0 0 2px var(--ld-bg), 0 0 0 4px var(--ld-focus);
+
+  /* Sizing tokens */
+  --ld-radius:        6px;
+  --ld-radius-sm:     4px;
+  --ld-radius-lg:     10px;
+  --ld-gap:           12px;
+  --ld-pad:           12px;
+  --ld-font:          ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ld-font-mono:     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  color: var(--ld-text);
+  font-family: var(--ld-font);
+}
+
+/* ---------- buttons ---------- */
+.ld-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500;
+  border-radius: var(--ld-radius); border: 1px solid var(--ld-border);
+  background: var(--ld-surface); color: var(--ld-text); cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  user-select: none; line-height: 1;
+}
+.ld-btn:hover:not(:disabled) { background: var(--ld-surface-3); }
+.ld-btn:focus-visible        { outline: none; box-shadow: var(--ld-focus-ring); }
+.ld-btn:disabled             { opacity: .5; cursor: not-allowed; }
+.ld-btn[data-variant="primary"] {
+  background: var(--ld-accent); color: var(--ld-accent-text);
+  border-color: transparent;
+}
+.ld-btn[data-variant="primary"]:hover:not(:disabled) { background: var(--ld-accent-hover); }
+.ld-btn[data-variant="ghost"]   { background: transparent; border-color: transparent; }
+.ld-btn[data-variant="ghost"]:hover:not(:disabled) { background: var(--ld-surface-3); }
+.ld-btn[data-variant="danger"]  { background: var(--ld-danger); color: white; border-color: transparent; }
+.ld-btn[data-variant="outline"] { background: transparent; }
+.ld-btn[data-size="sm"]         { padding: 4px 10px; font-size: 12px; }
+.ld-btn[data-size="icon"]       { padding: 6px; width: 30px; height: 30px; }
+
+/* ---------- inputs ---------- */
+.ld-input, .ld-textarea, .ld-select-trigger {
+  display: block; width: 100%; padding: 7px 10px; font-size: 13px;
+  background: var(--ld-surface-2); color: var(--ld-text);
+  border: 1px solid var(--ld-border); border-radius: var(--ld-radius);
+  font-family: inherit; line-height: 1.4;
+}
+.ld-input:focus-visible, .ld-textarea:focus-visible, .ld-select-trigger:focus-visible {
+  outline: none; border-color: var(--ld-accent); box-shadow: var(--ld-focus-ring);
+}
+.ld-textarea { min-height: 80px; resize: vertical; }
+.ld-input::placeholder, .ld-textarea::placeholder { color: var(--ld-text-subtle); }
+
+.ld-label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--ld-text-muted); margin-bottom: 4px;
+}
+.ld-label[data-required="true"]::after { content: " *"; color: var(--ld-danger); }
+
+.ld-checkbox {
+  width: 14px; height: 14px; accent-color: var(--ld-accent);
+  vertical-align: middle;
+}
+
+/* native <select> styled to match */
+.ld-select-trigger { appearance: none; padding-right: 28px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ld-text-muted) 50%),
+                    linear-gradient(135deg, var(--ld-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+
+/* ---------- dialog overlay ---------- */
+.ld-dialog-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.65);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 5vh 16px; z-index: 1000; overflow-y: auto;
+}
+.ld-dialog {
+  background: var(--ld-surface); color: var(--ld-text);
+  border: 1px solid var(--ld-border); border-radius: var(--ld-radius-lg);
+  width: 100%; max-width: 720px; display: flex; flex-direction: column;
+  max-height: 90vh; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.ld-dialog-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--ld-border);
+  flex-shrink: 0;
+}
+.ld-dialog-title {
+  font-size: 16px; font-weight: 600; color: var(--ld-accent); margin: 0;
+}
+.ld-dialog-desc {
+  font-size: 12px; color: var(--ld-text-muted); margin-top: 4px;
+}
+.ld-dialog-body {
+  padding: 16px 20px; overflow-y: auto; flex: 1; min-height: 0;
+}
+.ld-dialog-footer {
+  padding: 12px 20px; border-top: 1px solid var(--ld-border);
+  display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0;
+}
+
+/* ---------- layout helpers used inside dialogs ---------- */
+.ld-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ld-gap); }
+.ld-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--ld-gap); }
+.ld-row    { display: flex; gap: 8px; align-items: center; }
+.ld-stack  { display: flex; flex-direction: column; gap: var(--ld-gap); }
+.ld-stack-sm { display: flex; flex-direction: column; gap: 6px; }
+.ld-section {
+  padding-top: var(--ld-pad); margin-top: var(--ld-pad);
+  border-top: 1px solid var(--ld-border);
+}
+.ld-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ld-accent); margin-bottom: 8px;
+}
+.ld-muted    { color: var(--ld-text-muted); }
+.ld-subtle   { color: var(--ld-text-subtle); font-size: 11px; }
+
+/* ---------- panels ---------- */
+.ld-panel {
+  background: var(--ld-surface-2); border: 1px solid var(--ld-border);
+  border-radius: var(--ld-radius); padding: 10px;
+}
+.ld-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+/* ---------- badges ---------- */
+.ld-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  background: var(--ld-surface-3); color: var(--ld-text);
+}
+.ld-badge[data-tone="accent"] { background: var(--ld-accent); color: var(--ld-accent-text); }
+.ld-badge[data-tone="violet"] { background: var(--ld-violet); color: white; }
+.ld-badge[data-tone="muted"]  { background: transparent; color: var(--ld-text-muted); border: 1px solid var(--ld-border); }

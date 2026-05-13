@@ -324,3 +324,62 @@ verification helpers, and PKCE helpers (`generatePkce`,
   start. To rotate the secret, set `CANVASREALMS_CLIENT_SECRET`,
   delete the row from `oauth_clients`, and restart — it will be
   reseeded with the new secret.
+
+---
+
+## 7. Drop-in dialogs (`@arcana/library-dialogs`)
+
+Partner apps that want **the same create/edit dialogs Arcana ships with** —
+items, spells, characters, classes, feats, etc. — can pull in the React
+package `@arcana/library-dialogs` instead of rebuilding them. The dialogs
+talk to the sync API (section 3) under the hood, so authentication and
+data shape are identical to the rest of this contract.
+
+### Add the package
+```bash
+npm add @arcana/library-dialogs @arcana/aa-sync-sdk
+```
+Then once at app entry:
+```ts
+import "@arcana/library-dialogs/theme.css";
+```
+
+### Mount
+```tsx
+import { ItemDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+
+const host = minimalHostAdapter({
+  baseUrl: "https://your-arcana.example",
+  accessToken: oauthBearerFromStep2,
+});
+
+<ItemDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
+```
+
+### Theming
+All visual tokens are CSS custom properties under `[data-ld-root]`.
+Re-skin globally by overriding `--ld-bg`, `--ld-surface`, `--ld-accent`,
+etc. on any ancestor — no theme prop drilling, no fork.
+
+### Persistence
+Each dialog bundles its nested children (rolls, craft recipes, template
+links, embedded items/spells/hotbars/...) into a single
+`POST /api/sync/v1/{kind}s` call. The server's children-aware
+`applyChildren` writes the parent + children atomically — no new routes
+needed beyond what's already documented in section 3.
+
+### Coverage in v0.1.0
+- `<ItemDialog>` (every item-type branch including AAv2 `crafter`)
+- `<RollTemplateDialog>` (live admin templates with auto-fanout)
+- Reusable nested editors: `<RollEntriesEditor>`, `<CraftRecipesEditor>`,
+  `<ItemTemplateLinksPanel>`
+
+Subsequent releases (0.2.0 → 0.5.0) add `<SpellDialog>`,
+`<CharacterDialog>`, `<CharacterTemplateDialog>`, `<SpeciesDialog>`,
+`<FeatTreeDialog>` (with `<FeatTreeCanvas>`), and `<ClassDialog>` (with
+`<SkillTreeEditor>`). Every dialog uses the same HostAdapter and theme
+contract, so partners that integrate today get every future dialog for
+free on upgrade.
+
+A runnable smoke test with a CanvasRealms-styled re-skin lives at
+`examples/canvasrealms-mount/`.
