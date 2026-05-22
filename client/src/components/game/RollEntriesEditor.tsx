@@ -81,6 +81,14 @@ interface RollEntriesEditorProps {
   campaignSystem?: string;
   ownerEnergyCost?: number;
   ownerManaCost?: number;
+  // The following three enable per-roll "missing requirements" display
+  // in the item/spell detail dialog. When provided alongside !canEdit,
+  // rolls whose requirements aren't met are shown locked with an
+  // itemized list of what's missing (energy/mana/item costs), in
+  // addition to the existing custom-skill lock check.
+  characterEnergy?: number;
+  characterMana?: number;
+  characterItems?: any[];
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -1249,7 +1257,7 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost, characterEnergy, characterMana, characterItems }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
@@ -1516,7 +1524,40 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
               return matchingSkill && matchingSkill.value >= requiredValue;
             })()
           : false;
-        const isLockedRoll = roll.isHidden && !canEdit && !characterMeetsRequirement;
+        const skillLocked = roll.isHidden && !characterMeetsRequirement;
+
+        // Resource / item-cost gating only matters from the player's
+        // perspective (canEdit GMs see and run everything from the editor).
+        const lockReasons: string[] = [];
+        if (!canEdit) {
+          if (skillLocked) {
+            lockReasons.push(
+              `Requires ${hiddenSkillName || 'skill'} level ${roll.requiredSkillValue || 1}+ to unlock`
+            );
+          }
+          if (roll.requiresEnergy && (roll.energyCost ?? 0) > 0 && characterEnergy !== undefined) {
+            if (characterEnergy < (roll.energyCost ?? 0)) {
+              lockReasons.push(`Needs ${roll.energyCost} energy — have ${characterEnergy}`);
+            }
+          }
+          if (campaignSystem === 'aa-v2' && roll.requiresMana && (roll.manaCost ?? 0) > 0 && characterMana !== undefined) {
+            if (characterMana < (roll.manaCost ?? 0)) {
+              lockReasons.push(`Needs ${roll.manaCost} mana — have ${characterMana}`);
+            }
+          }
+          if (roll.hasItemCost && Array.isArray(roll.itemCosts) && characterItems !== undefined) {
+            const missing = (roll.itemCosts as any[]).filter((req: any) => {
+              const inv = characterItems || [];
+              return !inv.find((it: any) =>
+                it && (it.templateItemId === req.itemId || it.name === req.name) && (it.quantity ?? 1) > 0
+              );
+            });
+            if (missing.length > 0) {
+              lockReasons.push(`Missing item${missing.length === 1 ? '' : 's'}: ${missing.map((m: any) => m.name).join(', ')}`);
+            }
+          }
+        }
+        const isLockedRoll = lockReasons.length > 0;
         const isHiddenRoll = isLockedRoll;
 
         return (
@@ -1665,10 +1706,12 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                   </div>
                 </div>
 
-                {isHiddenRoll && (
-                  <p className="text-[10px] text-red-400 mt-1 pl-5" data-testid={`text-roll-locked-${roll.id}`}>
-                    Requires {hiddenSkillName || 'skill'} level {roll.requiredSkillValue || 1}+ to unlock
-                  </p>
+                {isHiddenRoll && lockReasons.length > 0 && (
+                  <div className="mt-1 pl-5 space-y-0.5" data-testid={`text-roll-locked-${roll.id}`}>
+                    {lockReasons.map((reason, idx) => (
+                      <p key={idx} className="text-[10px] text-red-400">{reason}</p>
+                    ))}
+                  </div>
                 )}
 
                 {isExpanded && (

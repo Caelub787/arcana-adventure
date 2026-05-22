@@ -7684,6 +7684,27 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     setHasDisadvantage(false);
   };
 
+  // A roll is "usable" right now only when every gating requirement is
+  // satisfied: hidden custom-skill unlock, energy/mana cost, and item
+  // costs. The hotbar popup hides anything that isn't usable; the full
+  // list and missing-requirement reasons live in the item/spell detail
+  // dialog opened from the character sheet.
+  const isRollUsable = (roll: any): boolean => {
+    if (roll.isHidden) {
+      if (!roll.requiredSkillId) return false;
+      const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
+      if (!matchingSkill || matchingSkill.value < (roll.requiredSkillValue || 1)) return false;
+    }
+    if (roll.requiresEnergy && (roll.energyCost ?? 0) > 0) {
+      if ((character?.energy ?? 0) < roll.energyCost) return false;
+    }
+    if (campaignSystem === 'aa-v2' && roll.requiresMana && (roll.manaCost ?? 0) > 0) {
+      if ((character?.mana ?? 0) < roll.manaCost) return false;
+    }
+    if (roll.hasItemCost && !checkRollItemCosts(roll, allItems).ok) return false;
+    return true;
+  };
+
   const handleClick = () => {
     // AA V2: a trait click is a direct use, no popup, no roll.
     if (isTraitClickable && campaignSystem === 'aa-v2') {
@@ -7692,12 +7713,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
     if (targetedTokenId) {
       const allRolls = spellData ? spellRollEntries : itemRollEntries;
-      const usableRolls = allRolls.filter((roll: any) => {
-        if (!roll.isHidden) return true;
-        if (!roll.requiredSkillId) return false;
-        const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
-        return matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1);
-      });
+      const usableRolls = allRolls.filter((roll: any) => isRollUsable(roll));
       if (usableRolls.length === 1) {
         handleRollEntryExecution(usableRolls[0]);
         return;
@@ -7951,23 +7967,28 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           )}
 
           {!isTraitClickable && !isSkillClickable && (itemRollEntries.length > 0 || spellRollEntries.length > 0) && (() => {
+            // Hotbar popup only lists rolls the player can actually use right
+            // now. A roll is hidden here if any of these are unmet: hidden
+            // custom-skill requirement, insufficient energy, insufficient
+            // mana (AA V2), or missing item costs. The full roll list with
+            // missing-requirement breakdowns lives in the item/spell detail
+            // dialog opened from the character sheet.
             const allRolls = spellData ? spellRollEntries : itemRollEntries;
-            const displayRolls = allRolls.filter((roll: any) => {
-              if (!roll.isHidden) return true;
-              if (!roll.requiredSkillId) return false;
-              return true;
-            });
+            const displayRolls = allRolls.filter((roll: any) => isRollUsable(roll));
+            if (displayRolls.length === 0 && allRolls.length > 0) {
+              return (
+                <div className="mb-3" data-testid="text-no-usable-rolls">
+                  <p className="text-xs text-stone-400 uppercase tracking-wider mb-1">Rolls</p>
+                  <p className="text-xs text-stone-500 italic">
+                    No usable rolls right now. Open this {spellData ? 'spell' : 'item'} from your character sheet to see what's missing.
+                  </p>
+                </div>
+              );
+            }
             return displayRolls.length > 0 ? (
             <div className="space-y-2 mb-3">
               <p className="text-xs text-stone-400 uppercase tracking-wider">Rolls</p>
               {displayRolls.map((roll: any) => {
-                const isLocked = roll.isHidden && roll.requiredSkillId && (() => {
-                  const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
-                  return !(matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1));
-                })();
-                const requiredSkillName = roll.isHidden && roll.requiredSkillId
-                  ? (systemSkillsForHotbar as any[]).find((s: any) => s.id === roll.requiredSkillId)?.name
-                  : null;
                 const stats: string[] = [];
                 if (roll.diceFormula) {
                   let diceStr = roll.diceFormula;
@@ -7987,31 +8008,22 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   stats.push(`${roll.range}ft`);
                 }
                 return (
-                  <div key={roll.id}>
-                    <button
-                      onClick={() => !isLocked && handleRollEntryExecution(roll)}
-                      disabled={isLocked}
-                      className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${
-                        isLocked
-                          ? 'border-stone-700/50 bg-stone-900/60 opacity-50 cursor-not-allowed'
-                          : roll.primaryColor 
-                            ? 'border-white/20 text-white hover:brightness-110' 
-                            : 'border-stone-600 bg-stone-800/50 hover:bg-stone-700/50'
-                      }`}
-                      style={!isLocked && roll.primaryColor ? { backgroundColor: roll.primaryColor } : undefined}
-                      data-testid={`button-roll-entry-${roll.id}`}
-                    >
-                      <span className={`text-sm font-medium ${isLocked ? 'text-stone-500' : 'text-white'}`}>{roll.name}</span>
-                      {stats.length > 0 && (
-                        <span className={`text-xs ${isLocked ? 'text-stone-600' : roll.primaryColor ? 'text-white/70' : 'text-stone-400'}`}>{stats.join(' · ')}</span>
-                      )}
-                    </button>
-                    {isLocked && (
-                      <p className="text-[10px] text-red-400 mt-0.5 pl-2">
-                        Requires {requiredSkillName || 'skill'} level {roll.requiredSkillValue || 1}+
-                      </p>
+                  <button
+                    key={roll.id}
+                    onClick={() => handleRollEntryExecution(roll)}
+                    className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${
+                      roll.primaryColor
+                        ? 'border-white/20 text-white hover:brightness-110'
+                        : 'border-stone-600 bg-stone-800/50 hover:bg-stone-700/50'
+                    }`}
+                    style={roll.primaryColor ? { backgroundColor: roll.primaryColor } : undefined}
+                    data-testid={`button-roll-entry-${roll.id}`}
+                  >
+                    <span className="text-sm font-medium text-white">{roll.name}</span>
+                    {stats.length > 0 && (
+                      <span className={`text-xs ${roll.primaryColor ? 'text-white/70' : 'text-stone-400'}`}>{stats.join(' · ')}</span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -16582,7 +16594,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [spellDurationLibraryFilter, setSpellDurationLibraryFilter] = useState('all');
 
   const executeSpellRoll = (rollEntry: any) => {
-    if (!rollEntry.diceFormula || !selectedSpell) return;
+    if (!selectedSpell) return;
+    if (!rollEntry.diceFormula && !rollEntry.noRoll) return;
 
     // Item Cost gating — block before any roll/notification fires.
     const spellCostCheck = checkRollItemCosts(rollEntry, items);
@@ -16608,6 +16621,28 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
         }
       });
+    }
+
+    // No-roll spell entries just fire a system notification (and the
+    // optional chat message). Mirrors the item path's noRoll branch.
+    if (rollEntry.noRoll) {
+      const flatValue = rollEntry.mod || 0;
+      triggerRollNotification({
+        type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+        dieType: 'd20',
+        label: `${selectedSpell.name} - ${rollEntry.name}`,
+        result: flatValue,
+        modifier: 0,
+        total: flatValue,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Effect applied (no roll)${flatValue ? ` | Value: ${flatValue}` : ''}`,
+        isHealing: rollEntry.rollType === 'heal',
+      });
+      if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
+      }
+      return;
     }
 
     const formulaParts: string[] = [rollEntry.diceFormula];
@@ -21214,10 +21249,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ownerType="spell" 
                         ownerId={selectedSpell.id} 
                         canEdit={isGM || isOwner}
+                        onExecuteRoll={executeSpellRoll}
                         characterCustomSkills={characterCustomSkills as any[]}
                         campaignSystem={campaignSystem}
                         ownerEnergyCost={selectedSpell.energyCost || 0}
                         ownerManaCost={selectedSpell.manaCost || 0}
+                        characterEnergy={character?.energy ?? 0}
+                        characterMana={character?.mana ?? 0}
+                        characterItems={items as any[]}
                       />
 
                       <div className="flex items-center gap-2 pt-4 border-t border-stone-700 mt-4">
@@ -26555,6 +26594,9 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               onExecuteRoll={executeRoll}
               characterCustomSkills={characterCustomSkills as any[]}
               campaignSystem={campaignSystem}
+              characterEnergy={character?.energy ?? 0}
+              characterMana={character?.mana ?? 0}
+              characterItems={items as any[]}
             />
 
             <div className="flex gap-2 pt-4">
