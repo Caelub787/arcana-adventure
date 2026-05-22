@@ -5548,7 +5548,34 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       });
       return;
     }
-    
+
+    // AA V2: traits track uses only — no dice roll, just decrement.
+    if (campaignSystem === 'aa-v2') {
+      try {
+        await api.useCharacterTrait(character.id, traitData.id);
+        queryClient.invalidateQueries({ queryKey: ['trait', hotbar?.traitId] });
+        queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+      } catch (err) {
+        console.error('Failed to use trait:', err);
+        return;
+      }
+      const usesAfter = traitData.currentUses + 1;
+      triggerRollNotification({
+        type: 'system',
+        label: traitData.name,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `Used (${usesAfter}/${traitData.usesPerLongRest})`,
+      });
+      if (character.campaignId) {
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
+          `${traitData.name} used (${usesAfter}/${traitData.usesPerLongRest} uses)`, 'system');
+      }
+      return;
+    }
+
     // Get attribute modifier for the trait
     const attrName = traitData.parentAttribute || 'will';
     const attrMod = getAttributeModifier(attrName);
@@ -7658,6 +7685,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   };
 
   const handleClick = () => {
+    // AA V2: a trait click is a direct use, no popup, no roll.
+    if (isTraitClickable && campaignSystem === 'aa-v2') {
+      handleTraitRoll();
+      return;
+    }
     if (targetedTokenId) {
       const allRolls = spellData ? spellRollEntries : itemRollEntries;
       const usableRolls = allRolls.filter((roll: any) => {
@@ -16398,6 +16430,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // State for custom skill management
   const [showAddCustomSkill, setShowAddCustomSkill] = useState(false);
   const [editingCustomSkill, setEditingCustomSkill] = useState<CharacterCustomSkill | null>(null);
+  const [viewingCustomSkill, setViewingCustomSkill] = useState<CharacterCustomSkill | null>(null);
   
   // State for editing custom skill values inline (during Edit Skills mode)
   const [customSkillsEditData, setCustomSkillsEditData] = useState<Record<string, number | string>>({});
@@ -19432,6 +19465,41 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         );
                       }
                       
+                      // AA V2: custom skills are just level trackers — click opens
+                      // a description panel; no rolls, no long-press, no double-click.
+                      if (isAAV2) {
+                        return (
+                          <Badge
+                            key={customSkill.id}
+                            variant="outline"
+                            className="justify-between p-3 bg-stone-900 border-cyan-700 cursor-pointer hover:bg-stone-800 transition-colors group relative"
+                            onClick={() => setViewingCustomSkill(customSkill)}
+                            data-testid={`badge-custom-skill-${customSkill.id}`}
+                          >
+                            <span className="text-xs text-cyan-300">{customSkill.name}</span>
+                            <div className="flex items-center gap-1">
+                              <span className="font-bold text-amber-400">
+                                {skillValue >= 0 ? `+${skillValue}` : skillValue}
+                              </span>
+                              {isGM && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingCustomSkill(customSkill);
+                                  }}
+                                  data-testid={`button-edit-custom-skill-${customSkill.id}`}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </Badge>
+                        );
+                      }
+
                       return (
                         <Badge 
                           key={customSkill.id}
@@ -19562,6 +19630,38 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     }}
                     isLoading={updateCustomSkillMutation.isPending}
                   />
+                </div>
+              </FloatingPanel>
+            )}
+
+            {/* View Custom Skill Description (AA V2 only) */}
+            {viewingCustomSkill && (
+              <FloatingPanel
+                open={!!viewingCustomSkill}
+                onClose={() => setViewingCustomSkill(null)}
+                title={
+                  <span className="text-cyan-500">
+                    {viewingCustomSkill.name}{' '}
+                    <span className="text-amber-400 font-bold">
+                      {(viewingCustomSkill.value ?? 0) >= 0 ? `+${viewingCustomSkill.value ?? 0}` : viewingCustomSkill.value}
+                    </span>
+                  </span>
+                }
+                panelKey={`skill-view${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`skill-view${charPanelSuffix}`] || 10200}
+                onBringToFront={() => bringToFront?.(`skill-view${charPanelSuffix}`)}
+                defaultSize={{ width: 420, height: 320 }}
+                minWidth={300}
+                minHeight={200}
+              >
+                <div className="p-4 space-y-3" data-testid="panel-view-custom-skill">
+                  {viewingCustomSkill.description ? (
+                    <p className="text-sm text-stone-200 leading-relaxed whitespace-pre-wrap">
+                      {viewingCustomSkill.description}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-stone-500 italic">No description provided.</p>
+                  )}
                 </div>
               </FloatingPanel>
             )}

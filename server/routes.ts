@@ -8042,6 +8042,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (field) {
                 charUpdates[field] = (charUpdates[field] ?? ((char as any)[field] || 0)) + Number(effect.value);
               }
+            } else if (effect.type === 'trait_grant' && effect.target) {
+              try {
+                const systemTrait = await storage.getSystemTrait(effect.target);
+                if (systemTrait) {
+                  await storage.addCharacterTrait({
+                    characterId: req.params.id,
+                    systemTraitId: systemTrait.id,
+                    name: systemTrait.name,
+                    description: systemTrait.description || undefined,
+                    parentAttribute: systemTrait.parentAttribute,
+                    usesPerLongRest: systemTrait.usesPerLongRest,
+                    usesPerShortRest: systemTrait.usesPerShortRest,
+                    currentUses: 0,
+                  });
+                  console.log(`[class_node_grant] Added trait "${systemTrait.name}" to character ${req.params.id}`);
+                }
+              } catch (err) { console.error('[trait_grant] class node error:', err); }
+            } else if (effect.type === 'spell_grant' && effect.target) {
+              try {
+                const systemSpell = await storage.getSystemSpell(effect.target);
+                if (systemSpell) {
+                  await storage.createSpell({
+                    characterId: req.params.id,
+                    name: systemSpell.name,
+                    description: systemSpell.description || undefined,
+                    image: systemSpell.icon || undefined,
+                    damageDice: systemSpell.damageDice || undefined,
+                    healingDice: systemSpell.healingDice || undefined,
+                    damageType: systemSpell.damageType || undefined,
+                    rangeNum: systemSpell.rangeNum || 30,
+                    aoe: systemSpell.aoe || undefined,
+                    castingTime: systemSpell.castingTime || undefined,
+                    duration: systemSpell.duration || undefined,
+                    level: systemSpell.level || 0,
+                    school: systemSpell.school || undefined,
+                    mod: systemSpell.mod || 0,
+                    attribute: systemSpell.attribute || undefined,
+                    energyCost: systemSpell.energyCost || 1,
+                    isAoe: systemSpell.isAoe || false,
+                    aoeRange: systemSpell.aoeRange || undefined,
+                    aoeShape: systemSpell.aoeShape || undefined,
+                    isAttack: systemSpell.isAttack ?? true,
+                    gainEnergy: systemSpell.gainEnergy || false,
+                    isEquipped: false,
+                  });
+                  console.log(`[class_node_grant] Added spell "${systemSpell.name}" to character ${req.params.id}`);
+                }
+              } catch (err) { console.error('[spell_grant] class node error:', err); }
+            } else if (effect.type === 'skill_grant' && effect.target) {
+              try {
+                const systemSkill = await storage.getSystemSkill(effect.target);
+                if (systemSkill) {
+                  await storage.addCharacterCustomSkill({
+                    characterId: req.params.id,
+                    systemSkillId: systemSkill.id,
+                    name: systemSkill.name,
+                    description: systemSkill.description || undefined,
+                    parentAttribute: systemSkill.parentAttribute,
+                    value: 0,
+                  });
+                  console.log(`[class_node_grant] Added skill "${systemSkill.name}" to character ${req.params.id}`);
+                }
+              } catch (err) { console.error('[skill_grant] class node error:', err); }
+            } else if (effect.type === 'item_grant' && effect.target) {
+              try {
+                const systemItem = await storage.getItem(effect.target);
+                if (systemItem && systemItem.isTemplate) {
+                  const { id: _id, createdAt: _c, characterId: _ch, campaignId: _cp, ...itemData } = systemItem as any;
+                  await storage.createItem({
+                    ...itemData,
+                    characterId: req.params.id,
+                    isTemplate: false,
+                    templateItemId: systemItem.id,
+                  });
+                  console.log(`[class_node_grant] Added item "${systemItem.name}" to character ${req.params.id}`);
+                }
+              } catch (err) { console.error('[item_grant] class node error:', err); }
             }
           }
         }
@@ -8131,6 +8208,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (field) {
               charUpdates[field] = (charUpdates[field] ?? ((character as any)[field] || 0)) - Number(effect.value);
             }
+          } else if (effect.type === 'trait_grant' && effect.target) {
+            try {
+              const charTraits = await storage.getCharacterTraits(req.params.id);
+              const matching = charTraits.find(t => t.systemTraitId === effect.target);
+              if (matching) await storage.removeCharacterTrait(matching.id);
+            } catch (err) { console.error('[trait_revoke] class node error:', err); }
+          } else if (effect.type === 'spell_grant' && effect.target) {
+            try {
+              const systemSpell = await storage.getSystemSpell(effect.target);
+              if (systemSpell) {
+                const charSpells = await storage.getSpellsByCharacter(req.params.id);
+                const matching = charSpells.find(s => s.name === systemSpell.name);
+                if (matching) await storage.deleteSpell(matching.id);
+              }
+            } catch (err) { console.error('[spell_revoke] class node error:', err); }
+          } else if (effect.type === 'skill_grant' && effect.target) {
+            try {
+              const charSkills = await storage.getCharacterCustomSkills(req.params.id);
+              const matching = charSkills.find(s => s.systemSkillId === effect.target);
+              if (matching) await storage.removeCharacterCustomSkill(matching.id);
+            } catch (err) { console.error('[skill_revoke] class node error:', err); }
+          } else if (effect.type === 'item_grant' && effect.target) {
+            try {
+              const charItems = await storage.getItemsByCharacter(req.params.id);
+              const matching = charItems.find(i => i.templateItemId === effect.target);
+              if (matching) await storage.deleteItem(matching.id);
+            } catch (err) { console.error('[item_revoke] class node error:', err); }
           }
         }
       }
@@ -8566,6 +8670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   characterId: req.params.id,
                   systemSkillId: systemSkill.id,
                   name: systemSkill.name,
+                  description: systemSkill.description || undefined,
                   parentAttribute: systemSkill.parentAttribute,
                   value: 0,
                 });
@@ -8573,6 +8678,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             } catch (skillErr) {
               console.error('[skill_grant] Error adding skill from feat:', skillErr);
+            }
+          }
+
+          // item_grant - add item to character inventory
+          if (effect.type === 'item_grant' && effect.target) {
+            try {
+              const systemItem = await storage.getItem(effect.target);
+              if (systemItem && systemItem.isTemplate) {
+                const { id: _id, createdAt: _c, characterId: _ch, campaignId: _cp, ...itemData } = systemItem as any;
+                await storage.createItem({
+                  ...itemData,
+                  characterId: req.params.id,
+                  isTemplate: false,
+                  templateItemId: systemItem.id,
+                });
+                console.log(`[feat_grant] Added item "${systemItem.name}" to character ${req.params.id}`);
+              }
+            } catch (itemErr) {
+              console.error('[item_grant] Error adding item from feat:', itemErr);
             }
           }
         }
@@ -8650,6 +8774,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             } catch (err) {
               console.error('[feat_revoke] Error removing skill:', err);
+            }
+          }
+
+          if (effect.type === 'item_grant' && effect.target) {
+            try {
+              const charItems = await storage.getItemsByCharacter(req.params.id);
+              const matchingItem = charItems.find(i => i.templateItemId === effect.target);
+              if (matchingItem) {
+                await storage.deleteItem(matchingItem.id);
+                console.log(`[feat_revoke] Removed item "${matchingItem.name}" from character ${req.params.id}`);
+              }
+            } catch (err) {
+              console.error('[feat_revoke] Error removing item:', err);
             }
           }
         }
