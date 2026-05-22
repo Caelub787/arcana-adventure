@@ -912,6 +912,13 @@ class ApiClient {
     });
   }
 
+  async setTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember> {
+    return this.request(`/campaigns/${campaignId}/members/${memberId}/trusted-player`, {
+      method: 'PATCH',
+      body: JSON.stringify({ trusted }),
+    });
+  }
+
   async updateBeaconColor(campaignId: string, beaconColor: string): Promise<CampaignMember> {
     return this.request(`/campaigns/${campaignId}/beacon-color`, {
       method: 'PATCH',

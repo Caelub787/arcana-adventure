@@ -2597,8 +2597,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenSpeciesData = character?.race ? speciesMap.get(character.race) : null;
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
+          const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
+          const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && campaignSystem === 'aa-v2' && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
+          const tempManaPercent = (character && campaignSystem === 'aa-v2' && (character.maxMana ?? 0) > 0) ? ((character.tempMana ?? 0) / (character.maxMana ?? 1)) * 100 : 0;
           const effectiveGridSize = gridSize;
           
           // Check if user can drag this token:
@@ -2971,29 +2974,47 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 return (
                   <>
                     {showHp && (
-                      <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                      <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`}>
                         <div 
                           className={`h-full transition-all duration-700 ease-in-out ${
                             hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
                           }`}
                           style={{ width: `${Math.max(0, Math.min(100, hpPercent!))}%` }}
                         />
+                        {tempHpPercent > 0 && (
+                          <div
+                            className="h-full bg-violet-400/90"
+                            style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, hpPercent!)), tempHpPercent))}%` }}
+                          />
+                        )}
                       </div>
                     )}
                     {showEnergy && (
-                      <div className={`absolute ${energyPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                      <div className={`absolute ${energyPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`}>
                         <div 
                           className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
                           style={{ width: `${Math.max(0, Math.min(100, energyPercent!))}%` }}
                         />
+                        {tempEnergyPercent > 0 && (
+                          <div
+                            className="h-full bg-violet-400/90"
+                            style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, energyPercent!)), tempEnergyPercent))}%` }}
+                          />
+                        )}
                       </div>
                     )}
                     {showMana && (
-                      <div className={`absolute ${manaPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                      <div className={`absolute ${manaPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`}>
                         <div 
                           className="h-full transition-all duration-700 ease-in-out bg-fuchsia-500"
                           style={{ width: `${Math.max(0, Math.min(100, manaPercent!))}%` }}
                         />
+                        {tempManaPercent > 0 && (
+                          <div
+                            className="h-full bg-fuchsia-200/90"
+                            style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, manaPercent!)), tempManaPercent))}%` }}
+                          />
+                        )}
                       </div>
                     )}
                   </>
@@ -10496,6 +10517,22 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
     setMemberRoleMutation.mutate({ memberId: member.id, newRole });
   };
 
+  // Trusted player toggle mutation (GM/Owner only)
+  const setTrustedPlayerMutation = useMutation({
+    mutationFn: ({ memberId, trusted }: { memberId: string; trusted: boolean }) =>
+      api.setTrustedPlayer(campaignId!, memberId, trusted),
+    onSuccess: (_, { trusted }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      toast({
+        title: trusted ? "Trusted Player Enabled" : "Trusted Player Disabled",
+        description: trusted ? "Player can now edit their own sheet like a GM" : "Player no longer has elevated edit rights",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update trusted player flag", variant: "destructive" });
+    },
+  });
+
   // Delete character mutation
   const deleteCharacterMutation = useMutation({
     mutationFn: (characterId: string) => api.deleteCharacter(characterId),
@@ -11001,6 +11038,19 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                               <div className="text-xs text-stone-500">
                                 {member.role === 'gm' ? 'GM' : member.role === 'assistant_gm' ? 'Assistant GM' : 'Player'}
                               </div>
+                            )}
+                            {role === 'gm' && member.userId !== gmUserId && member.role !== 'assistant_gm' && (
+                              <label className="flex items-center gap-1 mt-1 text-[10px] text-stone-400 cursor-pointer select-none" data-testid={`label-trusted-${member.id}`}>
+                                <input
+                                  type="checkbox"
+                                  className="h-3 w-3 accent-violet-500"
+                                  checked={!!member.trustedPlayer}
+                                  disabled={setTrustedPlayerMutation.isPending}
+                                  onChange={(e) => setTrustedPlayerMutation.mutate({ memberId: member.id, trusted: e.target.checked })}
+                                  data-testid={`checkbox-trusted-${member.id}`}
+                                />
+                                <span className="text-violet-300">Trusted Player</span>
+                              </label>
                             )}
                           </div>
                         </div>
@@ -15497,6 +15547,7 @@ interface CharacterSheetProps {
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
   campaignSystem?: string;
+  trustedPlayer?: boolean;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -16238,9 +16289,12 @@ function TraitEditForm({
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = campaignSystem === 'aa-v2';
+  // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
+  const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
+  const canEditAsGM = isGM || isTrustedSelf;
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
   const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
@@ -16310,6 +16364,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     nightVisionDistance: number;
     mana: number | string;
     maxMana: number | string;
+    tempHp: number | string;
+    tempEnergy: number | string;
+    tempMana: number | string;
   }>({
     name: character?.name || "",
     level: character?.level || 1,
@@ -16328,7 +16385,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     dayVisionDistance: character?.dayVisionDistance || 120,
     nightVisionDistance: character?.nightVisionDistance || 60,
     mana: character?.mana ?? 0,
-    maxMana: character?.maxMana ?? 0
+    maxMana: character?.maxMana ?? 0,
+    tempHp: character?.tempHp ?? 0,
+    tempEnergy: character?.tempEnergy ?? 0,
+    tempMana: character?.tempMana ?? 0
   });
   
   // New attributes: Might, Finesse, Wit, Presence, Will, Craft (range -2 to 5)
@@ -18251,10 +18311,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 value={overviewData.maxHp}
                                 onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                                disabled={!isGM}
+                                disabled={!canEditAsGM}
                                 data-testid="input-edit-max-hp"
                               />
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -18267,10 +18327,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
+                            <span className="text-xs text-violet-400">+T</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={overviewData.tempHp}
+                              onChange={(e) => setOverviewData({ ...overviewData, tempHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              data-testid="input-edit-temp-hp"
+                            />
                           </div>
                         ) : (
                           <span className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= 6 ? 'relative' : ''}`} data-testid="text-hp">
                             {liveCharacter.hp} / {effectiveMaxHp}
+                            {(liveCharacter.tempHp ?? 0) > 0 && (
+                              <span className="ml-1 text-violet-300" data-testid="text-temp-hp">(+{liveCharacter.tempHp} temp)</span>
+                            )}
                             {(liveCharacter.exhaustion || 0) >= 6 && (
                               <span className="absolute inset-0 flex items-center">
                                 <span className="w-full h-[2px] bg-red-500 block" />
@@ -18282,9 +18354,24 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <span className="text-[9px] text-red-400 font-bold ml-1" data-testid="text-hp-exhaustion">Exhaustion</span>
                         )}
                       </div>
-                      {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />}
+                      {!editingOverview && (
+                        <div className="relative">
+                          <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />
+                          {(liveCharacter.tempHp ?? 0) > 0 && effectiveMaxHp > 0 && (
+                            <div
+                              className="absolute top-0 h-2 bg-violet-400/80 rounded-r-full border-l border-stone-900/40"
+                              style={{
+                                left: `${Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))}%`,
+                                width: `${Math.min(100 - Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100)), Math.round((liveCharacter.tempHp / effectiveMaxHp) * 100))}%`,
+                              }}
+                              data-testid="overlay-temp-hp"
+                            />
+                          )}
+                        </div>
+                      )}
                       {!editingOverview && (
                         <div className="space-y-1">
+                          {!isAAV2 && (
                           <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
                             <span>
                               Base: {currentSpecies?.startingMaxHp || 10} | +{liveCharacter.bonusHpFromLevelUps || 0}
@@ -18294,6 +18381,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel})
                             </span>
                           </div>
+                          )}
                           {canLevelUpHp && canEdit && (
                             <Button
                               size="sm"
@@ -18336,10 +18424,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 value={overviewData.maxEnergy}
                                 onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                                disabled={!isGM}
+                                disabled={!canEditAsGM}
                                 data-testid="input-edit-max-energy"
                               />
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -18352,15 +18440,41 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
+                            <span className="text-xs text-violet-400">+T</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={overviewData.tempEnergy}
+                              onChange={(e) => setOverviewData({ ...overviewData, tempEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              data-testid="input-edit-temp-energy"
+                            />
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-energy">
                             {liveCharacter.energy} / {effectiveMaxEnergy}
+                            {(liveCharacter.tempEnergy ?? 0) > 0 && (
+                              <span className="ml-1 text-violet-300" data-testid="text-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
+                            )}
                           </span>
                         )}
                       </div>
-                      {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-energy" />}
                       {!editingOverview && (
+                        <div className="relative">
+                          <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-energy" />
+                          {(liveCharacter.tempEnergy ?? 0) > 0 && effectiveMaxEnergy > 0 && (
+                            <div
+                              className="absolute top-0 h-2 bg-violet-400/80 rounded-r-full border-l border-stone-900/40"
+                              style={{
+                                left: `${Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))}%`,
+                                width: `${Math.min(100 - Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100)), Math.round((liveCharacter.tempEnergy / effectiveMaxEnergy) * 100))}%`,
+                              }}
+                              data-testid="overlay-temp-energy"
+                            />
+                          )}
+                        </div>
+                      )}
+                      {!editingOverview && !isAAV2 && (
                         <div className="space-y-1">
                           <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-energy-breakdown">
                             <span>
@@ -18416,10 +18530,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 value={overviewData.maxMana ?? liveCharacter.maxMana ?? 0}
                                 onChange={(e) => setOverviewData({ ...overviewData, maxMana: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                                disabled={!isGM}
+                                disabled={!canEditAsGM}
                                 data-testid="input-max-mana"
                               />
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -18432,14 +18546,40 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
+                            <span className="text-xs text-violet-400">+T</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={overviewData.tempMana}
+                              onChange={(e) => setOverviewData({ ...overviewData, tempMana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              data-testid="input-edit-temp-mana"
+                            />
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-mana">
                             {liveCharacter.mana ?? 0} / {effectiveMaxMana}
+                            {(liveCharacter.tempMana ?? 0) > 0 && (
+                              <span className="ml-1 text-violet-300" data-testid="text-temp-mana">(+{liveCharacter.tempMana} temp)</span>
+                            )}
                           </span>
                         )}
                       </div>
-                      {!editingOverview && <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />}
+                      {!editingOverview && (
+                        <div className="relative">
+                          <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />
+                          {(liveCharacter.tempMana ?? 0) > 0 && effectiveMaxMana > 0 && (
+                            <div
+                              className="absolute top-0 h-2 bg-fuchsia-300/80 rounded-r-full border-l border-stone-900/40"
+                              style={{
+                                left: `${Math.min(100, Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100))}%`,
+                                width: `${Math.min(100 - Math.min(100, Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100)), Math.round(((liveCharacter.tempMana ?? 0) / effectiveMaxMana) * 100))}%`,
+                              }}
+                              data-testid="overlay-temp-mana"
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                 )}
                   </div>
@@ -18739,9 +18879,31 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           energy: overviewData.energy === '' ? 0 : Number(overviewData.energy),
                           maxEnergy: overviewData.maxEnergy === '' ? 0 : Number(overviewData.maxEnergy),
                           mana: overviewData.mana === '' ? 0 : Number(overviewData.mana),
-                          maxMana: overviewData.maxMana === '' ? 0 : Number(overviewData.maxMana)
+                          maxMana: overviewData.maxMana === '' ? 0 : Number(overviewData.maxMana),
+                          tempHp: overviewData.tempHp === '' ? 0 : Math.max(0, Number(overviewData.tempHp)),
+                          tempEnergy: overviewData.tempEnergy === '' ? 0 : Math.max(0, Number(overviewData.tempEnergy)),
+                          tempMana: overviewData.tempMana === '' ? 0 : Math.max(0, Number(overviewData.tempMana))
                         };
                         updateCharacterMutation.mutate(dataToSave);
+                        if (isAAV2 && trustedPlayer && !isGM && campaignId) {
+                          try {
+                            const changes: string[] = [];
+                            if (Number(dataToSave.hp) !== (character?.hp ?? 0)) changes.push(`HP ${character?.hp ?? 0}→${dataToSave.hp}`);
+                            if (Number(dataToSave.maxHp) !== (character?.maxHp ?? 0)) changes.push(`MaxHP ${character?.maxHp ?? 0}→${dataToSave.maxHp}`);
+                            if (Number(dataToSave.energy) !== (character?.energy ?? 0)) changes.push(`Energy ${character?.energy ?? 0}→${dataToSave.energy}`);
+                            if (Number(dataToSave.maxEnergy) !== (character?.maxEnergy ?? 0)) changes.push(`MaxEnergy ${character?.maxEnergy ?? 0}→${dataToSave.maxEnergy}`);
+                            if (Number(dataToSave.mana) !== (character?.mana ?? 0)) changes.push(`Mana ${character?.mana ?? 0}→${dataToSave.mana}`);
+                            if (Number(dataToSave.maxMana) !== (character?.maxMana ?? 0)) changes.push(`MaxMana ${character?.maxMana ?? 0}→${dataToSave.maxMana}`);
+                            if (Number(dataToSave.tempHp) !== (character?.tempHp ?? 0)) changes.push(`TempHP ${character?.tempHp ?? 0}→${dataToSave.tempHp}`);
+                            if (Number(dataToSave.tempEnergy) !== (character?.tempEnergy ?? 0)) changes.push(`TempEnergy ${character?.tempEnergy ?? 0}→${dataToSave.tempEnergy}`);
+                            if (Number(dataToSave.tempMana) !== (character?.tempMana ?? 0)) changes.push(`TempMana ${character?.tempMana ?? 0}→${dataToSave.tempMana}`);
+                            if (Number(dataToSave.level) !== (character?.level ?? 1)) changes.push(`Level ${character?.level ?? 1}→${dataToSave.level}`);
+                            if (dataToSave.name !== (character?.name ?? '')) changes.push(`Name → ${dataToSave.name}`);
+                            if (changes.length > 0) {
+                              // Audit is now emitted server-side in the character PATCH handler when trustedSelf is in effect.
+                            }
+                          } catch {}
+                        }
                         setEditingOverview(false);
                       }}
                       data-testid="button-save-overview"
@@ -20662,7 +20824,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div>
                             <div className="flex items-center gap-2">
                               <Label>Damage Dice</Label>
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -20680,7 +20842,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               onChange={(e) => setSpellFormData({ ...spellFormData, damageDice: e.target.value })}
                               placeholder="2d6"
                               className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                               data-testid="input-spell-damage-dice"
                             />
                           </div>
@@ -20688,7 +20850,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div>
                             <div className="flex items-center gap-2">
                               <Label>{getEffectTypeLabel(campaignSystem)}</Label>
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -20704,7 +20866,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <Select 
                               value={spellFormData.damageType || '_none'} 
                               onValueChange={(v) => setSpellFormData({ ...spellFormData, damageType: v === '_none' ? '' : v })}
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                             >
                               <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-damage-type">
                                 <SelectValue placeholder="Select type" />
@@ -20725,7 +20887,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               id="spellGainEnergy"
                               checked={spellFormData.gainEnergy}
                               onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, gainEnergy: checked === true })}
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                               data-testid="checkbox-spell-gain-energy"
                             />
                             <Label htmlFor="spellGainEnergy" className="text-sm text-cyan-300 cursor-pointer">
@@ -20738,7 +20900,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div>
                             <div className="flex items-center gap-2">
                               <Label>Energy Cost</Label>
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -20757,7 +20919,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               value={spellFormData.energyCost}
                               onChange={(e) => handleSpellNumericChange('energyCost', e.target.value)}
                               className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                               data-testid="input-spell-energy-cost"
                             />
                           </div>
@@ -20765,7 +20927,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div>
                             <div className="flex items-center gap-2">
                               <Label className="text-violet-300">Mana Cost</Label>
-                              {!isGM && (
+                              {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -20784,7 +20946,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               value={spellFormData.manaCost || 0}
                               onChange={(e) => handleSpellNumericChange('manaCost', e.target.value)}
                               className={`bg-stone-800 ${isGM ? 'border-violet-700' : 'border-stone-700'}`}
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                               data-testid="input-spell-mana-cost"
                             />
                           </div>
@@ -20839,7 +21001,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         <div>
                           <div className="flex items-center gap-2">
                             <Label>Attribute (for rolls)</Label>
-                            {!isGM && (
+                            {!canEditAsGM && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger>
@@ -20855,7 +21017,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Select 
                             value={spellFormData.attribute || '_none'} 
                             onValueChange={(v) => setSpellFormData({ ...spellFormData, attribute: v === '_none' ? '' : v })}
-                            disabled={!isGM}
+                            disabled={!canEditAsGM}
                           >
                             <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-attribute">
                               <SelectValue placeholder="Select attribute" />
@@ -20882,7 +21044,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <span className="text-xs text-stone-500">(If checked: Attack/Damage rolls. If not: Use/Effect rolls)</span>
                           </div>
                           <div className="flex items-center gap-3">
-                            {!isGM && (
+                            {!canEditAsGM && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger>
@@ -20899,7 +21061,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               checked={spellFormData.isAoe}
                               onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, isAoe: checked === true })}
                               className="border-stone-600"
-                              disabled={!isGM}
+                              disabled={!canEditAsGM}
                               data-testid="checkbox-spell-aoe"
                             />
                             <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
@@ -20912,7 +21074,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 <Select 
                                   value={spellFormData.aoeShape || '_none'} 
                                   onValueChange={(v) => setSpellFormData({ ...spellFormData, aoeShape: v === '_none' ? '' : v })}
-                                  disabled={!isGM}
+                                  disabled={!canEditAsGM}
                                 >
                                   <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-aoe-shape">
                                     <SelectValue placeholder="Select shape" />
@@ -20937,7 +21099,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   onChange={(e) => handleSpellNumericChange('aoeRange', e.target.value)}
                                   placeholder="e.g. 15"
                                   className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                                  disabled={!isGM}
+                                  disabled={!canEditAsGM}
                                   data-testid="input-spell-aoe-range"
                                 />
                               </div>
@@ -20948,7 +21110,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 checked={spellFormData.passesThroughWalls}
                                 onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, passesThroughWalls: checked === true })}
                                 className="border-stone-600"
-                                disabled={!isGM}
+                                disabled={!canEditAsGM}
                                 data-testid="checkbox-spell-passes-walls"
                               />
                               <Label htmlFor="spell-passes-walls" className="cursor-pointer">Passes Through Walls</Label>
@@ -20965,7 +21127,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           checked={spellFormData.requiresSave}
                           onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, requiresSave: checked === true })}
                           className="border-stone-600"
-                          disabled={!isGM}
+                          disabled={!canEditAsGM}
                           data-testid="checkbox-spell-requires-save"
                         />
                         <Label htmlFor="spell-requires-save" className="cursor-pointer">Requires Save</Label>
@@ -20976,7 +21138,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <Label>Save Attribute</Label>
-                              <Select value={spellFormData.saveAttribute || '_none'} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveAttribute: v === '_none' ? '' : v })} disabled={!isGM}>
+                              <Select value={spellFormData.saveAttribute || '_none'} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveAttribute: v === '_none' ? '' : v })} disabled={!canEditAsGM}>
                                 <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-save-attribute">
                                   <SelectValue placeholder="Select attribute" />
                                 </SelectTrigger>
@@ -20997,14 +21159,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 onChange={(e) => handleSpellNumericChange('saveDc', e.target.value)}
                                 placeholder="e.g. 15"
                                 className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                                disabled={!isGM}
+                                disabled={!canEditAsGM}
                                 data-testid="input-spell-save-dc"
                               />
                             </div>
                           </div>
                           <div>
                             <Label>On Successful Save</Label>
-                            <Select value={spellFormData.saveSuccessEffect} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveSuccessEffect: v })} disabled={!isGM}>
+                            <Select value={spellFormData.saveSuccessEffect} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveSuccessEffect: v })} disabled={!canEditAsGM}>
                               <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-save-success">
                                 <SelectValue />
                               </SelectTrigger>

@@ -134,6 +134,13 @@
       "when": 1747094400000,
       "tag": "0018_external_sync_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779408000000,
+      "tag": "0019_temp_pools_and_trusted_player",
+      "breakpoints": true
     }
   ]
 }

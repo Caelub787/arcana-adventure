@@ -124,6 +124,7 @@ export interface IStorage {
   isGM(userId: string, campaignId: string): Promise<boolean>;
   isOwner(userId: string, campaignId: string): Promise<boolean>;
   setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
+  setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined>;
   updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined>;
 
   // Character operations
@@ -1247,6 +1248,17 @@ export class DatabaseStorage implements IStorage {
   async setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined> {
     const [member] = await db.update(campaignMembers)
       .set({ role })
+      .where(and(
+        eq(campaignMembers.id, memberId),
+        eq(campaignMembers.campaignId, campaignId)
+      ))
+      .returning();
+    return member;
+  }
+
+  async setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined> {
+    const [member] = await db.update(campaignMembers)
+      .set({ trustedPlayer: trusted })
       .where(and(
         eq(campaignMembers.id, memberId),
         eq(campaignMembers.campaignId, campaignId)

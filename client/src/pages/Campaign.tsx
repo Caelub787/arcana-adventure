@@ -1018,9 +1018,10 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
       </div>
       <ScrollArea className="flex-1 px-4 mb-2" ref={scrollAreaRef}>
         <div className="space-y-2 py-2">
-          {messages.map((msg, i) => {
+          {messages.filter((msg: any) => msg.type !== 'gm-audit' || role === 'gm' || role === 'assistant_gm').map((msg, i) => {
             const isRoll = msg.type === 'roll' || msg.text?.includes('rolled');
             const isWhisper = msg.type === 'whisper';
+            const isAudit = msg.type === 'gm-audit';
             const rollTotal = isRoll ? parseRollTotal(msg.text) : null;
             const isMe = msg.userId === user?.id;
             return (
@@ -10823,7 +10824,6 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {!isAAV2 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10859,9 +10859,8 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          )}
 
-          {showWorldButton && (
+          {!isAAV2 && showWorldButton && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -11455,7 +11454,7 @@ export default function Campaign() {
       ))}
 
       {/* Floating World Builder */}
-      {!spectatorMode && floatingWorldBuilderOpen && effectiveCampaignId && (
+      {!spectatorMode && !isAAV2 && floatingWorldBuilderOpen && effectiveCampaignId && (
         <FloatingWorldBuilder
           campaignId={effectiveCampaignId}
           isGM={role === 'gm'}
@@ -13161,6 +13160,10 @@ export default function Campaign() {
                 bringToFront={bringToFront}
                 floatingZIndices={floatingZIndicesRef.current}
                 campaignSystem={(campaign as any)?.system}
+                trustedPlayer={(() => {
+                  const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
+                  return !!m?.trustedPlayer;
+                })()}
               />
             )}
           </DialogContent>
@@ -13201,6 +13204,10 @@ export default function Campaign() {
               bringToFront={bringToFront}
               floatingZIndices={floatingZIndicesRef.current}
               campaignSystem={(campaign as any)?.system}
+              trustedPlayer={(() => {
+                const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
+                return !!m?.trustedPlayer;
+              })()}
             />
           </FloatingPanel>
         ))
@@ -13232,14 +13239,14 @@ export default function Campaign() {
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
-                {activeSidePanel === 'notes' && !isAAV2 && 'Notes'}
-                {activeSidePanel === 'world' && 'World'}
+                {activeSidePanel === 'notes' && 'Notes'}
+                {activeSidePanel === 'world' && !isAAV2 && 'World'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
               <div className="flex items-center gap-1">
-                {activeSidePanel === 'notes' && !isAAV2 && (
+                {activeSidePanel === 'notes' && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -13256,7 +13263,7 @@ export default function Campaign() {
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                 )}
-                {activeSidePanel === 'world' && (
+                {activeSidePanel === 'world' && !isAAV2 && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -13355,7 +13362,7 @@ export default function Campaign() {
                   )}
                 </div>
               )}
-              {activeSidePanel === 'notes' && !isAAV2 && effectiveCampaignId && (
+              {activeSidePanel === 'notes' && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
                   <CampaignNotesPanel
                     campaignId={effectiveCampaignId}
@@ -13375,7 +13382,7 @@ export default function Campaign() {
                   />
                 </div>
               )}
-              {activeSidePanel === 'world' && effectiveCampaignId && (
+              {activeSidePanel === 'world' && !isAAV2 && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
                   <WorldBuilderContent
                     campaignId={effectiveCampaignId}

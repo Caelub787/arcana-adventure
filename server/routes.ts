@@ -1149,7 +1149,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          // Validate messageType to prevent injection
+          // Validate messageType to prevent injection. 'gm-audit' is server-only
+          // (emitted via emitTrustedAudit); client-supplied gm-audit gets coerced to 'chat'.
           const validMessageTypes = ["chat", "roll", "emote", "system", "whisper"];
           const sanitizedMessageType = validMessageTypes.includes(messageType) ? messageType : "chat";
           
@@ -1512,15 +1513,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Apply damage (or healing if isHealing is true)
+          // Damage consumes tempHp first, healing never touches tempHp
           let newHp: number;
+          let newTempHp = character.tempHp || 0;
           if (isHealing) {
             newHp = Math.min(character.hp + damage, character.maxHp);
           } else {
-            newHp = Math.max(0, character.hp - damage);
+            let remaining = damage;
+            if (newTempHp > 0) {
+              const absorbed = Math.min(newTempHp, remaining);
+              newTempHp -= absorbed;
+              remaining -= absorbed;
+            }
+            newHp = Math.max(0, character.hp - remaining);
           }
           
           // Update character HP directly - bypassing normal permission checks
-          await storage.updateCharacter(characterId, { hp: newHp });
+          await storage.updateCharacter(characterId, { hp: newHp, tempHp: newTempHp });
           
           const actionText = isHealing ? 'healed' : 'damaged';
           
@@ -1529,6 +1538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "character_hp_update",
             characterId,
             hp: newHp,
+            tempHp: newTempHp,
             previousHp: character.hp,
             damage,
             isHealing,
@@ -1573,14 +1583,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Apply energy change (gain if isGain is true, otherwise drain)
+          // Drain consumes tempEnergy first; gain never touches tempEnergy
           let newEnergy: number;
+          let newTempEnergy = character.tempEnergy || 0;
           if (isGain) {
             newEnergy = Math.min(character.energy + amount, character.maxEnergy);
           } else {
-            newEnergy = Math.max(0, character.energy - amount);
+            let remaining = amount;
+            if (newTempEnergy > 0) {
+              const absorbed = Math.min(newTempEnergy, remaining);
+              newTempEnergy -= absorbed;
+              remaining -= absorbed;
+            }
+            newEnergy = Math.max(0, character.energy - remaining);
           }
           
-          await storage.updateCharacter(characterId, { energy: newEnergy });
+          await storage.updateCharacter(characterId, { energy: newEnergy, tempEnergy: newTempEnergy });
           
           const actionText = isGain ? 'restored' : 'drained';
           
@@ -1588,6 +1606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "character_energy_update",
             characterId,
             energy: newEnergy,
+            tempEnergy: newTempEnergy,
             previousEnergy: character.energy,
             amount,
             isGain,
@@ -1633,14 +1652,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
+          // Drain consumes tempMana first; gain never touches tempMana
           let newMana: number;
+          let newTempMana = character.tempMana || 0;
           if (isGain) {
             newMana = Math.min(character.mana + amount, character.maxMana);
           } else {
-            newMana = Math.max(0, character.mana - amount);
+            let remaining = amount;
+            if (newTempMana > 0) {
+              const absorbed = Math.min(newTempMana, remaining);
+              newTempMana -= absorbed;
+              remaining -= absorbed;
+            }
+            newMana = Math.max(0, character.mana - remaining);
           }
           
-          await storage.updateCharacter(characterId, { mana: newMana });
+          await storage.updateCharacter(characterId, { mana: newMana, tempMana: newTempMana });
           
           const actionText = isGain ? 'restored' : 'drained';
           
@@ -1648,6 +1675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "character_mana_update",
             characterId,
             mana: newMana,
+            tempMana: newTempMana,
             previousMana: character.mana,
             amount,
             isGain,
@@ -2408,7 +2436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     characterId: string,
     userId: string,
     requiredLevel: 'name' | 'view' | 'edit'
-  ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; character?: any; campaign?: any; permission?: any }> {
+  ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; trustedSelf?: boolean; character?: any; campaign?: any; permission?: any }> {
     console.log(`[checkCharacterAccess] Checking access for character ${characterId} by user ${userId} (${requiredLevel})`);
     
     const character = await storage.getCharacter(characterId);
@@ -2435,21 +2463,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     const isOwner = character.userId === userId;
-    const isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId);
+    let isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId);
     console.log(`[checkCharacterAccess] Character userId: ${character.userId}, Request userId: ${userId}, isOwner: ${isOwner}, isGM: ${isGM}`);
     
     // Verify user is still a member of the campaign (skip for GM/admin)
+    let membershipRow: any = null;
     if (!isGM) {
-      const isMember = await storage.isCampaignMember(campaign.id, userId);
-      console.log(`[checkCharacterAccess] isCampaignMember: ${isMember}`);
-      if (!isMember) {
+      const members = await storage.getCampaignMembers(campaign.id);
+      membershipRow = members.find((m: any) => m.userId === userId) || null;
+      console.log(`[checkCharacterAccess] isCampaignMember: ${!!membershipRow}`);
+      if (!membershipRow) {
         return { allowed: false, isOwner: false, isGM: false, character, campaign };
       }
     }
     
+    // Trusted-self elevation: a player flagged trustedPlayer in this campaign
+    // gets GM-equivalent edit rights on their OWN character sheet.
+    let trustedSelf = false;
+    if (isOwner && !isGM && membershipRow?.trustedPlayer) {
+      console.log(`[checkCharacterAccess] Trusted player elevation granted for self-owned character`);
+      isGM = true;
+      trustedSelf = true;
+    }
+    
     if (isOwner || isGM) {
-      console.log(`[checkCharacterAccess] Allowed - isOwner: ${isOwner}, isGM: ${isGM}`);
-      return { allowed: true, isOwner, isGM, character, campaign };
+      console.log(`[checkCharacterAccess] Allowed - isOwner: ${isOwner}, isGM: ${isGM}, trustedSelf: ${trustedSelf}`);
+      return { allowed: true, isOwner, isGM, trustedSelf, character, campaign };
     }
     
     const permission = await storage.getCharacterPermission(characterId, userId);
@@ -2479,6 +2518,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       campaign,
       permission
     };
+  }
+
+  /**
+   * Emit a GM-only audit chat message when a trusted player makes a sheet
+   * mutation that would normally be GM-gated. Visible to GMs/Assistant GMs
+   * only. No-op when `access.trustedSelf` is falsy.
+   */
+  async function emitTrustedAudit(
+    access: { trustedSelf?: boolean; character?: any; campaign?: any },
+    actorUserId: string,
+    actionText: string,
+  ): Promise<void> {
+    try {
+      if (!access?.trustedSelf || !access.character || !access.campaign) return;
+      const campaignId = access.campaign.id;
+      const actor = await storage.getUser(actorUserId);
+      const actorName = actor?.name || actor?.username || 'Trusted player';
+      const charName = access.character.name || 'their character';
+      const text = `📝 Trusted edit by ${actorName} on ${charName}: ${actionText}`;
+      const chat = await storage.createChatMessage({
+        campaignId,
+        userId: actorUserId,
+        sender: actorName,
+        text,
+        type: 'gm-audit',
+      });
+      const room = campaignRooms.get(campaignId);
+      if (!room) return;
+      const campaign = access.campaign;
+      const allMembers = await storage.getCampaignMembers(campaignId);
+      const gmUserIds = new Set<string>();
+      if (campaign?.gmUserId) gmUserIds.add(campaign.gmUserId);
+      for (const m of allMembers) {
+        if (m.role === 'gm' || m.role === 'assistant_gm') gmUserIds.add(m.userId);
+      }
+      const payload = JSON.stringify({ type: 'chat_message', message: chat });
+      room.forEach((client: any) => {
+        if (client.readyState === 1 && gmUserIds.has(client.userId)) {
+          client.send(payload);
+        }
+      });
+    } catch (err) {
+      console.error('[emitTrustedAudit] failed:', err);
+    }
   }
 
   // Auth routes
@@ -2758,11 +2841,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/campaigns/:id/chat", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
+      const campaign = await storage.getCampaign(req.params.id);
+      const viewerIsGm = campaign ? await hasGmAccess(userId, req.params.id, campaign.gmUserId) : false;
       const messages = await storage.getCampaignMessages(req.params.id, 100);
-      // Filter whisper messages: only show to sender or recipient
+      // Filter whisper messages: only show to sender or recipient.
+      // Filter gm-audit messages: only show to GMs/Assistant GMs.
       const filtered = messages.filter((msg: any) => {
         if (msg.type === 'whisper') {
           return msg.userId === userId || msg.recipientId === userId;
+        }
+        if (msg.type === 'gm-audit') {
+          return viewerIsGm;
         }
         return true;
       });
@@ -3278,7 +3367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // the spectator's recent-public-chat window.
       const rawMessages = await storage.getCampaignMessages(campaign.id, 200);
       const chat: SpectatorChat[] = rawMessages
-        .filter(m => m.type !== "whisper" && !m.recipientId)
+        .filter(m => m.type !== "whisper" && m.type !== "gm-audit" && !m.recipientId)
         .slice(0, 50)
         .map(m => {
           const dto: SpectatorChat = {
@@ -3620,6 +3709,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           characterId: updatedCharacter.id,
           character: updatedCharacter
         });
+      }
+      
+      const auditFields = Object.keys(req.body || {}).filter(k => k !== 'tempHp' && k !== 'tempEnergy' && k !== 'tempMana' && k !== 'hp' && k !== 'energy' && k !== 'mana');
+      if (auditFields.length > 0) {
+        await emitTrustedAudit(access, req.session.userId!, `updated sheet (${auditFields.slice(0, 8).join(', ')}${auditFields.length > 8 ? '…' : ''})`);
       }
       
       res.json(updatedCharacter);
@@ -4256,6 +4350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `edited spell "${spell?.name || ''}"`);
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to update spell" });
@@ -4290,6 +4385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `deleted spell "${currentSpell?.name || ''}"`);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete spell" });
@@ -4814,8 +4910,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chat routes
   app.get("/api/campaigns/:campaignId/messages", requireAuth, async (req, res) => {
     try {
+      const userId = req.session.userId!;
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      const viewerIsGm = campaign ? await hasGmAccess(userId, req.params.campaignId, campaign.gmUserId) : false;
       const messages = await storage.getCampaignMessages(req.params.campaignId);
-      res.json(messages);
+      const filtered = messages.filter((msg: any) => {
+        if (msg.type === 'whisper') {
+          return msg.userId === userId || msg.recipientId === userId;
+        }
+        if (msg.type === 'gm-audit') {
+          return viewerIsGm;
+        }
+        return true;
+      });
+      res.json(filtered);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch messages" });
     }
@@ -4897,6 +5005,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error('Error setting member role:', err);
       res.status(500).json({ error: "Failed to update member role" });
+    }
+  });
+
+  // Set member trustedPlayer flag (GM/Owner only)
+  app.patch("/api/campaigns/:campaignId/members/:memberId/trusted-player", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, memberId } = req.params;
+      const { trusted } = req.body;
+      if (typeof trusted !== 'boolean') {
+        return res.status(400).json({ error: "'trusted' must be a boolean" });
+      }
+      const userId = req.session.userId!;
+      const isOwner = await storage.isOwner(userId, campaignId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "Only the campaign owner can toggle trusted player" });
+      }
+      const members = await storage.getCampaignMembers(campaignId);
+      const targetMember = members.find(m => m.id === memberId);
+      if (!targetMember) {
+        return res.status(404).json({ error: "Member not found" });
+      }
+      const campaign = await storage.getCampaign(campaignId);
+      if (targetMember.userId === campaign?.gmUserId) {
+        return res.status(400).json({ error: "Cannot set trusted flag on the campaign owner" });
+      }
+      const updatedMember = await storage.setMemberTrustedPlayer(campaignId, memberId, trusted);
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers,
+      });
+      res.json(updatedMember);
+    } catch (err) {
+      console.error('Error setting trusted player:', err);
+      res.status(500).json({ error: "Failed to update trusted player flag" });
     }
   });
 
@@ -9395,6 +9538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `added custom skill "${skill?.name || ''}"`);
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to add custom skill" });
@@ -9428,6 +9572,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      if (!isPlayerValueOnly) {
+        await emitTrustedAudit(access, req.session.userId!, `edited custom skill "${skill?.name || ''}"`);
+      }
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to update custom skill" });
@@ -9452,6 +9599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `removed a custom skill`);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to remove custom skill" });
@@ -9568,6 +9716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `added trait "${trait?.name || ''}"`);
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to add trait" });
@@ -9596,6 +9745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `edited trait "${trait?.name || ''}"`);
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to update trait" });
@@ -9620,6 +9770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `removed a trait`);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to remove trait" });
@@ -10183,6 +10334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      await emitTrustedAudit(access, req.session.userId!, `edited item "${updatedItem?.name || ''}"`);
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update item" });
@@ -10250,6 +10402,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      await emitTrustedAudit(access, req.session.userId!, `deleted item "${item?.name || ''}"`);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete item" });
@@ -10686,17 +10839,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 total += roll;
               }
               
-              // Calculate new HP from current accumulated HP value
+              // Calculate new HP from current accumulated HP value.
+              // Damage consumes tempHp first; healing never touches tempHp.
               const previousHp = currentHp;
               const isHealing = effect.damageType === 'Health';
-              const newHp = isHealing 
-                ? Math.min(character.maxHp, currentHp + total)
-                : Math.max(0, currentHp - total);
+              let newHp = currentHp;
+              let newTempHp = (character as any).tempHp ?? 0;
+              if (isHealing) {
+                newHp = Math.min(character.maxHp, currentHp + total);
+              } else {
+                let remaining = total;
+                if (newTempHp > 0) {
+                  const absorbed = Math.min(newTempHp, remaining);
+                  newTempHp -= absorbed;
+                  remaining -= absorbed;
+                }
+                newHp = Math.max(0, currentHp - remaining);
+              }
               
               // Update accumulated HP for subsequent effects
               currentHp = newHp;
+              (character as any).tempHp = newTempHp;
               
-              await storage.updateCharacter(characterId, { hp: newHp });
+              await storage.updateCharacter(characterId, { hp: newHp, tempHp: newTempHp } as any);
               
               const diceText = `${numDice}d${dieSize}`;
               const rollBreakdown = `${diceText} = [${rolls.join(', ')}]${bonus > 0 ? ` + ${bonus}` : ''} = ${total}`;
@@ -10714,6 +10879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 type: "character_hp_update",
                 characterId,
                 hp: newHp,
+                tempHp: newTempHp,
                 previousHp,
                 damage: isHealing ? -total : total,
                 isHealing,

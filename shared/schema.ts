@@ -184,6 +184,7 @@ export const campaignMembers = pgTable("campaign_members", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: text("role").notNull().default("player"), // "gm", "assistant_gm", or "player"
+  trustedPlayer: boolean("trusted_player").default(false).notNull(), // Players with this flag can edit every field on their own character sheet that a GM can
   favorite: boolean("favorite").default(false).notNull(),
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
   gmHotbar: text("gm_hotbar").array(), // Array of character IDs for GM's character hotbar
@@ -233,6 +234,9 @@ export const characters = pgTable("characters", {
   maxEnergy: integer("max_energy").notNull(),
   mana: integer("mana").notNull().default(0),
   maxMana: integer("max_mana").notNull().default(0),
+  tempHp: integer("temp_hp").notNull().default(0),
+  tempEnergy: integer("temp_energy").notNull().default(0),
+  tempMana: integer("temp_mana").notNull().default(0),
   // Race information
   race: text("race").notNull().default("Human"),
   size: text("size").notNull().default("Medium"),
