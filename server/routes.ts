@@ -147,6 +147,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
 
+  // Token-move persistence debouncer. Live drags can fire up to ~20 messages
+  // per second per token — running the full validation pipeline (~10 DB
+  // reads + 1 write) on every message floods Neon serverless and eventually
+  // a query fails with "fetch failed", which stalls unrelated requests and
+  // makes the whole app feel like it crashed. We broadcast every message
+  // immediately for real-time UX, but coalesce the validate+persist into a
+  // single trailing run per token (~200ms after the last move).
+  type PendingMove = {
+    x: number;
+    y: number;
+    snapToGrid: any;
+    campaignId: string;
+    userRole: string;
+    authenticatedUserId: string;
+    ws: any;
+    timer: NodeJS.Timeout;
+  };
+  const pendingTokenMoves = new Map<string, PendingMove>();
+  const TOKEN_MOVE_PERSIST_DEBOUNCE_MS = 200;
+  // Per-actor-per-token monotonic epoch (keyed by the same pendingKey as
+  // pendingTokenMoves: `campaignId:tokenId:userId`). Incremented every time
+  // that actor schedules a new pending move. A persist run captures its
+  // epoch at start and re-checks just before writing; if the same actor
+  // scheduled a newer move in the meantime, the older persist bails out.
+  // Scoping by actor (not just token) means another user's stray token_move
+  // cannot invalidate this user's pending persist.
+  const tokenMoveEpoch = new Map<string, number>();
+
+  // Validate and persist a token's final settled position. Mirrors the
+  // pre-debounce inline logic: ownership / role / combat-turn checks,
+  // collision detection, and a single updateToken write. Emits a
+  // token_move_rollback to the room on any failure so clients revert to the
+  // last server-authoritative position.
+  async function runTokenMovePersist(tokenId: string, pending: PendingMove, epoch: number): Promise<void> {
+    const { x, y, campaignId, userRole, authenticatedUserId, ws } = pending;
+    const epochKey = `${campaignId}:${tokenId}:${authenticatedUserId}`;
+    const room = campaignRooms.get(campaignId);
+    const sendRollback = (payload: any) => {
+      if (room) {
+        const msg = JSON.stringify({ type: "token_move_rollback", tokenId, ...payload });
+        room.forEach((client) => { if (client.readyState === 1) client.send(msg); });
+      }
+    };
+    // Staleness guard: if THIS actor scheduled a newer move while we were
+    // sitting in the debounce queue or awaiting DB work, abandon this run.
+    // Other actors' moves never invalidate ours — they have their own epoch.
+    if ((tokenMoveEpoch.get(epochKey) || 0) !== epoch) return;
+    try {
+      const token = await storage.getToken(tokenId);
+      if (!token || token.campaignId !== campaignId) {
+        sendRollback({ message: "Invalid token for this campaign" });
+        return;
+      }
+      const originalX = token.x;
+      const originalY = token.y;
+
+      if (userRole !== "gm") {
+        if (token.characterId) {
+          const character = await storage.getCharacter(token.characterId);
+          if (!character) {
+            sendRollback({ x: originalX, y: originalY, message: "Character not found" });
+            return;
+          }
+          const tokenScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
+          if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId
+              && tokenScene.currentTurnCharacterId !== token.characterId) {
+            sendRollback({ x: originalX, y: originalY, message: "It's not your turn to move" });
+            try { ws.send(JSON.stringify({ type: "error", message: "It's not your turn to move" })); } catch {}
+            return;
+          }
+          const isOwner = character.userId === authenticatedUserId;
+          if (!isOwner) {
+            const permission = await storage.getCharacterPermission(token.characterId, authenticatedUserId);
+            if (permission?.accessLevel !== 'edit') {
+              sendRollback({ x: originalX, y: originalY, message: "Not authorized to move this token" });
+              try { ws.send(JSON.stringify({ type: "error", message: "Not authorized to move this token" })); } catch {}
+              return;
+            }
+          }
+        } else {
+          sendRollback({ x: originalX, y: originalY, message: "Only GMs can move non-player tokens" });
+          try { ws.send(JSON.stringify({ type: "error", message: "Only GMs can move non-player tokens" })); } catch {}
+          return;
+        }
+      }
+
+      // Collision detection at the settled position.
+      const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
+      const allCharacters = await storage.getCampaignCharacters(campaignId);
+      const campaignForSpecies = await storage.getCampaign(campaignId);
+      const speciesSlug = (campaignForSpecies as any)?.system || 'arcana-adventure';
+      const speciesDisplayName = speciesSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+      const allSpecies = await storage.getSystemSpecies(speciesDisplayName);
+      const campaignSpecies = await storage.getCampaignSpecies(campaignId);
+      const speciesList = [...allSpecies, ...campaignSpecies];
+      const scene = token.sceneId ? await storage.getScene(token.sceneId) : null;
+      const gridSize = scene?.gridSize || 50;
+      const getGridSpan = (size?: string) => {
+        switch (size?.toLowerCase()) {
+          case 'huge': return 2;
+          case 'gargantuan': return 3;
+          default: return 1;
+        }
+      };
+      const getSize = (tok: any) => {
+        if (tok.speciesSize) return tok.speciesSize;
+        if (tok.characterId) {
+          const ch = allCharacters.find((c: any) => c.id === tok.characterId);
+          if (ch?.race) {
+            const sp = speciesList.find((s: any) => s.name === ch.race);
+            if (sp?.size) return sp.size;
+          }
+        }
+        return 'Medium';
+      };
+      const movingSpan = getGridSpan(getSize(token));
+      const minGX = Math.round(x / gridSize);
+      const minGY = Math.round(y / gridSize);
+      const maxGX = minGX + movingSpan - 1;
+      const maxGY = minGY + movingSpan - 1;
+      let collided = false;
+      for (const other of allTokens) {
+        if (other.id === tokenId) continue;
+        const otherSpan = getGridSpan(getSize(other));
+        const oMinX = Math.round(other.x / gridSize);
+        const oMinY = Math.round(other.y / gridSize);
+        const oMaxX = oMinX + otherSpan - 1;
+        const oMaxY = oMinY + otherSpan - 1;
+        if (minGX <= oMaxX && maxGX >= oMinX && minGY <= oMaxY && maxGY >= oMinY) {
+          collided = true;
+          break;
+        }
+      }
+      if (collided) {
+        sendRollback({ x: originalX, y: originalY, message: "Cannot move to an occupied space" });
+        try { ws.send(JSON.stringify({ type: "error", message: "Cannot move to an occupied space" })); } catch {}
+        return;
+      }
+
+      // Re-check (actor-scoped) epoch right before the write — this same
+      // actor may have scheduled a newer move while we were running the
+      // validation reads above.
+      if ((tokenMoveEpoch.get(epochKey) || 0) !== epoch) return;
+      await storage.updateToken(tokenId, { x, y });
+    } catch (err) {
+      console.error('[WebSocket] Token move validation/save error:', err);
+    }
+  }
+
   // Track last broadcast viewport per campaign per user, so spectators (and any
   // late joiner) can be hydrated with the GM's current camera position the
   // moment they connect — instead of waiting for the next debounced
@@ -896,227 +1045,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          
-          // Now do validation and database update asynchronously
-          // Use IIFE to run validation/save without blocking
-          (async () => {
-            const userRole = userCampaign.role;
-            
-            // Fetch the token from database to verify ownership
-            const token = await storage.getToken(tokenId);
-            
-            if (!token || token.campaignId !== campaignId) {
-              // Send rollback to revert the move
-              if (room) {
-                const rollbackMessage = JSON.stringify({
-                  type: "token_move_rollback",
-                  tokenId,
-                  message: "Invalid token for this campaign"
-                });
-                room.forEach((client) => {
-                  if (client.readyState === 1) client.send(rollbackMessage);
-                });
-              }
-              return;
-            }
-            
-            // Store original position for potential rollback
-            const originalX = token.x;
-            const originalY = token.y;
-            
-            // Authorization: GM can move any token, players can move tokens they own or have edit access to
-            if (userRole !== "gm") {
-              // If token has a characterId, verify user owns it OR has edit permission
-              if (token.characterId) {
-                const character = await storage.getCharacter(token.characterId);
-                if (!character) {
-                  // Rollback
-                  if (room) {
-                    const rollbackMessage = JSON.stringify({
-                      type: "token_move_rollback",
-                      tokenId,
-                      x: originalX,
-                      y: originalY,
-                      message: "Character not found"
-                    });
-                    room.forEach((client) => {
-                      if (client.readyState === 1) client.send(rollbackMessage);
-                    });
-                  }
-                  return;
-                }
-                
-                // Check combat turn restriction - players can only move their character's token during their turn
-                // Only enforce turn restriction if combat is active AND a turn has been established
-                const tokenScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
-                if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId) {
-                  // In combat mode with active turn - check if it's this character's turn
-                  if (tokenScene.currentTurnCharacterId !== token.characterId) {
-                    // Rollback
-                    if (room) {
-                      const rollbackMessage = JSON.stringify({
-                        type: "token_move_rollback",
-                        tokenId,
-                        x: originalX,
-                        y: originalY,
-                        message: "It's not your turn to move"
-                      });
-                      room.forEach((client) => {
-                        if (client.readyState === 1) client.send(rollbackMessage);
-                      });
-                    }
-                    ws.send(JSON.stringify({
-                      type: "error",
-                      message: "It's not your turn to move"
-                    }));
-                    return;
-                  }
-                }
-                
-                // Check if user owns the character OR has edit permission
-                const isOwner = character.userId === authenticatedUserId;
-                if (!isOwner) {
-                  const permission = await storage.getCharacterPermission(token.characterId, authenticatedUserId);
-                  const hasEditAccess = permission?.accessLevel === 'edit';
-                  
-                  if (!hasEditAccess) {
-                    // Rollback
-                    if (room) {
-                      const rollbackMessage = JSON.stringify({
-                        type: "token_move_rollback",
-                        tokenId,
-                        x: originalX,
-                        y: originalY,
-                        message: "Not authorized to move this token"
-                      });
-                      room.forEach((client) => {
-                        if (client.readyState === 1) client.send(rollbackMessage);
-                      });
-                    }
-                    ws.send(JSON.stringify({
-                      type: "error",
-                      message: "Not authorized to move this token"
-                    }));
-                    return;
-                  }
-                }
-              } else {
-                // Non-character tokens (enemies, NPCs) can only be moved by GM
-                // Rollback
-                if (room) {
-                  const rollbackMessage = JSON.stringify({
-                    type: "token_move_rollback",
-                    tokenId,
-                    x: originalX,
-                    y: originalY,
-                    message: "Only GMs can move non-player tokens"
-                  });
-                  room.forEach((client) => {
-                    if (client.readyState === 1) client.send(rollbackMessage);
-                  });
-                }
-                ws.send(JSON.stringify({
-                  type: "error",
-                  message: "Only GMs can move non-player tokens"
-                }));
-                return;
-              }
-            }
-            
-            // Collision detection - check if the target position would overlap with other tokens
-            const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
-            const allCharacters = await storage.getCampaignCharacters(campaignId);
-            const campaignForSpecies = await storage.getCampaign(campaignId);
-            const speciesSlug = (campaignForSpecies as any)?.system || 'arcana-adventure';
-            const speciesDisplayName = speciesSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
-            const allSpecies = await storage.getSystemSpecies(speciesDisplayName);
-            const campaignSpecies = await storage.getCampaignSpecies(campaignId);
-            const speciesList = [...allSpecies, ...campaignSpecies];
-            
-            // Get grid size from scene
-            const scene = token.sceneId ? await storage.getScene(token.sceneId) : null;
-            const gridSize = scene?.gridSize || 50;
-            
-            // Helper to get grid span based on species size
-            const getTokenGridSpan = (size?: string) => {
-              switch (size?.toLowerCase()) {
-                case 'huge': return 2;
-                case 'gargantuan': return 3;
-                default: return 1;
-              }
-            };
-            
-            // Helper to get token size - checks token's enriched speciesSize first, then character's species
-            const getTokenSize = (tok: any, chars: any[], species: any[]) => {
-              if (tok.speciesSize) return tok.speciesSize;
-              if (tok.characterId) {
-                const char = chars.find(c => c.id === tok.characterId);
-                if (char?.race) {
-                  const spec = species.find(s => s.name === char.race);
-                  if (spec?.size) return spec.size;
-                }
-              }
-              return 'Medium';
-            };
-            
-            // Get the moving token's species and size
-            const movingTokenSize = getTokenSize(token, allCharacters, speciesList);
-            const movingGridSpan = getTokenGridSpan(movingTokenSize);
-            
-            // Calculate grid cells for the moving token at new position
-            const movingMinGridX = Math.round(x / gridSize);
-            const movingMinGridY = Math.round(y / gridSize);
-            const movingMaxGridX = movingMinGridX + movingGridSpan - 1;
-            const movingMaxGridY = movingMinGridY + movingGridSpan - 1;
-            
-            // Check collision with other tokens
-            let hasCollision = false;
-            for (const otherToken of allTokens) {
-              if (otherToken.id === tokenId) continue;
-              
-              const otherTokenSize = getTokenSize(otherToken, allCharacters, speciesList);
-              const otherGridSpan = getTokenGridSpan(otherTokenSize);
-              
-              const otherMinGridX = Math.round(otherToken.x / gridSize);
-              const otherMinGridY = Math.round(otherToken.y / gridSize);
-              const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
-              const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
-              
-              const overlapX = movingMinGridX <= otherMaxGridX && movingMaxGridX >= otherMinGridX;
-              const overlapY = movingMinGridY <= otherMaxGridY && movingMaxGridY >= otherMinGridY;
-              
-              if (overlapX && overlapY) {
-                hasCollision = true;
-                break;
-              }
-            }
-            
-            if (hasCollision) {
-              // Rollback on collision
-              if (room) {
-                const rollbackMessage = JSON.stringify({
-                  type: "token_move_rollback",
-                  tokenId,
-                  x: originalX,
-                  y: originalY,
-                  message: "Cannot move to an occupied space"
-                });
-                room.forEach((client) => {
-                  if (client.readyState === 1) client.send(rollbackMessage);
-                });
-              }
-              ws.send(JSON.stringify({
-                type: "error",
-                message: "Cannot move to an occupied space"
-              }));
-              return;
-            }
-            
-            // Update token position in database (async, doesn't block the UI)
-            await storage.updateToken(tokenId, { x, y });
-          })().catch(err => {
-            console.error('[WebSocket] Token move validation/save error:', err);
-          });
+
+          // Debounce per-token-PER-ACTOR validation + persistence. Keying on
+          // the actor as well as the token prevents an unauthorized user's
+          // stray message from overwriting a legitimate user's pending move
+          // mid-drag; same user's drag-stream still coalesces to one persist.
+          // We also bump a per-token epoch so concurrent persists across
+          // overlapping debounce windows skip stale writes.
+          const pendingKey = `${campaignId}:${tokenId}:${authenticatedUserId}`;
+          const existing = pendingTokenMoves.get(pendingKey);
+          if (existing) {
+            clearTimeout(existing.timer);
+          }
+          // Epoch shares the same actor-scoped key so other users cannot
+          // invalidate this user's pending persist.
+          const epoch = (tokenMoveEpoch.get(pendingKey) || 0) + 1;
+          tokenMoveEpoch.set(pendingKey, epoch);
+          const pending: PendingMove = {
+            x,
+            y,
+            snapToGrid,
+            campaignId,
+            userRole: userCampaign.role,
+            authenticatedUserId,
+            ws,
+            timer: null as any,
+          };
+          pending.timer = setTimeout(() => {
+            pendingTokenMoves.delete(pendingKey);
+            void runTokenMovePersist(tokenId, pending, epoch);
+          }, TOKEN_MOVE_PERSIST_DEBOUNCE_MS);
+          pendingTokenMoves.set(pendingKey, pending);
+          return;
         }
 
         if (message.type === "chat_message") {
@@ -2188,6 +2148,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on("close", () => {
       // Remove from global connected clients set
       allConnectedClients.delete(ws);
+
+      // Drop any pending debounced token-move persists owned by this socket
+      // so we don't run validation + DB writes for a user who's gone.
+      for (const [key, pending] of pendingTokenMoves) {
+        if (pending.ws === ws) {
+          clearTimeout(pending.timer);
+          pendingTokenMoves.delete(key);
+        }
+      }
 
       // If this was a public token-based spectator, remove it from the
       // per-campaign spectator registry and notify the GM.
