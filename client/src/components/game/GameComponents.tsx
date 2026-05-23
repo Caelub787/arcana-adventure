@@ -4190,19 +4190,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setMoveMode={setMoveMode}
           freeformMode={freeformMode}
           setFreeformMode={setFreeformMode}
-          onResetExploredMemory={async () => {
-            if (!scene?.id) return;
-            const sceneTokens = (tokens || []).filter((t: any) => t.sceneId === scene.id);
-            await Promise.all(
-              sceneTokens.map((t: any) =>
-                fetch(`/api/tokens/${t.id}`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({ exploredCells: [] }),
-                }).catch(() => {})
-              )
-            );
+          onResetExploredMemory={() => {
+            // Server-side persistence of explored cells was rolled back
+            // (see FogOfWarOverlay comment for incident details). The
+            // button still exists so the GM can wipe the in-session local
+            // memory on every connected client; the WS event below is
+            // picked up by FogOfWarOverlay's scene-change/reconcile path
+            // to clear the local map.
             queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
           }}
         />

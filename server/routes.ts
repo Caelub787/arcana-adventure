@@ -4831,15 +4831,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const characterMap = new Map(characters.map(c => [c.id, c]));
       
       const enrichedTokens = tokensList.map((token) => {
-        if (!token.characterId) return token;
-        
+        // Strip exploredCells from list responses — it can grow large and is
+        // not used by the current client. See incident 2026-05-23 (slow
+        // tokens fetch / black screen on scene switch).
+        const { exploredCells: _exploredCells, ...tokenBase } = token as any;
+        if (!token.characterId) return tokenBase;
+
         const character = characterMap.get(token.characterId);
-        if (!character?.race) return token;
-        
+        if (!character?.race) return tokenBase;
+
         const species = allSpecies.find(s => s.name === character.race);
-        
+
         return {
-          ...token,
+          ...tokenBase,
           speciesSize: species?.size || 'Medium',
           tokenImage: character.portrait || token.image,
         };
@@ -4866,20 +4870,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/tokens/:id", requireAuth, async (req, res) => {
     try {
-      const token = await storage.updateToken(req.params.id, req.body);
+      // Defensively drop `exploredCells` from PATCH bodies — the fog
+      // persistence feature was rolled back because writing growing arrays
+      // on every player move bloated the tokens payload (see incident
+      // 2026-05-23). Any clients still posting it will be silently ignored.
+      const { exploredCells: _ignored, ...patchBody } = req.body || {};
+      const token = await storage.updateToken(req.params.id, patchBody);
       if (!token) {
         return res.status(404).json({ error: "Token not found" });
       }
-      
-      // Broadcast token update to all campaign members
+
+      // Strip exploredCells from broadcast/response payloads for the same
+      // reason as the list endpoint above.
+      const { exploredCells: _ec, ...tokenForWire } = token as any;
+
       if (token.campaignId) {
         broadcastToCampaign(token.campaignId, {
           type: "token_updated",
-          token
+          token: tokenForWire
         });
       }
-      
-      res.json(token);
+
+      res.json(tokenForWire);
     } catch (err) {
       res.status(400).json({ error: "Failed to update token" });
     }

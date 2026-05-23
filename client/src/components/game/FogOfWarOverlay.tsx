@@ -853,39 +853,15 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         }
       }
 
-      if (mapChanged && dirtyTokensRef.current.size > 0) {
-        if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-        writeTimerRef.current = setTimeout(() => {
-          writeTimerRef.current = null;
-          const dirty = Array.from(dirtyTokensRef.current);
-          // IMPORTANT: keep `dirtyTokensRef` populated until each PATCH
-          // succeeds. The reconcile effect treats dirty tokens as "do not
-          // overwrite from server snapshot," which protects newly-explored
-          // cells from being clobbered by an in-flight refetch. We clear
-          // the per-token dirty flag only after a successful ack AND only
-          // if no further cells were added in the meantime.
-          for (const tid of dirty) {
-            const sent = next.get(tid);
-            if (!sent) continue;
-            const sentSize = sent.size;
-            const sentArr = Array.from(sent);
-            fetch(`/api/tokens/${tid}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ exploredCells: sentArr }),
-            }).then(res => {
-              if (!res.ok) return; // keep dirty so the next discovery re-flushes
-              const current = exploredByTokenRef.current.get(tid);
-              if (!current || current.size === sentSize) {
-                dirtyTokensRef.current.delete(tid);
-              }
-              // else: more cells were marked while the PATCH was in flight;
-              // leave the dirty flag so the next change triggers another flush.
-            }).catch(err => console.warn('Failed to persist explored cells', err));
-          }
-        }, 1500);
-      }
+      // NOTE: server persistence of exploredCells was rolled back on
+      // 2026-05-23 — every player movement queued a PATCH on the tokens
+      // table with a steadily-growing string[], which then fanned out via
+      // WS broadcast and forced every client to refetch a multi-megabyte
+      // tokens payload. The map below now stays local-only (same lifetime
+      // as the previous localStorage implementation: lasts for the session,
+      // resets on reload). Dirty tracking is intentionally left wired in
+      // case we re-introduce a thinner persistence path later.
+      dirtyTokensRef.current = new Set();
 
       return mapChanged ? next : prev;
     });
