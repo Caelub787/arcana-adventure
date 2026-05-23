@@ -4190,6 +4190,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setMoveMode={setMoveMode}
           freeformMode={freeformMode}
           setFreeformMode={setFreeformMode}
+          onResetExploredMemory={async () => {
+            if (!scene?.id) return;
+            const sceneTokens = (tokens || []).filter((t: any) => t.sceneId === scene.id);
+            await Promise.all(
+              sceneTokens.map((t: any) =>
+                fetch(`/api/tokens/${t.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ exploredCells: [] }),
+                }).catch(() => {})
+              )
+            );
+            queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
+          }}
         />
       )}
 

@@ -141,6 +141,13 @@
       "when": 1779408000000,
       "tag": "0019_temp_pools_and_trusted_player",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779494400000,
+      "tag": "0020_token_explored_cells",
+      "breakpoints": true
     }
   ]
 }
