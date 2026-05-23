@@ -122,10 +122,6 @@ interface FogToken {
   visionOverrideDistance?: number | null;
   visionOverrideType?: string | null;
   lightRadius?: number | null;
-  // Persistent fog-of-war memory for this token. Server-backed so GMs
-  // can switch to "See as Player" on any token and see what that player
-  // has explored, and so memory survives a refresh.
-  exploredCells?: string[] | null;
 }
 
 interface FogCharacter {
@@ -568,7 +564,6 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       const castRadius = (castDistFeet / 5) * gridSize;
       
       const poly = calculateVisionPolygon(tokenCenterX, tokenCenterY, castRadius, blockingSegs);
-      (poly as any).tokenId = token.id;
 
       if (hasZonesWithDiffVision) {
         const parsedZones = visionZones.map((z: any) => ({
@@ -665,7 +660,6 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         const precomputed = cachedLightPolygons.get(`${light.id}`);
         const poly = calculateVisionInLight(tokenCenterX, tokenCenterY, light.x, light.y, lightRadiusPixels, blockingSegs, precomputed);
         if (poly.points.length >= 3) {
-          (poly as any).tokenId = token.id;
           polys.push(poly);
         }
       }
@@ -684,109 +678,53 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
   }, [visionPolygons, lightVisionPolygons]);
 
-  // Explored memory is now persisted PER TOKEN on the server (tokens.exploredCells)
-  // instead of in per-user localStorage. This lets GMs switch to "See as Player"
-  // on any token and see exactly what that player has explored, and it survives
-  // a refresh.
-  const fogExploredMemoryEnabled = scene?.fogExploredMemory ?? false;
+  const exploredStorageKey = sceneId && currentUserId ? `explored-${sceneId}-${currentUserId}` : null;
 
-  // Which token IDs "own" the explored memory the current view should render.
-  // Players see the union of their own tokens. A GM only renders an explored
-  // overlay when they're explicitly seeing through a token (gmSeeAsPlayer).
-  const ownerTokenIds = useMemo<string[]>(() => {
-    if (isGM) {
-      if (!gmSeeAsPlayer) return [];
-      if (gmSeeAllVision) return tokens.map(t => t.id);
-      if (selectedTokenId) return [selectedTokenId];
-      return [];
-    }
-    return tokens
-      .filter(t => {
-        if (!t.characterId) return false;
-        const ch = characters.find(c => c.id === t.characterId);
-        return ch?.userId === currentUserId;
-      })
-      .map(t => t.id);
-  }, [isGM, gmSeeAsPlayer, gmSeeAllVision, selectedTokenId, tokens, characters, currentUserId]);
-
-  // Per-token explored sets. Hydrated from the server `tokens` prop and kept
-  // in sync; local additions are written back via debounced PATCH.
-  const [exploredByToken, setExploredByToken] = useState<Map<string, Set<string>>>(() => {
-    const m = new Map<string, Set<string>>();
-    for (const t of tokens) {
-      const arr = Array.isArray(t.exploredCells) ? t.exploredCells : [];
-      if (arr.length > 0) m.set(t.id, new Set(arr));
-    }
-    return m;
+  const [exploredCells, setExploredCells] = useState<Set<string>>(() => {
+    if (!exploredStorageKey) return new Set();
+    try {
+      const saved = localStorage.getItem(exploredStorageKey);
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set();
   });
-  const dirtyTokensRef = useRef<Set<string>>(new Set());
-  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Latest map kept in a ref so the post-PATCH ack can tell whether the
-  // player has discovered more cells since we issued the write — if so we
-  // KEEP the token dirty so the next flush re-syncs the newer set.
-  const exploredByTokenRef = useRef(exploredByToken);
-  exploredByTokenRef.current = exploredByToken;
 
-  // Wipe local state when scene changes — the new scene has different tokens
-  // and a brand-new memory map.
+  const fogExploredMemoryEnabled = scene?.fogExploredMemory ?? false;
   const prevSceneIdRef = useRef(sceneId);
   useEffect(() => {
     if (sceneId !== prevSceneIdRef.current) {
       prevSceneIdRef.current = sceneId;
-      if (writeTimerRef.current) { clearTimeout(writeTimerRef.current); writeTimerRef.current = null; }
-      dirtyTokensRef.current = new Set();
-      setExploredByToken(() => {
-        const m = new Map<string, Set<string>>();
-        for (const t of tokens) {
-          const arr = Array.isArray(t.exploredCells) ? t.exploredCells : [];
-          if (arr.length > 0) m.set(t.id, new Set(arr));
-        }
-        return m;
-      });
-    }
-  }, [sceneId, tokens]);
-
-  // Reconcile from server `tokens` prop. For tokens with a pending dirty
-  // write, we keep our local copy until the write lands; otherwise we adopt
-  // the server's array as authoritative (so GM resets propagate to the
-  // player's view and other-tab updates show up).
-  const tokensExploredKey = useMemo(
-    () => tokens.map(t => `${t.id}:${(t.exploredCells || []).length}`).join('|'),
-    [tokens]
-  );
-  useEffect(() => {
-    setExploredByToken(prev => {
-      const next = new Map<string, Set<string>>();
-      for (const t of tokens) {
-        if (dirtyTokensRef.current.has(t.id)) {
-          next.set(t.id, prev.get(t.id) ?? new Set(Array.isArray(t.exploredCells) ? t.exploredCells : []));
-        } else {
-          const arr = Array.isArray(t.exploredCells) ? t.exploredCells : [];
-          if (arr.length > 0) next.set(t.id, new Set(arr));
-        }
+      if (!exploredStorageKey) {
+        setExploredCells(new Set());
+        return;
       }
-      return next;
-    });
-  }, [tokensExploredKey, tokens]);
-
-  // Flush pending writes on unmount.
-  useEffect(() => {
-    return () => {
-      if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-    };
-  }, []);
-
-  // Union of cells contributing to the current view — what FogCanvasOverlay
-  // actually punches holes through.
-  const exploredCells = useMemo<Set<string>>(() => {
-    if (ownerTokenIds.length === 0) return new Set();
-    const union = new Set<string>();
-    for (const tid of ownerTokenIds) {
-      const set = exploredByToken.get(tid);
-      if (set) for (const c of set) union.add(c);
+      try {
+        const saved = localStorage.getItem(exploredStorageKey);
+        if (saved) {
+          setExploredCells(new Set(JSON.parse(saved)));
+          return;
+        }
+      } catch {}
+      setExploredCells(new Set());
     }
-    return union;
-  }, [ownerTokenIds, exploredByToken]);
+  }, [sceneId, exploredStorageKey]);
+
+  useEffect(() => {
+    if (!fogExploredMemoryEnabled) {
+      setExploredCells(new Set());
+      if (exploredStorageKey) {
+        try { localStorage.removeItem(exploredStorageKey); } catch {}
+      }
+    }
+  }, [fogExploredMemoryEnabled, exploredStorageKey]);
+
+  useEffect(() => {
+    if (!exploredStorageKey || !fogExploredMemoryEnabled) return;
+    if (exploredCells.size === 0) return;
+    try {
+      localStorage.setItem(exploredStorageKey, JSON.stringify(Array.from(exploredCells)));
+    } catch {}
+  }, [exploredCells, exploredStorageKey, fogExploredMemoryEnabled]);
 
   function isPointInPoly(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
     let inside = false;
@@ -800,30 +738,19 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return inside;
   }
 
-  // Accumulate explored cells per token from the current frame's vision
-  // polygons. Only players write — when the GM uses "See as Player" they're
-  // just viewing, not adding to that player's memory.
   useEffect(() => {
-    if (!fogEnabled) return;
+    if (!fogEnabled || (isGM && !gmSeeAsPlayer)) return;
     if (!scene?.fogExploredMemory) return;
-    if (isGM) return;
 
     const allPolys = [...visionPolygons, ...lightVisionPolygons];
     if (allPolys.length === 0) return;
 
-    setExploredByToken(prev => {
-      const next = new Map(prev);
-      let mapChanged = false;
-      const cellSize = gridSize;
+    setExploredCells(prev => {
+      const newSet = new Set(prev);
+      let changed = false;
 
       for (const poly of allPolys) {
-        const tokenId = (poly as any).tokenId as string | undefined;
-        if (!tokenId) continue;
         if (poly.points.length < 3) continue;
-
-        let set = next.get(tokenId);
-        if (!set) { set = new Set<string>(); next.set(tokenId, set); }
-
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (const p of poly.points) {
           if (p.x < minX) minX = p.x;
@@ -831,41 +758,31 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
           if (p.y < minY) minY = p.y;
           if (p.y > maxY) maxY = p.y;
         }
+
+        const cellSize = gridSize;
         const startCol = Math.floor(minX / cellSize);
         const endCol = Math.ceil(maxX / cellSize);
         const startRow = Math.floor(minY / cellSize);
         const endRow = Math.ceil(maxY / cellSize);
 
-        let tokenChanged = false;
         for (let col = startCol; col <= endCol; col++) {
           for (let row = startRow; row <= endRow; row++) {
             const cx = (col + 0.5) * cellSize;
             const cy = (row + 0.5) * cellSize;
             if (isPointInPoly(cx, cy, poly.points)) {
               const key = `${col},${row}`;
-              if (!set.has(key)) { set.add(key); tokenChanged = true; }
+              if (!newSet.has(key)) {
+                newSet.add(key);
+                changed = true;
+              }
             }
           }
         }
-        if (tokenChanged) {
-          mapChanged = true;
-          dirtyTokensRef.current.add(tokenId);
-        }
       }
 
-      // NOTE: server persistence of exploredCells was rolled back on
-      // 2026-05-23 — every player movement queued a PATCH on the tokens
-      // table with a steadily-growing string[], which then fanned out via
-      // WS broadcast and forced every client to refetch a multi-megabyte
-      // tokens payload. The map below now stays local-only (same lifetime
-      // as the previous localStorage implementation: lasts for the session,
-      // resets on reload). Dirty tracking is intentionally left wired in
-      // case we re-introduce a thinner persistence path later.
-      dirtyTokensRef.current = new Set();
-
-      return mapChanged ? next : prev;
+      return changed ? newSet : prev;
     });
-  }, [visionPolygons, lightVisionPolygons, fogEnabled, isGM, scene?.fogExploredMemory, gridSize]);
+  }, [visionPolygons, lightVisionPolygons, fogEnabled, isGM, gmSeeAsPlayer, scene?.fogExploredMemory, gridSize]);
 
   useEffect(() => {
     onFogRenderData?.({
@@ -2631,7 +2548,6 @@ interface FogToolsPanelProps {
   setFreeformMode?: (v: boolean) => void;
   moveMode?: boolean;
   setMoveMode?: (v: boolean) => void;
-  onResetExploredMemory?: () => void;
 }
 
 export function FogToolsPanel({
@@ -2672,7 +2588,6 @@ export function FogToolsPanel({
   setFreeformMode,
   moveMode,
   setMoveMode,
-  onResetExploredMemory,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -2970,23 +2885,6 @@ export function FogToolsPanel({
             {scene?.fogExploredMemory ? 'On' : 'Off'}
           </Button>
         </div>
-
-        {scene?.fogExploredMemory && onResetExploredMemory && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 w-full text-xs border-red-700 text-red-300 hover:bg-red-900/30"
-            onClick={() => {
-              if (window.confirm('Reset explored memory for every token in this scene? Players will see fog again wherever they have not currently got line of sight.')) {
-                onResetExploredMemory();
-              }
-            }}
-            data-testid="button-reset-explored-memory"
-          >
-            <Trash2 className="h-3 w-3 mr-1" />
-            Reset Explored Memory
-          </Button>
-        )}
 
         <div className="space-y-1">
           <div className="flex items-center justify-between">

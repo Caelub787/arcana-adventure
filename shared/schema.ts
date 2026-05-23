@@ -337,10 +337,6 @@ export const tokens = pgTable("tokens", {
   lightRadius: integer("light_radius"), // Light emitted by this token (e.g. torch)
   lightColor: text("light_color").default("#ffcc44"), // Color of token-emitted light
   lightIntensity: real("light_intensity").default(1.0), // 0.0-1.0 intensity of token light
-  // Persistent per-token fog-of-war "explored memory". Each string is a
-  // grid cell key "col,row". GMs can switch to "See as Player" on any
-  // token to see exactly what that player has explored across sessions.
-  exploredCells: text("explored_cells").array().default(sql`ARRAY[]::text[]`).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

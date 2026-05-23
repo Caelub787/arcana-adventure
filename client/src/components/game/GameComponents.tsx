@@ -4190,15 +4190,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setMoveMode={setMoveMode}
           freeformMode={freeformMode}
           setFreeformMode={setFreeformMode}
-          onResetExploredMemory={() => {
-            // Server-side persistence of explored cells was rolled back
-            // (see FogOfWarOverlay comment for incident details). The
-            // button still exists so the GM can wipe the in-session local
-            // memory on every connected client; the WS event below is
-            // picked up by FogOfWarOverlay's scene-change/reconcile path
-            // to clear the local map.
-            queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
-          }}
         />
       )}
 
