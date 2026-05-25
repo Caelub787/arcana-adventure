@@ -11575,6 +11575,17 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
 
       {inline && (
         <div className="space-y-4">
+          {/* Main Menu navigation - top of campaign settings */}
+          <div className="pb-3 border-b border-stone-800">
+            <Button
+              variant="outline"
+              className="w-full bg-stone-900/50 hover:bg-stone-800/70 border-stone-700 text-stone-200 hover:text-amber-400 hover:border-amber-500/60"
+              onClick={() => navigate("/")}
+              data-testid="button-main-menu"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> Main Menu
+            </Button>
+          </div>
           {!charactersOnly && role === 'gm' && (
             <div className="p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
               <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
@@ -12212,17 +12223,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           </Tabs>
           )}
 
-          {/* Main Menu navigation - always at bottom */}
-          <div className="pt-3 mt-3 border-t border-stone-800">
-            <Button
-              variant="outline"
-              className="w-full bg-stone-900/50 hover:bg-stone-800/70 border-stone-700 text-stone-200 hover:text-amber-400 hover:border-amber-500/60"
-              onClick={() => navigate("/")}
-              data-testid="button-main-menu"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" /> Main Menu
-            </Button>
-          </div>
         </div>
       )}
       
@@ -15557,13 +15557,16 @@ function CustomSkillForm({
   systemSkills, 
   existingSkillIds, 
   onSave, 
-  isLoading 
+  isLoading,
+  campaignSystem,
 }: { 
   systemSkills: SystemSkill[]; 
   existingSkillIds: (string | undefined)[];
   onSave: (data: Partial<CharacterCustomSkill>) => void; 
   isLoading?: boolean;
+  campaignSystem?: string;
 }) {
+  const hideParentAttribute = campaignSystem === 'aa-v2';
   const [mode, setMode] = useState<'library' | 'custom'>('library');
   const [customName, setCustomName] = useState('');
   const [customDescription, setCustomDescription] = useState('');
@@ -15592,7 +15595,7 @@ function CustomSkillForm({
     onSave({
       name: customName.trim(),
       description: customDescription.trim() || undefined,
-      parentAttribute: customAttribute,
+      parentAttribute: hideParentAttribute ? '' : customAttribute,
       value: skillValue
     });
     setCustomName('');
@@ -15607,7 +15610,7 @@ function CustomSkillForm({
       systemSkillId: pendingSkill.id,
       name: pendingSkill.name,
       description: pendingSkill.description,
-      parentAttribute: pendingSkill.parentAttribute,
+      parentAttribute: hideParentAttribute ? '' : pendingSkill.parentAttribute,
       value: pendingSkillValue
     });
     setPendingSkill(null);
@@ -15746,21 +15749,23 @@ function CustomSkillForm({
               data-testid="input-custom-skill-description"
             />
           </div>
-          <div>
-            <Label className="text-stone-300">Parent Attribute</Label>
-            <Select value={customAttribute} onValueChange={setCustomAttribute}>
-              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-custom-skill-attribute">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PARENT_ATTRIBUTE_OPTIONS.map(attr => (
-                  <SelectItem key={attr} value={attr}>
-                    {attr.charAt(0).toUpperCase() + attr.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!hideParentAttribute && (
+            <div>
+              <Label className="text-stone-300">Parent Attribute</Label>
+              <Select value={customAttribute} onValueChange={setCustomAttribute}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-custom-skill-attribute">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PARENT_ATTRIBUTE_OPTIONS.map(attr => (
+                    <SelectItem key={attr} value={attr}>
+                      {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
             <Input
@@ -15795,7 +15800,9 @@ function CustomSkillForm({
             <div className="space-y-4">
               <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
                 <div className="font-medium text-cyan-400">{pendingSkill.name}</div>
-                <div className="text-xs text-stone-500 capitalize">Parent: {pendingSkill.parentAttribute}</div>
+                {!hideParentAttribute && (
+                  <div className="text-xs text-stone-500 capitalize">Parent: {pendingSkill.parentAttribute}</div>
+                )}
                 {pendingSkill.description && (
                   <p className="text-xs text-stone-400 mt-1">{pendingSkill.description}</p>
                 )}
@@ -15842,13 +15849,16 @@ function CustomSkillEditForm({
   skill, 
   onSave, 
   onDelete,
-  isLoading 
+  isLoading,
+  campaignSystem,
 }: { 
   skill: CharacterCustomSkill; 
   onSave: (data: Partial<CharacterCustomSkill>) => void;
   onDelete: () => void;
   isLoading?: boolean;
+  campaignSystem?: string;
 }) {
+  const hideParentAttribute = campaignSystem === 'aa-v2';
   const [skillValue, setSkillValue] = useState(skill.value);
   const [description, setDescription] = useState(skill.description || '');
 
@@ -15863,7 +15873,9 @@ function CustomSkillEditForm({
     <div className="space-y-4">
       <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
         <div className="font-medium text-cyan-400">{skill.name}</div>
-        <div className="text-xs text-stone-500 capitalize">Parent: {skill.parentAttribute}</div>
+        {!hideParentAttribute && skill.parentAttribute && (
+          <div className="text-xs text-stone-500 capitalize">Parent: {skill.parentAttribute}</div>
+        )}
       </div>
 
       <div>
@@ -19799,6 +19811,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   existingSkillIds={characterCustomSkills.map((cs: CharacterCustomSkill) => cs.systemSkillId).filter(Boolean)}
                   onSave={(data) => addCustomSkillMutation.mutate(data)}
                   isLoading={addCustomSkillMutation.isPending}
+                  campaignSystem={campaignSystem}
                 />
               </div>
             </FloatingPanel>
@@ -19826,6 +19839,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       }
                     }}
                     isLoading={updateCustomSkillMutation.isPending}
+                    campaignSystem={campaignSystem}
                   />
                 </div>
               </FloatingPanel>
