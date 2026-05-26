@@ -10991,13 +10991,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           </div>
 
           <Tabs defaultValue="players" className="w-full">
-            {system !== 'sandbox' && (
-              <TabsList className="w-full grid grid-cols-2 bg-stone-900">
-                <TabsTrigger value="players">Players</TabsTrigger>
-                <TabsTrigger value="characters">Characters</TabsTrigger>
-              </TabsList>
-            )}
-            
             <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
                {/* Campaign Members List */}
                <div className="space-y-2">
@@ -11106,383 +11099,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                </div>
             </TabsContent>
             
-            {system !== 'sandbox' && (
-            <TabsContent value="characters" className="mt-4 space-y-4">
-               {/* Add Character Button (GM only) */}
-               {role === 'gm' && onAddCharacter && (
-                 <Button 
-                   variant="secondary" 
-                   className="w-full bg-stone-800 hover:bg-stone-700" 
-                   onClick={() => setAddCharacterOpen(true)}
-                   data-testid="button-add-character"
-                 >
-                   <Plus className="mr-2 h-4 w-4" /> Create Character
-                 </Button>
-               )}
-
-               {/* Add from Library Button (GM only) */}
-               {role === 'gm' && (
-                 <Button 
-                   variant="outline" 
-                   className="w-full border-teal-700 text-teal-400 hover:bg-teal-900/30" 
-                   onClick={() => setShowTemplateLibrary(true)}
-                   data-testid="button-add-from-library"
-                 >
-                   <Library className="mr-2 h-4 w-4" /> Add from Library
-                 </Button>
-               )}
-
-               {/* Import from Campaign Button (GM only) */}
-               {role === 'gm' && (
-                 <Button
-                   variant="secondary"
-                   className="w-full bg-stone-800/80 border-stone-700 hover:bg-stone-700"
-                   onClick={() => setShowImportDialog(true)}
-                   data-testid="button-import-character"
-                 >
-                   <Download className="mr-2 h-4 w-4" /> Import from Campaign
-                 </Button>
-               )}
-               
-               {/* Create Folder Input (GM only) */}
-               {role === 'gm' && (
-                 <div className="flex gap-2">
-                   <Input
-                     placeholder="New folder name..."
-                     value={newFolderName}
-                     onChange={(e) => setNewFolderName(e.target.value)}
-                     className="flex-1 bg-stone-900 border-stone-700 text-stone-200"
-                     data-testid="input-new-folder-name"
-                   />
-                   <Button
-                     variant="secondary"
-                     size="sm"
-                     onClick={() => {
-                       if (newFolderName.trim()) {
-                         createFolderMutation.mutate(newFolderName.trim());
-                         setNewFolderName('');
-                       }
-                     }}
-                     disabled={!newFolderName.trim() || createFolderMutation.isPending}
-                     className="bg-stone-800 hover:bg-stone-700"
-                     data-testid="button-create-folder"
-                   >
-                     <FolderPlus className="h-4 w-4" />
-                   </Button>
-                 </div>
-               )}
-               
-               {/* Folder Sections */}
-               <div className="space-y-3">
-                 {folders.filter((folder: any) => role === 'gm' || getCharactersInFolder(folder.id).length > 0).map((folder: any) => {
-                   const folderCharacters = getCharactersInFolder(folder.id);
-                   const isExpanded = expandedFolders.has(folder.id);
-                   
-                   return (
-                     <div
-                       key={folder.id}
-                       className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
-                       onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
-                       onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
-                       onDrop={(e) => {
-                         e.preventDefault();
-                         e.currentTarget.classList.remove('border-amber-500');
-                         const charId = e.dataTransfer.getData('text/plain');
-                         if (charId) {
-                           moveCharacterMutation.mutate({ characterId: charId, folderId: folder.id });
-                           setDraggingCharacterId(null);
-                         }
-                       }}
-                       data-testid={`folder-section-${folder.id}`}
-                     >
-                       {/* Folder Header */}
-                       <div
-                         className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded"
-                         onClick={() => toggleFolder(folder.id)}
-                       >
-                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                           {isExpanded ? (
-                             <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
-                           ) : (
-                             <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
-                           )}
-                           <Folder className="h-4 w-4 text-amber-500 shrink-0" />
-                           {editingFolderId === folder.id ? (
-                             <Input
-                               value={editingFolderName}
-                               onChange={(e) => setEditingFolderName(e.target.value)}
-                               onClick={(e) => e.stopPropagation()}
-                               onKeyDown={(e) => {
-                                 if (e.key === 'Enter') {
-                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
-                                   setEditingFolderId(null);
-                                 } else if (e.key === 'Escape') {
-                                   setEditingFolderId(null);
-                                 }
-                               }}
-                               onBlur={() => {
-                                 if (editingFolderName.trim() && editingFolderName !== folder.name) {
-                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
-                                 }
-                                 setEditingFolderId(null);
-                               }}
-                               className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600"
-                               autoFocus
-                               data-testid={`input-edit-folder-${folder.id}`}
-                             />
-                           ) : (
-                             <span className="font-medium text-stone-200 truncate">{folder.name}</span>
-                           )}
-                           <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs shrink-0">
-                             {folderCharacters.length}
-                           </Badge>
-                         </div>
-                         {role === 'gm' && editingFolderId !== folder.id && (
-                           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                             <Button
-                               size="sm"
-                               variant="ghost"
-                               onClick={() => {
-                                 setEditingFolderId(folder.id);
-                                 setEditingFolderName(folder.name);
-                               }}
-                               className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
-                               data-testid={`button-edit-folder-${folder.id}`}
-                             >
-                               <Pencil className="h-3 w-3" />
-                             </Button>
-                             <Button
-                               size="sm"
-                               variant="ghost"
-                               onClick={() => deleteFolderMutation.mutate(folder.id)}
-                               disabled={deleteFolderMutation.isPending}
-                               className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                               data-testid={`button-delete-folder-${folder.id}`}
-                             >
-                               <Trash2 className="h-3 w-3" />
-                             </Button>
-                           </div>
-                         )}
-                       </div>
-                       
-                       {/* Folder Characters */}
-                       {isExpanded && (
-                         <div className="mt-2 space-y-2 pl-6">
-                           {folderCharacters.length > 0 ? (
-                             folderCharacters.map((char: any) => (
-                               <div 
-                                 key={char.id} 
-                                 className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
-                                 draggable={role === 'gm'}
-                                 onDragStart={(e) => {
-                                   e.dataTransfer.setData('text/plain', char.id.toString());
-                                   e.dataTransfer.setData('application/character-id', char.id.toString());
-                                   setDraggingCharacterId(char.id);
-                                 }}
-                                 onDragEnd={() => setDraggingCharacterId(null)}
-                                 data-testid={`character-item-${char.id}`}
-                               >
-                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                   {role === 'gm' && (
-                                     <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
-                                   )}
-                                   <div className="min-w-0 flex-1">
-                                     <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
-                                   </div>
-                                 </div>
-                                 <DropdownMenu>
-                                   <DropdownMenuTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
-                                       data-testid={`button-character-menu-${char.id}`}
-                                     >
-                                       <MoreVertical className="h-4 w-4" />
-                                     </Button>
-                                   </DropdownMenuTrigger>
-                                   <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                                     {onViewCharacter && (
-                                       <DropdownMenuItem
-                                         onClick={() => onViewCharacter(char)}
-                                         className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
-                                         data-testid={`button-view-character-${char.id}`}
-                                       >
-                                         <User className="h-4 w-4 mr-2" />
-                                         View Sheet
-                                       </DropdownMenuItem>
-                                     )}
-                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                                       <DropdownMenuItem
-                                         onClick={() => onAssignCharacter(char)}
-                                         className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
-                                         data-testid={`button-assign-character-${char.id}`}
-                                       >
-                                         <UserCheck className="h-4 w-4 mr-2" />
-                                         Assign Character
-                                       </DropdownMenuItem>
-                                     )}
-                                     {role === 'gm' && (
-                                       <DropdownMenuItem
-                                         onClick={() => {
-                                           setSelectedCharForAccess(char);
-                                           setShowAccessDialog(true);
-                                         }}
-                                         className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
-                                         data-testid={`button-manage-access-${char.id}`}
-                                       >
-                                         <Shield className="h-4 w-4 mr-2" />
-                                         Manage Access
-                                       </DropdownMenuItem>
-                                     )}
-                                     {role === 'gm' && (
-                                       <>
-                                         <DropdownMenuSeparator className="bg-stone-700" />
-                                         <DropdownMenuItem
-                                           onClick={() => handleDeleteCharacter(char)}
-                                           disabled={deleteCharacterMutation.isPending}
-                                           className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
-                                           data-testid={`button-delete-character-${char.id}`}
-                                         >
-                                           <Trash2 className="h-4 w-4 mr-2" />
-                                           Delete
-                                         </DropdownMenuItem>
-                                       </>
-                                     )}
-                                   </DropdownMenuContent>
-                                 </DropdownMenu>
-                               </div>
-                             ))
-                           ) : (
-                             <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
-                               Drag characters here
-                             </div>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                   );
-                 })}
-                 
-                 {/* Unfiled Characters Section */}
-                 <div
-                   className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
-                   onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
-                   onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
-                   onDrop={(e) => {
-                     e.preventDefault();
-                     e.currentTarget.classList.remove('border-amber-500');
-                     const charId = e.dataTransfer.getData('text/plain');
-                     if (charId) {
-                       moveCharacterMutation.mutate({ characterId: charId, folderId: null });
-                       setDraggingCharacterId(null);
-                     }
-                   }}
-                   data-testid="unfiled-characters-section"
-                 >
-                   <div className="flex items-center gap-2 p-2 text-stone-400">
-                     <FolderOpen className="h-4 w-4" />
-                     <span className="font-medium">Unfiled</span>
-                     <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs">
-                       {unfiledCharacters.length}
-                     </Badge>
-                   </div>
-                   <div className="mt-2 space-y-2">
-                     {unfiledCharacters.length > 0 ? (
-                       unfiledCharacters.map((char: any) => (
-                         <div 
-                           key={char.id} 
-                           className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
-                           draggable={role === 'gm'}
-                           onDragStart={(e) => {
-                             e.dataTransfer.setData('text/plain', char.id.toString());
-                             e.dataTransfer.setData('application/character-id', char.id.toString());
-                             setDraggingCharacterId(char.id);
-                           }}
-                           onDragEnd={() => setDraggingCharacterId(null)}
-                           data-testid={`character-item-${char.id}`}
-                         >
-                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                             {role === 'gm' && (
-                               <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
-                             )}
-                             <div className="min-w-0 flex-1">
-                               <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
-                             </div>
-                           </div>
-                           <DropdownMenu>
-                             <DropdownMenuTrigger asChild>
-                               <Button
-                                 size="sm"
-                                 variant="ghost"
-                                 className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
-                                 data-testid={`button-character-menu-${char.id}`}
-                               >
-                                 <MoreVertical className="h-4 w-4" />
-                               </Button>
-                             </DropdownMenuTrigger>
-                             <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                               {onViewCharacter && (
-                                 <DropdownMenuItem
-                                   onClick={() => onViewCharacter(char)}
-                                   className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
-                                   data-testid={`button-view-character-${char.id}`}
-                                 >
-                                   <User className="h-4 w-4 mr-2" />
-                                   View Sheet
-                                 </DropdownMenuItem>
-                               )}
-                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                                 <DropdownMenuItem
-                                   onClick={() => onAssignCharacter(char)}
-                                   className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
-                                   data-testid={`button-assign-character-${char.id}`}
-                                 >
-                                   <UserCheck className="h-4 w-4 mr-2" />
-                                   Assign Character
-                                 </DropdownMenuItem>
-                               )}
-                               {role === 'gm' && (
-                                 <DropdownMenuItem
-                                   onClick={() => {
-                                     setSelectedCharForAccess(char);
-                                     setShowAccessDialog(true);
-                                   }}
-                                   className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
-                                   data-testid={`button-manage-access-${char.id}`}
-                                 >
-                                   <Shield className="h-4 w-4 mr-2" />
-                                   Manage Access
-                                 </DropdownMenuItem>
-                               )}
-                               {role === 'gm' && (
-                                 <>
-                                   <DropdownMenuSeparator className="bg-stone-700" />
-                                   <DropdownMenuItem
-                                     onClick={() => handleDeleteCharacter(char)}
-                                     disabled={deleteCharacterMutation.isPending}
-                                     className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
-                                     data-testid={`button-delete-character-${char.id}`}
-                                   >
-                                     <Trash2 className="h-4 w-4 mr-2" />
-                                     Delete
-                                   </DropdownMenuItem>
-                                 </>
-                               )}
-                             </DropdownMenuContent>
-                           </DropdownMenu>
-                         </div>
-                       ))
-                     ) : (
-                       <div className="p-4 text-center text-stone-500 text-sm">
-                         {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               </div>
-            </TabsContent>
-            )}
           </Tabs>
 
           {/* GM Only Section */}
@@ -11814,12 +11430,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             />
           ) : (
           <Tabs defaultValue="players" className="w-full">
-            {system !== 'sandbox' && (
-              <TabsList className="w-full grid grid-cols-2 bg-stone-900">
-                <TabsTrigger value="players">Players</TabsTrigger>
-                <TabsTrigger value="characters">Characters</TabsTrigger>
-              </TabsList>
-            )}
             <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
               <div className="space-y-2">
                 {members && members.length > 0 ? (
@@ -11827,397 +11437,101 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                     <div 
                       key={member.id} 
                       className="p-3 bg-stone-800/50 rounded-lg flex justify-between items-center"
+                      data-testid={`member-item-inline-${member.id}`}
                     >
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center text-stone-300 text-xs">
-                          {(member.username || 'U').slice(0, 2).toUpperCase()}
+                        <Avatar className="h-8 w-8 border border-stone-700">
+                          <AvatarImage src={member.avatarUrl} alt={member.username || 'User'} />
+                          <AvatarFallback className="bg-stone-700 text-stone-300 text-xs">
+                            {(member.username || 'U').slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div data-testid={`text-username-inline-${member.id}`}>
+                            <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
+                          </div>
+                          {isOwner && member.userId !== gmUserId ? (
+                            <Select
+                              value={member.role === 'assistant_gm' ? 'assistant_gm' : 'player'}
+                              onValueChange={(value: 'player' | 'assistant_gm') => handleRoleChange(member, value)}
+                              disabled={setMemberRoleMutation.isPending}
+                            >
+                              <SelectTrigger className="h-6 w-[120px] text-xs bg-stone-900 border-stone-700 px-2" data-testid={`select-role-inline-${member.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-stone-900 border-stone-700">
+                                <SelectItem value="player" className="text-xs">Player</SelectItem>
+                                <SelectItem value="assistant_gm" className="text-xs">Assistant GM</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="text-xs text-stone-500">
+                              {member.role === 'gm' ? 'GM' : member.role === 'assistant_gm' ? 'Assistant GM' : 'Player'}
+                            </div>
+                          )}
+                          {role === 'gm' && member.userId !== gmUserId && member.role !== 'assistant_gm' && (
+                            <label className="flex items-center gap-1 mt-1 text-[10px] text-stone-400 cursor-pointer select-none" data-testid={`label-trusted-inline-${member.id}`}>
+                              <input
+                                type="checkbox"
+                                className="h-3 w-3 accent-violet-500"
+                                checked={!!member.trustedPlayer}
+                                disabled={setTrustedPlayerMutation.isPending}
+                                onChange={(e) => setTrustedPlayerMutation.mutate({ memberId: member.id, trusted: e.target.checked })}
+                                data-testid={`checkbox-trusted-inline-${member.id}`}
+                              />
+                              <span className="text-violet-300">Trusted Player</span>
+                            </label>
+                          )}
                         </div>
-                        <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
                       </div>
-                      <div className="text-xs text-stone-500">
-                        {member.role === 'gm' ? 'GM' : member.role === 'assistant_gm' ? 'Assistant GM' : 'Player'}
-                      </div>
+                      {role === 'gm' && member.userId !== gmUserId && campaignId && (
+                        <div className="flex items-center gap-1">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleKick(member)}
+                                  disabled={kickMutation.isPending}
+                                  className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                                  data-testid={`button-kick-inline-${member.userId}`}
+                                >
+                                  <UserMinus className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                <p>Kick Player</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleBan(member)}
+                                  disabled={banMutation.isPending}
+                                  className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                                  data-testid={`button-ban-inline-${member.userId}`}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                <p>Ban Player</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
                   <div className="p-4 text-center text-stone-500 text-sm">No members yet</div>
                 )}
               </div>
-            </TabsContent>
-            <TabsContent value="characters" className="mt-4 space-y-4">
-               {/* Add Character Button (GM only) */}
-               {role === 'gm' && onAddCharacter && (
-                 <Button 
-                   variant="secondary" 
-                   className="w-full bg-stone-800 hover:bg-stone-700" 
-                   onClick={() => setAddCharacterOpen(true)}
-                   data-testid="button-add-character"
-                 >
-                   <Plus className="mr-2 h-4 w-4" /> Create Character
-                 </Button>
-               )}
-
-               {/* Add from Library Button (GM only) */}
-               {role === 'gm' && (
-                 <Button 
-                   variant="outline" 
-                   className="w-full border-teal-700 text-teal-400 hover:bg-teal-900/30" 
-                   onClick={() => setShowTemplateLibrary(true)}
-                   data-testid="button-add-from-library"
-                 >
-                   <Library className="mr-2 h-4 w-4" /> Add from Library
-                 </Button>
-               )}
-
-               {/* Import from Campaign Button (GM only) */}
-               {role === 'gm' && (
-                 <Button
-                   variant="secondary"
-                   className="w-full bg-stone-800/80 border-stone-700 hover:bg-stone-700"
-                   onClick={() => setShowImportDialog(true)}
-                   data-testid="button-import-character"
-                 >
-                   <Download className="mr-2 h-4 w-4" /> Import from Campaign
-                 </Button>
-               )}
-               
-               {/* Create Folder Input (GM only) */}
-               {role === 'gm' && (
-                 <div className="flex gap-2">
-                   <Input
-                     placeholder="New folder name..."
-                     value={newFolderName}
-                     onChange={(e) => setNewFolderName(e.target.value)}
-                     className="flex-1 bg-stone-900 border-stone-700 text-stone-200"
-                     data-testid="input-new-folder-name"
-                   />
-                   <Button
-                     variant="secondary"
-                     size="sm"
-                     onClick={() => {
-                       if (newFolderName.trim()) {
-                         createFolderMutation.mutate(newFolderName.trim());
-                         setNewFolderName('');
-                       }
-                     }}
-                     disabled={!newFolderName.trim() || createFolderMutation.isPending}
-                     className="bg-stone-800 hover:bg-stone-700"
-                     data-testid="button-create-folder"
-                   >
-                     <FolderPlus className="h-4 w-4" />
-                   </Button>
-                 </div>
-               )}
-               
-               {/* Folder Sections */}
-               <div className="space-y-3">
-                 {folders.filter((folder: any) => role === 'gm' || getCharactersInFolder(folder.id).length > 0).map((folder: any) => {
-                   const folderCharacters = getCharactersInFolder(folder.id);
-                   const isExpanded = expandedFolders.has(folder.id);
-                   
-                   return (
-                     <div
-                       key={folder.id}
-                       className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
-                       onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
-                       onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
-                       onDrop={(e) => {
-                         e.preventDefault();
-                         e.currentTarget.classList.remove('border-amber-500');
-                         const charId = e.dataTransfer.getData('text/plain');
-                         if (charId) {
-                           moveCharacterMutation.mutate({ characterId: charId, folderId: folder.id });
-                           setDraggingCharacterId(null);
-                         }
-                       }}
-                       data-testid={`folder-section-${folder.id}`}
-                     >
-                       {/* Folder Header */}
-                       <div
-                         className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded"
-                         onClick={() => toggleFolder(folder.id)}
-                       >
-                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                           {isExpanded ? (
-                             <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
-                           ) : (
-                             <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
-                           )}
-                           <Folder className="h-4 w-4 text-amber-500 shrink-0" />
-                           {editingFolderId === folder.id ? (
-                             <Input
-                               value={editingFolderName}
-                               onChange={(e) => setEditingFolderName(e.target.value)}
-                               onClick={(e) => e.stopPropagation()}
-                               onKeyDown={(e) => {
-                                 if (e.key === 'Enter') {
-                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
-                                   setEditingFolderId(null);
-                                 } else if (e.key === 'Escape') {
-                                   setEditingFolderId(null);
-                                 }
-                               }}
-                               onBlur={() => {
-                                 if (editingFolderName.trim() && editingFolderName !== folder.name) {
-                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
-                                 }
-                                 setEditingFolderId(null);
-                               }}
-                               className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600"
-                               autoFocus
-                               data-testid={`input-edit-folder-${folder.id}`}
-                             />
-                           ) : (
-                             <span className="font-medium text-stone-200 truncate">{folder.name}</span>
-                           )}
-                           <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs shrink-0">
-                             {folderCharacters.length}
-                           </Badge>
-                         </div>
-                         {role === 'gm' && editingFolderId !== folder.id && (
-                           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                             <Button
-                               size="sm"
-                               variant="ghost"
-                               onClick={() => {
-                                 setEditingFolderId(folder.id);
-                                 setEditingFolderName(folder.name);
-                               }}
-                               className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
-                               data-testid={`button-edit-folder-${folder.id}`}
-                             >
-                               <Pencil className="h-3 w-3" />
-                             </Button>
-                             <Button
-                               size="sm"
-                               variant="ghost"
-                               onClick={() => deleteFolderMutation.mutate(folder.id)}
-                               disabled={deleteFolderMutation.isPending}
-                               className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                               data-testid={`button-delete-folder-${folder.id}`}
-                             >
-                               <Trash2 className="h-3 w-3" />
-                             </Button>
-                           </div>
-                         )}
-                       </div>
-                       
-                       {/* Folder Characters */}
-                       {isExpanded && (
-                         <div className="mt-2 space-y-2 pl-6">
-                           {folderCharacters.length > 0 ? (
-                             folderCharacters.map((char: any) => (
-                               <div 
-                                 key={char.id} 
-                                 className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
-                                 draggable={role === 'gm'}
-                                 onDragStart={(e) => {
-                                   e.dataTransfer.setData('text/plain', char.id.toString());
-                                   e.dataTransfer.setData('application/character-id', char.id.toString());
-                                   setDraggingCharacterId(char.id);
-                                 }}
-                                 onDragEnd={() => setDraggingCharacterId(null)}
-                                 data-testid={`character-item-${char.id}`}
-                               >
-                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                   {role === 'gm' && (
-                                     <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
-                                   )}
-                                   <div className="min-w-0 flex-1">
-                                     <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
-                                   </div>
-                                 </div>
-                                 <DropdownMenu>
-                                   <DropdownMenuTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
-                                       data-testid={`button-character-menu-${char.id}`}
-                                     >
-                                       <MoreVertical className="h-4 w-4" />
-                                     </Button>
-                                   </DropdownMenuTrigger>
-                                   <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                                     {onViewCharacter && (
-                                       <DropdownMenuItem
-                                         onClick={() => onViewCharacter(char)}
-                                         className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
-                                         data-testid={`button-view-character-${char.id}`}
-                                       >
-                                         <User className="h-4 w-4 mr-2" />
-                                         View Sheet
-                                       </DropdownMenuItem>
-                                     )}
-                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                                       <DropdownMenuItem
-                                         onClick={() => onAssignCharacter(char)}
-                                         className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
-                                         data-testid={`button-assign-character-${char.id}`}
-                                       >
-                                         <UserCheck className="h-4 w-4 mr-2" />
-                                         Assign Character
-                                       </DropdownMenuItem>
-                                     )}
-                                     {role === 'gm' && (
-                                       <DropdownMenuItem
-                                         onClick={() => {
-                                           setSelectedCharForAccess(char);
-                                           setShowAccessDialog(true);
-                                         }}
-                                         className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
-                                         data-testid={`button-manage-access-${char.id}`}
-                                       >
-                                         <Shield className="h-4 w-4 mr-2" />
-                                         Manage Access
-                                       </DropdownMenuItem>
-                                     )}
-                                     {role === 'gm' && (
-                                       <>
-                                         <DropdownMenuSeparator className="bg-stone-700" />
-                                         <DropdownMenuItem
-                                           onClick={() => handleDeleteCharacter(char)}
-                                           disabled={deleteCharacterMutation.isPending}
-                                           className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
-                                           data-testid={`button-delete-character-${char.id}`}
-                                         >
-                                           <Trash2 className="h-4 w-4 mr-2" />
-                                           Delete
-                                         </DropdownMenuItem>
-                                       </>
-                                     )}
-                                   </DropdownMenuContent>
-                                 </DropdownMenu>
-                               </div>
-                             ))
-                           ) : (
-                             <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
-                               Drag characters here
-                             </div>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                   );
-                 })}
-                 
-                 {/* Unfiled Characters Section */}
-                 <div
-                   className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
-                   onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
-                   onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
-                   onDrop={(e) => {
-                     e.preventDefault();
-                     e.currentTarget.classList.remove('border-amber-500');
-                     const charId = e.dataTransfer.getData('text/plain');
-                     if (charId) {
-                       moveCharacterMutation.mutate({ characterId: charId, folderId: null });
-                       setDraggingCharacterId(null);
-                     }
-                   }}
-                   data-testid="unfiled-characters-section"
-                 >
-                   <div className="flex items-center gap-2 p-2 text-stone-400">
-                     <FolderOpen className="h-4 w-4" />
-                     <span className="font-medium">Unfiled</span>
-                     <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs">
-                       {unfiledCharacters.length}
-                     </Badge>
-                   </div>
-                   <div className="mt-2 space-y-2">
-                     {unfiledCharacters.length > 0 ? (
-                       unfiledCharacters.map((char: any) => (
-                         <div 
-                           key={char.id} 
-                           className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
-                           draggable={role === 'gm'}
-                           onDragStart={(e) => {
-                             e.dataTransfer.setData('text/plain', char.id.toString());
-                             e.dataTransfer.setData('application/character-id', char.id.toString());
-                             setDraggingCharacterId(char.id);
-                           }}
-                           onDragEnd={() => setDraggingCharacterId(null)}
-                           data-testid={`character-item-${char.id}`}
-                         >
-                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                             {role === 'gm' && (
-                               <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
-                             )}
-                             <div className="min-w-0 flex-1">
-                               <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
-                             </div>
-                           </div>
-                           <DropdownMenu>
-                             <DropdownMenuTrigger asChild>
-                               <Button
-                                 size="sm"
-                                 variant="ghost"
-                                 className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
-                                 data-testid={`button-character-menu-${char.id}`}
-                               >
-                                 <MoreVertical className="h-4 w-4" />
-                               </Button>
-                             </DropdownMenuTrigger>
-                             <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                               {onViewCharacter && (
-                                 <DropdownMenuItem
-                                   onClick={() => onViewCharacter(char)}
-                                   className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
-                                   data-testid={`button-view-character-${char.id}`}
-                                 >
-                                   <User className="h-4 w-4 mr-2" />
-                                   View Sheet
-                                 </DropdownMenuItem>
-                               )}
-                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                                 <DropdownMenuItem
-                                   onClick={() => onAssignCharacter(char)}
-                                   className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
-                                   data-testid={`button-assign-character-${char.id}`}
-                                 >
-                                   <UserCheck className="h-4 w-4 mr-2" />
-                                   Assign Character
-                                 </DropdownMenuItem>
-                               )}
-                               {role === 'gm' && (
-                                 <DropdownMenuItem
-                                   onClick={() => {
-                                     setSelectedCharForAccess(char);
-                                     setShowAccessDialog(true);
-                                   }}
-                                   className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
-                                   data-testid={`button-manage-access-${char.id}`}
-                                 >
-                                   <Shield className="h-4 w-4 mr-2" />
-                                   Manage Access
-                                 </DropdownMenuItem>
-                               )}
-                               {role === 'gm' && (
-                                 <>
-                                   <DropdownMenuSeparator className="bg-stone-700" />
-                                   <DropdownMenuItem
-                                     onClick={() => handleDeleteCharacter(char)}
-                                     disabled={deleteCharacterMutation.isPending}
-                                     className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
-                                     data-testid={`button-delete-character-${char.id}`}
-                                   >
-                                     <Trash2 className="h-4 w-4 mr-2" />
-                                     Delete
-                                   </DropdownMenuItem>
-                                 </>
-                               )}
-                             </DropdownMenuContent>
-                           </DropdownMenu>
-                         </div>
-                       ))
-                     ) : (
-                       <div className="p-4 text-center text-stone-500 text-sm">
-                         {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               </div>
             </TabsContent>
 
           </Tabs>
@@ -18439,7 +17753,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           Initiative
                         </Button>
                       )}
-                      {(isOwner || isGM) && (
+                      {(isOwner || isGM) && !isAAV2 && (
                         <Button
                           size="sm"
                           variant="outline"
