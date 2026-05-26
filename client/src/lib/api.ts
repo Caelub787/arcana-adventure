@@ -99,6 +99,12 @@ export interface Character {
   lastLevelUpRolled?: number;
   bonusEnergyFromLevelUps?: number;
   lastEnergyLevelUpRolled?: number;
+  // AA V3 attributes
+  constitution?: number;
+  anemos?: number;
+  intelligence?: number;
+  // AA V3 skill values keyed by V3 skill key
+  v3Skills?: Record<string, number>;
 }
 
 export interface Token {
@@ -293,6 +299,10 @@ export interface SystemSpecies {
   startingMaxEnergy: number;
   carryWeight: number;
   featTree?: string;
+  // AA V3 species fields
+  attributeBonuses?: Record<string, number>;
+  defaultCustomSkills?: any[];
+  defaultTraits?: any[];
   createdAt: string;
 }
 
@@ -315,6 +325,10 @@ export interface CampaignSpecies {
   startingMaxEnergy: number;
   carryWeight: number;
   featTree?: string;
+  // AA V3 species fields
+  attributeBonuses?: Record<string, number>;
+  defaultCustomSkills?: any[];
+  defaultTraits?: any[];
   createdAt: string;
 }
 

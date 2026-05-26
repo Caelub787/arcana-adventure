@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, type V3AttributeKey } from "@shared/v3";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15609,9 +15610,161 @@ function TraitEditForm({
   );
 }
 
+// ---------------------------------------------------------------------------
+// AA V3: Combined Attributes & Skills tab. Replaces the V2 attribute card grid
+// in V3 campaigns. Each V3 attribute is shown as a card with a die-tier badge
+// (attrValueToDieSides) and the fixed canonical skills that hang off it.
+// Click attribute name -> roll 1d{attrDie}. Click skill row -> 1d{attrDie}+mod.
+// ---------------------------------------------------------------------------
+function V3AttrsAndSkillsTab({
+  liveCharacter,
+  canEditSheet,
+  updateCharacterMutation,
+  handleRoll,
+  openRollPanel,
+}: {
+  liveCharacter: any;
+  canEditSheet: boolean;
+  updateCharacterMutation: any;
+  handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
+  openRollPanel: (name: string, mod: number, type: 'skill'|'attribute') => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [attrData, setAttrData] = React.useState<Record<string, number>>({});
+  const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+
+  const startEdit = () => {
+    const a: Record<string, number> = {};
+    for (const at of V3_ATTRIBUTES) {
+      a[at.key] = (liveCharacter[at.key] as number) || 0;
+    }
+    const s: Record<string, number> = { ...makeEmptyV3Skills(), ...(liveCharacter.v3Skills || {}) };
+    setAttrData(a);
+    setSkillData(s);
+    setEditing(true);
+  };
+
+  const save = () => {
+    updateCharacterMutation.mutate({
+      ...attrData,
+      v3Skills: skillData,
+    });
+    setEditing(false);
+  };
+
+  return (
+    <Card className="bg-stone-800 border-stone-700" data-testid="card-v3-attrs-skills">
+      <CardContent className="pt-4 space-y-3">
+        {canEditSheet && !editing && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={startEdit} data-testid="button-edit-v3-attrs">
+              Edit
+            </Button>
+          </div>
+        )}
+        <p className="text-xs text-stone-500">
+          Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+        </p>
+        {V3_ATTRIBUTES.map(attr => {
+          const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+          const dieSides = attrValueToDieSides(attrVal);
+          const dieType = `d${dieSides}`;
+          const skillsForAttr = V3_SKILLS.filter(s => s.parent === attr.key);
+          return (
+            <Card key={attr.key} className="bg-stone-900 border-stone-600" data-testid={`card-v3-attr-${attr.key}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    className="text-amber-500 font-semibold text-left flex-1 hover:underline disabled:no-underline disabled:cursor-default"
+                    disabled={editing}
+                    onClick={() => !editing && handleRoll(attr.name, 0, 0, 'none', false, dieType)}
+                    data-testid={`button-roll-v3-attr-${attr.key}`}
+                  >
+                    {attr.name} <span className="text-xs text-stone-400">({dieType})</span>
+                  </button>
+                  {editing ? (
+                    <Input
+                      type="number"
+                      min={-2}
+                      max={5}
+                      value={attrData[attr.key] ?? 0}
+                      onChange={e => {
+                        const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
+                        setAttrData({ ...attrData, [attr.key]: v });
+                      }}
+                      className="w-16 h-8 text-center bg-stone-800 border-amber-700 text-amber-500"
+                      data-testid={`input-v3-attr-${attr.key}`}
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-amber-500" data-testid={`text-v3-attr-${attr.key}`}>
+                      {attrVal >= 0 ? `+${attrVal}` : attrVal}
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0 pb-2 space-y-1">
+                {skillsForAttr.length === 0 ? (
+                  <div className="text-[10px] text-stone-500 italic px-2">No fixed skills under this attribute.</div>
+                ) : skillsForAttr.map(skill => {
+                  const skillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+                  return (
+                    <div
+                      key={skill.key}
+                      className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-stone-800"
+                      data-testid={`row-v3-skill-${skill.key}`}
+                    >
+                      <button
+                        type="button"
+                        className="flex-1 text-left text-xs disabled:cursor-default group"
+                        disabled={editing}
+                        title={skill.description}
+                        onClick={() => !editing && handleRoll(skill.name, skillVal, 0, 'none', true, dieType)}
+                        data-testid={`button-roll-v3-skill-${skill.key}`}
+                      >
+                        <span className="text-stone-200 group-hover:text-amber-300">{skill.name}</span>
+                        <span className="text-stone-500 ml-1.5 text-[10px]">— {skill.description}</span>
+                      </button>
+                      {editing ? (
+                        <Input
+                          type="number"
+                          min={-2}
+                          max={5}
+                          value={skillData[skill.key] ?? 0}
+                          onChange={e => {
+                            const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
+                            setSkillData({ ...skillData, [skill.key]: v });
+                          }}
+                          className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
+                          data-testid={`input-v3-skill-${skill.key}`}
+                        />
+                      ) : (
+                        <span className="text-amber-400 text-xs font-semibold w-10 text-right" data-testid={`text-v3-skill-${skill.key}`}>
+                          {skillVal >= 0 ? `+${skillVal}` : skillVal}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          );
+        })}
+        {editing && (
+          <div className="flex gap-2 pt-2 border-t border-stone-700">
+            <Button size="sm" onClick={save} data-testid="button-save-v3-attrs">Save Changes</Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)} data-testid="button-cancel-v3-attrs">Cancel</Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
+  const isAAV3 = (campaignSystem === 'aa-v3');
   // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
   const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
   const canEditAsGM = isGM || isTrustedSelf;
@@ -16726,11 +16879,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     return 'disadvantage';
   };
 
-  const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none', isSkill: boolean = false) => {
+  const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none', isSkill: boolean = false, dieOverride?: string) => {
     let totalMod = modifier + extraMod;
     let attributeValue = 0;
     
-    if (isSkill) {
+    if (isSkill && !dieOverride) {
       const attributeKey = SKILL_ATTRIBUTE_MAP[name];
       if (!attributeKey) {
         console.warn(`[CharacterSheet] Unknown skill "${name}" - no attribute mapping found, using 0 modifier`);
@@ -16742,7 +16895,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
     
     const checkValue = isSkill ? attributeValue : modifier;
-    const dieType = checkValue >= 5 ? 'd30' : 'd20';
+    const dieType = dieOverride || (checkValue >= 5 ? 'd30' : 'd20');
     
     const exhaustion = liveCharacter.exhaustion || 0;
     const exhaustionForcesSkillDis = isSkill && exhaustion >= 1;
@@ -17537,8 +17690,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // Tab configuration matching battlemap sidebar icons and colors
   const tabConfig = [
     { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
-    { value: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
-    { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+    { value: 'attributes', icon: BarChart3, color: 'blue', label: isAAV3 ? 'Attrs & Skills' : 'Attributes' },
+    { value: 'skills', icon: Zap, color: 'green', label: isAAV3 ? 'Traits' : 'Skills' },
     { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
     { value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
     { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
@@ -18556,6 +18709,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
           {/* ATTRIBUTES TAB */}
           <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
+            {isAAV3 && (
+              <V3AttrsAndSkillsTab
+                liveCharacter={liveCharacter}
+                canEditSheet={canEditSheet}
+                updateCharacterMutation={updateCharacterMutation}
+                handleRoll={handleRoll}
+                openRollPanel={openRollPanel}
+              />
+            )}
+            {!isAAV3 && (
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="pt-4">
                 {(liveCharacter.exhaustion || 0) >= 4 && (
@@ -18792,11 +18955,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 )}
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           {/* SKILLS TAB */}
           <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
-            <Card className="bg-stone-800 border-stone-700">
+            <Card className={`bg-stone-800 border-stone-700${isAAV3 ? ' hidden' : ''}`}>
               <CardContent className="pt-4">
                 {(liveCharacter.exhaustion || 0) >= 1 && (
                   <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="skills-exhaustion-warning">

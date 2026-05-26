@@ -267,6 +267,12 @@ export const characters = pgTable("characters", {
   presence: integer("presence").notNull().default(0),
   will: integer("will").notNull().default(0),
   craft: integer("craft").notNull().default(0),
+  // AA V3 attributes (might/finesse/will reuse the columns above)
+  constitution: integer("constitution").notNull().default(0),
+  anemos: integer("anemos").notNull().default(0),
+  intelligence: integer("intelligence").notNull().default(0),
+  // AA V3 fixed-list skills, stored as { [skillKey]: value }
+  v3Skills: jsonb("v3_skills").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   // Legacy attributes (kept for backward compatibility)
   agility: integer("agility").notNull().default(0),
   charisma: integer("charisma").notNull().default(0),
@@ -671,6 +677,10 @@ export const systemSpecies = pgTable("system_species", {
   dayVisionDistance: integer("day_vision_distance").default(60).notNull(),
   nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  // AA V3 species fields (null/empty for non-V3 species)
+  attributeBonuses: jsonb("attribute_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
+  defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
+  defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -708,6 +718,10 @@ export const campaignSpecies = pgTable("campaign_species", {
   visionType: text("vision_type").default("normal").notNull(),
   dayVisionDistance: integer("day_vision_distance").default(60).notNull(),
   nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
+  // AA V3 species fields (null/empty for non-V3 species)
+  attributeBonuses: jsonb("attribute_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
+  defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
+  defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -745,6 +759,9 @@ export const characterCustomSkills = pgTable("character_custom_skills", {
   name: text("name").notNull(), // Skill name (can be custom if no systemSkillId)
   parentAttribute: text("parent_attribute").notNull().default("wit"), // might, finesse, wit, presence, will, craft
   value: integer("value").notNull().default(0), // Skill modifier value (-2 to 5)
+  // For AA V3 species defaults: tracks which species sourced this skill so we
+  // can wipe + re-apply when a character's species changes.
+  fromSpeciesId: varchar("from_species_id"),
 }, (table) => ({
   uniqueCharacterSkill: uniqueIndex("character_custom_skills_char_name_unique").on(
     table.characterId,
@@ -808,6 +825,9 @@ export const characterTraits = pgTable("character_traits", {
   visionModifierTime: text("vision_modifier_time").default("both"), // "day", "night", "both"
   visionOverrideType: text("vision_override_type"), // Override vision type (null = no override)
   visionOverrideToggle: boolean("vision_override_toggle").default(false), // If true, overrides rather than stacks
+  // For AA V3 species defaults: tracks which species sourced this trait so we
+  // can wipe + re-apply when a character's species changes.
+  fromSpeciesId: varchar("from_species_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
