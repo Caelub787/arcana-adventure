@@ -192,13 +192,14 @@ export default function AdminSettings() {
     if (!isAdmin) return 'A.A. V2';
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
-  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
+  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : 'arcana-adventure';
+  const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem);
 
   // Non-admin GMs are scoped to their AA V2 private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
   useEffect(() => {
-    if (!isAdmin && selectedSystem !== 'A.A. V2') setSelectedSystem('A.A. V2');
+    if (!isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
   }, [isAdmin, selectedSystem]);
   useEffect(() => {
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
@@ -664,7 +665,7 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
-      toast({ title: 'Item Copied', description: `Item copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}` });
+      toast({ title: 'Item Copied', description: `Item copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? 'A.A. V2' : 'A.A. V2'}` });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -675,7 +676,7 @@ export default function AdminSettings() {
     mutationFn: ({ id, targetSystem }: { id: string; targetSystem: string }) => api.copySpellToSystem(id, targetSystem),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
-      toast({ title: 'Spell Copied', description: `Spell copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}` });
+      toast({ title: 'Spell Copied', description: `Spell copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? 'A.A. V2' : 'A.A. V2'}` });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -966,7 +967,7 @@ export default function AdminSettings() {
                currentView === 'archived-items' ? 'Archived Items' :
                currentView === 'archived-spells' ? 'Archived Spells' : 
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
-               (currentView === 'feat-trees' && systemSlug === 'aa-v2') ? 'Skill Trees' : 'Feat Trees'}
+               (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
           </div>
           {isAdmin && (
@@ -978,6 +979,7 @@ export default function AdminSettings() {
                 <SelectContent>
                   <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
                   <SelectItem value="A.A. V2">A.A. V2</SelectItem>
+                  <SelectItem value="A.A. V3">A.A. V3</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1019,7 +1021,7 @@ export default function AdminSettings() {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copyItemToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
+            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 
@@ -1091,7 +1093,7 @@ export default function AdminSettings() {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copySpellToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
+            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 
@@ -1185,7 +1187,7 @@ export default function AdminSettings() {
         )}
 
         {currentView === 'classes' && (
-          <ClassesView />
+          <ClassesView systemSlug={systemSlug} />
         )}
 
         {currentView === 'notifications' && (
@@ -1216,7 +1218,7 @@ export default function AdminSettings() {
             ItemFormDialog so the single-link picker (ItemTemplateLinkPicker)
             and its attendant flow stay intact and we never blindly write back
             an empty templateLinks array on legacy edits. */}
-        {systemSlug === 'aa-v2' ? (
+        {isPersonalLibSystem ? (
           <>
             <ItemDialog
               open={showAddItem}
@@ -1703,6 +1705,7 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNav
 }
 
 function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
+  const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card 
@@ -1859,16 +1862,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
             <GitBranch className="h-6 w-6 text-purple-500" />
           </div>
-          <CardTitle className="text-purple-500">{systemSlug === 'aa-v2' ? 'Skill Trees' : 'Feat Trees'}</CardTitle>
+          <CardTitle className="text-purple-500">{isPersonalLibSystem ? 'Skill Trees' : 'Feat Trees'}</CardTitle>
           <CardDescription className="text-stone-400">
-            {systemSlug === 'aa-v2' 
+            {isPersonalLibSystem 
               ? 'Create and manage skill trees for species and classes'
               : 'Create and manage feat progression trees for characters'}
           </CardDescription>
         </CardHeader>
       </Card>
 
-      {systemSlug === 'aa-v2' && (
+      {isPersonalLibSystem && (
         <Card 
           className="bg-stone-900 border-stone-700 cursor-pointer hover:border-fuchsia-600 transition-colors"
           onClick={() => onNavigate('classes')}
@@ -4422,7 +4425,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [featToSaveAsTemplate, setFeatToSaveAsTemplate] = useState<Partial<Feat> | null>(null);
-  const isAAV2 = systemSlug === 'aa-v2';
+  const isAAV2 = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   const treeLabel = isAAV2 ? 'skill tree' : 'feat tree';
   const treeLabelCap = isAAV2 ? 'Skill Tree' : 'Feat Tree';
   const treeLabelPlural = isAAV2 ? 'Skill Trees' : 'Feat Trees';
@@ -7111,9 +7114,9 @@ const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft']
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: SpellFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
-  const isAaV2 = campaignSystem === 'aa-v2';
+  const isAaV2 = campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3';
 
-  // Spell ↔ live spell-template links (AAv2 only). Loaded on edit; sent on save.
+  // Spell ↔ live spell-template links (AAv2/V3). Loaded on edit; sent on save.
   const [selectedTemplateLinks, setSelectedTemplateLinks] = useState<string[]>([]);
   const { data: existingSpellLinks } = useQuery<{ templateIds: string[] }>({
     queryKey: ['spell-template-links', initialData?.id],
@@ -7779,7 +7782,8 @@ const classTierStyles: Record<number, { border: string; bg: string; glow: string
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
 };
 
-function ClassesView() {
+function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) {
+  const effectiveClassSystem: 'aa-v2' | 'aa-v3' = parentSystemSlug === 'aa-v3' ? 'aa-v3' : 'aa-v2';
   const queryClient = useQueryClient();
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [showAddClass, setShowAddClass] = useState(false);
@@ -7821,21 +7825,21 @@ function ClassesView() {
   const pendingPointerRef = useRef<{ element: HTMLElement; pointerId: number; nodeId: string; clientX: number; clientY: number } | null>(null);
 
   const { data: classes = [], isLoading } = useQuery({
-    queryKey: ['admin-classes'],
+    queryKey: ['admin-classes', effectiveClassSystem],
     queryFn: async () => {
-      const res = await fetch('/api/admin/classes?system=aa-v2', { credentials: 'include' });
+      const res = await fetch(`/api/admin/classes?system=${effectiveClassSystem}`, { credentials: 'include' });
       return res.json();
     },
   });
 
   const { data: classSpells = [] } = useQuery({
-    queryKey: ['system-spells', 'aa-v2'],
-    queryFn: () => api.getSystemSpells('aa-v2'),
+    queryKey: ['system-spells', effectiveClassSystem],
+    queryFn: () => api.getSystemSpells(effectiveClassSystem),
   });
 
   const { data: classItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', 'aa-v2'],
-    queryFn: () => fetch('/api/system-items?system=aa-v2').then(r => r.json()),
+    queryKey: ['/api/system-items', effectiveClassSystem],
+    queryFn: () => fetch(`/api/system-items?system=${effectiveClassSystem}`).then(r => r.json()),
   });
 
   const getNodeImage = (node: any): string | null => {
@@ -7856,8 +7860,8 @@ function ClassesView() {
   };
 
   const { data: skillTreesForClasses = [] } = useQuery({
-    queryKey: ['feat-trees', 'aa-v2'],
-    queryFn: () => api.getFeatTrees('aa-v2'),
+    queryKey: ['feat-trees', effectiveClassSystem],
+    queryFn: () => api.getFeatTrees(effectiveClassSystem),
   });
 
   const { data: nodes = [] } = useQuery({
@@ -7886,7 +7890,7 @@ function ClassesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...data, system: 'aa-v2', image: classImage || null, skillTreeId: classSkillTreeId || null }),
+        body: JSON.stringify({ ...data, system: effectiveClassSystem, image: classImage || null, skillTreeId: classSkillTreeId || null }),
       });
       return res.json();
     },
@@ -8966,6 +8970,8 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
   const [showTraitPicker, setShowTraitPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
+  // class-node effect picker still scopes to AA V2 library for now; V3 will
+  // share-or-fork in a later task. Mirror V2 by keeping the picker on V2.
   const systemSlug = 'aa-v2';
 
   const { data: systemSpells = [] } = useQuery({
@@ -9679,11 +9685,11 @@ function CrafterRecipeTemplatesView({ systemSlug }: { systemSlug: string }) {
   const { data: templates = [], isLoading } = useQuery<any[]>({
     queryKey: ['crafter-recipe-templates', systemSlug],
     queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
-    enabled: systemSlug === 'aa-v2',
+    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
   const createMut = useMutation({
-    mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: 'aa-v2' }),
+    mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: systemSlug }),
     onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] });
       setCreating(false);
@@ -9698,11 +9704,11 @@ function CrafterRecipeTemplatesView({ systemSlug }: { systemSlug: string }) {
     onError: (err: any) => toast({ title: 'Delete failed', description: err?.message || String(err), variant: 'destructive' }),
   });
 
-  if (systemSlug !== 'aa-v2') {
+  if (systemSlug !== 'aa-v2' && systemSlug !== 'aa-v3') {
     return (
       <Card className="bg-stone-900 border-stone-700">
         <CardContent className="py-12 text-center text-stone-400">
-          Crafter Recipe Templates are an A.A. V2 feature.
+          Crafter Recipe Templates are an A.A. V2 / V3 feature.
         </CardContent>
       </Card>
     );
@@ -9894,7 +9900,7 @@ function CrafterRecipeTemplateEditDialog({ open, templateId, onOpenChange }: {
                 </div>
               </div>
               <div className="pt-4 border-t border-stone-700">
-                <CraftRecipesEditor templateId={templateId} systemSlug="aa-v2" />
+                <CraftRecipesEditor templateId={templateId} systemSlug={systemSlug} />
               </div>
             </>
           )}
@@ -9915,7 +9921,7 @@ function CrafterTemplateLinksPanel({ itemId, systemSlug }: { itemId: string; sys
   const { data: templates = [] } = useQuery<any[]>({
     queryKey: ['crafter-recipe-templates', systemSlug],
     queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
-    enabled: systemSlug === 'aa-v2',
+    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
   const { data: linksData } = useQuery<{ templateIds: string[] }>({
@@ -10019,7 +10025,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
   // For existing AAv2 items, fetch the current set of linked template IDs and
   // seed state. Scoped to AA V2 only -- legacy systems use the single-link picker
   // and must not have their (empty) template-link set written back to the server.
-  const isAaV2 = campaignSystem === 'aa-v2';
+  const isAaV2 = campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3';
   const { data: existingLinks } = useQuery({
     queryKey: ['item-template-links', initialData?.id],
     queryFn: () => api.getItemTemplateLinks(initialData!.id),
@@ -10688,7 +10694,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               </div>
             )}
 
-            {!(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') === 'aa-v2' && (
+            {!(initialData as any)?.isLiveTemplate && ((campaignSystem || (initialData as any)?.system || 'arcana-adventure') === 'aa-v2' || (campaignSystem || (initialData as any)?.system || 'arcana-adventure') === 'aa-v3') && (
               <div className="pt-4 border-t border-stone-700">
                 <ItemTemplateLinksPanel
                   systemSlug={campaignSystem || (initialData as any)?.system || 'aa-v2'}
@@ -10699,7 +10705,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                 />
               </div>
             )}
-            {initialData?.id && !(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') !== 'aa-v2' && (
+            {initialData?.id && !(initialData as any)?.isLiveTemplate && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') !== 'aa-v2' && (campaignSystem || (initialData as any)?.system || 'arcana-adventure') !== 'aa-v3' && (
               <div className="pt-4 border-t border-stone-700">
                 <ItemTemplateLinkPicker
                   itemId={initialData.id}
@@ -10722,13 +10728,13 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
 
             {isAaV2 && formData.itemType === 'crafter' && initialData?.id && (
               <div className="pt-4 border-t border-stone-700">
-                <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug="aa-v2" />
+                <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug={(campaignSystem === 'aa-v3' || (initialData as any)?.system === 'aa-v3') ? 'aa-v3' : 'aa-v2'} />
               </div>
             )}
 
             {isAaV2 && formData.itemType === 'crafter' && (
               <div className="pt-4 border-t border-stone-700">
-                <CraftRecipesEditor itemId={initialData?.id || ''} systemSlug="aa-v2" />
+                <CraftRecipesEditor itemId={initialData?.id || ''} systemSlug={(campaignSystem === 'aa-v3' || (initialData as any)?.system === 'aa-v3') ? 'aa-v3' : 'aa-v2'} />
               </div>
             )}
           </div>

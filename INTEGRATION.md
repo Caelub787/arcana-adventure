@@ -28,6 +28,12 @@ The following entity kinds are mirrored bidirectionally:
 - **Any other user → personal AA V2 library** for that user, and
   `system` is forced to `'aa-v2'`.
 
+> **AA V3 note**: The external sync API does not currently mirror
+> `system = 'aa-v3'` rows. V3 admin content is local-only for now —
+> partner apps continue to see V2 (and legacy Arcana) lanes only.
+> If V3 sharing is needed later, add `'aa-v3'` to `KIND_META` system
+> values in `server/sync/api.ts` and seed the corresponding admin lane.
+
 The token user determines this — partner apps don't pick a routing
 mode. The `/api/sync/v1/me` endpoint returns the resolved
 `libraryRouting`.

@@ -65,8 +65,10 @@ export async function enforceLibraryRead(
 }
 
 /**
- * Personal library is AA V2 only for non-admins. Sends 400 + returns false
- * when a non-admin tries to use a different system; returns true otherwise.
+ * Personal library is AA V2 or AA V3 only for non-admins. Sends 400 +
+ * returns false when a non-admin tries to use a different system;
+ * returns true otherwise. (Function name kept for compatibility — V3
+ * was added under the same personal-library policy as V2.)
  */
 /**
  * Pure (non-HTTP) library read/write predicates. The HTTP-aware
@@ -98,8 +100,8 @@ export async function requireLibraryAaV2(
   system: string | undefined,
 ): Promise<boolean> {
   if (await isAdminUser(req.session?.userId)) return true;
-  if (system && system !== 'aa-v2') {
-    res.status(400).json({ error: "Personal library is only available for the AA V2 system" });
+  if (system && system !== 'aa-v2' && system !== 'aa-v3') {
+    res.status(400).json({ error: "Personal library is only available for the AA V2 and AA V3 systems" });
     return false;
   }
   return true;

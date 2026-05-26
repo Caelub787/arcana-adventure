@@ -746,7 +746,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
-              {campaignSystem !== 'aa-v2' && (
+              {campaignSystem !== 'aa-v2' && campaignSystem !== 'aa-v3' && (
                 <div>
                   <Label>Energy Per Level</Label>
                   <Input
@@ -759,7 +759,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 </div>
               )}
 
-              {campaignSystem === 'aa-v2' && (
+              {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                 <>
                   <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
                     <Label className="text-sm font-semibold text-violet-400">Mana</Label>
@@ -841,13 +841,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               </div>
 
               <div className="col-span-2">
-                <Label>{campaignSystem === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
+                <Label>{(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') ? 'Skill Tree' : 'Feat Tree'}</Label>
                 <Select 
                   value={formData.featTree || "_none"} 
                   onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
-                    <SelectValue placeholder={campaignSystem === 'aa-v2' ? 'Select a skill tree...' : 'Select a feat tree...'} />
+                    <SelectValue placeholder={(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') ? 'Select a skill tree...' : 'Select a feat tree...'} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">None</SelectItem>
@@ -8082,7 +8082,7 @@ export default function Campaign() {
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
 
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
-  const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v2';
+  const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
 
   const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
   const { data: campaignLinkedWorld } = useLinkedWorld(effectiveCampaignId);
@@ -8750,7 +8750,7 @@ export default function Campaign() {
   // Use public /api/species endpoint that all authenticated users can access - filtered by campaign system
   // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
   const campaignSystemSlugForSpecies = (campaign as any)?.system || 'arcana-adventure';
-  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : campaignSystemSlugForSpecies === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
   const { data: systemSpecies } = useQuery({
     queryKey: ['/api/species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -10550,6 +10550,7 @@ export default function Campaign() {
                   <SelectContent className="bg-stone-800 border-stone-700">
                     <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
                     <SelectItem value="aa-v2" className="text-stone-200">A.A. V2</SelectItem>
+                    <SelectItem value="aa-v3" className="text-stone-200">A.A. V3</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -12611,7 +12612,7 @@ export default function Campaign() {
             { label: 'Weight', value: item.weight },
             { label: 'Value', value: item.value },
             { label: 'Damage', value: item.damage },
-            { label: campaignSystemSlug === 'aa-v2' ? 'Effect Type' : 'Damage Type', value: item.damageType },
+            { label: (campaignSystemSlug === 'aa-v2' || campaignSystemSlug === 'aa-v3') ? 'Effect Type' : 'Damage Type', value: item.damageType },
             { label: 'Range', value: item.range },
           ]}
           defaultPosition={{ x: 100 + idx * 30, y: 120 + idx * 30 }}
@@ -12637,7 +12638,7 @@ export default function Campaign() {
             { label: 'Cast Time', value: spell.castTime },
             { label: 'Duration', value: spell.duration },
             { label: 'Damage', value: spell.damage },
-            { label: campaignSystemSlug === 'aa-v2' ? 'Effect Type' : 'Damage Type', value: spell.damageType },
+            { label: (campaignSystemSlug === 'aa-v2' || campaignSystemSlug === 'aa-v3') ? 'Effect Type' : 'Damage Type', value: spell.damageType },
             { label: 'Attribute', value: spell.attribute },
           ]}
           defaultPosition={{ x: 140 + idx * 30, y: 160 + idx * 30 }}

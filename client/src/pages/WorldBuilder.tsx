@@ -1759,6 +1759,7 @@ export default function WorldBuilder() {
               >
                 <option value="arcana-adventure">Arcana Adventure</option>
                 <option value="aa-v2">AA V2</option>
+                <option value="aa-v3">AA V3</option>
               </select>
             </div>
             <div>

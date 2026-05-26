@@ -238,7 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allCharacters = await storage.getCampaignCharacters(campaignId);
       const campaignForSpecies = await storage.getCampaign(campaignId);
       const speciesSlug = (campaignForSpecies as any)?.system || 'arcana-adventure';
-      const speciesDisplayName = speciesSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+      const speciesDisplayName = speciesSlug === 'aa-v2' ? 'A.A. V2' : speciesSlug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
       const allSpecies = await storage.getSystemSpecies(speciesDisplayName);
       const campaignSpecies = await storage.getCampaignSpecies(campaignId);
       const speciesList = [...allSpecies, ...campaignSpecies];
@@ -2306,8 +2306,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
-    // bonusMax* fields are only meaningful in the AA V2 system; strip silently elsewhere
-    if (campaignSystem !== 'aa-v2') {
+    // bonusMax* fields are only meaningful in the AA V2/V3 systems; strip silently elsewhere
+    if (campaignSystem !== 'aa-v2' && campaignSystem !== 'aa-v3') {
       for (const f of ['bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana']) {
         if (f in updates) delete updates[f];
       }
@@ -3496,7 +3496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId: req.params.campaignId,
         userId: req.session.userId!
       };
-      if (campaign?.system === 'aa-v2') {
+      if (campaign?.system === 'aa-v2' || campaign?.system === 'aa-v3') {
         const level = charData.level || 1;
         const expectedTotal = level + 2 * Math.floor(level / 3);
         charData.classSkillPoints = expectedTotal;
@@ -3664,7 +3664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      if ('level' in updates && access.campaign?.system === 'aa-v2') {
+      if ('level' in updates && (access.campaign?.system === 'aa-v2' || access.campaign?.system === 'aa-v3')) {
         const oldLevel = charData.level || 1;
         const newLevel = updates.level;
         if (newLevel !== oldLevel) {
@@ -3780,7 +3780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (character.campaignId) {
           const camp = await storage.getCampaign(character.campaignId);
           const slug = (camp as any)?.system || 'arcana-adventure';
-          speciesSystemName = slug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+          speciesSystemName = slug === 'aa-v2' ? 'A.A. V2' : slug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
         }
         // First check campaign species, then system species filtered by system
         let species: any = null;
@@ -4821,7 +4821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Filter by campaign system to get correct species
       const tokenCampaign = await storage.getCampaign(req.params.campaignId);
       const tokenSystemSlug = (tokenCampaign as any)?.system || 'arcana-adventure';
-      const tokenSpeciesName = tokenSystemSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+      const tokenSpeciesName = tokenSystemSlug === 'aa-v2' ? 'A.A. V2' : tokenSystemSlug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
       const [systemSpecies, campaignSpecies] = await Promise.all([
         storage.getSystemSpecies(tokenSpeciesName),
         storage.getCampaignSpecies(req.params.campaignId)
@@ -5262,7 +5262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (newLevel !== char.level) {
           const updateData: any = { level: newLevel };
-          if (campaign.system === 'aa-v2') {
+          if (campaign.system === 'aa-v2' || campaign.system === 'aa-v3') {
             // Recompute canonically so level-down also deducts.
             const expectedTotal = newLevel + 2 * Math.floor(newLevel / 3);
             const charClasses = await storage.getCharacterClasses(char.id);
@@ -6132,7 +6132,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', createdByUserId: req.session.userId };
+      const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
         ...body,
         isTemplate: true,
@@ -6236,7 +6237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const src = await storage.getItem(item.templateItemId);
           sourceSystem = src?.system ?? sourceSystem;
         }
-        if (campaign && campaign.system !== 'aa-v2') return res.status(400).json({ error: "Crafting is AA V2 only" });
+        if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       } else {
         const me = await storage.getUser(userId);
         const isAdmin = !!me?.isAdmin;
@@ -6247,8 +6248,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         sourceId = item.id;
       }
-      if (sourceSystem && sourceSystem !== 'aa-v2') {
-        return res.status(400).json({ error: "Crafting is AA V2 only" });
+      if (sourceSystem && sourceSystem !== 'aa-v2' && sourceSystem !== 'aa-v3') {
+        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       }
       const recipes = await storage.getCraftRecipesByItem(sourceId);
       // Enrich with outputItemName so the player UI can list what each
@@ -6417,7 +6418,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/crafter-recipe-templates", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      if (system !== 'aa-v2') return res.json([]);
+      if (system !== 'aa-v2' && system !== 'aa-v3') return res.json([]);
       const isA = await isAdminUser(req.session.userId);
       const ownerScope = isA ? undefined : [req.session.userId!];
       const list = await storage.listCrafterRecipeTemplates({ system, ownerScope });
@@ -6445,8 +6446,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
-      const data = insertCrafterRecipeTemplateSchema.parse({ ...body, system: 'aa-v2' });
+      const requestedCRTSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedCRTSystem, ownerUserId: req.session.userId };
+      const data = insertCrafterRecipeTemplateSchema.parse({ ...body, system: requestedCRTSystem });
       const created = await storage.createCrafterRecipeTemplate(data);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'crafter-recipe-templates' });
       res.json(created);
@@ -6614,12 +6616,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // AA V2 only — derived from authoritative campaign, not request.
-      if (campaign && campaign.system !== 'aa-v2') {
-        return res.status(400).json({ error: "Crafting is AA V2 only" });
+      if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') {
+        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       }
       // For characters not bound to a campaign, fall back to the crafter's library system.
-      if (!campaign && crafter.system && crafter.system !== 'aa-v2') {
-        return res.status(400).json({ error: "Crafting is AA V2 only" });
+      if (!campaign && crafter.system && crafter.system !== 'aa-v2' && crafter.system !== 'aa-v3') {
+        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       }
       const campaignId = character.campaignId;
 
@@ -6991,7 +6993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newItem = await storage.createItem({
         ...itemData,
         name: `${item.name} (Copy)`,
-        ...(isA ? {} : { system: 'aa-v2', createdByUserId: req.session.userId }),
+        ...(isA ? {} : { system: ((item as any).system === 'aa-v3' ? 'aa-v3' : 'aa-v2'), createdByUserId: req.session.userId }),
       });
       const sourceRolls = await storage.getRollEntries('item', req.params.id);
       if (sourceRolls.length > 0) {
@@ -7047,7 +7049,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', createdByUserId: req.session.userId };
+      const requestedTplSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedTplSystem, createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
         ...body,
         isTemplate: true,
@@ -7705,10 +7708,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-species", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!isA && req.body.systemName && req.body.systemName !== 'A.A. V2') {
-        return res.status(400).json({ error: "Personal library is only available for the AA V2 system" });
+      if (!isA && req.body.systemName && req.body.systemName !== 'A.A. V2' && req.body.systemName !== 'A.A. V3') {
+        return res.status(400).json({ error: "Personal library is only available for the AA V2 and AA V3 systems" });
       }
-      const body = isA ? req.body : { ...req.body, systemName: 'A.A. V2', ownerUserId: req.session.userId };
+      const requestedSpeciesSystem = req.body.systemName === 'A.A. V3' ? 'A.A. V3' : 'A.A. V2';
+      const body = isA ? req.body : { ...req.body, systemName: requestedSpeciesSystem, ownerUserId: req.session.userId };
       const species = await storage.createSystemSpecies(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(species);
@@ -7843,7 +7847,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const requestedClassSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedClassSystem, ownerUserId: req.session.userId };
       const newClass = await storage.createClass(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json(newClass);
@@ -8022,8 +8027,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (access.character?.campaignId) {
         const campaign = await storage.getCampaign(access.character.campaignId);
-        if (campaign && campaign.system !== 'aa-v2') {
-          return res.status(400).json({ error: "Classes are only available for A.A. V2 campaigns" });
+        if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') {
+          return res.status(400).json({ error: "Classes are only available for A.A. V2 / V3 campaigns" });
         }
       }
 
@@ -8464,7 +8469,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const requestedTreeSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedTreeSystem, ownerUserId: req.session.userId };
       const tree = await storage.createFeatTree(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(tree);
@@ -8728,7 +8734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let isAAV2System = false;
       if (character.campaignId) {
         const campaign = await storage.getCampaign(character.campaignId);
-        if (campaign?.system === 'aa-v2') isAAV2System = true;
+        if (campaign?.system === 'aa-v2' || campaign?.system === 'aa-v3') isAAV2System = true;
       }
       const featCost = feat.cost ?? 0;
 
@@ -8962,7 +8968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // AA V2: refund the feat's cost back to the shared class skill points pool
       if (character?.campaignId) {
         const campaign = await storage.getCampaign(character.campaignId);
-        if (campaign?.system === 'aa-v2' && feat && (feat.cost ?? 0) > 0) {
+        if ((campaign?.system === 'aa-v2' || campaign?.system === 'aa-v3') && feat && (feat.cost ?? 0) > 0) {
           await storage.updateCharacter(req.params.id, {
             classSkillPoints: (character.classSkillPoints || 0) + (feat.cost ?? 0),
           });
@@ -9039,7 +9045,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const body = isA ? req.body : { ...req.body, system: 'aa-v2', ownerUserId: req.session.userId };
+      const requestedSpellSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const body = isA ? req.body : { ...req.body, system: requestedSpellSystem, ownerUserId: req.session.userId };
       const spell = await storage.createSystemSpell(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
@@ -9113,7 +9120,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newSpell = await storage.createSystemSpell({
         ...spellData,
         name: `${spell.name} (Copy)`,
-        ...(isA ? {} : { system: 'aa-v2', ownerUserId: req.session.userId }),
+        ...(isA ? {} : { system: ((spell as any).system === 'aa-v3' ? 'aa-v3' : 'aa-v2'), ownerUserId: req.session.userId }),
       });
       const sourceRolls = await storage.getRollEntries('spell', req.params.id);
       if (sourceRolls.length > 0) {
@@ -14117,7 +14124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.campaignId !== undefined && world.userId !== req.session.userId!) {
         return res.status(403).json({ error: "Only the world owner can change campaign linking" });
       }
-      const VALID_SYSTEMS = ["arcana-adventure", "aa-v2"];
+      const VALID_SYSTEMS = ["arcana-adventure", "aa-v2", "aa-v3"];
       if (req.body.system && !VALID_SYSTEMS.includes(req.body.system)) {
         return res.status(400).json({ error: "Invalid system value" });
       }

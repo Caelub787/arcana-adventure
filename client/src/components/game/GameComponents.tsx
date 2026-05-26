@@ -2600,8 +2600,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
-          const manaPercent = (character && campaignSystem === 'aa-v2' && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
-          const tempManaPercent = (character && campaignSystem === 'aa-v2' && (character.maxMana ?? 0) > 0) ? ((character.tempMana ?? 0) / (character.maxMana ?? 1)) * 100 : 0;
+          const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
+          const tempManaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.tempMana ?? 0) / (character.maxMana ?? 1)) * 100 : 0;
           const effectiveGridSize = gridSize;
           
           // Check if user can drag this token:
@@ -5571,7 +5571,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     // AA V2: traits track uses only — no dice roll, just decrement.
-    if (campaignSystem === 'aa-v2') {
+    if ((campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
       try {
         await api.useCharacterTrait(character.id, traitData.id);
         queryClient.invalidateQueries({ queryKey: ['trait', hotbar?.traitId] });
@@ -7484,7 +7484,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 character?.name || 'Unknown',
                 isAdding
               );
-            } else if (saveApplyStat === 'mana' && campaignSystem === 'aa-v2') {
+            } else if (saveApplyStat === 'mana' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
               gameWs.sendCombatMana(
                 targetChar.id,
                 damageToApply,
@@ -7589,7 +7589,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 character?.name || 'Unknown',
                 aoeIsAdding
               );
-            } else if (aoeApplyStat === 'mana' && campaignSystem === 'aa-v2') {
+            } else if (aoeApplyStat === 'mana' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
               gameWs.sendCombatMana(
                 targetChar.id,
                 total,
@@ -7655,7 +7655,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           );
           const energyAction = singleIsAdding ? '+' : '-';
           label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${total} Energy)`;
-        } else if (applyStat === 'mana' && targetData.characterId && campaignSystem === 'aa-v2') {
+        } else if (applyStat === 'mana' && targetData.characterId && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
           gameWs.sendCombatMana(
             targetData.characterId,
             total,
@@ -7719,7 +7719,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (roll.requiresEnergy && (roll.energyCost ?? 0) > 0) {
       if ((character?.energy ?? 0) < roll.energyCost) return false;
     }
-    if (campaignSystem === 'aa-v2' && roll.requiresMana && (roll.manaCost ?? 0) > 0) {
+    if ((campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.requiresMana && (roll.manaCost ?? 0) > 0) {
       if ((character?.mana ?? 0) < roll.manaCost) return false;
     }
     if (roll.hasItemCost && !checkRollItemCosts(roll, allItems).ok) return false;
@@ -7728,7 +7728,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
   const handleClick = () => {
     // AA V2: a trait click is a direct use, no popup, no roll.
-    if (isTraitClickable && campaignSystem === 'aa-v2') {
+    if (isTraitClickable && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
       handleTraitRoll();
       return;
     }
@@ -8022,7 +8022,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 if (roll.requiresEnergy && roll.energyCost) {
                   stats.push(`${roll.energyCost} Energy`);
                 }
-                if (campaignSystem === 'aa-v2' && roll.requiresMana && roll.manaCost) {
+                if ((campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.requiresMana && roll.manaCost) {
                   stats.push(`${roll.manaCost} Mana`);
                 }
                 if (roll.range) {
@@ -8659,7 +8659,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
   const [selectedRace, setSelectedRace] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const systemNameForQuery = campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+  const systemNameForQuery = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
   const { data: systemSpeciesList = [] } = useQuery({
     queryKey: ['species', systemNameForQuery],
     queryFn: () => api.getSpecies(systemNameForQuery),
@@ -8725,7 +8725,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       maxMana: selectedSpecies.startingMaxMana || 0,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
-      classSkillPoints: campaignSystem === 'aa-v2' ? 3 : 0,
+      classSkillPoints: (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') ? 3 : 0,
       might: 0,
       finesse: 0,
       wit: 0,
@@ -14874,7 +14874,7 @@ function CustomSkillForm({
   isLoading?: boolean;
   campaignSystem?: string;
 }) {
-  const hideParentAttribute = campaignSystem === 'aa-v2';
+  const hideParentAttribute = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const [mode, setMode] = useState<'library' | 'custom'>('library');
   const [customName, setCustomName] = useState('');
   const [customDescription, setCustomDescription] = useState('');
@@ -15166,7 +15166,7 @@ function CustomSkillEditForm({
   isLoading?: boolean;
   campaignSystem?: string;
 }) {
-  const hideParentAttribute = campaignSystem === 'aa-v2';
+  const hideParentAttribute = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const [skillValue, setSkillValue] = useState(skill.value);
   const [description, setDescription] = useState(skill.description || '');
 
@@ -15611,7 +15611,7 @@ function TraitEditForm({
 
 export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
-  const isAAV2 = campaignSystem === 'aa-v2';
+  const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
   const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
   const canEditAsGM = isGM || isTrustedSelf;
@@ -15765,7 +15765,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     skillWisdom: character?.skillWisdom || 0
   });
   
-  const speciesSystemName = campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+  const speciesSystemName = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
   const { data: fetchedSpecies = [] } = useQuery({
     queryKey: ['species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -16284,7 +16284,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           character?.name || 'Unknown',
           isHeal
         );
-      } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+      } else if (rollEntry.applyToStat === 'mana' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
         gameWs.sendCombatMana(
           character.id,
           result.total,
@@ -16501,10 +16501,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [classTooltip, setClassTooltip] = useState<string | null>(null);
   const classTooltipTimer = useRef<NodeJS.Timeout | null>(null);
 
+  const classSystemSlug: 'aa-v2' | 'aa-v3' = campaignSystem === 'aa-v3' ? 'aa-v3' : 'aa-v2';
   const { data: availableClasses = [] } = useQuery({
-    queryKey: ['classes'],
+    queryKey: ['classes', classSystemSlug],
     queryFn: async () => {
-      const res = await fetch('/api/classes?system=aa-v2', { credentials: 'include' });
+      const res = await fetch(`/api/classes?system=${classSystemSlug}`, { credentials: 'include' });
       return res.json();
     },
     enabled: isAAV2,
@@ -21258,7 +21259,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           {(character.showEnergyBar ?? true) ? 'Visible' : 'Hidden'}
                         </span>
                       </button>
-                      {campaignSystem === 'aa-v2' && (
+                      {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                         <button
                           onClick={() => onUpdate({ showManaBar: !(character.showManaBar ?? true) })}
                           className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
@@ -21969,6 +21970,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               characterClass={characterClasses.find((cc: any) => cc.classId === showClassSkillTree)}
               canEdit={canEditSheet}
               globalClassPoints={liveCharacter.classSkillPoints || 0}
+              campaignSystem={campaignSystem}
               onNodeUnlocked={() => {
                 queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
                 queryClient.invalidateQueries({ queryKey: ['/api/characters', character?.id] });
@@ -22790,14 +22792,16 @@ const classViewerTierStyles: Record<number, { border: string; bg: string; glow: 
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-amber-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
 };
 
-function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, onNodeUnlocked, globalClassPoints }: {
+function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, onNodeUnlocked, globalClassPoints, campaignSystem }: {
   classId: string;
   characterId: string;
   characterClass: any;
   canEdit: boolean;
   onNodeUnlocked: () => void;
   globalClassPoints: number;
+  campaignSystem?: string;
 }) {
+  const viewerSystemSlug: 'aa-v2' | 'aa-v3' = campaignSystem === 'aa-v3' ? 'aa-v3' : 'aa-v2';
   const queryClient = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -22837,23 +22841,23 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   });
 
   const { data: classViewerSpells = [] } = useQuery({
-    queryKey: ['public-spells', 'aa-v2'],
-    queryFn: () => fetch('/api/spells?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['public-spells', viewerSystemSlug],
+    queryFn: () => fetch(`/api/spells?system=${viewerSystemSlug}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   const { data: classViewerItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', 'aa-v2'],
-    queryFn: () => fetch('/api/system-items?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['/api/system-items', viewerSystemSlug],
+    queryFn: () => fetch(`/api/system-items?system=${viewerSystemSlug}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   const { data: classViewerTraits = [] } = useQuery<any[]>({
-    queryKey: ['public-traits', 'aa-v2'],
-    queryFn: () => fetch('/api/traits?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['public-traits', viewerSystemSlug],
+    queryFn: () => fetch(`/api/traits?system=${viewerSystemSlug}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   const { data: classViewerSkills = [] } = useQuery<any[]>({
-    queryKey: ['public-skills', 'aa-v2'],
-    queryFn: () => fetch('/api/custom-skills?system=aa-v2', { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['public-skills', viewerSystemSlug],
+    queryFn: () => fetch(`/api/custom-skills?system=${viewerSystemSlug}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   const getNodeImage = (node: any): string | null => {
@@ -24052,7 +24056,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     <SelectItem value="consumable">Consumable</SelectItem>
                     <SelectItem value="utility">Utility</SelectItem>
                     <SelectItem value="container">Container</SelectItem>
-                    {campaignSystem === 'aa-v2' && (
+                    {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                       <SelectItem value="crafter">Crafter</SelectItem>
                     )}
                   </SelectContent>
@@ -25393,7 +25397,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
             character?.name || 'Unknown',
             isHeal
           );
-        } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+        } else if (rollEntry.applyToStat === 'mana' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
           gameWs.sendCombatMana(
             character.id,
             flatValue,
@@ -25496,7 +25500,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
           character?.name || 'Unknown',
           isHeal
         );
-      } else if (rollEntry.applyToStat === 'mana' && campaignSystem === 'aa-v2') {
+      } else if (rollEntry.applyToStat === 'mana' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3')) {
         gameWs.sendCombatMana(
           character.id,
           result.total,
@@ -25603,7 +25607,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <SelectItem value="consumable">Consumable</SelectItem>
                         <SelectItem value="utility">Utility</SelectItem>
                         <SelectItem value="container">Container</SelectItem>
-                        {campaignSystem === 'aa-v2' && (
+                        {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                           <SelectItem value="crafter">Crafter</SelectItem>
                         )}
                       </SelectContent>
@@ -26279,17 +26283,17 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 </div>
               </div>
             )}
-            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && !isEditing && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && !isEditing && (
               <CraftSection item={currentData} character={character} canCraft={isOwner} />
             )}
             {/* Recipe editing only on library templates (no characterId).
                 Server admin endpoints reject edits on inventory copies, so
                 hide the editor there to avoid a misleading edit surface. */}
-            {currentData.itemType === 'crafter' && campaignSystem === 'aa-v2' && isEditing && !currentData.characterId && isGM && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && isEditing && !currentData.characterId && isGM && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor
                   itemId={currentData.id}
-                  systemSlug="aa-v2"
+                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : 'aa-v2'}
                 />
               </div>
             )}

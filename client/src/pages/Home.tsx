@@ -220,7 +220,7 @@ export default function Home() {
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">
                     {isAdmin
                       ? 'Manage system items, spells, and global game settings.'
-                      : 'Maintain your private A.A. V2 library — items, spells, species, classes, and more.'}
+                      : 'Maintain your private A.A. V2 / V3 library — items, spells, species, classes, and more.'}
                   </p>
                 </CardContent>
               </Card>
