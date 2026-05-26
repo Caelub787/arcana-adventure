@@ -16589,10 +16589,199 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     return bonuses;
   }, [featTreeData?.feats, characterFeats, liveCharacter?.level]);
 
-  // Calculate effective max HP/Energy/Mana including feat bonuses
-  const effectiveMaxHp = (liveCharacter.maxHp || 0) + featBonuses.hp;
-  const effectiveMaxEnergy = (liveCharacter.maxEnergy || 0) + featBonuses.energy;
-  const effectiveMaxMana = (liveCharacter.maxMana || 0) + featBonuses.mana;
+  // Calculate effective max HP/Energy/Mana including feat bonuses and temporary bonus-max (AA V2 quick-edit)
+  const bonusMaxHp = (liveCharacter as any).bonusMaxHp || 0;
+  const bonusMaxEnergy = (liveCharacter as any).bonusMaxEnergy || 0;
+  const bonusMaxMana = (liveCharacter as any).bonusMaxMana || 0;
+  const effectiveMaxHp = (liveCharacter.maxHp || 0) + featBonuses.hp + bonusMaxHp;
+  const effectiveMaxEnergy = (liveCharacter.maxEnergy || 0) + featBonuses.energy + bonusMaxEnergy;
+  const effectiveMaxMana = (liveCharacter.maxMana || 0) + featBonuses.mana + bonusMaxMana;
+
+  // ===== Quick-edit (AA V2): long-press / double-click on HP/Energy/Mana value =====
+  const [quickEditBar, setQuickEditBar] = useState<null | 'hp' | 'energy' | 'mana'>(null);
+  const [quickEditData, setQuickEditData] = useState<{
+    current: number | '';
+    max: number | '';
+    bonus: number | '';
+    prevBonus: number;
+  }>({ current: 0, max: 0, bonus: 0, prevBonus: 0 });
+  const quickPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quickPressFiredRef = useRef(false);
+
+  // Inlined permission check (canEdit/canEditSheet are declared later in this component; avoid TDZ)
+  const canQuickEdit = isAAV2 && (isOwner || isGM || accessLevel === 'edit');
+
+  const openQuickEdit = (bar: 'hp' | 'energy' | 'mana') => {
+    if (!canQuickEdit) return;
+    if (bar === 'hp') {
+      setQuickEditData({
+        current: liveCharacter.hp ?? 0,
+        max: liveCharacter.maxHp ?? 0,
+        bonus: bonusMaxHp,
+        prevBonus: bonusMaxHp,
+      });
+    } else if (bar === 'energy') {
+      setQuickEditData({
+        current: liveCharacter.energy ?? 0,
+        max: liveCharacter.maxEnergy ?? 0,
+        bonus: bonusMaxEnergy,
+        prevBonus: bonusMaxEnergy,
+      });
+    } else {
+      setQuickEditData({
+        current: liveCharacter.mana ?? 0,
+        max: liveCharacter.maxMana ?? 0,
+        bonus: bonusMaxMana,
+        prevBonus: bonusMaxMana,
+      });
+    }
+    setQuickEditBar(bar);
+  };
+
+  const quickPressHandlers = (bar: 'hp' | 'energy' | 'mana') => {
+    if (!canQuickEdit) return {};
+    return {
+      onDoubleClick: (e: React.MouseEvent) => {
+        e.stopPropagation();
+        openQuickEdit(bar);
+      },
+      onTouchStart: () => {
+        quickPressFiredRef.current = false;
+        if (quickPressTimerRef.current) clearTimeout(quickPressTimerRef.current);
+        quickPressTimerRef.current = setTimeout(() => {
+          quickPressFiredRef.current = true;
+          openQuickEdit(bar);
+        }, 500);
+      },
+      onTouchEnd: () => {
+        if (quickPressTimerRef.current) {
+          clearTimeout(quickPressTimerRef.current);
+          quickPressTimerRef.current = null;
+        }
+      },
+      onTouchMove: () => {
+        if (quickPressTimerRef.current) {
+          clearTimeout(quickPressTimerRef.current);
+          quickPressTimerRef.current = null;
+        }
+      },
+      onTouchCancel: () => {
+        if (quickPressTimerRef.current) {
+          clearTimeout(quickPressTimerRef.current);
+          quickPressTimerRef.current = null;
+        }
+      },
+      style: { cursor: 'pointer', userSelect: 'none' as const, WebkitUserSelect: 'none' as const },
+      title: 'Double-click (PC) or long-press (mobile) to quick-edit',
+    };
+  };
+
+  const handleQuickEditBonusChange = (raw: string) => {
+    const v = raw === '' ? '' : parseInt(raw, 10);
+    const newBonus = typeof v === 'number' && !Number.isNaN(v) ? v : '';
+    setQuickEditData(prev => {
+      const prevBonusVal = typeof prev.bonus === 'number' ? prev.bonus : prev.prevBonus;
+      const newBonusVal = typeof newBonus === 'number' ? newBonus : prevBonusVal;
+      const delta = newBonusVal - prevBonusVal;
+      const prevCurrent = typeof prev.current === 'number' ? prev.current : 0;
+      const newCurrent = Math.max(0, prevCurrent + delta);
+      return { ...prev, bonus: newBonus, current: newCurrent };
+    });
+  };
+
+  const saveQuickEdit = () => {
+    if (!quickEditBar || !canQuickEdit) return;
+    const currentVal = typeof quickEditData.current === 'number' ? quickEditData.current : 0;
+    const maxVal = typeof quickEditData.max === 'number' ? quickEditData.max : 0;
+    const bonusVal = Math.max(0, typeof quickEditData.bonus === 'number' ? quickEditData.bonus : 0);
+    const patch: any = {};
+    if (quickEditBar === 'hp') {
+      patch.hp = Math.max(0, currentVal);
+      if (canEditAsGM) patch.maxHp = Math.max(0, maxVal);
+      patch.bonusMaxHp = bonusVal;
+    } else if (quickEditBar === 'energy') {
+      patch.energy = Math.max(0, currentVal);
+      if (canEditAsGM) patch.maxEnergy = Math.max(0, maxVal);
+      patch.bonusMaxEnergy = bonusVal;
+    } else {
+      patch.mana = Math.max(0, currentVal);
+      if (canEditAsGM) patch.maxMana = Math.max(0, maxVal);
+      patch.bonusMaxMana = bonusVal;
+    }
+    onUpdate?.(patch);
+    setQuickEditBar(null);
+  };
+
+  const quickEditPanel = (bar: 'hp' | 'energy' | 'mana') => {
+    if (quickEditBar !== bar) return null;
+    const labels = {
+      hp: { title: 'HP', color: 'text-red-400', border: 'border-red-700/60' },
+      energy: { title: 'Energy', color: 'text-blue-400', border: 'border-blue-700/60' },
+      mana: { title: 'Mana', color: 'text-violet-400', border: 'border-violet-700/60' },
+    }[bar];
+    return (
+      <div
+        className={`mt-1 p-2 bg-stone-900/95 border ${labels.border} rounded space-y-2`}
+        data-testid={`quick-edit-${bar}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`text-[10px] font-bold uppercase ${labels.color}`}>Quick Edit {labels.title}</div>
+        <div className="flex items-center gap-2">
+          <Label className="text-[10px] text-stone-400 w-16">Current</Label>
+          <Input
+            type="number"
+            value={quickEditData.current}
+            onChange={(e) => setQuickEditData({ ...quickEditData, current: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+            className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+            data-testid={`input-quick-${bar}-current`}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-[10px] text-stone-400 w-16">Max</Label>
+          <Input
+            type="number"
+            value={quickEditData.max}
+            disabled={!canEditAsGM}
+            onChange={(e) => setQuickEditData({ ...quickEditData, max: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+            className={`h-7 text-xs bg-stone-900 text-stone-200 ${canEditAsGM ? 'border-amber-700' : 'border-stone-800'}`}
+            data-testid={`input-quick-${bar}-max`}
+          />
+          {!canEditAsGM && <Lock className="h-3 w-3 text-amber-600" />}
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-[10px] text-violet-400 w-16">Temp Bonus</Label>
+          <Input
+            type="number"
+            min={0}
+            value={quickEditData.bonus}
+            onChange={(e) => handleQuickEditBonusChange(e.target.value)}
+            className="h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+            data-testid={`input-quick-${bar}-bonus`}
+          />
+        </div>
+        <p className="text-[9px] text-stone-500 italic">Temp bonus adds to current and max; cleared on short or long rest.</p>
+        <div className="flex gap-2 pt-1">
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-emerald-700 hover:bg-emerald-600 text-white flex-1"
+            onClick={saveQuickEdit}
+            data-testid={`button-quick-${bar}-save`}
+          >
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs border-stone-700 text-stone-300"
+            onClick={() => setQuickEditBar(null)}
+            data-testid={`button-quick-${bar}-cancel`}
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
@@ -18350,8 +18539,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             />
                           </div>
                         ) : (
-                          <span className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= 6 ? 'relative' : ''}`} data-testid="text-hp">
+                          <span
+                            className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= 6 ? 'relative' : ''}`}
+                            data-testid="text-hp"
+                            {...quickPressHandlers('hp')}
+                          >
                             {liveCharacter.hp} / {effectiveMaxHp}
+                            {bonusMaxHp > 0 && (
+                              <span className="ml-1 text-emerald-300" data-testid="text-bonus-hp">(+{bonusMaxHp} bonus)</span>
+                            )}
                             {(liveCharacter.tempHp ?? 0) > 0 && (
                               <span className="ml-1 text-violet-300" data-testid="text-temp-hp">(+{liveCharacter.tempHp} temp)</span>
                             )}
@@ -18366,6 +18562,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <span className="text-[9px] text-red-400 font-bold ml-1" data-testid="text-hp-exhaustion">Exhaustion</span>
                         )}
                       </div>
+                      {quickEditPanel('hp')}
                       {!editingOverview && (
                         <div className="relative">
                           <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />
@@ -18463,14 +18660,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             />
                           </div>
                         ) : (
-                          <span className="text-xs font-bold" data-testid="text-energy">
+                          <span
+                            className="text-xs font-bold"
+                            data-testid="text-energy"
+                            {...quickPressHandlers('energy')}
+                          >
                             {liveCharacter.energy} / {effectiveMaxEnergy}
+                            {bonusMaxEnergy > 0 && (
+                              <span className="ml-1 text-emerald-300" data-testid="text-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
+                            )}
                             {(liveCharacter.tempEnergy ?? 0) > 0 && (
                               <span className="ml-1 text-violet-300" data-testid="text-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
                             )}
                           </span>
                         )}
                       </div>
+                      {quickEditPanel('energy')}
                       {!editingOverview && (
                         <div className="relative">
                           <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-energy" />
@@ -18569,14 +18774,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             />
                           </div>
                         ) : (
-                          <span className="text-xs font-bold" data-testid="text-mana">
+                          <span
+                            className="text-xs font-bold"
+                            data-testid="text-mana"
+                            {...quickPressHandlers('mana')}
+                          >
                             {liveCharacter.mana ?? 0} / {effectiveMaxMana}
+                            {bonusMaxMana > 0 && (
+                              <span className="ml-1 text-emerald-300" data-testid="text-bonus-mana">(+{bonusMaxMana} bonus)</span>
+                            )}
                             {(liveCharacter.tempMana ?? 0) > 0 && (
                               <span className="ml-1 text-violet-300" data-testid="text-temp-mana">(+{liveCharacter.tempMana} temp)</span>
                             )}
                           </span>
                         )}
                       </div>
+                      {quickEditPanel('mana')}
                       {!editingOverview && (
                         <div className="relative">
                           <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />

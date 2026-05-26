@@ -237,6 +237,9 @@ export const characters = pgTable("characters", {
   tempHp: integer("temp_hp").notNull().default(0),
   tempEnergy: integer("temp_energy").notNull().default(0),
   tempMana: integer("temp_mana").notNull().default(0),
+  bonusMaxHp: integer("bonus_max_hp").notNull().default(0),
+  bonusMaxEnergy: integer("bonus_max_energy").notNull().default(0),
+  bonusMaxMana: integer("bonus_max_mana").notNull().default(0),
   // Race information
   race: text("race").notNull().default("Human"),
   size: text("size").notNull().default("Medium"),

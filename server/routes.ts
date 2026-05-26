@@ -2281,7 +2281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * - GM Notes (players cannot see this field)
    * - Species/race assignment
    */
-  function validateCharacterUpdate(updates: Partial<any>, isGM: boolean, canEditSheet: boolean): void {
+  function validateCharacterUpdate(updates: Partial<any>, isGM: boolean, canEditSheet: boolean, campaignSystem?: string): void {
     // GM-only fields that regular editors cannot change
     const serverOnlyFields = ['classSkillPoints'];
     for (const f of serverOnlyFields) {
@@ -2289,7 +2289,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const gmOnlyFields = [
       'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor', 
-      'isTemplate', 'campaignId', 'userId', 'folderId'
+      'isTemplate', 'campaignId', 'userId', 'folderId',
+      // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
+      'maxHp', 'maxEnergy', 'maxMana',
+      'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana',
     ];
     
     if (!isGM) {
@@ -2300,6 +2303,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error(
           `Forbidden: Only GMs can edit ${restrictedFields.join(', ')}`
         );
+      }
+    }
+
+    // bonusMax* fields are only meaningful in the AA V2 system; strip silently elsewhere
+    if (campaignSystem !== 'aa-v2') {
+      for (const f of ['bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana']) {
+        if (f in updates) delete updates[f];
       }
     }
     
@@ -3611,7 +3621,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const effectiveIsGM = access.isGM || isAdmin;
       const canEditSheet = access.isOwner || effectiveIsGM || access.allowed;
       try {
-        validateCharacterUpdate(req.body, effectiveIsGM, canEditSheet);
+        const campaignSystem = (access.campaign as any)?.system;
+        validateCharacterUpdate(req.body, effectiveIsGM, canEditSheet, campaignSystem);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }
@@ -3792,8 +3803,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const energyRestored = Math.min(hpRoll, maxEnergyGain);
       const newEnergy = Math.min(currentEnergy + hpRoll, maxEnergy);
       
-      // Update character HP and Energy
-      const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp, energy: newEnergy });
+      // Update character HP, Energy, and clear bonus-max pools (AA V2 quick-edit "Temp Bonus")
+      const updatedCharacter = await storage.updateCharacter(character.id, {
+        hp: Math.min(newHp, effectiveMaxHp),
+        energy: Math.min(newEnergy, maxEnergy),
+        mana: Math.min(character.mana || 0, character.maxMana || 0),
+        bonusMaxHp: 0,
+        bonusMaxEnergy: 0,
+        bonusMaxMana: 0,
+      });
       
       // Restore short rest trait uses
       await storage.restoreShortRestTraitUses(character.id);
@@ -3915,11 +3933,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newExhaustion = Math.max(0, currentExhaustion - 1);
       const exhaustionRecovered = currentExhaustion - newExhaustion;
       
-      // Update character HP, Energy, and exhaustion
+      // Update character HP, Energy, exhaustion, restore mana to max, and clear bonus-max pools
       const updatedCharacter = await storage.updateCharacter(character.id, { 
         hp: newHp,
         energy: newEnergy,
-        exhaustion: newExhaustion
+        mana: character.maxMana || 0,
+        exhaustion: newExhaustion,
+        bonusMaxHp: 0,
+        bonusMaxEnergy: 0,
+        bonusMaxMana: 0,
       });
       
       // Reset trait uses on long rest (restores both long rest and short rest uses)

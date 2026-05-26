@@ -1302,11 +1302,12 @@ export class DatabaseStorage implements IStorage {
 
   async updateCharacter(id: string, data: Partial<Character>): Promise<Character | undefined> {
     const coerced: any = { ...data };
-    for (const k of ['hp', 'maxHp', 'energy', 'maxEnergy', 'mana', 'maxMana', 'tempHp', 'tempEnergy', 'tempMana'] as const) {
+    const zeroDefaultKeys = new Set(['tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana']);
+    for (const k of ['hp', 'maxHp', 'energy', 'maxEnergy', 'mana', 'maxMana', 'tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana'] as const) {
       if (k in coerced) {
         const v = (coerced as any)[k];
         if (v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v))) {
-          if (k === 'tempHp' || k === 'tempEnergy' || k === 'tempMana') {
+          if (zeroDefaultKeys.has(k)) {
             (coerced as any)[k] = 0;
           } else {
             delete (coerced as any)[k];
@@ -1314,7 +1315,7 @@ export class DatabaseStorage implements IStorage {
         } else if (typeof v === 'string') {
           const n = parseInt(v, 10);
           if (!Number.isNaN(n)) (coerced as any)[k] = n;
-          else if (k === 'tempHp' || k === 'tempEnergy' || k === 'tempMana') (coerced as any)[k] = 0;
+          else if (zeroDefaultKeys.has(k)) (coerced as any)[k] = 0;
           else delete (coerced as any)[k];
         }
       }
