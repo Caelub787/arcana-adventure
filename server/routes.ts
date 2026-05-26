@@ -3498,7 +3498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       if (campaign?.system === 'aa-v2') {
         const level = charData.level || 1;
-        const expectedTotal = 3 + 2 * (level - 1) + Math.floor(level / 5);
+        const expectedTotal = level + 2 * Math.floor(level / 3);
         charData.classSkillPoints = expectedTotal;
       }
       const character = await storage.createCharacter(charData);
@@ -3667,14 +3667,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if ('level' in updates && access.campaign?.system === 'aa-v2') {
         const oldLevel = charData.level || 1;
         const newLevel = updates.level;
-        if (newLevel > oldLevel) {
-          let pointsToAdd = 0;
-          for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
-            pointsToAdd += (lvl % 5 === 0) ? 3 : 2;
+        if (newLevel !== oldLevel) {
+          // Recompute canonically: total = expected(level) - spent on class nodes - spent on feats.
+          // This handles both level-up AND level-down without invariant drift.
+          const expectedTotal = newLevel + 2 * Math.floor(newLevel / 3);
+          const charClasses = await storage.getCharacterClasses(charData.id);
+          let totalSpent = 0;
+          for (const cc of charClasses) {
+            const skills = await storage.getCharacterClassSkills(charData.id, cc.classId);
+            const nodes = await storage.getClassSkillNodes(cc.classId);
+            for (const s of skills) {
+              const node = nodes.find(n => n.id === s.nodeId);
+              totalSpent += node?.cost || 0;
+            }
           }
-          if (pointsToAdd > 0) {
-            updates.classSkillPoints = (charData.classSkillPoints || 0) + pointsToAdd;
+          const charFeats = await storage.getCharacterFeats(charData.id);
+          for (const cf of charFeats) {
+            const f = await storage.getFeat(cf.featId);
+            totalSpent += f?.cost || 0;
           }
+          updates.classSkillPoints = Math.max(0, expectedTotal - totalSpent);
         }
       }
 
@@ -5251,18 +5263,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (newLevel !== char.level) {
           const updateData: any = { level: newLevel };
           if (campaign.system === 'aa-v2') {
-            const oldLevel = char.level || 1;
-            let pointsToAdd = 0;
-            if (mode === 'add') {
-              pointsToAdd = (newLevel % 5 === 0) ? 3 : 2;
-            } else if (mode === 'set' && newLevel > oldLevel) {
-              for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
-                pointsToAdd += (lvl % 5 === 0) ? 3 : 2;
+            // Recompute canonically so level-down also deducts.
+            const expectedTotal = newLevel + 2 * Math.floor(newLevel / 3);
+            const charClasses = await storage.getCharacterClasses(char.id);
+            let totalSpent = 0;
+            for (const cc of charClasses) {
+              const skills = await storage.getCharacterClassSkills(char.id, cc.classId);
+              const nodes = await storage.getClassSkillNodes(cc.classId);
+              for (const s of skills) {
+                const node = nodes.find(n => n.id === s.nodeId);
+                totalSpent += node?.cost || 0;
               }
             }
-            if (pointsToAdd > 0) {
-              updateData.classSkillPoints = (char.classSkillPoints || 0) + pointsToAdd;
+            const charFeats = await storage.getCharacterFeats(char.id);
+            for (const cf of charFeats) {
+              const f = await storage.getFeat(cf.featId);
+              totalSpent += f?.cost || 0;
             }
+            updateData.classSkillPoints = Math.max(0, expectedTotal - totalSpent);
           }
           await storage.updateCharacter(char.id, updateData);
           updates.push({ id: char.id, name: char.name, newLevel });
@@ -8712,27 +8730,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const campaign = await storage.getCampaign(character.campaignId);
         if (campaign?.system === 'aa-v2') isAAV2System = true;
       }
-      const totalFeatPoints = isAAV2System ? level : (2 + level + (2 * Math.floor(level / 3)));
-      
-      // Get feat details for each to sum up spent points
-      let spentPoints = 0;
-      for (const cf of existingFeats) {
-        const f = await storage.getFeat(cf.featId);
-        if (f) {
-          spentPoints += f.cost ?? 0;
+      const featCost = feat.cost ?? 0;
+
+      if (isAAV2System) {
+        // AA V2: feats share the same pool as class skill points
+        const availablePoints = character.classSkillPoints || 0;
+        if (availablePoints < featCost) {
+          return res.status(400).json({
+            error: `Not enough points. Need ${featCost}, have ${availablePoints}`
+          });
+        }
+      } else {
+        const totalFeatPoints = 2 + level + (2 * Math.floor(level / 3));
+        let spentPoints = 0;
+        for (const cf of existingFeats) {
+          const f = await storage.getFeat(cf.featId);
+          if (f) {
+            spentPoints += f.cost ?? 0;
+          }
+        }
+        const availablePoints = totalFeatPoints - spentPoints;
+        if (availablePoints < featCost) {
+          return res.status(400).json({
+            error: `Not enough feat points. Need ${featCost}, have ${availablePoints}`
+          });
         }
       }
-      
-      const featCost = feat.cost ?? 0;
-      const availablePoints = totalFeatPoints - spentPoints;
-      
-      if (availablePoints < featCost) {
-        return res.status(400).json({ 
-          error: `Not enough feat points. Need ${featCost}, have ${availablePoints}` 
+
+      const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
+
+      if (isAAV2System && featCost > 0) {
+        await storage.updateCharacter(req.params.id, {
+          classSkillPoints: Math.max(0, (character.classSkillPoints || 0) - featCost),
         });
       }
-      
-      const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
       
       // Apply feat effects: add traits, spells, skills to character when feat is unlocked
       if (feat.effects && Array.isArray(feat.effects)) {
@@ -8927,7 +8958,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.removeCharacterFeat(req.params.id, req.params.featId);
-      
+
+      // AA V2: refund the feat's cost back to the shared class skill points pool
+      if (character?.campaignId) {
+        const campaign = await storage.getCampaign(character.campaignId);
+        if (campaign?.system === 'aa-v2' && feat && (feat.cost ?? 0) > 0) {
+          await storage.updateCharacter(req.params.id, {
+            classSkillPoints: (character.classSkillPoints || 0) + (feat.cost ?? 0),
+          });
+        }
+      }
+
       if (character?.campaignId) {
         broadcastToCampaign(character.campaignId, {
           type: "feat_removed",
@@ -15706,7 +15747,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (char.isTemplate) continue;
           const level = char.level || 1;
           let expectedTotal = 0;
-          expectedTotal = 3 + 2 * (level - 1) + Math.floor(level / 5);
+          expectedTotal = level + 2 * Math.floor(level / 3);
           const charClasses = await storage.getCharacterClasses(char.id);
           let totalSpent = 0;
           for (const cc of charClasses) {
@@ -15716,6 +15757,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const node = nodes.find(n => n.id === s.nodeId);
               totalSpent += node?.cost || 0;
             }
+          }
+          // Include species feat costs (AA V2 shares the pool between class skills and species feats)
+          const charFeats = await storage.getCharacterFeats(char.id);
+          for (const cf of charFeats) {
+            const f = await storage.getFeat(cf.featId);
+            totalSpent += f?.cost || 0;
           }
           const correctPoints = Math.max(0, expectedTotal - totalSpent);
           if ((char.classSkillPoints || 0) !== correctPoints) {

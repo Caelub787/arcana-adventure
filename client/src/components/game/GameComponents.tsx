@@ -16566,7 +16566,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   });
   
   // Calculate if character can level up HP (level > lastLevelUpRolled)
-  const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
+  const canLevelUpHp = !isAAV2 && (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
   const missedHpLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastLevelUpRolled || 1));
   
   // Calculate if character can level up Energy (level > lastEnergyLevelUpRolled)
@@ -22024,6 +22024,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 isAAV2={isAAV2}
                 campaignSystem={campaignSystem}
                 campaignId={campaignId}
+                sharedAvailablePoints={isAAV2 ? (liveCharacter.classSkillPoints || 0) : undefined}
               />
             )}
           </div>
@@ -22044,6 +22045,7 @@ function FeatTreeViewerGrid({
   isAAV2 = false,
   campaignSystem,
   campaignId,
+  sharedAvailablePoints,
 }: { 
   treeData: FeatTreeWithData;
   characterFeats: CharacterFeat[];
@@ -22054,6 +22056,7 @@ function FeatTreeViewerGrid({
   isAAV2?: boolean;
   campaignSystem?: string;
   campaignId?: string;
+  sharedAvailablePoints?: number;
 }) {
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
@@ -22141,11 +22144,18 @@ function FeatTreeViewerGrid({
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
   const { feats, connections, tree } = treeData;
   
-  const totalFeatPoints = isAAV2 ? characterLevel : (2 + characterLevel + (2 * Math.floor(characterLevel / 3)));
   const spentPoints = feats
     .filter((f: Feat) => unlockedFeatIds.has(f.id))
     .reduce((sum: number, f: Feat) => sum + (f.cost ?? 0), 0);
-  const availablePoints = totalFeatPoints - spentPoints;
+  // AA V2: feat & class skill trees share a single pool sourced from character.classSkillPoints.
+  // The `spentPoints` we sum here is only the species feats portion of what's been spent in that pool,
+  // so the displayed total = remaining (shared) + species-feats spent.
+  const availablePoints = isAAV2 && typeof sharedAvailablePoints === 'number'
+    ? sharedAvailablePoints
+    : ((2 + characterLevel + (2 * Math.floor(characterLevel / 3))) - spentPoints);
+  const totalFeatPoints = isAAV2 && typeof sharedAvailablePoints === 'number'
+    ? sharedAvailablePoints + spentPoints
+    : (2 + characterLevel + (2 * Math.floor(characterLevel / 3)));
   
   // Pan/zoom state
   const containerRef = useRef<HTMLDivElement>(null);
