@@ -18496,7 +18496,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Heart className="h-3 w-3 text-red-500" />
                           HP
                         </Label>
-                        {editingOverview ? (
+                        {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
                             <Input
                               type="number"
@@ -18617,7 +18617,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Zap className="h-3 w-3 text-blue-500" />
                           Energy
                         </Label>
-                        {editingOverview ? (
+                        {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
                             <Input
                               type="number"
@@ -18731,7 +18731,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Sparkles className="h-3 w-3 text-violet-400" />
                           Mana
                         </Label>
-                        {editingOverview ? (
+                        {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
                             <Input
                               type="number"

@@ -9295,6 +9295,15 @@ export default function Campaign() {
         if (!old) return old;
         return old.map((c: any) => c.id === id ? { ...c, ...data } : c);
       });
+      // Instant local feedback: patch any in-memory state that mirrors this character
+      // so the sheet/inspector reflect the change without waiting on the server round-trip.
+      queryClient.setQueryData([`/api/characters/${id}`], (old: any) => old ? { ...old, ...data } : old);
+      queryClient.setQueryData(['character', id], (old: any) => old ? { ...old, ...data } : old);
+      setCharacter((prev: any) => (prev && prev.id === id ? { ...prev, ...data } : prev));
+      setInspectedChar((prev: any) => (prev && prev.id === id ? { ...prev, ...data } : prev));
+      setOpenCharacterSheets((prev: any[]) =>
+        prev.map((sheet: any) => (sheet.id === id ? { ...sheet, ...data } : sheet))
+      );
       return { previousCharacters };
     },
     onSuccess: (_, variables) => {
@@ -9530,6 +9539,28 @@ export default function Campaign() {
           if (data.characterId) {
             queryClientRef.current.refetchQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
+        }
+        // Instant fan-out for newly created characters: inject into the list cache so
+        // every client (GM and authorized players) sees them without waiting for the
+        // background refetch round-trip.
+        if (data.type === 'character_created' && data.character) {
+          const created = data.character;
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              if (oldData.some((c: any) => c.id === created.id)) return oldData;
+              return [...oldData, created];
+            }
+          );
+          // Background reconciliation (covers permission-filtered lists for non-GM clients).
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
+        }
+        if (data.type === 'character_deleted' && data.characterId) {
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
+            (oldData: any[] | undefined) => oldData ? oldData.filter((c: any) => c.id !== data.characterId) : oldData
+          );
         }
         if (data.type === 'campaign_data_changed') {
           const cid = effectiveCampaignIdRef.current;
