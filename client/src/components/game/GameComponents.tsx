@@ -10990,8 +10990,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             )}
           </div>
 
-          <Tabs defaultValue="players" className="w-full">
-            <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
+          <div className={system === 'sandbox' ? "space-y-4" : "mt-4 space-y-4"}>
                {/* Campaign Members List */}
                <div className="space-y-2">
                   {members && members.length > 0 ? (
@@ -11097,9 +11096,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                     </div>
                   )}
                </div>
-            </TabsContent>
-            
-          </Tabs>
+          </div>
 
           {/* GM Only Section */}
           {role === 'gm' && (
@@ -11429,8 +11426,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               onPlaceCharacterToken={onPlaceCharacterToken}
             />
           ) : (
-          <Tabs defaultValue="players" className="w-full">
-            <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
+          <div className={system === 'sandbox' ? "space-y-4" : "mt-4 space-y-4"}>
               <div className="space-y-2">
                 {members && members.length > 0 ? (
                   members.map((member: any) => (
@@ -11532,9 +11528,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   <div className="p-4 text-center text-stone-500 text-sm">No members yet</div>
                 )}
               </div>
-            </TabsContent>
-
-          </Tabs>
+          </div>
           )}
 
         </div>
