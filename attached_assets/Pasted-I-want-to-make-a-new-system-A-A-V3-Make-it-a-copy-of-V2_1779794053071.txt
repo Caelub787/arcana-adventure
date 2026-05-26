@@ -1,0 +1,200 @@
+I want to make a new system, "A.A.V3".  Make it a copy of V2, and then apply the following changes.  Remember that V3 should be completely separate from other systems, not sharing the same database for Admin products or anything else as we will be making a LOT of changes for this.
+
+Character Sheets
+- Overview
+Remove Species Skill Trees.  Species will now give custom skills and traits on character creation, and bonuses to attribute values.  All of this must be configurable in admin for created species as well as in the campaign.  I should be able to choose the starting values that get added onto Attributes as a result of the chosen race, as well as what custom skills and traits are added by default onto a character sheet for each race in those settings.
+- Attributes 
+Attributes & Skills will be in the same tab now, with Custom Skills and Traits staying in the other tab (rename Skills tab to Traits)
+We will have a new attributes system now.
+Might
+Finesse
+Constitution
+Will
+Anemos
+Craft
+Skills will be underneath attributes in the tab.  I want them to still be displayed all together in alphabetical order and in the same way skills currently are in the V2 system.  However make sure you show each one's connected attribute by “(first 3 letters of attribute)”. Underneath in smaller letters I also want each Skills description present.
+Might
+Athletics — climbing, swimming, jumping, anything that takes muscle 
+Finesse
+Acrobatics — dodging, tumbling, keeping your footing
+Stealth — moving unseen and unheard
+Sleight of Hand — pickpocketing, quick draws, small precise movements
+Constitution
+Endurance — pushing through exhaustion, harsh weather, long marches
+Fortitude — resisting poison, disease, and physical debuffs
+Survival — finding food, shelter, and staying alive in the wild
+Perception — noticing things around you before they become a problem, whether that's a sound, movement, or something just feeling off
+Will
+Resolve — resisting fear, madness, and mental influence
+Focus — maintaining concentration under pressure
+Insight — reading people, sensing motives, spotting lies
+Anemos
+Sense — detecting magic, auras, or things beyond normal perception
+Intelligence
+Investigation — actively searching a space, piecing clues together, and figuring out what happened or what something means 
+Naturecraft — knowledge of plants, animals, and the natural world, including field medicine, treating wounds, and identifying what's safe to eat or dangerous to touch
+Survival — finding food, shelter, and staying alive in the wild
+
+The way attributes and skills work in this system will be different then in V2.
+Your attribute score determines the dice you roll for all skill checks under that attribute
+0=1d6
+1=1d8
+2=1d10
+3=1d12
+4=1d20
+Skill modifiers work as normal, altho remove the auto calc that shows the Attribute and Skill mods added together since attribute values only determine what dice is used (This info should be displayed however).
+
+
+Campaigns
+Inside of campaigns under the target button, I want a ruler button, when pressed allows you to select from additional buttons that appear (only when the ruler is selected) different types of AOE shapes, that then allow you to control and create the size of said shape via value dialog that appears at the top of the screen under the buttons at the top.  For Cone and Line, it should create from the characters current position, for Square and Circle it should create 2 things, a line that goes from the center of the AOE shape to the character showing how many ft away it is (remember on the battlemap each square is 5ft) and how large the shape is.  When pressed, that marker is left on the battlemap for all users to see until the clear button is pressed or the player clicks off the ruler tool.
+
+There should be a few new additions to this system.
+New item type, Spellbooks.  These when opened act as a new holder for spells.  Remove the spells section from a character sheet.  Characters can add spells from a spellbook they have in their inventory into their hotbar for quick access.  These should still be floating panels.
+- Spells are getting reworked so maybe wait to add this until spells are finished.
+
+
+
+Spells
+These are getting re-worked.  We are creating a spell casting system where spells are created from different things in the world. Here is all that goes into a spell:
+
+
+
+
+Elements
+Fire
+Heat, combustion, and consuming flame. Destroys, illuminates, and spreads. Its nature is aggressive and difficult to control once unleashed.
+Water
+Flowing liquid force, pressure, and adaptability. Finds every gap and weakness, erodes over time, and takes the shape of whatever contains it.
+Earth
+Stone, soil, and immovable physical mass. The most durable and persistent of forces. Slow to move but devastating once it does.
+Air
+Wind, breath, and invisible movement. The fastest natural element. Carries and disperses everything it touches across wide areas.
+Lightning
+Raw electrical discharge and instantaneous energy. Travels faster than anything else, jumps between conductive surfaces, and strikes without warning.
+Ice
+Cold, stillness, and crystallization. Slows and preserves whatever it touches. Can hold things in suspension or shatter them under pressure.
+Shadow
+Darkness and entropy as active forces. Not simply the absence of light but a thing unto itself, concealing, corrupting, and wearing things down.
+Light
+Radiance, revelation, and precision. Illuminates what is hidden, purifies what is corrupt, and travels in exact straight lines.
+Life
+Growth, healing, and biological force. The fundamental drive of living things to persist and expand. Can restore, accelerate, or overwhelm organic matter.
+Death
+Decay, entropy, and the ending of things. Necrotic force that breaks down structure, consumes vitality, and resists natural healing.
+Mind
+Concentrated will and psychic force made tangible. Targets consciousness directly rather than the physical body. Shaped entirely by intent.
+Void
+Pure absence and anti-existence. Does not damage so much as erase. The hardest force to resist because there is nothing to push back against.
+Sound
+Vibration and resonance. Travels through any medium, bypasses physical barriers, and can shatter or heal depending on the frequency.
+Metal
+Hardness, conductivity, and magnetism. Precise and structured. Conducts other forces efficiently and holds its shape under extreme conditions.
+Poison
+Toxicity, corruption, and chemical degradation. Invades living systems, spreads through contact, and lingers long after the initial exposure.
+Time
+Temporal force. The ability to accelerate, decelerate, suspend, or age whatever it touches. One of the most dangerous forces to work with.
+Space
+Spatial force. Manipulates distance, location, and physical boundaries. Can fold distance, anchor objects in place, or move things instantly.
+Roles
+Core
+The primary element and the spell's fundamental identity. What the spell is made of at its heart. Every spell must have one and only one Core. Everything else exists to support, shape, or modify it.
+Catalyst
+Drives the reaction or transformation without being part of the final output. The Catalyst changes how the Core manifests but does not become the spell itself. Like fire beneath a pot, it provides the force that causes the change.
+Carrier
+The vessel or medium the spell travels through or is contained within. The Core rides inside or along the Carrier to reach its destination. The Carrier gives the spell its path and shape in transit.
+Amplifier
+Strengthens one other element in the spell, making it more intense, more far-reaching, or more powerful than it could be on its own. Does not change what the element does, only how much.
+Seal
+Anchors and stabilizes the spell, giving it persistence and preventing it from dispersing. Without a Seal, most spells fade quickly. The nature of the Seal element determines how and where the spell is held.
+Trigger
+Defines the condition that activates or detonates the spell. The Core lies dormant and does nothing until the Trigger condition is met. The Trigger element's natural properties define what that condition is.
+Intent
+Create
+Bring something into existence from the magical force itself. The spell produces something that was not there before.
+Destroy
+Damage, unmake, or consume a target. The spell's purpose is to reduce, break down, or eliminate something.
+Move
+Displace, push, pull, or reposition something without changing what it fundamentally is. The target ends up somewhere different than where it started.
+Shape
+Change the physical form or structure of something without altering its fundamental nature or substance. Water reshaped into a wall is still water.
+Transform
+Change the state or nature of something entirely. Water transformed into ice has become something different. More thorough than Shape.
+Sense
+Gather information, detect presence, read conditions, or reveal what is hidden. The spell reaches out and brings knowledge back.
+Bind
+Restrict, hold, or anchor something in place. The target cannot move, act, or change as long as the Bind holds.
+Release
+Undo a binding, free something that is constrained, or break a held magical effect. The opposite of Bind.
+Amplify
+Make something that already exists in the world larger, stronger, or more intense. The spell finds an existing force or quality and magnifies it. Unlike the Amplifier role, this acts on things outside the spell rather than elements within it.
+Diminish
+Reduce, weaken, or suppress something that already exists. The spell finds a force or quality and makes it less.
+Absorb
+Take in, drain, or consume something. The spell pulls a force, quality, or energy into itself or into the caster.
+Reflect
+Redirect or bounce something back toward its source or in a new direction. The spell intercepts a force and returns it.
+Convert
+Change one substance or type of energy into a fundamentally different one. Unlike Transform, Convert changes what something is made of, not just its state.
+Summon
+Call something from elsewhere to your location. The thing summoned already exists somewhere and the spell brings it here.
+Communicate
+Convey information, send messages, or transmit will across distance. The spell carries meaning rather than force.
+Delivery
+Projectile
+Fires directly from the caster toward a single target. Travels in a straight line and hits the first thing in its path.
+Stream
+A continuous flow that extends in a straight line from the caster outward, hitting everything along that line. Line area of effect.
+Wave
+Expands outward in a square area from the point of origin, pushing in all forward directions at once. Square area of effect.
+Pulse
+Bursts outward in a full circle from the point of origin, hitting everything within its radius equally. Circle area of effect.
+Conjure
+The effect does not travel at all. It rises from the ground or surfaces directly at the chosen target location.
+Rain
+The effect descends from above over the target area. Falls from the sky onto whatever is below.
+Reach
+Self
+Affects only the caster or originates directly from the caster's own body. Cannot be directed at anything else.
+Touch
+Requires direct physical contact between the caster and the target. The caster must be able to reach out and touch what they are targeting.
+Close
+A short distance. Roughly within a few steps of the caster. Close enough to feel the heat of it.
+Near
+A moderate distance. Across a room or a small open space. Far enough to be out of arm's reach but still clearly visible.
+Far
+A significant distance. Across a large hall, a courtyard, or a short stretch of open ground.
+Extreme
+A very long distance. Pushing the limits of what the caster can see or perceive. Requires focus to aim accurately.
+Unlimited
+No distance restriction. The spell can reach anything the caster is aware of regardless of how far away it is.
+Duration
+Instant
+The effect happens once and is immediately over. No lingering presence. One moment it exists, the next it does not.
+Brief
+Lasts only a short moment. Roughly one round or a few seconds at most. Fades almost as quickly as it arrives.
+Short
+Lasts for a brief period. Roughly one minute. Long enough to matter in a fight but not something that sticks around afterward.
+Medium
+Lasts for a moderate period. Roughly ten minutes. Persists through most encounters and short stretches of travel.
+Long
+Lasts for an extended period. Roughly one hour. Reliable enough to plan around.
+Permanent
+The effect does not end on its own. It persists until something specifically undoes it, whether that is dispelling, physical destruction, or another spell.
+Concentration
+Lasts as long as the caster actively maintains focus on it. Ends immediately if the caster is disrupted, knocked unconscious, or chooses to release it.
+Until Triggered
+The spell lies dormant with no active effect. It activates only when a specific condition defined at the time of casting is met. Once triggered it behaves according to its own Duration from that point.
+
+I want people to be able to create their own spells.  In order to do so, users per long rest will get 1 spell creation token per point they have in their Anemos attribute.  These points refresh on long rests.
+
+The way this should work is that creating a spell costs the mana the spell would take normally, plus a spell creation token (Displayed in the overview of a character sheet)
+
+It should cost 1 mana per element, and 1 mana per slot you go up in Reach and Duration.  Ex, using a concentration duration would cost 6 mana extra.
+
+The more elements added the harder it is to create the spell too.  If you have 2 elements together then the DC will be 6 to create, 3 elements 12, 4 elements is 18.
+
+You can create spells from a spell book, there will be a create button in them and clicking it will create the spell into that book.  The spell book should do the following:
+Builder Tab Pick your Core element from the visual grid, add as many secondary elements as you want and assign each a role, then fill in Intent, Delivery, Expression, Reach, and Duration. Hit Generate and it calls the AI to produce a name, an in-world description, and a one-line mechanical effect based on how those specific elements and roles interact.
+Formula Display Updates live as you build, showing each element color-coded by its role so you can see the spell construction at a glance.
+When a spell is created the user should be able to name it, i want these spell additions to be saved into a live database in admin, where I can approve spells to be shared with all in this way.  This way creating a spell has impact on all players in the future who create the same spell, they see what you named it and did.
+
