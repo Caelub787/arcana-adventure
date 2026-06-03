@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { api, type V3Spell } from "@/lib/api";
 import { FloatingPanel } from "@/components/ui/floating-panel";
@@ -14,7 +15,7 @@ import {
   V3_DURATION_MAP,
   V3_ROLE_MAP,
 } from "@shared/v3spells";
-import { BookOpen, Sparkles, Send, Trash2, Wand2, Clock } from "lucide-react";
+import { BookOpen, Sparkles, Send, Trash2, Wand2, Clock, Eye } from "lucide-react";
 
 interface SpellbookCharacter {
   id: string;
@@ -124,6 +125,7 @@ export function SpellbookPanel({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const panelKey = `spellbook${charPanelSuffix}`;
+  const [detailSpell, setDetailSpell] = useState<V3Spell | null>(null);
 
   const { data: spells = [], isLoading } = useQuery<V3Spell[]>({
     queryKey: ["spellbook-spells", item?.id],
@@ -173,6 +175,7 @@ export function SpellbookPanel({
   if (!open || !item) return null;
 
   return (
+    <>
     <FloatingPanel
       open={open}
       onClose={onClose}
@@ -239,6 +242,15 @@ export function SpellbookPanel({
                         <div className="flex items-center gap-2 mt-2">
                           <Button
                             size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-stone-300 hover:bg-stone-800"
+                            onClick={() => setDetailSpell(spell)}
+                            data-testid={`button-detail-spell-${spell.id}`}
+                          >
+                            <Eye className="h-3 w-3 mr-1" /> Details
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="h-7 text-xs border-purple-700 text-purple-300 hover:bg-purple-900/40"
                             disabled={awaiting}
@@ -277,5 +289,11 @@ export function SpellbookPanel({
         </TabsContent>
       </Tabs>
     </FloatingPanel>
+    <V3SpellDetailDialog
+      open={!!detailSpell}
+      onOpenChange={(o) => { if (!o) setDetailSpell(null); }}
+      spell={detailSpell}
+    />
+    </>
   );
 }

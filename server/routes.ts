@@ -6302,6 +6302,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Authorize access to a spellbook that has no character owner (library/template).
+  // Only the creator, the campaign GM, or an admin may read/modify it.
+  const canAccessOwnerlessSpellbook = async (item: any, req: any): Promise<boolean> => {
+    if (await isAdminUser(req.session.userId!)) return true;
+    if (item.createdByUserId && item.createdByUserId === req.session.userId) return true;
+    if (item.campaignId) {
+      const campaign = await storage.getCampaign(item.campaignId);
+      if (campaign && (await hasGmAccess(req.session.userId!, item.campaignId, campaign.gmUserId, req))) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // List the spells held inside a spellbook item.
   app.get("/api/v3/spellbooks/:itemId/spells", requireAuth, async (req, res) => {
     try {
@@ -6312,6 +6326,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (item.characterId) {
         const access = await checkCharacterAccess(item.characterId, req.session.userId!, "view");
         if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+      } else if (!(await canAccessOwnerlessSpellbook(item, req))) {
+        // Library/template spellbook (no character owner): restrict reads to the
+        // creator, campaign GM, or an admin to avoid IDOR via guessed item IDs.
+        return res.status(403).json({ error: "No access to this spellbook" });
       }
       const spells = await storage.getV3SpellsForSpellbook(req.params.itemId);
       res.json(spells);
@@ -6330,6 +6348,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (item?.characterId) {
         const access = await checkCharacterAccess(item.characterId, req.session.userId!, "edit");
         if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+      } else if (item && !(await canAccessOwnerlessSpellbook(item, req))) {
+        return res.status(403).json({ error: "No access to this spellbook" });
       }
       await storage.deleteV3Spell(spell.id);
       res.json({ success: true });
