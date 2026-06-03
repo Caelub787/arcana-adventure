@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode, type RulerShape, type RulerMarker } from "@/components/game/GameComponents";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
@@ -7630,6 +7630,21 @@ export default function Campaign() {
   const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [detonatableGridTarget, setDetonatableGridTarget] = useState<{ x: number; y: number } | null>(null);
+
+  // Ruler / AOE measurement tool state (pure measurement layer, no damage)
+  const [rulerShape, setRulerShape] = useState<RulerShape>('cone');
+  const [rulerDims, setRulerDims] = useState({
+    coneLength: 15,
+    coneArc: 90,
+    lineLength: 30,
+    lineWidth: 5,
+    squareSide: 15,
+    circleRadius: 15,
+  });
+  const [rulerPreview, setRulerPreview] = useState<{ x: number; y: number } | null>(null);
+  const [myRulerMarkers, setMyRulerMarkers] = useState<RulerMarker[]>([]);
+  const [otherRulerMarkers, setOtherRulerMarkers] = useState<Map<string, RulerMarker[]>>(new Map());
+  const selectionModeRef = useRef<SelectionMode>('select');
   
   // Active beacons state - temporary pulsating rings on grid cells
   const [activeBeacons, setActiveBeacons] = useState<Array<{
@@ -8494,6 +8509,83 @@ export default function Campaign() {
         });
       }
     }
+  };
+
+  // ===== Ruler / AOE Measurement Tool (pure measurement, no damage) =====
+  // Resolve the token that the current user's "active" character controls.
+  const getActiveRulerCasterToken = () => {
+    const casterCharId = role === 'gm'
+      ? (inspectedChar?.id || currentTurnCharacterId || character?.id)
+      : character?.id;
+    if (!casterCharId) return null;
+    return tokens.find((t: any) => t.characterId === casterCharId) || null;
+  };
+
+  // Build a RulerMarker for the given shape at a raw world coordinate.
+  // Cone/Line originate from the caster token; Square/Circle snap to the
+  // clicked cell center with a distance line back to the caster (if any).
+  const buildRulerMarker = (shape: RulerShape, rawX: number, rawY: number): RulerMarker | null => {
+    const gridSizeVal = activeScene?.gridSize || 50;
+    const casterToken = getActiveRulerCasterToken();
+    let targetX = rawX;
+    let targetY = rawY;
+    let casterX: number;
+    let casterY: number;
+    if (shape === 'cone' || shape === 'line') {
+      if (!casterToken) return null;
+      casterX = casterToken.x + gridSizeVal / 2;
+      casterY = casterToken.y + gridSizeVal / 2;
+    } else {
+      targetX = Math.floor(rawX / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
+      targetY = Math.floor(rawY / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
+      if (casterToken) {
+        casterX = casterToken.x + gridSizeVal / 2;
+        casterY = casterToken.y + gridSizeVal / 2;
+      } else {
+        casterX = targetX;
+        casterY = targetY;
+      }
+    }
+    const marker: RulerMarker = {
+      id: '',
+      userId: user?.id || '',
+      username: (user as any)?.username || '',
+      shape,
+      casterX,
+      casterY,
+      targetX,
+      targetY,
+    };
+    if (shape === 'cone') { marker.length = rulerDims.coneLength; marker.arc = rulerDims.coneArc; }
+    else if (shape === 'line') { marker.length = rulerDims.lineLength; marker.width = rulerDims.lineWidth; }
+    else if (shape === 'square') { marker.side = rulerDims.squareSide; }
+    else if (shape === 'circle') { marker.radius = rulerDims.circleRadius; }
+    return marker;
+  };
+
+  const handleRulerPreview = (x: number, y: number) => {
+    setRulerPreview({ x, y });
+  };
+
+  const handleRulerCommit = (x: number, y: number) => {
+    const marker = buildRulerMarker(rulerShape, x, y);
+    if (!marker) return;
+    marker.id = `ruler-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setMyRulerMarkers(prev => [...prev, marker]);
+    gameWs.sendRuler({ action: 'place', marker });
+  };
+
+  const clearMyRulerMarkers = () => {
+    setMyRulerMarkers([]);
+    setRulerPreview(null);
+    gameWs.sendRuler({ action: 'clear' });
+  };
+
+  const clearAllRulerMarkers = () => {
+    setMyRulerMarkers([]);
+    setOtherRulerMarkers(new Map());
+    setRulerPreview(null);
+    gameWs.sendRuler({ action: 'clearAll' });
   };
 
   // Load all scenes for the campaign
@@ -9984,6 +10076,35 @@ export default function Campaign() {
           });
         }
         
+        // Handle other players' ruler / AOE measurement markers
+        if (data.type === 'ruler') {
+          const { userId, action, marker } = data;
+          if (action === 'clearAll') {
+            setOtherRulerMarkers(new Map());
+            setMyRulerMarkers([]);
+            setRulerPreview(null);
+            return;
+          }
+          // Skip our own broadcasts - we already track our markers locally
+          if (userId === user?.id) return;
+          if (action === 'place' && marker) {
+            setOtherRulerMarkers(prev => {
+              const updated = new Map(prev);
+              const list = updated.get(userId) ? [...updated.get(userId)!] : [];
+              list.push(marker);
+              updated.set(userId, list);
+              return updated;
+            });
+          } else if (action === 'clear') {
+            setOtherRulerMarkers(prev => {
+              const updated = new Map(prev);
+              updated.delete(userId);
+              return updated;
+            });
+          }
+          return;
+        }
+
         // Handle other players' token targeting updates (for GM visibility)
         if (data.type === 'token_targeting') {
           const { userId, username, targetTokenId, characterId, characterName } = data;
@@ -10311,10 +10432,18 @@ export default function Campaign() {
   }, [selectionMode, characters, role, myPermissions, user]);
 
   const handleModeChange = useCallback((mode: SelectionMode) => {
+    const prevMode = selectionModeRef.current;
+    selectionModeRef.current = mode;
     setSelectionMode(mode);
     setTargetedTokenId(null);
     setDetonatableGridTarget(null);
     setSelectedTokenId(null);
+    // Leaving ruler mode removes this user's measurement markers everywhere.
+    if (prevMode === 'ruler' && mode !== 'ruler') {
+      setMyRulerMarkers([]);
+      setRulerPreview(null);
+      gameWs.sendRuler({ action: 'clear' });
+    }
     if (effectiveCampaignIdRef.current) {
       gameWs.clearTokenTargeting();
     }
@@ -12965,6 +13094,11 @@ export default function Campaign() {
              aoeTargetState={spectatorMode ? createInitialAoeState() : aoeTargetState}
              onAoeMouseMove={spectatorMode ? undefined : updateAoeCenter}
              onAoeClick={spectatorMode ? undefined : handleAoeClick}
+             rulerActive={!spectatorMode && selectionMode === 'ruler'}
+             rulerMarkers={[...myRulerMarkers, ...Array.from(otherRulerMarkers.values()).flat()]}
+             rulerPreviewMarker={!spectatorMode && selectionMode === 'ruler' && rulerPreview ? buildRulerMarker(rulerShape, rulerPreview.x, rulerPreview.y) : null}
+             onRulerPreview={spectatorMode ? undefined : handleRulerPreview}
+             onRulerCommit={spectatorMode ? undefined : handleRulerCommit}
              otherPlayersAoe={otherPlayersAoe}
              myPermissions={myPermissions}
              tokenActiveEffects={tokenActiveEffectsQuery.data}
@@ -13068,6 +13202,8 @@ export default function Campaign() {
                character={role === 'gm' ? inspectedChar : character}
                notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
+               rulerShape={rulerShape}
+               onRulerShapeChange={setRulerShape}
              />
            )}
            
@@ -13104,8 +13240,97 @@ export default function Campaign() {
                </div>
              );
            })()}
-           
-           
+
+           {/* Ruler / AOE measurement value dialog - per-shape size inputs */}
+           {!spectatorMode && selectionMode === 'ruler' && (
+             <div
+               className="fixed z-[10800] pointer-events-auto left-1/2 -translate-x-1/2 top-14"
+               data-testid="ruler-control-panel"
+             >
+               <div className="flex items-center gap-3 bg-stone-900/95 border border-amber-700/60 rounded-lg px-3 py-2 shadow-xl backdrop-blur-sm">
+                 <span className="text-xs font-bold text-amber-300 uppercase tracking-wide capitalize">{rulerShape}</span>
+                 {rulerShape === 'cone' && (
+                   <>
+                     <label className="flex items-center gap-1 text-xs text-stone-300">
+                       Length
+                       <input type="number" min={0} step={5} value={rulerDims.coneLength}
+                         onChange={(e) => setRulerDims(d => ({ ...d, coneLength: Number(e.target.value) || 0 }))}
+                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                         data-testid="ruler-input-cone-length" />
+                       ft
+                     </label>
+                     <label className="flex items-center gap-1 text-xs text-stone-300">
+                       Arc
+                       <input type="number" min={0} max={360} step={15} value={rulerDims.coneArc}
+                         onChange={(e) => setRulerDims(d => ({ ...d, coneArc: Number(e.target.value) || 0 }))}
+                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                         data-testid="ruler-input-cone-arc" />
+                       °
+                     </label>
+                   </>
+                 )}
+                 {rulerShape === 'line' && (
+                   <>
+                     <label className="flex items-center gap-1 text-xs text-stone-300">
+                       Length
+                       <input type="number" min={0} step={5} value={rulerDims.lineLength}
+                         onChange={(e) => setRulerDims(d => ({ ...d, lineLength: Number(e.target.value) || 0 }))}
+                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                         data-testid="ruler-input-line-length" />
+                       ft
+                     </label>
+                     <label className="flex items-center gap-1 text-xs text-stone-300">
+                       Width
+                       <input type="number" min={0} step={5} value={rulerDims.lineWidth}
+                         onChange={(e) => setRulerDims(d => ({ ...d, lineWidth: Number(e.target.value) || 0 }))}
+                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                         data-testid="ruler-input-line-width" />
+                       ft
+                     </label>
+                   </>
+                 )}
+                 {rulerShape === 'square' && (
+                   <label className="flex items-center gap-1 text-xs text-stone-300">
+                     Side
+                     <input type="number" min={0} step={5} value={rulerDims.squareSide}
+                       onChange={(e) => setRulerDims(d => ({ ...d, squareSide: Number(e.target.value) || 0 }))}
+                       className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                       data-testid="ruler-input-square-side" />
+                     ft
+                   </label>
+                 )}
+                 {rulerShape === 'circle' && (
+                   <label className="flex items-center gap-1 text-xs text-stone-300">
+                     Radius
+                     <input type="number" min={0} step={5} value={rulerDims.circleRadius}
+                       onChange={(e) => setRulerDims(d => ({ ...d, circleRadius: Number(e.target.value) || 0 }))}
+                       className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
+                       data-testid="ruler-input-circle-radius" />
+                     ft
+                   </label>
+                 )}
+                 <Button
+                   size="sm"
+                   variant="outline"
+                   onClick={clearMyRulerMarkers}
+                   className="h-8 text-xs border-stone-600 text-stone-200 hover:bg-stone-700"
+                   data-testid="button-ruler-clear"
+                 >
+                   Clear
+                 </Button>
+                 {role === 'gm' && (
+                   <Button
+                     size="sm"
+                     onClick={clearAllRulerMarkers}
+                     className="h-8 text-xs bg-red-800 hover:bg-red-700 text-white"
+                     data-testid="button-ruler-clear-all"
+                   >
+                     Clear All
+                   </Button>
+                 )}
+               </div>
+             </div>
+           )}
 
            {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 

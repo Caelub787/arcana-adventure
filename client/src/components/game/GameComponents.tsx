@@ -26,7 +26,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -321,7 +321,28 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 }
 
 // Selection mode types
-export type SelectionMode = 'select' | 'target' | 'highlight';
+export type SelectionMode = 'select' | 'target' | 'highlight' | 'ruler';
+
+// Ruler / AOE measurement marker (pure measurement layer, no damage)
+export type RulerShape = 'cone' | 'line' | 'square' | 'circle';
+export interface RulerMarker {
+  id: string;
+  userId: string;
+  username: string;
+  shape: RulerShape;
+  // Caster token center (world coords) — origin for cone/line, distance-line anchor for square/circle
+  casterX: number;
+  casterY: number;
+  // Target point (world coords) — direction for cone/line, center for square/circle
+  targetX: number;
+  targetY: number;
+  // Dimensions in feet (per-shape)
+  length?: number; // cone, line
+  width?: number;  // line
+  arc?: number;    // cone (degrees)
+  side?: number;   // square
+  radius?: number; // circle
+}
 
 // Other players' AoE targeting state (for displaying their AoE markers)
 export interface OtherPlayerAoe {
@@ -360,6 +381,11 @@ interface BattleMapProps {
   aoeTargetState?: AoeTargetState;
   onAoeMouseMove?: (x: number, y: number) => void;
   onAoeClick?: (x: number, y: number) => void;
+  rulerActive?: boolean;
+  rulerMarkers?: RulerMarker[];
+  rulerPreviewMarker?: RulerMarker | null;
+  onRulerPreview?: (x: number, y: number) => void;
+  onRulerCommit?: (x: number, y: number) => void;
   otherPlayersAoe?: Map<string, OtherPlayerAoe>;
   myPermissions?: { permissions?: Record<string, string> };
   tokenActiveEffects?: Record<string, TokenActiveEffect[]>;
@@ -604,8 +630,119 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
   );
 }
 
+// Renders a single ruler/AOE measurement marker as SVG inside the world-coord
+// motion.div (coords offset by +9000 like tokens). Pure measurement — no damage.
+// Grid scale is fixed at 5 ft per square.
+function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerMarker; gridSize: number; isPreview?: boolean }) {
+  const OFFSET = 9000;
+  const pxPerFoot = gridSize / 5;
+  const fill = isPreview ? 'rgba(34,211,238,0.10)' : 'rgba(34,211,238,0.18)';
+  const stroke = isPreview ? 'rgba(34,211,238,0.7)' : 'rgba(34,211,238,0.95)';
+  const dash = isPreview ? '8 4' : undefined;
+  const labelStyle = {
+    fontSize: 14,
+    fontWeight: 700,
+    fill: '#e0fbff',
+    paintOrder: 'stroke',
+    stroke: 'rgba(0,0,0,0.85)',
+    strokeWidth: 3,
+  } as React.CSSProperties;
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
+  const casterX = marker.casterX + OFFSET;
+  const casterY = marker.casterY + OFFSET;
+  const targetX = marker.targetX + OFFSET;
+  const targetY = marker.targetY + OFFSET;
+
+  if (marker.shape === 'circle' || marker.shape === 'square') {
+    const sizeFeet = marker.shape === 'circle' ? (marker.radius ?? 15) : (marker.side ?? 15);
+    const hasCaster = marker.casterX !== marker.targetX || marker.casterY !== marker.targetY;
+    const cells = Math.round(Math.hypot(marker.targetX - marker.casterX, marker.targetY - marker.casterY) / gridSize);
+    const distFeet = cells * 5;
+    const midX = (casterX + targetX) / 2;
+    const midY = (casterY + targetY) / 2;
+    let topY = targetY;
+    let shapeEl: React.ReactNode;
+    if (marker.shape === 'circle') {
+      const radiusPx = sizeFeet * pxPerFoot;
+      topY = targetY - radiusPx;
+      shapeEl = <circle cx={targetX} cy={targetY} r={radiusPx} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray={dash} />;
+    } else {
+      const sidePx = sizeFeet * pxPerFoot;
+      topY = targetY - sidePx / 2;
+      shapeEl = <rect x={targetX - sidePx / 2} y={targetY - sidePx / 2} width={sidePx} height={sidePx} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray={dash} />;
+    }
+    return (
+      <g>
+        {hasCaster && <line x1={casterX} y1={casterY} x2={targetX} y2={targetY} stroke={stroke} strokeWidth={1.5} strokeDasharray="4 3" />}
+        {shapeEl}
+        {hasCaster && <text x={midX} y={midY - 4} textAnchor="middle" style={labelStyle}>{distFeet} ft</text>}
+        <text x={targetX} y={topY - 6} textAnchor="middle" style={labelStyle}>
+          {marker.shape === 'circle' ? `${sizeFeet} ft R` : `${sizeFeet} ft`}
+        </text>
+      </g>
+    );
+  }
+
+  // Cone & Line originate from the caster token center, projecting toward target.
+  const dirX = targetX - casterX;
+  const dirY = targetY - casterY;
+  const dirLen = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+  const normX = dirX / dirLen;
+  const normY = dirY / dirLen;
+  const angleRad = Math.atan2(dirY, dirX);
+
+  if (marker.shape === 'cone') {
+    const lengthFeet = marker.length ?? 15;
+    const arcDeg = marker.arc ?? 90;
+    const radiusPx = lengthFeet * pxPerFoot;
+    const half = (arcDeg / 2) * (Math.PI / 180);
+    const leftX = casterX + Math.cos(angleRad - half) * radiusPx;
+    const leftY = casterY + Math.sin(angleRad - half) * radiusPx;
+    const rightX = casterX + Math.cos(angleRad + half) * radiusPx;
+    const rightY = casterY + Math.sin(angleRad + half) * radiusPx;
+    const labelX = casterX + normX * radiusPx * 0.6;
+    const labelY = casterY + normY * radiusPx * 0.6;
+    return (
+      <g>
+        <path
+          d={`M ${casterX} ${casterY} L ${leftX} ${leftY} A ${radiusPx} ${radiusPx} 0 0 1 ${rightX} ${rightY} Z`}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={2}
+          strokeDasharray={dash}
+        />
+        <text x={labelX} y={labelY} textAnchor="middle" style={labelStyle}>{lengthFeet} ft</text>
+      </g>
+    );
+  }
+
+  // Line
+  const lengthFeet = marker.length ?? 30;
+  const widthFeet = marker.width ?? 5;
+  const lengthPx = lengthFeet * pxPerFoot;
+  const widthPx = widthFeet * pxPerFoot;
+  const perpX = -normY * (widthPx / 2);
+  const perpY = normX * (widthPx / 2);
+  const endX = casterX + normX * lengthPx;
+  const endY = casterY + normY * lengthPx;
+  const labelX = casterX + normX * lengthPx * 0.5;
+  const labelY = casterY + normY * lengthPx * 0.5;
+  return (
+    <g>
+      <polygon
+        points={`${casterX + perpX},${casterY + perpY} ${endX + perpX},${endY + perpY} ${endX - perpX},${endY - perpY} ${casterX - perpX},${casterY - perpY}`}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={2}
+        strokeDasharray={dash}
+      />
+      <text x={labelX} y={labelY - 6} textAnchor="middle" style={labelStyle}>{lengthFeet} × {widthFeet} ft</text>
+    </g>
+  );
+}
+
+
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1682,6 +1819,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       return;
     }
     
+    // Ruler measurement mode: a click (no drag) commits a marker at the cursor
+    if (rulerActive && !didDragRef.current && onRulerCommit) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+        onRulerCommit(worldX, worldY);
+      }
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+      notifyViewChange();
+      return;
+    }
+    
     // Double-click on empty grid space in select mode triggers beacon
     if (selectionMode === 'select' && !didDragRef.current && onBeacon) {
       const container = containerRef.current;
@@ -1739,7 +1894,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panPointerIdRef.current = null;
     panStartRef.current = null;
     notifyViewChange();
-  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode]);
+  }, [selectionMode, aoeTargetState, rulerActive, onRulerCommit, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode]);
   
   const handleMapPointerCancel = (e: React.PointerEvent) => {
     if (gestureModeRef.current === 'panning' && panPointerIdRef.current === e.pointerId) {
@@ -2205,7 +2360,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
       <motion.div 
-        className={`absolute ${aoeTargetState?.active ? '' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
+        className={`absolute ${(aoeTargetState?.active || rulerActive) ? '' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
           width: '20000px', 
           height: '20000px', 
@@ -2215,7 +2370,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           cursor: aoeTargetState?.active ? (() => {
             const color = aoeCursorInRange ? '%2322c55e' : '%23ef4444';
             return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='${color}' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='${color}' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='5' fill='none' stroke='${color}' stroke-width='1.5'/%3E%3C/svg%3E") 12 12, crosshair`;
-          })() : undefined,
+          })() : (rulerActive ? 'crosshair' : undefined),
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
@@ -2224,7 +2379,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onPointerMove={handleMapPointerMove}
         onPointerUp={handleMapPointerUp}
         onPointerCancel={handleMapPointerCancel}
-        onMouseMove={aoeTargetState?.active ? (e: React.MouseEvent) => {
+        onMouseMove={(aoeTargetState?.active || rulerActive) ? (e: React.MouseEvent) => {
           const container = containerRef.current;
           if (!container) return;
           const rect = container.getBoundingClientRect();
@@ -2232,11 +2387,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const screenY = e.clientY - rect.top;
           const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
           const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+          if (rulerActive) {
+            onRulerPreview?.(worldX, worldY);
+            return;
+          }
           aoeCursorWorldPosRef.current = { x: worldX, y: worldY };
-          const casterToken = aoeTargetState.casterTokenId ? tokens.find(t => t.id === aoeTargetState.casterTokenId) : null;
+          const casterToken = aoeTargetState!.casterTokenId ? tokens.find(t => t.id === aoeTargetState!.casterTokenId) : null;
           if (casterToken) {
-            const spell = aoeTargetState.spell;
-            const item = aoeTargetState.detonatableItem;
+            const spell = aoeTargetState!.spell;
+            const item = aoeTargetState!.detonatableItem;
             const rangeFeet = spell ? (spell.rangeNum || 30) : (item?.range || 30);
             const rangePixels = (rangeFeet / 5) * gridSize;
             const cx = casterToken.x + gridSize / 2;
@@ -2658,6 +2817,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               }
               return;
             }
+            // Ruler mode: don't start a token drag. Let the event bubble to the
+            // map pointer handlers, which commit a marker on pointer-up only when
+            // there was no drag (matching empty-map ruler placement).
+            if (rulerActive) {
+              return;
+            }
             
             e.stopPropagation();
             
@@ -2742,8 +2907,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               onPointerMove={handleTokenPointerMove}
               onPointerCancel={handleTokenPointerCancel}
               onClick={(e) => { 
-                // Don't handle token click when in AoE targeting mode
-                if (aoeTargetState?.active) return;
+                // Don't handle token click when in AoE targeting or ruler mode
+                if (aoeTargetState?.active || rulerActive) return;
                 e.stopPropagation(); 
                 if (showDeleteButton !== token.id && !isDragging) {
                   const now = Date.now();
@@ -3746,6 +3911,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </svg>
           );
         })()}
+        
+        {/* Ruler / AOE Measurement Markers - persistent measurement layer (no damage) */}
+        {(rulerMarkers.length > 0 || rulerPreviewMarker) && (
+          <svg
+            className="absolute pointer-events-none"
+            style={{ left: 0, top: 0, width: '20000px', height: '20000px', overflow: 'visible', zIndex: 26 }}
+          >
+            {rulerMarkers.map((m) => (
+              <RulerShapeSvg key={m.id} marker={m} gridSize={gridSize} />
+            ))}
+            {rulerPreviewMarker && (
+              <RulerShapeSvg marker={rulerPreviewMarker} gridSize={gridSize} isPreview />
+            )}
+          </svg>
+        )}
         
         {/* Other Players' AoE Overlays - Show all other players' targeting */}
         {otherPlayersAoe && Array.from(otherPlayersAoe.values()).map((playerAoe) => {
@@ -8560,6 +8740,8 @@ interface SelectionModeButtonsProps {
   character?: any;
   notesPanelOpen?: boolean;
   notesPanelWidth?: number;
+  rulerShape?: RulerShape;
+  onRulerShapeChange?: (shape: RulerShape) => void;
 }
 
 const SelectionModeButtonsInner = function SelectionModeButtons({ 
@@ -8567,7 +8749,9 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   onModeChange, 
   character, 
   notesPanelOpen = false,
-  notesPanelWidth = 0
+  notesPanelWidth = 0,
+  rulerShape = 'cone',
+  onRulerShapeChange
 }: SelectionModeButtonsProps) {
   
   const getColorClasses = (color: string, isActive: boolean) => {
@@ -8640,6 +8824,70 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        )}
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onModeChange(selectionMode === 'ruler' ? 'select' : 'ruler'); }}
+                style={{ touchAction: 'manipulation' }}
+                className={`
+                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                  transition-all duration-200 shadow-lg backdrop-blur-sm
+                  ${getColorClasses('amber', selectionMode === 'ruler')}
+                  ${selectionMode === 'ruler' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                `}
+                aria-label="Ruler mode"
+                data-testid="selection-mode-ruler"
+              >
+                <Ruler className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-bold">Ruler</p>
+              <p className="text-xs text-stone-400">Measure AOE shapes (no damage)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {selectionMode === 'ruler' && (
+          <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-stone-700/60">
+            {([
+              { shape: 'cone' as RulerShape, Icon: Triangle, label: 'Cone' },
+              { shape: 'line' as RulerShape, Icon: Minus, label: 'Line' },
+              { shape: 'square' as RulerShape, Icon: Square, label: 'Square' },
+              { shape: 'circle' as RulerShape, Icon: Circle, label: 'Circle' },
+            ]).map(({ shape, Icon, label }) => (
+              <TooltipProvider key={shape}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onRulerShapeChange?.(shape); }}
+                      style={{ touchAction: 'manipulation' }}
+                      className={`
+                        w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                        transition-all duration-200 shadow-lg backdrop-blur-sm
+                        ${getColorClasses('purple', rulerShape === shape)}
+                        ${rulerShape === shape ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                      `}
+                      aria-label={`${label} shape`}
+                      data-testid={`ruler-shape-${shape}`}
+                    >
+                      <Icon className="h-4 w-4 md:h-5 md:w-5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p className="font-bold">{label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ))}
+          </div>
         )}
       </div>
     </div>

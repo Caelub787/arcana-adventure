@@ -2092,6 +2092,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Handle ruler - broadcast AOE measurement markers to all campaign members.
+        // Pure measurement layer (no damage). action: 'place' | 'clear' | 'clearAll'.
+        if (message.type === "ruler") {
+          const { campaignId, action, marker } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns?.get(campaignId);
+          if (!userCampaign) return;
+
+          // Only the GM may clear everyone's markers.
+          if (action === "clearAll" && (userCampaign.role !== 'gm' || userCampaign.spectator)) {
+            ws.send(JSON.stringify({ type: "error", message: "Only the GM may clear all rulers" }));
+            return;
+          }
+          
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const rulerMessage = JSON.stringify({
+              type: "ruler",
+              userId: authenticatedUserId,
+              username,
+              action,
+              marker: marker
+                ? { ...marker, userId: authenticatedUserId, username }
+                : undefined,
+            });
+            
+            // Broadcast to all OTHER clients (sender maintains its own markers locally)
+            room.forEach((client) => {
+              if (client !== ws && client.readyState === 1) {
+                client.send(rulerMessage);
+              }
+            });
+          }
+        }
+        
         // ============================================
         // NOTE COLLABORATION EVENTS
         // ============================================

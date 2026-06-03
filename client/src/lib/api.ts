@@ -2982,6 +2982,41 @@ export class GameWebSocket {
     this.send(message);
   }
   
+  // Send ruler/AOE measurement marker - broadcasts to all OTHER campaign members.
+  // action 'place' adds a persistent marker, 'clear' removes the sender's markers,
+  // 'clearAll' (GM) removes everyone's markers. Pure measurement layer (no damage).
+  sendRuler(payload: {
+    action: 'place' | 'clear' | 'clearAll';
+    marker?: {
+      id: string;
+      shape: 'cone' | 'line' | 'square' | 'circle';
+      casterX: number;
+      casterY: number;
+      targetX: number;
+      targetY: number;
+      length?: number;
+      width?: number;
+      arc?: number;
+      side?: number;
+      radius?: number;
+    };
+  }) {
+    if (!this.campaignId) return;
+
+    const message = {
+      type: 'ruler',
+      campaignId: this.campaignId,
+      ...payload,
+    };
+
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+
+    this.send(message);
+  }
+
   // Send thrown item placed - broadcasts to all campaign members
   // so everyone can see throwable items placed on the map
   sendThrownItemPlaced(thrownItem: ThrownItem, sceneId: string) {
