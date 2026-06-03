@@ -11,7 +11,16 @@ import {
   V3_DELIVERY_MAP,
   V3_REACH_MAP,
   V3_DURATION_MAP,
+  V3_ELEMENTS,
+  V3_SECONDARY_ROLES,
+  V3_INTENTS,
+  V3_DELIVERIES,
+  V3_REACHES,
+  V3_DURATIONS,
   v3RoleColor,
+  v3ManaCost,
+  v3CraftDc,
+  isValidV3Composition,
   type V3SpellComposition,
 } from '@shared/v3spells';
 import { getEffectTypes, getEffectTypeLabel } from '@/lib/effectTypes';
@@ -1741,9 +1750,108 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNav
   );
 }
 
+const EMPTY_V3_COMPOSITION: V3SpellComposition = {
+  core: '',
+  secondaries: [],
+  intent: '',
+  delivery: '',
+  reach: '',
+  duration: '',
+};
+
+function V3CompositionBuilder({ value, onChange }: { value: V3SpellComposition; onChange: (c: V3SpellComposition) => void }) {
+  const set = (patch: Partial<V3SpellComposition>) => onChange({ ...value, ...patch });
+  const updateSecondary = (i: number, patch: Partial<{ element: string; role: string }>) =>
+    set({ secondaries: value.secondaries.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) });
+  const addSecondary = () => set({ secondaries: [...value.secondaries, { element: '', role: '' }] });
+  const removeSecondary = (i: number) => set({ secondaries: value.secondaries.filter((_, idx) => idx !== i) });
+
+  const selectClass = 'h-8 text-xs bg-stone-800 border-stone-700';
+  return (
+    <div className="space-y-3" data-testid="v3-composition-builder">
+      <div className="space-y-1">
+        <Label className="text-xs text-stone-400">Core Element</Label>
+        <Select value={value.core || undefined} onValueChange={(v) => set({ core: v })}>
+          <SelectTrigger className={selectClass} data-testid="select-admin-core"><SelectValue placeholder="Choose core element" /></SelectTrigger>
+          <SelectContent>
+            {V3_ELEMENTS.map((el) => <SelectItem key={el.key} value={el.key} className="text-xs">{el.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-stone-400">Secondary Elements</Label>
+          <Button type="button" size="sm" variant="outline" className="h-6 text-xs" onClick={addSecondary} data-testid="button-add-secondary">
+            <Plus className="h-3 w-3 mr-1" /> Add
+          </Button>
+        </div>
+        {value.secondaries.map((s, i) => (
+          <div key={i} className="flex items-center gap-2" data-testid={`row-secondary-${i}`}>
+            <Select value={s.element || undefined} onValueChange={(v) => updateSecondary(i, { element: v })}>
+              <SelectTrigger className={selectClass}><SelectValue placeholder="Element" /></SelectTrigger>
+              <SelectContent>
+                {V3_ELEMENTS.map((el) => <SelectItem key={el.key} value={el.key} className="text-xs">{el.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={s.role || undefined} onValueChange={(v) => updateSecondary(i, { role: v })}>
+              <SelectTrigger className={selectClass}><SelectValue placeholder="Role" /></SelectTrigger>
+              <SelectContent>
+                {V3_SECONDARY_ROLES.map((r) => <SelectItem key={r.key} value={r.key} className="text-xs">{r.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-red-400" onClick={() => removeSecondary(i)} data-testid={`button-remove-secondary-${i}`}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-stone-400">Intent</Label>
+          <Select value={value.intent || undefined} onValueChange={(v) => set({ intent: v })}>
+            <SelectTrigger className={selectClass} data-testid="select-admin-intent"><SelectValue placeholder="Choose" /></SelectTrigger>
+            <SelectContent>{V3_INTENTS.map((o) => <SelectItem key={o.key} value={o.key} className="text-xs">{o.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-stone-400">Delivery</Label>
+          <Select value={value.delivery || undefined} onValueChange={(v) => set({ delivery: v })}>
+            <SelectTrigger className={selectClass} data-testid="select-admin-delivery"><SelectValue placeholder="Choose" /></SelectTrigger>
+            <SelectContent>{V3_DELIVERIES.map((o) => <SelectItem key={o.key} value={o.key} className="text-xs">{o.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-stone-400">Reach</Label>
+          <Select value={value.reach || undefined} onValueChange={(v) => set({ reach: v })}>
+            <SelectTrigger className={selectClass} data-testid="select-admin-reach"><SelectValue placeholder="Choose" /></SelectTrigger>
+            <SelectContent>{V3_REACHES.map((o) => <SelectItem key={o.key} value={o.key} className="text-xs">{o.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-stone-400">Duration</Label>
+          <Select value={value.duration || undefined} onValueChange={(v) => set({ duration: v })}>
+            <SelectTrigger className={selectClass} data-testid="select-admin-duration"><SelectValue placeholder="Choose" /></SelectTrigger>
+            <SelectContent>{V3_DURATIONS.map((o) => <SelectItem key={o.key} value={o.key} className="text-xs">{o.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {isValidV3Composition(value) && (
+        <p className="text-[11px] text-stone-500" data-testid="text-admin-composition-cost">
+          {v3ManaCost(value)} mana · Craft DC {v3CraftDc(value)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function V3SpellsApprovalView() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<V3Spell | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [composition, setComposition] = useState<V3SpellComposition>(EMPTY_V3_COMPOSITION);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
@@ -1772,13 +1880,33 @@ function V3SpellsApprovalView() {
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
-  const authorMutation = useMutation({
+  const editMutation = useMutation({
     mutationFn: (vars: { id: string; name: string; description: string; image: string | null }) =>
-      api.authorV3Spell(vars.id, { name: vars.name, description: vars.description, image: vars.image }),
+      api.updateAdminV3Spell(vars.id, { name: vars.name, description: vars.description, image: vars.image }),
     onSuccess: () => {
       toast({ title: 'Saved', description: 'Spell details updated.' });
       queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
       setEditing(null);
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (vars: { composition: V3SpellComposition; name: string; description: string; image: string | null }) =>
+      api.createAdminV3Spell(vars),
+    onSuccess: () => {
+      toast({ title: 'Created', description: 'New recognized spell added.' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+      setCreating(false);
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAdminV3Spell(id),
+    onSuccess: () => {
+      toast({ title: 'Deleted' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
     },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
@@ -1789,6 +1917,16 @@ function V3SpellsApprovalView() {
     setDescription(spell.description || '');
     setImage(spell.image || null);
   };
+
+  const openCreate = () => {
+    setCreating(true);
+    setComposition(EMPTY_V3_COMPOSITION);
+    setName('');
+    setDescription('');
+    setImage(null);
+  };
+
+  const createValid = isValidV3Composition(composition) && !!name.trim();
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
@@ -1832,6 +1970,11 @@ function V3SpellsApprovalView() {
 
   return (
     <div className="space-y-3" data-testid="view-v3-spells">
+      <div className="flex justify-end">
+        <Button size="sm" className="bg-violet-700 hover:bg-violet-600 text-stone-50" onClick={openCreate} data-testid="button-create-v3-spell">
+          <Plus className="h-4 w-4 mr-1" /> Create Spell
+        </Button>
+      </div>
       {spells.length === 0 && (
         <p className="text-stone-500 italic" data-testid="text-v3-spells-empty">No crafted spells yet. Player-crafted spells will appear here for review.</p>
       )}
@@ -1849,6 +1992,7 @@ function V3SpellsApprovalView() {
                   </CardTitle>
                   {statusBadge(spell.status)}
                   {spell.isCanonical && <Badge variant="outline" className="bg-violet-900/40 text-violet-300 border-violet-700">Canonical</Badge>}
+                  {spell.flagged && <Badge variant="outline" className="bg-orange-900/40 text-orange-300 border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Profane</Badge>}
                 </div>
                 <div className="mt-1.5">{formula(spell.composition)}</div>
                 {spell.description && <p className="text-xs text-stone-400 mt-1.5 line-clamp-2">{spell.description}</p>}
@@ -1881,6 +2025,20 @@ function V3SpellsApprovalView() {
                     Reject
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs text-red-400 border-red-900 hover:bg-red-900/30"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete "${spell.name || 'this spell'}"? This cannot be undone.`)) {
+                      deleteMutation.mutate(spell.id);
+                    }
+                  }}
+                  data-testid={`button-delete-v3-spell-${spell.id}`}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Delete
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1918,12 +2076,52 @@ function V3SpellsApprovalView() {
           )}
           <DialogFooter>
             <Button
-              onClick={() => editing && authorMutation.mutate({ id: editing.id, name: name.trim(), description, image })}
-              disabled={!name.trim() || authorMutation.isPending}
+              onClick={() => editing && editMutation.mutate({ id: editing.id, name: name.trim(), description, image })}
+              disabled={!name.trim() || editMutation.isPending}
               className="bg-amber-600 hover:bg-amber-700 text-stone-950"
               data-testid="button-save-v3-spell"
             >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-create-v3-spell">
+          <DialogHeader>
+            <DialogTitle>Create Recognized Spell</DialogTitle>
+            <DialogDescription>Define a composition plus its canonical name, description, and image. It is saved as approved and recognized everywhere.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <V3CompositionBuilder value={composition} onChange={setComposition} />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowImageBrowser(true)}
+                className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500"
+                data-testid="button-create-v3-spell-image"
+              >
+                {image ? <img src={image} alt="Spell" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-stone-500" />}
+              </button>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-stone-400">Name</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-create-v3-spell-name" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} data-testid="input-create-v3-spell-description" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => createMutation.mutate({ composition, name: name.trim(), description, image })}
+              disabled={!createValid || createMutation.isPending}
+              className="bg-violet-700 hover:bg-violet-600 text-stone-50"
+              data-testid="button-save-create-v3-spell"
+            >
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2002,6 +2200,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
         </CardHeader>
       </Card>
 
+      {systemSlug !== 'aa-v3' && (
       <Card 
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
         onClick={() => onNavigate('spells')}
@@ -2017,6 +2216,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           </CardDescription>
         </CardHeader>
       </Card>
+      )}
 
       {isAdmin && systemSlug === 'aa-v3' && (
       <Card

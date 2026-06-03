@@ -18,6 +18,7 @@ import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./Spellbook
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
@@ -10431,7 +10432,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
 
   // Campaign settings mutation
   const updateCampaignMutation = useMutation({
-    mutationFn: (data: { hotbarSlots?: number }) => api.updateCampaign(campaignId!, data),
+    mutationFn: (data: { hotbarSlots?: number; is18Plus?: boolean }) => api.updateCampaign(campaignId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}`] });
       toast({ title: 'Settings Updated', description: 'Campaign settings have been saved' });
@@ -11253,6 +11254,23 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               </div>
             )}
 
+            {/* 18+ Mature Content Setting (GM Only, AA V3 only) */}
+            {role === 'gm' && system === 'aa-v3' && (
+              <div className="mt-4 pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="campaign-18plus" className="text-stone-300">18+ Mature Content</Label>
+                  <Switch
+                    id="campaign-18plus"
+                    checked={!!campaignData?.is18Plus}
+                    onCheckedChange={(checked) => updateCampaignMutation.mutate({ is18Plus: checked })}
+                    disabled={updateCampaignMutation.isPending}
+                    data-testid="switch-campaign-18plus"
+                  />
+                </div>
+                <p className="text-xs text-stone-500 mt-1">When off, crafted spell names with profanity are censored for everyone in this campaign</p>
+              </div>
+            )}
+
             {/* Default Panel Setting (All roles) */}
             {onDefaultPanelChange && (
               <div className="mt-4 pt-4 border-t border-stone-700">
@@ -11654,6 +11672,21 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   </div>
                 </div>
                 <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
+              </div>
+            )}
+            {role === 'gm' && system === 'aa-v3' && (
+              <div className="pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="campaign-18plus-inline" className="text-stone-300">18+ Mature Content</Label>
+                  <Switch
+                    id="campaign-18plus-inline"
+                    checked={!!campaignData?.is18Plus}
+                    onCheckedChange={(checked) => updateCampaignMutation.mutate({ is18Plus: checked })}
+                    disabled={updateCampaignMutation.isPending}
+                    data-testid="switch-campaign-18plus-inline"
+                  />
+                </div>
+                <p className="text-xs text-stone-500 mt-1">When off, crafted spell names with profanity are censored for everyone in this campaign</p>
               </div>
             )}
             {onDefaultPanelChange && (

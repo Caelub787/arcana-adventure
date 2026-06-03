@@ -83,7 +83,7 @@ import {
   spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
 
 export interface SearchableEntity {
   id: string;
@@ -380,6 +380,7 @@ export interface IStorage {
   getV3Spell(id: string): Promise<V3Spell | undefined>;
   listV3Spells(status?: string): Promise<V3Spell[]>;
   getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined>;
+  getCampaignAuthoredV3SpellByHash(campaignId: string, hash: string): Promise<V3Spell | undefined>;
   getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
   getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]>;
   getV3SpellsForSpellbook(spellbookItemId: string): Promise<V3Spell[]>;
@@ -2964,6 +2965,22 @@ export class DatabaseStorage implements IStorage {
   async getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined> {
     const [row] = await db.select().from(v3Spells)
       .where(and(eq(v3Spells.compositionHash, hash), eq(v3Spells.isCanonical, true)))
+      .limit(1);
+    return row;
+  }
+
+  // The most recent GM-authored spell for this composition within a single
+  // campaign (used to auto-fill a new craft of the same composition with the
+  // campaign-local name/description before any admin approval exists).
+  async getCampaignAuthoredV3SpellByHash(campaignId: string, hash: string): Promise<V3Spell | undefined> {
+    const [row] = await db.select().from(v3Spells)
+      .where(and(
+        eq(v3Spells.campaignId, campaignId),
+        eq(v3Spells.compositionHash, hash),
+        inArray(v3Spells.status, ["ready", "approved"]),
+        ne(v3Spells.name, ""),
+      ))
+      .orderBy(desc(v3Spells.updatedAt))
       .limit(1);
     return row;
   }

@@ -100,6 +100,7 @@ export const campaigns = pgTable("campaigns", {
   hotbarSlots: integer("hotbar_slots").default(5).notNull(), // Number of slots per hotbar (default 5)
   system: text("system").notNull().default("arcana-adventure"),
   defaultPanel: text("default_panel").default("characters"),
+  is18Plus: boolean("is_18_plus").default(false).notNull(), // AA V3 mature-content gate; when off, profane spell names are censored
   inCombat: boolean("in_combat").default(false).notNull(),
   currentTurnCharacterId: varchar("current_turn_character_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2273,6 +2274,7 @@ export const v3Spells = pgTable("v3_spells", {
   authoredByUserId: varchar("authored_by_user_id").references(() => users.id, { onDelete: "set null" }), // GM who authored flavor
   status: text("status").notNull().default("awaiting_gm"), // awaiting_gm|ready|approved|rejected
   isCanonical: boolean("is_canonical").notNull().default(false),
+  flagged: boolean("flagged").notNull().default(false), // name contains profanity; censored in non-18+ campaigns
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({

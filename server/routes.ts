@@ -3045,10 +3045,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the GM can update campaign settings" });
       }
 
-      const allowedFields = ['name', 'defaultPanel', 'hotbarSlots', 'activeSceneId'];
+      const allowedFields = ['name', 'defaultPanel', 'hotbarSlots', 'activeSceneId', 'is18Plus'];
       const sanitized: Record<string, any> = {};
       for (const key of allowedFields) {
         if (key in req.body) sanitized[key] = req.body[key];
+      }
+      if (sanitized.is18Plus !== undefined) {
+        // The mature-content (18+) toggle is an AA V3-only setting; reject it for
+        // any other system so direct API calls can't enable it on V2 campaigns.
+        const campaign = await storage.getCampaign(req.params.id);
+        if (!campaign || campaign.system !== 'aa-v3') {
+          delete sanitized.is18Plus;
+        } else {
+          sanitized.is18Plus = !!sanitized.is18Plus;
+        }
       }
       if (sanitized.name !== undefined) {
         const name = String(sanitized.name).trim();
@@ -6087,9 +6097,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AA V3 Spell Crafting
   // ========================================================================
   const v3spells = await import("@shared/v3spells");
+  const { containsProfanity, censorName } = await import("@shared/profanity");
 
   function hashV3Composition(comp: any): string {
     return crypto.createHash("sha256").update(v3spells.serializeV3Composition(comp)).digest("hex");
+  }
+
+  // Censor a crafted spell's name for a viewer when the spell is flagged and the
+  // viewing campaign is NOT 18+. Admin surfaces never call this.
+  function censorV3SpellForCampaign<T extends { name: string; flagged?: boolean | null }>(
+    spell: T,
+    is18Plus: boolean | null | undefined,
+  ): T {
+    if (!spell?.flagged || is18Plus) return spell;
+    return { ...spell, name: censorName(spell.name) };
   }
 
   // Craft a spell from a composition. Costs mana (always) + 1 token (on success).
@@ -6168,23 +6189,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // resources (the Neon HTTP driver has no interactive transactions). If a
       // canonical version exists, prefill it.
       const compositionHash = hashV3Composition(composition);
+      // Auto-fill precedence: a global admin-approved (canonical) version wins;
+      // otherwise a name/description authored for this composition earlier in the
+      // SAME campaign is reused so players share the GM's flavor without another
+      // authoring prompt. If neither exists, the GM is asked to author it.
       const canonical = await storage.getCanonicalV3SpellByHash(compositionHash);
+      const source = canonical
+        || (campaign?.id ? await storage.getCampaignAuthoredV3SpellByHash(campaign.id, compositionHash) : undefined);
+
+      const prefillName = source?.name || "";
 
       const spell = await storage.createV3Spell({
         campaignId: campaign?.id || null,
         spellbookItemId: spellbookItemId || null,
         composition,
         compositionHash,
-        name: canonical?.name || "",
-        description: canonical?.description || "",
-        image: canonical?.image || null,
+        name: prefillName,
+        description: source?.description || "",
+        image: source?.image || null,
         manaCost,
         craftDc,
         createdByUserId: req.session.userId!,
         createdByCharacterId: character.id,
         authoredByUserId: null,
-        status: canonical ? "ready" : "awaiting_gm",
+        status: source ? "ready" : "awaiting_gm",
         isCanonical: false,
+        flagged: prefillName ? containsProfanity(prefillName) : false,
       } as any);
 
       // Now that the spell exists, consume mana + 1 token.
@@ -6197,8 +6227,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
       }
 
-      // If no canonical version, ask the GM to author the spell's flavor.
-      if (!canonical && campaign?.id) {
+      // If no source (canonical or campaign-local) version, ask the GM to author
+      // the spell's flavor.
+      if (!source && campaign?.id) {
         broadcastToCampaign(campaign.id, {
           type: "v3_spell_request",
           spell,
@@ -6213,8 +6244,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         manaCost,
         manaSpent: manaCost,
         tokenSpent: true,
-        autoFilled: !!canonical,
-        spell,
+        autoFilled: !!source,
+        spell: censorV3SpellForCampaign(spell, campaign?.is18Plus),
         character: updatedCharacter,
       });
     } catch (err: any) {
@@ -6248,15 +6279,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "A spell name is required" });
       }
 
+      const authoredName = String(name).trim();
       const updated = await storage.updateV3Spell(spell.id, {
-        name: String(name).trim(),
+        name: authoredName,
         description: description ? String(description) : "",
         image: image || null,
         authoredByUserId: req.session.userId!,
         status: "ready",
+        flagged: containsProfanity(authoredName),
       });
 
-      broadcastToCampaign(campaign.id, { type: "v3_spell_authored", spell: updated });
+      broadcastToCampaign(campaign.id, {
+        type: "v3_spell_authored",
+        spell: censorV3SpellForCampaign(updated, campaign.is18Plus),
+      });
       res.json(updated);
     } catch (err: any) {
       console.error("[V3 Spell Author] Error:", err?.message);
@@ -6286,14 +6322,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.character) return res.status(404).json({ error: "Character not found" });
       if (!access.allowed) return res.status(403).json({ error: "No access to this character" });
       const spells = await storage.getV3SpellsForCharacter(req.params.id);
-      res.json(spells);
+      res.json(spells.map((s) => censorV3SpellForCampaign(s, access.campaign?.is18Plus)));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load spells" });
     }
   });
 
   // Resolve the canonical (admin-approved) version of a composition, if any.
-  app.get("/api/v3/spells/canonical/:hash", requireAuth, async (req, res) => {
+  app.get("/api/v3/spells/canonical/:hash", requireAdmin, async (req, res) => {
     try {
       const canonical = await storage.getCanonicalV3SpellByHash(req.params.hash);
       res.json(canonical || null);
@@ -6323,16 +6359,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item) return res.status(404).json({ error: "Spellbook not found" });
       if (item.itemType !== "spellbook") return res.status(400).json({ error: "Item is not a spellbook" });
       // A spellbook is owned by a character; gate on that character's view access.
+      let viewCampaignIs18Plus: boolean | null | undefined = undefined;
       if (item.characterId) {
         const access = await checkCharacterAccess(item.characterId, req.session.userId!, "view");
         if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+        viewCampaignIs18Plus = access.campaign?.is18Plus;
       } else if (!(await canAccessOwnerlessSpellbook(item, req))) {
         // Library/template spellbook (no character owner): restrict reads to the
         // creator, campaign GM, or an admin to avoid IDOR via guessed item IDs.
         return res.status(403).json({ error: "No access to this spellbook" });
       }
       const spells = await storage.getV3SpellsForSpellbook(req.params.itemId);
-      res.json(spells);
+      res.json(spells.map((s) => censorV3SpellForCampaign(s, viewCampaignIs18Plus)));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load spellbook spells" });
     }
@@ -6398,6 +6436,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to reject spell" });
+    }
+  });
+
+  // Admin: create a brand-new recognized (canonical/approved) spell from scratch.
+  app.post("/api/admin/v3-spells", requireAdmin, async (req, res) => {
+    try {
+      const { composition, name, description, image } = req.body || {};
+      if (!composition || !v3spells.isValidV3Composition(composition)) {
+        return res.status(400).json({ error: "Invalid spell composition" });
+      }
+      const trimmedName = String(name || "").trim();
+      if (!trimmedName) return res.status(400).json({ error: "A spell name is required" });
+
+      const compositionHash = hashV3Composition(composition);
+      // A new canonical version supersedes any previous canonical for this hash.
+      const prev = await storage.getCanonicalV3SpellByHash(compositionHash);
+      if (prev) {
+        await storage.updateV3Spell(prev.id, { isCanonical: false });
+      }
+
+      const spell = await storage.createV3Spell({
+        campaignId: null,
+        spellbookItemId: null,
+        composition,
+        compositionHash,
+        name: trimmedName,
+        description: description ? String(description) : "",
+        image: image || null,
+        manaCost: v3spells.v3ManaCost(composition),
+        craftDc: v3spells.v3CraftDc(composition),
+        createdByUserId: req.session.userId!,
+        createdByCharacterId: null,
+        authoredByUserId: req.session.userId!,
+        status: "approved",
+        isCanonical: true,
+        flagged: containsProfanity(trimmedName),
+      } as any);
+      res.json(spell);
+    } catch (err: any) {
+      console.error("[V3 Spell Admin Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create spell" });
+    }
+  });
+
+  // Admin: edit any crafted/player-made spell's name, description, and image
+  // (admins may edit canonical/approved rows; the GM author route may not).
+  app.patch("/api/admin/v3-spells/:id", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { name, description, image } = req.body || {};
+      const trimmedName = String(name ?? spell.name).trim();
+      if (!trimmedName) return res.status(400).json({ error: "A spell name is required" });
+      const updated = await storage.updateV3Spell(spell.id, {
+        name: trimmedName,
+        description: description !== undefined ? String(description) : spell.description,
+        image: image !== undefined ? (image || null) : spell.image,
+        flagged: containsProfanity(trimmedName),
+      });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Spell Admin Edit] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update spell" });
+    }
+  });
+
+  // Admin: delete any crafted/player-made spell.
+  app.delete("/api/admin/v3-spells/:id", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      await storage.deleteV3Spell(spell.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Spell Admin Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete spell" });
     }
   });
 

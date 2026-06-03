@@ -1,3 +1,4 @@
 - [AA V3 deferred features](aa-v3-deferred-features.md) — spell creation must be NO-AI (GM popup) + V3 spell-levels spec, both not yet built.
 - [AA V3 system naming](aa-v3-system-naming.md) — V3 species resolved by display label 'A.A. V3', items/classes/trees by slug 'aa-v3'.
 - [V3 schema uses db:push](v3-schema-migrations.md) — V3 schema applied via db:push only; no migration files, no runtime migrate(); don't run drizzle-kit generate.
+- [V3 spell name censoring](v3-spell-censoring.md) — all player-facing V3 spell egress (REST + WS broadcast) must censor flagged names by viewing campaign's is18Plus; admin never censors; 18+ toggle is V3-only

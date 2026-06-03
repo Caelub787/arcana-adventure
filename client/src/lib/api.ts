@@ -45,6 +45,7 @@ export interface Campaign {
   system: string;
   inCombat?: boolean;
   currentTurnCharacterId?: string | null;
+  is18Plus?: boolean;
   createdAt: string;
   lastPlayed: string;
 }
@@ -2519,6 +2520,18 @@ class ApiClient {
     return this.request(`/admin/v3-spells/${spellId}/reject`, { method: 'POST' });
   }
 
+  async createAdminV3Spell(data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null }): Promise<V3Spell> {
+    return this.request(`/admin/v3-spells`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateAdminV3Spell(spellId: string, data: { name?: string; description?: string; image?: string | null }): Promise<V3Spell> {
+    return this.request(`/admin/v3-spells/${spellId}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteAdminV3Spell(spellId: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-spells/${spellId}`, { method: 'DELETE' });
+  }
+
 }
 
 export interface SandboxTemplate {
@@ -2578,6 +2591,7 @@ export interface V3Spell {
   authoredByUserId: string | null;
   status: 'awaiting_gm' | 'ready' | 'approved' | 'rejected';
   isCanonical: boolean;
+  flagged: boolean;
   createdAt: string;
   updatedAt: string;
 }
