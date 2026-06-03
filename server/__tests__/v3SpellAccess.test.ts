@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { AddressInfo } from "net";
 import express from "express";
+import { createHash } from "crypto";
+import {
+  serializeV3Composition,
+  v3ManaCost,
+  v3CraftDc,
+  type V3SpellComposition,
+} from "@shared/v3spells";
 
 // ---------------------------------------------------------------------------
 // Mocks. The route handlers under test reach the database only through the
@@ -37,6 +44,7 @@ const h = vi.hoisted(() => {
     getCharacterPermission: fn(),
     getV3Spell: fn(),
     updateV3Spell: fn(),
+    createV3Spell: fn(),
     getCanonicalV3SpellByHash: fn(),
     getV3SpellsForSpellbook: fn(),
     getV3SpellsForCharacter: fn(),
@@ -608,5 +616,144 @@ describe("POST /api/admin/v3-spells/:id/reject — clears canonical", () => {
     const res = await api("/api/admin/v3-spells/missing/reject", { method: "POST", user: "admin1" });
     expect(res.status).toBe(404);
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Admin from-scratch create: a brand-new canonical/approved spell supersedes
+// any prior canonical for the same composition hash. Guards validate the
+// composition and require a non-blank name, and the route is admin-only.
+// ---------------------------------------------------------------------------
+describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => {
+  // A valid two-element composition built only from known keys.
+  const composition: V3SpellComposition = {
+    core: "fire",
+    secondaries: [{ element: "air", role: "amplifier" }],
+    intent: "destroy",
+    delivery: "projectile",
+    reach: "near", // index 3
+    duration: "short", // index 2
+  };
+  const expectedHash = createHash("sha256")
+    .update(serializeV3Composition(composition))
+    .digest("hex");
+  const expectedMana = v3ManaCost(composition); // 2 elements + 3 + 2 = 7
+  const expectedDc = v3CraftDc(composition); // (2 - 1) * 6 = 6
+
+  it("rejects an unauthenticated request with 401", async () => {
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      body: { composition, name: "Fire Lance" },
+    });
+    expect(res.status).toBe(401);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-admin with 403", async () => {
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "player1",
+      body: { composition, name: "Fire Lance" },
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an invalid composition", async () => {
+    h.adminUserIds.add("admin1");
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { composition: { core: "not-an-element", secondaries: [] }, name: "Bad Spell" },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a missing composition", async () => {
+    h.adminUserIds.add("admin1");
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { name: "No Composition" },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a missing name", async () => {
+    h.adminUserIds.add("admin1");
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { composition },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a blank (whitespace-only) name", async () => {
+    h.adminUserIds.add("admin1");
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { composition, name: "   " },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("demotes the prior canonical and creates a new canonical/approved spell", async () => {
+    h.adminUserIds.add("admin1");
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
+      id: "old1",
+      compositionHash: expectedHash,
+      isCanonical: true,
+    });
+    let createArg: any;
+    h.storage.createV3Spell.mockImplementation(async (arg: any) => {
+      createArg = arg;
+      return { id: "new1", ...arg };
+    });
+
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { composition, name: "  Fire Lance  ", description: "A spear of flame", image: "img.png" },
+    });
+    expect(res.status).toBe(200);
+
+    // Prior canonical for this hash is demoted.
+    expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith(expectedHash);
+    expect(h.storage.updateV3Spell).toHaveBeenCalledWith("old1", { isCanonical: false });
+
+    // New row is created as the canonical/approved version with correct math.
+    expect(createArg.isCanonical).toBe(true);
+    expect(createArg.status).toBe("approved");
+    expect(createArg.compositionHash).toBe(expectedHash);
+    expect(createArg.manaCost).toBe(expectedMana);
+    expect(createArg.craftDc).toBe(expectedDc);
+    expect(createArg.name).toBe("Fire Lance"); // trimmed
+    expect(createArg.composition).toEqual(composition);
+
+    const body = await res.json();
+    expect(body.id).toBe("new1");
+    expect(body.isCanonical).toBe(true);
+    expect(body.status).toBe("approved");
+  });
+
+  it("creates without demotion when no prior canonical exists for the hash", async () => {
+    h.adminUserIds.add("admin1");
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue(undefined);
+    h.storage.createV3Spell.mockImplementation(async (arg: any) => ({ id: "new2", ...arg }));
+
+    const res = await api("/api/admin/v3-spells", {
+      method: "POST",
+      user: "admin1",
+      body: { composition, name: "Fire Lance" },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
   });
 });
