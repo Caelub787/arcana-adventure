@@ -18,6 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { V3_ATTRIBUTES } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
+import { V3SpellAuthoringListener } from "@/components/game/V3SpellCrafter";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -10738,6 +10739,11 @@ export default function Campaign() {
       
       {/* Roll Notification Container */}
       <RollNotificationContainer />
+
+      {/* AA V3: GM spell authoring pop-up (listens for craft requests) */}
+      {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (
+        <V3SpellAuthoringListener campaignId={effectiveCampaignId} isGM={role === 'gm'} />
+      )}
       
       {/* Incognito Mode Indicator Badge */}
       {isIncognitoMode && isAdmin && (

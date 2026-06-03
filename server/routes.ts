@@ -3683,6 +3683,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // AA V3: start with spell creation tokens equal to the final Anemos value.
+      if (campaign?.system === 'aa-v3') {
+        const anemos = character.anemos || 0;
+        if (anemos !== (character.spellCreationTokens || 0)) {
+          const updated = await storage.updateCharacter(character.id, { spellCreationTokens: anemos });
+          if (updated) character = updated;
+        }
+      }
+
       broadcastToCampaign(req.params.campaignId, {
         type: "character_created",
         character
@@ -4140,6 +4149,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newExhaustion = Math.max(0, currentExhaustion - 1);
       const exhaustionRecovered = currentExhaustion - newExhaustion;
       
+      // AA V3: refill spell creation tokens to the character's Anemos value on long rest
+      let spellTokenUpdate: { spellCreationTokens?: number } = {};
+      if (character.campaignId) {
+        const restCampaign = await storage.getCampaign(character.campaignId);
+        if (restCampaign?.system === 'aa-v3') {
+          spellTokenUpdate.spellCreationTokens = character.anemos || 0;
+        }
+      }
+
       // Update character HP, Energy, exhaustion, restore mana to max, and clear bonus-max pools
       const updatedCharacter = await storage.updateCharacter(character.id, { 
         hp: newHp,
@@ -4149,6 +4167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusMaxHp: 0,
         bonusMaxEnergy: 0,
         bonusMaxMana: 0,
+        ...spellTokenUpdate,
       });
       
       // Reset trait uses on long rest (restores both long rest and short rest uses)
@@ -6063,6 +6082,254 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   };
+
+  // ========================================================================
+  // AA V3 Spell Crafting
+  // ========================================================================
+  const v3spells = await import("@shared/v3spells");
+
+  function hashV3Composition(comp: any): string {
+    return crypto.createHash("sha256").update(v3spells.serializeV3Composition(comp)).digest("hex");
+  }
+
+  // Craft a spell from a composition. Costs mana (always) + 1 token (on success).
+  app.post("/api/v3/spells/craft", requireAuth, async (req, res) => {
+    try {
+      const { characterId, composition } = req.body || {};
+      if (!characterId || !composition) {
+        return res.status(400).json({ error: "characterId and composition are required" });
+      }
+      if (!v3spells.isValidV3Composition(composition)) {
+        return res.status(400).json({ error: "Invalid spell composition" });
+      }
+
+      const access = await checkCharacterAccess(characterId, req.session.userId!, "edit");
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to use this character" });
+
+      const character = access.character;
+      const campaign = access.campaign;
+      if (campaign?.system !== "aa-v3") {
+        return res.status(400).json({ error: "Spell crafting is only available in A.A. V3 campaigns" });
+      }
+
+      // Recompute cost & DC server-side (never trust the client).
+      const manaCost = v3spells.v3ManaCost(composition);
+      const craftDc = v3spells.v3CraftDc(composition);
+
+      const currentMana = character.mana || 0;
+      const currentTokens = character.spellCreationTokens || 0;
+
+      if (currentMana < manaCost) {
+        return res.status(400).json({ error: "Not enough mana", reason: "mana", required: manaCost, have: currentMana });
+      }
+      if (currentTokens < 1) {
+        return res.status(400).json({ error: "No spell creation tokens remaining", reason: "tokens" });
+      }
+
+      // Roll the DC check: 1d20 + Anemos vs craftDc. DC 0 = automatic success.
+      const anemos = character.anemos || 0;
+      const d20 = Math.floor(Math.random() * 20) + 1;
+      const rollTotal = d20 + anemos;
+      const success = craftDc <= 0 ? true : rollTotal >= craftDc;
+
+      // Failed DC check: consume mana only (no spell is created), then stop.
+      if (!success) {
+        const failChar = await storage.updateCharacter(character.id, {
+          mana: currentMana - manaCost,
+        });
+        if (campaign?.id) {
+          broadcastToCampaign(campaign.id, { type: "character_updated", character: failChar });
+        }
+        return res.json({
+          success: false,
+          roll: { d20, anemos, total: rollTotal, dc: craftDc },
+          manaCost,
+          manaSpent: manaCost,
+          tokenSpent: false,
+          character: failChar,
+        });
+      }
+
+      // Success: create the spell row FIRST so a failed insert never consumes
+      // resources (the Neon HTTP driver has no interactive transactions). If a
+      // canonical version exists, prefill it.
+      const compositionHash = hashV3Composition(composition);
+      const canonical = await storage.getCanonicalV3SpellByHash(compositionHash);
+
+      const spell = await storage.createV3Spell({
+        campaignId: campaign?.id || null,
+        composition,
+        compositionHash,
+        name: canonical?.name || "",
+        description: canonical?.description || "",
+        image: canonical?.image || null,
+        manaCost,
+        craftDc,
+        createdByUserId: req.session.userId!,
+        createdByCharacterId: character.id,
+        authoredByUserId: null,
+        status: canonical ? "ready" : "awaiting_gm",
+        isCanonical: false,
+      } as any);
+
+      // Now that the spell exists, consume mana + 1 token.
+      const updatedCharacter = await storage.updateCharacter(character.id, {
+        mana: currentMana - manaCost,
+        spellCreationTokens: currentTokens - 1,
+      });
+
+      if (campaign?.id) {
+        broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
+      }
+
+      // If no canonical version, ask the GM to author the spell's flavor.
+      if (!canonical && campaign?.id) {
+        broadcastToCampaign(campaign.id, {
+          type: "v3_spell_request",
+          spell,
+          characterName: character.name,
+          characterId: character.id,
+        });
+      }
+
+      res.json({
+        success: true,
+        roll: { d20, anemos, total: rollTotal, dc: craftDc },
+        manaCost,
+        manaSpent: manaCost,
+        tokenSpent: true,
+        autoFilled: !!canonical,
+        spell,
+        character: updatedCharacter,
+      });
+    } catch (err: any) {
+      console.error("[V3 Spell Craft] Error:", err?.message, err?.stack);
+      res.status(500).json({ error: "Failed to craft spell" });
+    }
+  });
+
+  // GM authors a pending spell's name/description/image.
+  app.post("/api/v3/spells/:id/author", requireAuth, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      if (!spell.campaignId) return res.status(400).json({ error: "Spell is not attached to a campaign" });
+
+      const campaign = await storage.getCampaign(spell.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      const isAdmin = await isAdminUser(req.session.userId!);
+      if (!isGM && !isAdmin) return res.status(403).json({ error: "Only the GM can author spells" });
+
+      // Canonical/approved spells are governed by the admin queue; the GM may
+      // only author pending or freshly-prefilled campaign copies.
+      if (spell.isCanonical || spell.status === "approved") {
+        return res.status(409).json({ error: "This spell is canonical and can only be edited by an admin" });
+      }
+
+      const { name, description, image } = req.body || {};
+      if (!name || !String(name).trim()) {
+        return res.status(400).json({ error: "A spell name is required" });
+      }
+
+      const updated = await storage.updateV3Spell(spell.id, {
+        name: String(name).trim(),
+        description: description ? String(description) : "",
+        image: image || null,
+        authoredByUserId: req.session.userId!,
+        status: "ready",
+      });
+
+      broadcastToCampaign(campaign.id, { type: "v3_spell_authored", spell: updated });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Spell Author] Error:", err?.message);
+      res.status(500).json({ error: "Failed to author spell" });
+    }
+  });
+
+  // GM: list pending authoring requests for a campaign.
+  app.get("/api/campaigns/:id/v3-spell-requests", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      const isAdmin = await isAdminUser(req.session.userId!);
+      if (!isGM && !isAdmin) return res.status(403).json({ error: "GM access required" });
+      const requests = await storage.getV3SpellRequestsForCampaign(campaign.id);
+      res.json(requests);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load spell requests" });
+    }
+  });
+
+  // List the spells a character has crafted.
+  app.get("/api/v3/characters/:id/spells", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, "view");
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "No access to this character" });
+      const spells = await storage.getV3SpellsForCharacter(req.params.id);
+      res.json(spells);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load spells" });
+    }
+  });
+
+  // Resolve the canonical (admin-approved) version of a composition, if any.
+  app.get("/api/v3/spells/canonical/:hash", requireAuth, async (req, res) => {
+    try {
+      const canonical = await storage.getCanonicalV3SpellByHash(req.params.hash);
+      res.json(canonical || null);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load canonical spell" });
+    }
+  });
+
+  // Admin: list crafted spells (optionally by status) for the approval queue.
+  app.get("/api/admin/v3-spells", requireAdmin, async (req, res) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const spells = await storage.listV3Spells(status);
+      res.json(spells);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load spells" });
+    }
+  });
+
+  // Admin: approve a spell -> mark canonical for its composition.
+  app.post("/api/admin/v3-spells/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      if (!spell.name || !spell.name.trim()) {
+        return res.status(400).json({ error: "Spell must be authored before approval" });
+      }
+      // Demote any previous canonical for the same composition.
+      const prev = await storage.getCanonicalV3SpellByHash(spell.compositionHash);
+      if (prev && prev.id !== spell.id) {
+        await storage.updateV3Spell(prev.id, { isCanonical: false });
+      }
+      const updated = await storage.updateV3Spell(spell.id, { isCanonical: true, status: "approved" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to approve spell" });
+    }
+  });
+
+  // Admin: reject a spell.
+  app.post("/api/admin/v3-spells/:id/reject", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const updated = await storage.updateV3Spell(spell.id, { isCanonical: false, status: "rejected" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to reject spell" });
+    }
+  });
 
   // Library scope helpers — let GMs maintain a private AAv2 library that's
   // visible to players inside the GM's own campaigns. Admins see everything.

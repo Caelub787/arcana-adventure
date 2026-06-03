@@ -2471,6 +2471,45 @@ class ApiClient {
     });
   }
 
+  // ---- AA V3 spell crafting ----
+  async craftV3Spell(characterId: string, composition: V3SpellComposition): Promise<V3CraftResult> {
+    return this.request(`/v3/spells/craft`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId, composition }),
+    });
+  }
+
+  async authorV3Spell(spellId: string, data: { name: string; description?: string; image?: string | null }): Promise<V3Spell> {
+    return this.request(`/v3/spells/${spellId}/author`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getV3SpellRequests(campaignId: string): Promise<V3Spell[]> {
+    return this.request(`/campaigns/${campaignId}/v3-spell-requests`);
+  }
+
+  async getCharacterV3Spells(characterId: string): Promise<V3Spell[]> {
+    return this.request(`/v3/characters/${characterId}/spells`);
+  }
+
+  async getCanonicalV3Spell(hash: string): Promise<V3Spell | null> {
+    return this.request(`/v3/spells/canonical/${hash}`);
+  }
+
+  async getAdminV3Spells(status?: string): Promise<V3Spell[]> {
+    return this.request(`/admin/v3-spells${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  }
+
+  async approveV3Spell(spellId: string): Promise<V3Spell> {
+    return this.request(`/admin/v3-spells/${spellId}/approve`, { method: 'POST' });
+  }
+
+  async rejectV3Spell(spellId: string): Promise<V3Spell> {
+    return this.request(`/admin/v3-spells/${spellId}/reject`, { method: 'POST' });
+  }
+
 }
 
 export interface SandboxTemplate {
@@ -2498,6 +2537,50 @@ export interface SearchableEntity {
   name: string;
   description?: string;
   icon?: string;
+}
+
+export interface V3SpellSecondary {
+  element: string;
+  role: string;
+}
+
+export interface V3SpellComposition {
+  core: string;
+  secondaries: V3SpellSecondary[];
+  intent: string;
+  delivery: string;
+  reach: string;
+  duration: string;
+}
+
+export interface V3Spell {
+  id: string;
+  campaignId: string | null;
+  composition: V3SpellComposition;
+  compositionHash: string;
+  name: string;
+  description: string;
+  image: string | null;
+  manaCost: number;
+  craftDc: number;
+  createdByUserId: string | null;
+  createdByCharacterId: string | null;
+  authoredByUserId: string | null;
+  status: 'awaiting_gm' | 'ready' | 'approved' | 'rejected';
+  isCanonical: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface V3CraftResult {
+  success: boolean;
+  roll: { d20: number; anemos: number; total: number; dc: number };
+  manaCost: number;
+  manaSpent: number;
+  tokenSpent: boolean;
+  autoFilled?: boolean;
+  spell?: V3Spell;
+  character?: Character;
 }
 
 export const api = new ApiClient();

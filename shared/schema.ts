@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json, index, uniqueIndex, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { V3SpellComposition } from "./v3spells";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -273,6 +274,8 @@ export const characters = pgTable("characters", {
   intelligence: integer("intelligence").notNull().default(0),
   // AA V3 fixed-list skills, stored as { [skillKey]: value }
   v3Skills: jsonb("v3_skills").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
+  // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
+  spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
   // Legacy attributes (kept for backward compatibility)
   agility: integer("agility").notNull().default(0),
   charisma: integer("charisma").notNull().default(0),
@@ -2246,6 +2249,41 @@ export const outgoingWebhooks = pgTable("outgoing_webhooks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type OutgoingWebhook = typeof outgoingWebhooks.$inferSelect;
+
+// AA V3 crafted spells. Each craft attempt that succeeds creates a row.
+// GM authors name/description/image; admin approval marks a composition canonical.
+export const v3Spells = pgTable("v3_spells", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  // Full composition snapshot { core, secondaries:[{element,role}], intent, delivery, reach, duration }
+  composition: jsonb("composition").$type<V3SpellComposition>().notNull(),
+  // Order-independent canonical hash of the composition (for canonical matching)
+  compositionHash: text("composition_hash").notNull(),
+  name: text("name").notNull().default(""),
+  description: text("description").notNull().default(""),
+  image: text("image"),
+  manaCost: integer("mana_cost").notNull().default(0),
+  craftDc: integer("craft_dc").notNull().default(0),
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdByCharacterId: varchar("created_by_character_id").references(() => characters.id, { onDelete: "set null" }),
+  authoredByUserId: varchar("authored_by_user_id").references(() => users.id, { onDelete: "set null" }), // GM who authored flavor
+  status: text("status").notNull().default("awaiting_gm"), // awaiting_gm|ready|approved|rejected
+  isCanonical: boolean("is_canonical").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  hashIdx: index("v3_spells_hash_idx").on(t.compositionHash),
+  campaignIdx: index("v3_spells_campaign_idx").on(t.campaignId),
+}));
+export const insertV3SpellSchema = createInsertSchema(v3Spells, {
+  composition: z.custom<V3SpellComposition>(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertV3Spell = z.infer<typeof insertV3SpellSchema>;
+export type V3Spell = typeof v3Spells.$inferSelect;
 
 export const outboundWebhookJobs = pgTable("outbound_webhook_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

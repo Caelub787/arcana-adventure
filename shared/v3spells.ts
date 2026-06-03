@@ -1,0 +1,223 @@
+// AA V3 Spell Crafting — single source of truth shared by client and server.
+// Composition = one Core element + 0+ secondary elements (each tagged a Role)
+//   + one Intent + one Delivery + one Reach + one Duration.
+// No AI: name/description/image are authored by the GM (or auto-filled from an
+// admin-approved canonical version matched by compositionHash).
+
+export interface V3Option {
+  key: string;
+  name: string;
+  description: string;
+}
+
+// ---------------------------------------------------------------------------
+// Elements (17)
+// ---------------------------------------------------------------------------
+export const V3_ELEMENTS: V3Option[] = [
+  { key: "fire", name: "Fire", description: "Heat, combustion, and consuming flame. Destroys, illuminates, and spreads. Its nature is aggressive and difficult to control once unleashed." },
+  { key: "water", name: "Water", description: "Flowing liquid force, pressure, and adaptability. Finds every gap and weakness, erodes over time, and takes the shape of whatever contains it." },
+  { key: "earth", name: "Earth", description: "Stone, soil, and immovable physical mass. The most durable and persistent of forces. Slow to move but devastating once it does." },
+  { key: "air", name: "Air", description: "Wind, breath, and invisible movement. The fastest natural element. Carries and disperses everything it touches across wide areas." },
+  { key: "lightning", name: "Lightning", description: "Raw electrical discharge and instantaneous energy. Travels faster than anything else, jumps between conductive surfaces, and strikes without warning." },
+  { key: "ice", name: "Ice", description: "Cold, stillness, and crystallization. Slows and preserves whatever it touches. Can hold things in suspension or shatter them under pressure." },
+  { key: "shadow", name: "Shadow", description: "Darkness and entropy as active forces. Not simply the absence of light but a thing unto itself, concealing, corrupting, and wearing things down." },
+  { key: "light", name: "Light", description: "Radiance, revelation, and precision. Illuminates what is hidden, purifies what is corrupt, and travels in exact straight lines." },
+  { key: "life", name: "Life", description: "Growth, healing, and biological force. The fundamental drive of living things to persist and expand. Can restore, accelerate, or overwhelm organic matter." },
+  { key: "death", name: "Death", description: "Decay, entropy, and the ending of things. Necrotic force that breaks down structure, consumes vitality, and resists natural healing." },
+  { key: "mind", name: "Mind", description: "Concentrated will and psychic force made tangible. Targets consciousness directly rather than the physical body. Shaped entirely by intent." },
+  { key: "void", name: "Void", description: "Pure absence and anti-existence. Does not damage so much as erase. The hardest force to resist because there is nothing to push back against." },
+  { key: "sound", name: "Sound", description: "Vibration and resonance. Travels through any medium, bypasses physical barriers, and can shatter or heal depending on the frequency." },
+  { key: "metal", name: "Metal", description: "Hardness, conductivity, and magnetism. Precise and structured. Conducts other forces efficiently and holds its shape under extreme conditions." },
+  { key: "poison", name: "Poison", description: "Toxicity, corruption, and chemical degradation. Invades living systems, spreads through contact, and lingers long after the initial exposure." },
+  { key: "time", name: "Time", description: "Temporal force. The ability to accelerate, decelerate, suspend, or age whatever it touches. One of the most dangerous forces to work with." },
+  { key: "space", name: "Space", description: "Spatial force. Manipulates distance, location, and physical boundaries. Can fold distance, anchor objects in place, or move things instantly." },
+];
+
+// ---------------------------------------------------------------------------
+// Roles (6) — Core is required and unique; the other 5 tag secondary elements.
+// Each role has a display color used by the live color-coded formula display.
+// ---------------------------------------------------------------------------
+export interface V3Role extends V3Option {
+  color: string; // hex
+}
+
+export const V3_CORE_ROLE_KEY = "core";
+
+export const V3_ROLES: V3Role[] = [
+  { key: "core", name: "Core", color: "#f59e0b", description: "The primary element and the spell's fundamental identity. What the spell is made of at its heart. Every spell must have one and only one Core. Everything else exists to support, shape, or modify it." },
+  { key: "catalyst", name: "Catalyst", color: "#ef4444", description: "Drives the reaction or transformation without being part of the final output. The Catalyst changes how the Core manifests but does not become the spell itself. Like fire beneath a pot, it provides the force that causes the change." },
+  { key: "carrier", name: "Carrier", color: "#3b82f6", description: "The vessel or medium the spell travels through or is contained within. The Core rides inside or along the Carrier to reach its destination. The Carrier gives the spell its path and shape in transit." },
+  { key: "amplifier", name: "Amplifier", color: "#a855f7", description: "Strengthens one other element in the spell, making it more intense, more far-reaching, or more powerful than it could be on its own. Does not change what the element does, only how much." },
+  { key: "seal", name: "Seal", color: "#10b981", description: "Anchors and stabilizes the spell, giving it persistence and preventing it from dispersing. Without a Seal, most spells fade quickly. The nature of the Seal element determines how and where the spell is held." },
+  { key: "trigger", name: "Trigger", color: "#ec4899", description: "Defines the condition that activates or detonates the spell. The Core lies dormant and does nothing until the Trigger condition is met. The Trigger element's natural properties define what that condition is." },
+];
+
+// Secondary roles only (exclude Core)
+export const V3_SECONDARY_ROLES: V3Role[] = V3_ROLES.filter((r) => r.key !== V3_CORE_ROLE_KEY);
+
+// ---------------------------------------------------------------------------
+// Intent (15)
+// ---------------------------------------------------------------------------
+export const V3_INTENTS: V3Option[] = [
+  { key: "create", name: "Create", description: "Bring something into existence from the magical force itself. The spell produces something that was not there before." },
+  { key: "destroy", name: "Destroy", description: "Damage, unmake, or consume a target. The spell's purpose is to reduce, break down, or eliminate something." },
+  { key: "move", name: "Move", description: "Displace, push, pull, or reposition something without changing what it fundamentally is. The target ends up somewhere different than where it started." },
+  { key: "shape", name: "Shape", description: "Change the physical form or structure of something without altering its fundamental nature or substance. Water reshaped into a wall is still water." },
+  { key: "transform", name: "Transform", description: "Change the state or nature of something entirely. Water transformed into ice has become something different. More thorough than Shape." },
+  { key: "sense", name: "Sense", description: "Gather information, detect presence, read conditions, or reveal what is hidden. The spell reaches out and brings knowledge back." },
+  { key: "bind", name: "Bind", description: "Restrict, hold, or anchor something in place. The target cannot move, act, or change as long as the Bind holds." },
+  { key: "release", name: "Release", description: "Undo a binding, free something that is constrained, or break a held magical effect. The opposite of Bind." },
+  { key: "amplify", name: "Amplify", description: "Make something that already exists in the world larger, stronger, or more intense. The spell finds an existing force or quality and magnifies it. Unlike the Amplifier role, this acts on things outside the spell rather than elements within it." },
+  { key: "diminish", name: "Diminish", description: "Reduce, weaken, or suppress something that already exists. The spell finds a force or quality and makes it less." },
+  { key: "absorb", name: "Absorb", description: "Take in, drain, or consume something. The spell pulls a force, quality, or energy into itself or into the caster." },
+  { key: "reflect", name: "Reflect", description: "Redirect or bounce something back toward its source or in a new direction. The spell intercepts a force and returns it." },
+  { key: "convert", name: "Convert", description: "Change one substance or type of energy into a fundamentally different one. Unlike Transform, Convert changes what something is made of, not just its state." },
+  { key: "summon", name: "Summon", description: "Call something from elsewhere to your location. The thing summoned already exists somewhere and the spell brings it here." },
+  { key: "communicate", name: "Communicate", description: "Convey information, send messages, or transmit will across distance. The spell carries meaning rather than force." },
+];
+
+// ---------------------------------------------------------------------------
+// Delivery (6)
+// ---------------------------------------------------------------------------
+export const V3_DELIVERIES: V3Option[] = [
+  { key: "projectile", name: "Projectile", description: "Fires directly from the caster toward a single target. Travels in a straight line and hits the first thing in its path." },
+  { key: "stream", name: "Stream", description: "A continuous flow that extends in a straight line from the caster outward, hitting everything along that line. Line area of effect." },
+  { key: "wave", name: "Wave", description: "Expands outward in a square area from the point of origin, pushing in all forward directions at once. Square area of effect." },
+  { key: "pulse", name: "Pulse", description: "Bursts outward in a full circle from the point of origin, hitting everything within its radius equally. Circle area of effect." },
+  { key: "conjure", name: "Conjure", description: "The effect does not travel at all. It rises from the ground or surfaces directly at the chosen target location." },
+  { key: "rain", name: "Rain", description: "The effect descends from above over the target area. Falls from the sky onto whatever is below." },
+];
+
+// ---------------------------------------------------------------------------
+// Reach (7) — index is the "slot"; mana = +1 per slot above Self (index 0).
+// ---------------------------------------------------------------------------
+export const V3_REACHES: V3Option[] = [
+  { key: "self", name: "Self", description: "Affects only the caster or originates directly from the caster's own body. Cannot be directed at anything else." },
+  { key: "touch", name: "Touch", description: "Requires direct physical contact between the caster and the target. The caster must be able to reach out and touch what they are targeting." },
+  { key: "close", name: "Close", description: "A short distance. Roughly within a few steps of the caster. Close enough to feel the heat of it." },
+  { key: "near", name: "Near", description: "A moderate distance. Across a room or a small open space. Far enough to be out of arm's reach but still clearly visible." },
+  { key: "far", name: "Far", description: "A significant distance. Across a large hall, a courtyard, or a short stretch of open ground." },
+  { key: "extreme", name: "Extreme", description: "A very long distance. Pushing the limits of what the caster can see or perceive. Requires focus to aim accurately." },
+  { key: "unlimited", name: "Unlimited", description: "No distance restriction. The spell can reach anything the caster is aware of regardless of how far away it is." },
+];
+
+// ---------------------------------------------------------------------------
+// Duration (8) — index is the "slot"; mana = +1 per slot above Instant (index 0).
+// ---------------------------------------------------------------------------
+export const V3_DURATIONS: V3Option[] = [
+  { key: "instant", name: "Instant", description: "The effect happens once and is immediately over. No lingering presence. One moment it exists, the next it does not." },
+  { key: "brief", name: "Brief", description: "Lasts only a short moment. Roughly one round or a few seconds at most. Fades almost as quickly as it arrives." },
+  { key: "short", name: "Short", description: "Lasts for a brief period. Roughly one minute. Long enough to matter in a fight but not something that sticks around afterward." },
+  { key: "medium", name: "Medium", description: "Lasts for a moderate period. Roughly ten minutes. Persists through most encounters and short stretches of travel." },
+  { key: "long", name: "Long", description: "Lasts for an extended period. Roughly one hour. Reliable enough to plan around." },
+  { key: "permanent", name: "Permanent", description: "The effect does not end on its own. It persists until something specifically undoes it, whether that is dispelling, physical destruction, or another spell." },
+  { key: "concentration", name: "Concentration", description: "Lasts as long as the caster actively maintains focus on it. Ends immediately if the caster is disrupted, knocked unconscious, or chooses to release it." },
+  { key: "until_triggered", name: "Until Triggered", description: "The spell lies dormant with no active effect. It activates only when a specific condition defined at the time of casting is met. Once triggered it behaves according to its own Duration from that point." },
+];
+
+// ---------------------------------------------------------------------------
+// Lookups
+// ---------------------------------------------------------------------------
+function toMap(list: V3Option[]): Record<string, V3Option> {
+  return Object.fromEntries(list.map((o) => [o.key, o]));
+}
+
+export const V3_ELEMENT_MAP = toMap(V3_ELEMENTS);
+export const V3_ROLE_MAP: Record<string, V3Role> = Object.fromEntries(V3_ROLES.map((r) => [r.key, r]));
+export const V3_INTENT_MAP = toMap(V3_INTENTS);
+export const V3_DELIVERY_MAP = toMap(V3_DELIVERIES);
+export const V3_REACH_MAP = toMap(V3_REACHES);
+export const V3_DURATION_MAP = toMap(V3_DURATIONS);
+
+export function v3ReachIndex(key: string): number {
+  const i = V3_REACHES.findIndex((r) => r.key === key);
+  return i < 0 ? 0 : i;
+}
+
+export function v3DurationIndex(key: string): number {
+  const i = V3_DURATIONS.findIndex((d) => d.key === key);
+  return i < 0 ? 0 : i;
+}
+
+export function v3RoleColor(roleKey: string): string {
+  return V3_ROLE_MAP[roleKey]?.color ?? "#9ca3af";
+}
+
+// ---------------------------------------------------------------------------
+// Composition
+// ---------------------------------------------------------------------------
+export interface V3SpellSecondary {
+  element: string; // element key
+  role: string; // secondary role key (not "core")
+}
+
+export interface V3SpellComposition {
+  core: string; // element key
+  secondaries: V3SpellSecondary[];
+  intent: string;
+  delivery: string;
+  reach: string;
+  duration: string;
+}
+
+/** Total elements in the spell (Core + secondaries). */
+export function v3ElementCount(comp: V3SpellComposition): number {
+  return 1 + (comp.secondaries?.length ?? 0);
+}
+
+/**
+ * Mana cost = 1 per element + 1 per Reach slot above Self + 1 per Duration slot
+ * above Instant.
+ */
+export function v3ManaCost(comp: V3SpellComposition): number {
+  return v3ElementCount(comp) + v3ReachIndex(comp.reach) + v3DurationIndex(comp.duration);
+}
+
+/**
+ * Crafting DC scales with element count:
+ *   1 element  -> 0  (auto-success)
+ *   2 elements -> 6
+ *   3 elements -> 12
+ *   4 elements -> 18
+ *   n elements -> (n - 1) * 6
+ */
+export function v3CraftDc(comp: V3SpellComposition): number {
+  const n = v3ElementCount(comp);
+  return n <= 1 ? 0 : (n - 1) * 6;
+}
+
+/**
+ * Canonical, order-independent serialization of a composition. Secondary
+ * [role, element] pairs are sorted so two spells built in a different order
+ * but with the same parts hash identically.
+ */
+export function serializeV3Composition(comp: V3SpellComposition): string {
+  const secondaries = [...(comp.secondaries ?? [])]
+    .map((s) => ({ role: s.role, element: s.element }))
+    .sort((a, b) => (a.role === b.role ? a.element.localeCompare(b.element) : a.role.localeCompare(b.role)));
+  return JSON.stringify({
+    core: comp.core,
+    secondaries,
+    intent: comp.intent,
+    delivery: comp.delivery,
+    reach: comp.reach,
+    duration: comp.duration,
+  });
+}
+
+/** Validate that a composition references only known keys and a single Core. */
+export function isValidV3Composition(comp: V3SpellComposition): boolean {
+  if (!comp || !V3_ELEMENT_MAP[comp.core]) return false;
+  if (!V3_INTENT_MAP[comp.intent]) return false;
+  if (!V3_DELIVERY_MAP[comp.delivery]) return false;
+  if (!V3_REACH_MAP[comp.reach]) return false;
+  if (!V3_DURATION_MAP[comp.duration]) return false;
+  if (!Array.isArray(comp.secondaries)) return false;
+  for (const s of comp.secondaries) {
+    if (!V3_ELEMENT_MAP[s.element]) return false;
+    if (!V3_ROLE_MAP[s.role] || s.role === V3_CORE_ROLE_KEY) return false;
+  }
+  return true;
+}
+
+export type V3SpellStatus = "awaiting_gm" | "ready" | "approved" | "rejected";

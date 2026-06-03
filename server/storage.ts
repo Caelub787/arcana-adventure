@@ -76,6 +76,7 @@ import {
   type CraftRecipe, type InsertCraftRecipe,
   type CraftRecipeIngredient, type InsertCraftRecipeIngredient,
   type CraftRecipeOutcome, type InsertCraftRecipeOutcome,
+  type V3Spell, type InsertV3Spell, v3Spells,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
@@ -373,6 +374,16 @@ export interface IStorage {
   createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
   updateSystemSpell(id: string, data: Partial<InsertSystemSpell>): Promise<SystemSpell | undefined>;
   deleteSystemSpell(id: string): Promise<void>;
+
+  // AA V3 crafted spell operations
+  createV3Spell(spell: InsertV3Spell): Promise<V3Spell>;
+  getV3Spell(id: string): Promise<V3Spell | undefined>;
+  listV3Spells(status?: string): Promise<V3Spell[]>;
+  getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined>;
+  getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
+  getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]>;
+  updateV3Spell(id: string, data: Partial<InsertV3Spell>): Promise<V3Spell | undefined>;
+  deleteV3Spell(id: string): Promise<void>;
 
   // System Skill operations (admin-defined custom skills)
   getSystemSkills(system?: string): Promise<SystemSkill[]>;
@@ -2926,6 +2937,57 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpell(id: string): Promise<void> {
     await db.delete(systemSpells).where(eq(systemSpells.id, id));
+  }
+
+  // AA V3 crafted spell operations
+  async createV3Spell(spell: InsertV3Spell): Promise<V3Spell> {
+    const [created] = await db.insert(v3Spells).values(spell).returning();
+    return created;
+  }
+
+  async getV3Spell(id: string): Promise<V3Spell | undefined> {
+    const [row] = await db.select().from(v3Spells).where(eq(v3Spells.id, id)).limit(1);
+    return row;
+  }
+
+  async listV3Spells(status?: string): Promise<V3Spell[]> {
+    if (status) {
+      return await db.select().from(v3Spells)
+        .where(eq(v3Spells.status, status))
+        .orderBy(desc(v3Spells.createdAt));
+    }
+    return await db.select().from(v3Spells).orderBy(desc(v3Spells.createdAt));
+  }
+
+  async getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined> {
+    const [row] = await db.select().from(v3Spells)
+      .where(and(eq(v3Spells.compositionHash, hash), eq(v3Spells.isCanonical, true)))
+      .limit(1);
+    return row;
+  }
+
+  async getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]> {
+    return await db.select().from(v3Spells)
+      .where(and(eq(v3Spells.campaignId, campaignId), eq(v3Spells.status, "awaiting_gm")))
+      .orderBy(desc(v3Spells.createdAt));
+  }
+
+  async getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]> {
+    return await db.select().from(v3Spells)
+      .where(eq(v3Spells.createdByCharacterId, characterId))
+      .orderBy(desc(v3Spells.createdAt));
+  }
+
+  async updateV3Spell(id: string, data: Partial<InsertV3Spell>): Promise<V3Spell | undefined> {
+    const [updated] = await db.update(v3Spells)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(v3Spells.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteV3Spell(id: string): Promise<void> {
+    await db.delete(v3Spells).where(eq(v3Spells.id, id));
   }
 
   async getArchivedSystemItems(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string }[]> {

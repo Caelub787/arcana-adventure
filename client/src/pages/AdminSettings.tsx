@@ -2,7 +2,18 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder } from '@/lib/api';
+import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell } from '@/lib/api';
+import {
+  V3_ELEMENT_MAP,
+  V3_ROLE_MAP,
+  V3_CORE_ROLE_KEY,
+  V3_INTENT_MAP,
+  V3_DELIVERY_MAP,
+  V3_REACH_MAP,
+  V3_DURATION_MAP,
+  v3RoleColor,
+  type V3SpellComposition,
+} from '@shared/v3spells';
 import { getEffectTypes, getEffectTypeLabel } from '@/lib/effectTypes';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -37,7 +48,7 @@ import {
   itemToDraft,
 } from '@/lib/library-dialog-bridges';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -967,6 +978,7 @@ export default function AdminSettings() {
                currentView === 'notifications' ? 'Push Notifications' :
                currentView === 'archived-items' ? 'Archived Items' :
                currentView === 'archived-spells' ? 'Archived Spells' : 
+               currentView === 'v3-spells' ? 'Crafted Spells (A.A. V3)' : 
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -989,6 +1001,10 @@ export default function AdminSettings() {
 
         {currentView === 'dashboard' && (
           <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} />
+        )}
+
+        {currentView === 'v3-spells' && (
+          <V3SpellsApprovalView />
         )}
 
         {currentView === 'items' && (
@@ -1724,6 +1740,199 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNav
   );
 }
 
+function V3SpellsApprovalView() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<V3Spell | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [image, setImage] = useState<string | null>(null);
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
+
+  const { data: spells = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-spells'],
+    queryFn: () => api.getAdminV3Spells(),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => api.approveV3Spell(id),
+    onSuccess: () => {
+      toast({ title: 'Approved', description: 'This composition is now canonical.' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => api.rejectV3Spell(id),
+    onSuccess: () => {
+      toast({ title: 'Rejected' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const authorMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string; description: string; image: string | null }) =>
+      api.authorV3Spell(vars.id, { name: vars.name, description: vars.description, image: vars.image }),
+    onSuccess: () => {
+      toast({ title: 'Saved', description: 'Spell details updated.' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+      setEditing(null);
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const openEditor = (spell: V3Spell) => {
+    setEditing(spell);
+    setName(spell.name || '');
+    setDescription(spell.description || '');
+    setImage(spell.image || null);
+  };
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      awaiting_gm: 'bg-amber-900/40 text-amber-300 border-amber-700',
+      ready: 'bg-blue-900/40 text-blue-300 border-blue-700',
+      approved: 'bg-emerald-900/40 text-emerald-300 border-emerald-700',
+      rejected: 'bg-red-900/40 text-red-300 border-red-700',
+    };
+    const label: Record<string, string> = {
+      awaiting_gm: 'Awaiting GM',
+      ready: 'Ready',
+      approved: 'Approved',
+      rejected: 'Rejected',
+    };
+    return <Badge variant="outline" className={map[status] || ''}>{label[status] || status}</Badge>;
+  };
+
+  const formula = (comp: V3SpellComposition) => {
+    const parts: { text: string; color: string }[] = [];
+    if (comp?.core) parts.push({ text: V3_ELEMENT_MAP[comp.core]?.name ?? comp.core, color: v3RoleColor(V3_CORE_ROLE_KEY) });
+    (comp?.secondaries || []).forEach((s) => {
+      parts.push({ text: `${V3_ELEMENT_MAP[s.element]?.name ?? s.element} (${V3_ROLE_MAP[s.role]?.name ?? s.role})`, color: v3RoleColor(s.role) });
+    });
+    return (
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        {parts.map((p, i) => (
+          <span key={i} className="flex items-center gap-1">
+            {i > 0 && <span className="text-stone-600">+</span>}
+            <span className="px-1.5 py-0.5 rounded" style={{ backgroundColor: `${p.color}22`, color: p.color, border: `1px solid ${p.color}66` }}>{p.text}</span>
+          </span>
+        ))}
+        <span className="text-stone-600 mx-1">·</span>
+        <span className="text-stone-400">{V3_INTENT_MAP[comp?.intent]?.name} / {V3_DELIVERY_MAP[comp?.delivery]?.name} / {V3_REACH_MAP[comp?.reach]?.name} / {V3_DURATION_MAP[comp?.duration]?.name}</span>
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return <p className="text-stone-400" data-testid="text-v3-spells-loading">Loading crafted spells…</p>;
+  }
+
+  return (
+    <div className="space-y-3" data-testid="view-v3-spells">
+      {spells.length === 0 && (
+        <p className="text-stone-500 italic" data-testid="text-v3-spells-empty">No crafted spells yet. Player-crafted spells will appear here for review.</p>
+      )}
+      {spells.map((spell) => (
+        <Card key={spell.id} className="bg-stone-900 border-stone-700" data-testid={`card-v3-spell-${spell.id}`}>
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-3">
+              <div className="h-14 w-14 shrink-0 rounded-lg border border-stone-700 bg-stone-800 overflow-hidden flex items-center justify-center">
+                {spell.image ? <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" /> : <Sparkles className="h-5 w-5 text-stone-500" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <CardTitle className="text-base text-stone-100" data-testid={`text-v3-spell-name-${spell.id}`}>
+                    {spell.name || <span className="italic text-stone-500">Unnamed</span>}
+                  </CardTitle>
+                  {statusBadge(spell.status)}
+                  {spell.isCanonical && <Badge variant="outline" className="bg-violet-900/40 text-violet-300 border-violet-700">Canonical</Badge>}
+                </div>
+                <div className="mt-1.5">{formula(spell.composition)}</div>
+                {spell.description && <p className="text-xs text-stone-400 mt-1.5 line-clamp-2">{spell.description}</p>}
+                <p className="text-[11px] text-stone-500 mt-1">{spell.manaCost} mana · DC {spell.craftDc}</p>
+              </div>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEditor(spell)} data-testid={`button-edit-v3-spell-${spell.id}`}>
+                  <Pencil className="h-3 w-3 mr-1" /> Edit
+                </Button>
+                {spell.status !== 'approved' && (
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs bg-emerald-700 hover:bg-emerald-600"
+                    disabled={!spell.name?.trim() || approveMutation.isPending}
+                    onClick={() => approveMutation.mutate(spell.id)}
+                    data-testid={`button-approve-v3-spell-${spell.id}`}
+                  >
+                    Approve
+                  </Button>
+                )}
+                {spell.status !== 'rejected' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs text-red-400 border-red-900 hover:bg-red-900/30"
+                    disabled={rejectMutation.isPending}
+                    onClick={() => rejectMutation.mutate(spell.id)}
+                    data-testid={`button-reject-v3-spell-${spell.id}`}
+                  >
+                    Reject
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+      ))}
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-w-lg" data-testid="dialog-edit-v3-spell">
+          <DialogHeader>
+            <DialogTitle>Edit Spell Details</DialogTitle>
+            <DialogDescription>Set the canonical name, description, and image for this composition.</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2">{formula(editing.composition)}</div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowImageBrowser(true)}
+                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500"
+                  data-testid="button-v3-spell-image"
+                >
+                  {image ? <img src={image} alt="Spell" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-stone-500" />}
+                </button>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs text-stone-400">Name</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-v3-spell-name" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Description</Label>
+                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} data-testid="input-v3-spell-description" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => editing && authorMutation.mutate({ id: editing.id, name: name.trim(), description, image })}
+              disabled={!name.trim() || authorMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-stone-950"
+              data-testid="button-save-v3-spell"
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ImageBrowser open={showImageBrowser} onOpenChange={setShowImageBrowser} onSelect={(url) => setImage(url)} saveToFile title="Select Spell Image" />
+    </div>
+  );
+}
+
 function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   return (
@@ -1807,6 +2016,24 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {isAdmin && systemSlug === 'aa-v3' && (
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('v3-spells')}
+        data-testid="card-v3-spells"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-violet-700/20 flex items-center justify-center mb-2">
+            <Wand2 className="h-6 w-6 text-violet-500" />
+          </div>
+          <CardTitle className="text-violet-500">Crafted Spells</CardTitle>
+          <CardDescription className="text-stone-400">
+            Review player-crafted V3 spells and approve a canonical name, description, and image per composition
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      )}
 
       {isAdmin && (<>
       <Card 

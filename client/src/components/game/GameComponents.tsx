@@ -18546,6 +18546,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                     </div>
                 )}
+                    {isAAV3 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <Label className="text-xs text-stone-300 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-amber-400" />
+                            Spell Creation Tokens
+                          </Label>
+                          <span className="text-xs font-bold text-amber-300" data-testid="text-spell-tokens">
+                            {liveCharacter.spellCreationTokens ?? 0} / {liveCharacter.anemos ?? 0}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 leading-tight">Spent to craft spells. Refills to your Anemos on a long rest.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
