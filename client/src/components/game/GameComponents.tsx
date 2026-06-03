@@ -16261,7 +16261,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
 
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
-  const handleRaceChange = (raceName: string) => {
+  const applyRaceChange = (raceName: string) => {
     const raceData = systemSpecies.find((r: SystemSpecies) => r.name === raceName);
     if (raceData) {
       // Calculate new max HP = new species base HP + existing bonus HP from level ups
@@ -16289,6 +16289,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       }));
     }
   };
+
+  const handleRaceChange = (raceName: string) => {
+    // V3: changing species on an existing character replaces its species-sourced
+    // attribute bonuses, custom skills, and traits — confirm before applying.
+    if (isAAV3 && liveCharacter.race && raceName !== liveCharacter.race) {
+      setPendingV3RaceChange(raceName);
+      return;
+    }
+    applyRaceChange(raceName);
+  };
+
+  // V3 species-change confirmation
+  const [pendingV3RaceChange, setPendingV3RaceChange] = useState<string | null>(null);
 
   // Inventory state
   const queryClient = useQueryClient();
@@ -18326,6 +18339,29 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       ) : (
                         <p className="text-stone-200" data-testid="text-race">{liveCharacter.race}</p>
                       )}
+                      <AlertDialog open={!!pendingV3RaceChange} onOpenChange={(open) => !open && setPendingV3RaceChange(null)}>
+                        <AlertDialogContent className="bg-stone-900 border-stone-700">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-stone-200">Change Species?</AlertDialogTitle>
+                            <AlertDialogDescription className="text-stone-400">
+                              Changing this character's species to <span className="text-amber-400">{pendingV3RaceChange}</span> will replace the attribute bonuses, custom skills, and traits granted by the current species (<span className="text-amber-400">{liveCharacter.race}</span>) with those of the new one. Custom skills and traits you added yourself are kept. This takes effect when you save.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="border-stone-600" data-testid="button-cancel-species-change">Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-amber-700 hover:bg-amber-600"
+                              data-testid="button-confirm-species-change"
+                              onClick={() => {
+                                if (pendingV3RaceChange) applyRaceChange(pendingV3RaceChange);
+                                setPendingV3RaceChange(null);
+                              }}
+                            >
+                              Change Species
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                     <div>
                       <Label className="text-xs text-stone-400">Size</Label>
