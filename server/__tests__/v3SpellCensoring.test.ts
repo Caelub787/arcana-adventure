@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import type { AddressInfo } from "net";
 import express from "express";
 import WebSocket from "ws";
@@ -40,6 +40,12 @@ const h = vi.hoisted(() => {
     getCanonicalV3SpellByHash: fn(),
     deleteExpiredSpectatorTokens: fn(),
     unbanUser: fn(),
+    // V3 spell-craft surface
+    getCharacter: fn(),
+    updateCharacter: fn(),
+    getItem: fn(),
+    getCampaignAuthoredV3SpellByHash: fn(),
+    createV3Spell: fn(),
   };
   const adminUserIds = new Set<string>();
   return {
@@ -305,6 +311,167 @@ describe("POST /api/v3/spells/:id/author — broadcast censoring", () => {
     });
     expect(res.status).toBe(403);
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/spells/craft — resource accounting", () => {
+  // A 2-element composition: mana cost = 2 (2 elements, Self reach, Instant
+  // duration), craft DC = 6.
+  const composition = {
+    core: "fire",
+    secondaries: [{ element: "water", role: "catalyst" }],
+    intent: "destroy",
+    delivery: "projectile",
+    reach: "self",
+    duration: "instant",
+  };
+  const MANA_COST = 2;
+
+  // Force the route's `Math.floor(Math.random() * 20) + 1` d20 roll.
+  // 0 -> d20 = 1 (guaranteed fail vs DC 6); 0.999 -> d20 = 20 (guaranteed pass).
+  let randomSpy: ReturnType<typeof vi.spyOn> | undefined;
+  function stubD20(value: number) {
+    randomSpy = vi.spyOn(Math, "random").mockReturnValue(value);
+  }
+
+  afterEach(() => {
+    randomSpy?.mockRestore();
+    randomSpy = undefined;
+  });
+
+  // Wire up an owner-controlled character in an aa-v3 campaign with the given
+  // mana/token balances. Returns the captured updateCharacter patches.
+  function setupCharacter(opts: { mana: number; tokens: number; anemos?: number }) {
+    const user = "owner1";
+    const campaignId = "campCraft";
+    const characterId = "char1";
+    h.storage.getCharacter.mockResolvedValue({
+      id: characterId,
+      userId: user,
+      campaignId,
+      isTemplate: false,
+      mana: opts.mana,
+      spellCreationTokens: opts.tokens,
+      anemos: opts.anemos ?? 0,
+      name: "Mage",
+    });
+    h.storage.getCampaign.mockResolvedValue({
+      id: campaignId,
+      gmUserId: "someGm",
+      system: "aa-v3",
+      is18Plus: false,
+    });
+    h.storage.getCampaignMembership.mockResolvedValue(null);
+    h.storage.getCampaignMembers.mockResolvedValue([{ userId: user, role: "player" }]);
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue(undefined);
+    h.storage.getCampaignAuthoredV3SpellByHash.mockResolvedValue(undefined);
+    const patches: any[] = [];
+    h.storage.updateCharacter.mockImplementation(async (_id: string, patch: any) => {
+      patches.push(patch);
+      return { id: characterId, campaignId, ...patch };
+    });
+    h.storage.createV3Spell.mockImplementation(async (row: any) => ({
+      id: "newspell",
+      ...row,
+    }));
+    return { user, campaignId, characterId, patches };
+  }
+
+  it("success path consumes mana AND one token, and creates the spell", async () => {
+    const { user, characterId, patches } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999); // d20 = 20 -> success
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.tokenSpent).toBe(true);
+    expect(body.manaSpent).toBe(MANA_COST);
+
+    // Exactly one update, debiting both mana and a token.
+    expect(h.storage.updateCharacter).toHaveBeenCalledTimes(1);
+    expect(patches[0]).toEqual({ mana: 5 - MANA_COST, spellCreationTokens: 3 - 1 });
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
+  });
+
+  it("failed DC check consumes mana but NO token and creates no spell", async () => {
+    const { user, characterId, patches } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0); // d20 = 1 -> fail vs DC 6
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.tokenSpent).toBe(false);
+    expect(body.manaSpent).toBe(MANA_COST);
+
+    // Mana debited, token untouched, no spell row written.
+    expect(h.storage.updateCharacter).toHaveBeenCalledTimes(1);
+    expect(patches[0]).toEqual({ mana: 5 - MANA_COST });
+    expect("spellCreationTokens" in patches[0]).toBe(false);
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("aborts with 400 when mana is insufficient and consumes nothing", async () => {
+    const { user, characterId } = setupCharacter({ mana: 1, tokens: 3 });
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.reason).toBe("mana");
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("aborts with 400 when no tokens remain and consumes nothing", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 0 });
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.reason).toBe("tokens");
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("rejects crafting in a non-aa-v3 campaign", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    h.storage.getCampaign.mockResolvedValue({
+      id: "campCraft",
+      gmUserId: "someGm",
+      system: "aa-v2",
+      is18Plus: false,
+    });
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
   });
 });
 
