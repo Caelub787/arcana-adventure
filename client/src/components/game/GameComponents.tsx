@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel } from "@/components/ui/floating-panel";
+import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -4723,6 +4724,15 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     enabled: !!hotbar?.spellId
   });
 
+  // Fetch V3 crafted spell data if v3SpellId exists
+  const { data: v3SpellData } = useQuery({
+    queryKey: ['v3-character-spells', character.id],
+    queryFn: () => api.getCharacterV3Spells(character.id),
+    enabled: !!hotbar?.v3SpellId,
+    select: (spells: any[]) => spells.find((s: any) => s.id === hotbar?.v3SpellId),
+  });
+  const [showV3Detail, setShowV3Detail] = useState(false);
+
   // Fetch trait data if traitId exists
   const { data: traitData } = useQuery({
     queryKey: ['trait', hotbar?.traitId],
@@ -7972,6 +7982,28 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
       </>
     );
+  } else if (hotbar?.v3SpellId && v3SpellData) {
+    content = v3SpellData.image ? (
+      <div className="relative w-full h-full flex items-center justify-center">
+        <img
+          src={v3SpellData.image}
+          alt={v3SpellData.name}
+          className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
+        />
+      </div>
+    ) : (
+      <div className="font-bold truncate text-purple-400">
+        {(v3SpellData.name || 'Spell').substring(0, 3)}
+      </div>
+    );
+    tooltipContent = (
+      <>
+        <p className="font-bold">{v3SpellData.name || 'Crafted Spell'}</p>
+        <p className="text-sm text-stone-400">{v3SpellSummary(v3SpellData)}</p>
+        <p className="text-sm">Mana: {v3SpellData.manaCost}</p>
+        <p className="text-xs text-stone-400 mt-1">Click to view details</p>
+      </>
+    );
   } else if (hotbar?.itemId && itemData) {
     // For ammunition, consumables, and detonatables, show grouped total quantity
     const displayQuantity = itemData.itemType === 'ammunition' 
@@ -8089,7 +8121,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              onClick={isClickable ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); } : undefined}
+              onClick={
+                hotbar?.v3SpellId && v3SpellData
+                  ? () => setShowV3Detail(true)
+                  : isClickable
+                    ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
+                    : undefined
+              }
               onContextMenu={(e) => e.preventDefault()}
               onPointerDown={handlePointerDown}
               onPointerUp={handlePointerUp}
@@ -8101,7 +8139,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
                   : 'bg-stone-900/50 border-stone-700 border-dashed'
                 }
-                ${isClickable ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
+                ${isClickable || (hotbar?.v3SpellId && v3SpellData) ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
                 ${getActionBorderClass()}
               `}
               data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
@@ -8494,6 +8532,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           </div>
         </>,
         document.body
+      )}
+
+      {hotbar?.v3SpellId && v3SpellData && (
+        <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} />
       )}
 
     </>
@@ -13608,6 +13650,15 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     enabled: !!hotbar?.spellId
   });
 
+  // Fetch V3 crafted spell data if v3SpellId exists
+  const { data: v3SpellData, isLoading: v3SpellLoading } = useQuery({
+    queryKey: ['v3-character-spells', character.id],
+    queryFn: () => api.getCharacterV3Spells(character.id),
+    enabled: !!hotbar?.v3SpellId,
+    select: (spells: any[]) => spells.find((s: any) => s.id === hotbar?.v3SpellId),
+  });
+  const [showV3Detail, setShowV3Detail] = useState(false);
+
   // Fetch trait data if traitId exists
   const { data: traitData, isLoading: traitLoading } = useQuery({
     queryKey: ['trait', hotbar?.traitId],
@@ -14350,8 +14401,44 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       );
     }
 
+    // Display V3 crafted spell if equipped
+    if (hotbar.v3SpellId && v3SpellData) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className="w-full h-full flex flex-col items-center justify-center p-0.5 rounded cursor-pointer"
+                onClick={() => setShowV3Detail(true)}
+                data-testid={`hotbar-v3-spell-${hotbar.v3SpellId}`}
+              >
+                {v3SpellData.image ? (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img
+                      src={v3SpellData.image}
+                      alt={v3SpellData.name}
+                      className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
+                  </div>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-bold">{v3SpellData.name || 'Crafted Spell'}</p>
+              <p className="text-sm text-stone-400">{v3SpellSummary(v3SpellData)}</p>
+              <p className="text-sm">Mana: {v3SpellData.manaCost}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
     // Show loading state if item/spell/trait is being fetched
-    if ((hotbar.itemId && itemLoading) || (hotbar.spellId && spellLoading) || (hotbar.traitId && traitLoading)) {
+    if ((hotbar.itemId && itemLoading) || (hotbar.spellId && spellLoading) || (hotbar.v3SpellId && v3SpellLoading) || (hotbar.traitId && traitLoading)) {
       return (
         <div className="text-xs text-center text-stone-400 animate-pulse">
           <div className="text-[10px]">Loading...</div>
@@ -14360,7 +14447,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     }
 
     // Show orphaned state if item/spell/trait was deleted but hotbar entry remains
-    if ((hotbar.itemId && !itemData) || (hotbar.spellId && !spellData) || (hotbar.traitId && !traitData)) {
+    if ((hotbar.itemId && !itemData) || (hotbar.spellId && !spellData) || (hotbar.v3SpellId && !v3SpellData) || (hotbar.traitId && !traitData)) {
       return (
         <div className="text-xs text-center text-stone-500 italic">
           <div className="text-[10px]">(Removed)</div>
@@ -14453,6 +14540,14 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {v3SpellData && (
+        <V3SpellDetailDialog
+          spell={v3SpellData}
+          open={showV3Detail}
+          onOpenChange={setShowV3Detail}
+        />
+      )}
     </div>
   );
 }
@@ -14640,9 +14735,11 @@ interface InventoryItemRowProps {
   onDeleteMultiple?: (itemIds: string[]) => void;
   bringToFront?: (panelKey: string) => void;
   charPanelSuffix?: string;
+  onOpenSpellbook?: (item: any) => void;
+  isAAV3?: boolean;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '' }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3 }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -14797,7 +14894,10 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           
           <div 
             className="flex items-center gap-3 flex-1 cursor-pointer"
-            onClick={() => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`); }}
+            onClick={() => {
+              if (isAAV3 && item.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(item); return; }
+              setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
+            }}
           >
             <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
               {item.image ? (
@@ -14924,6 +15024,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 key={stackedItem.id}
                 className={`p-2 bg-stone-800 border ${stackedItemRarityClass} rounded cursor-pointer hover:bg-stone-750 transition-colors`}
                 onDoubleClick={() => {
+                  if (isAAV3 && stackedItem.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(stackedItem); return; }
                   setSelectedItem(stackedItem);
                   setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
                 }}
@@ -15004,6 +15105,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               onDeleteMultiple={onDeleteMultiple}
               bringToFront={bringToFront}
               charPanelSuffix={charPanelSuffix}
+              onOpenSpellbook={onOpenSpellbook}
+              isAAV3={isAAV3}
             />
           ))}
         </div>
@@ -16566,6 +16669,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [showManageTemplates, setShowManageTemplates] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
+  const [selectedSpellbook, setSelectedSpellbook] = useState<any>(null);
+  const [showSpellbook, setShowSpellbook] = useState(false);
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [isEditingItem, setIsEditingItem] = useState(false);
   const [editItemData, setEditItemData] = useState<any>(null);
@@ -17970,7 +18075,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     { value: 'attributes', icon: BarChart3, color: 'blue', label: isAAV3 ? 'Attrs & Skills' : 'Attributes' },
     { value: 'skills', icon: Zap, color: 'green', label: isAAV3 ? 'Traits' : 'Skills' },
     { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
-    { value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
+    // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
+    ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
     { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
     { value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
   ];
@@ -18080,7 +18186,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className="grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 grid-cols-7">
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-6' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -20201,6 +20307,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           toggleContainer={toggleContainer}
                           setSelectedItem={setSelectedItem}
                           setShowItemDetail={setShowItemDetail}
+                          onOpenSpellbook={(it) => { setSelectedSpellbook(it); setShowSpellbook(true); bringToFront?.(`spellbook${charPanelSuffix}`); }}
+                          isAAV3={isAAV3}
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
                           onDeleteItem={(id) => deleteItemMutation.mutate(id)}
@@ -20256,7 +20364,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             </Card>
           </TabsContent>
 
-          {/* MAGIC TAB */}
+          {/* MAGIC TAB — V2 only (V3 uses the Spellbook item) */}
+          {!isAAV3 && (
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
@@ -21503,6 +21612,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               </AlertDialogContent>
             </AlertDialog>
           </TabsContent>
+          )}
 
 
           {/* HOTBARS TAB */}
@@ -21952,6 +22062,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         campaignSystem={campaignSystem}
         charPanelSuffix={charPanelSuffix}
       />
+
+      {isAAV3 && showSpellbook && selectedSpellbook && (
+        <SpellbookPanel
+          open={showSpellbook}
+          onClose={() => setShowSpellbook(false)}
+          item={selectedSpellbook}
+          character={character}
+          canEdit={isOwner || isGM}
+          bringToFront={bringToFront}
+          floatingZIndices={floatingZIndices}
+          charPanelSuffix={charPanelSuffix}
+        />
+      )}
 
       {/* Add/Edit Item Floating Panel */}
       <AddItemDialog 
@@ -23868,7 +23991,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     setTemplateRarityFilter('all');
   };
 
-  const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency'];
+  const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency', ...(campaignSystem === 'aa-v3' ? ['spellbook'] : [])];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
@@ -24536,6 +24659,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     <SelectItem value="container">Container</SelectItem>
                     {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                       <SelectItem value="crafter">Crafter</SelectItem>
+                    )}
+                    {campaignSystem === 'aa-v3' && (
+                      <SelectItem value="spellbook">Spellbook</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -26087,6 +26213,9 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <SelectItem value="container">Container</SelectItem>
                         {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                           <SelectItem value="crafter">Crafter</SelectItem>
+                        )}
+                        {campaignSystem === 'aa-v3' && (
+                          <SelectItem value="spellbook">Spellbook</SelectItem>
                         )}
                       </SelectContent>
                     </Select>

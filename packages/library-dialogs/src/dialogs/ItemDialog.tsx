@@ -29,7 +29,7 @@ import type { DialogProps } from "../types";
 
 const ITEM_TYPES = [
   "weapon", "ammunition", "armor", "consumable",
-  "utility", "container", "currency", "crafter",
+  "utility", "container", "currency", "crafter", "spellbook",
 ] as const;
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
@@ -116,6 +116,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
+  const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
   // Explicit `mode` prop wins; otherwise infer from initialValue.id.
   const editing = mode ? mode === "edit" : !!initialValue?.id;
@@ -214,7 +215,11 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               <Grid3>
                 <div><Label>Item Type</Label>
                   <Select value={draft.itemType} onValueChange={v => set({ itemType: v })} data-testid="select-item-type">
-                    {ITEM_TYPES.filter(t => aav2 || t !== "crafter").map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {ITEM_TYPES.filter(t => {
+                      if (t === "crafter") return aav2;
+                      if (t === "spellbook") return aav3;
+                      return true;
+                    }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
                 </div>
                 <div><Label>Rarity</Label>

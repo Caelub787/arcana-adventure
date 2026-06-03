@@ -382,6 +382,7 @@ export interface IStorage {
   getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined>;
   getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
   getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]>;
+  getV3SpellsForSpellbook(spellbookItemId: string): Promise<V3Spell[]>;
   updateV3Spell(id: string, data: Partial<InsertV3Spell>): Promise<V3Spell | undefined>;
   deleteV3Spell(id: string): Promise<void>;
 
@@ -1886,6 +1887,7 @@ export class DatabaseStorage implements IStorage {
         set: {
           itemId: hotbar.itemId,
           spellId: hotbar.spellId,
+          v3SpellId: hotbar.v3SpellId,
           skillName: hotbar.skillName,
           traitId: hotbar.traitId,
         },
@@ -2975,6 +2977,12 @@ export class DatabaseStorage implements IStorage {
   async getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]> {
     return await db.select().from(v3Spells)
       .where(eq(v3Spells.createdByCharacterId, characterId))
+      .orderBy(desc(v3Spells.createdAt));
+  }
+
+  async getV3SpellsForSpellbook(spellbookItemId: string): Promise<V3Spell[]> {
+    return await db.select().from(v3Spells)
+      .where(eq(v3Spells.spellbookItemId, spellbookItemId))
       .orderBy(desc(v3Spells.createdAt));
   }
 

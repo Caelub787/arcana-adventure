@@ -137,6 +137,8 @@ function FormulaDisplay({ comp }: { comp: V3SpellComposition }) {
 export interface V3SpellCrafterProps {
   character: CrafterCharacter;
   onCrafted?: (spell: V3Spell | undefined, autoFilled: boolean) => void;
+  // When set, crafted spells are added to this spellbook item.
+  spellbookItemId?: string;
 }
 
 const DEFAULT_COMP: V3SpellComposition = {
@@ -148,7 +150,7 @@ const DEFAULT_COMP: V3SpellComposition = {
   duration: "instant",
 };
 
-export function V3SpellCrafter({ character, onCrafted }: V3SpellCrafterProps) {
+export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3SpellCrafterProps) {
   const { toast } = useToast();
   const [comp, setComp] = useState<V3SpellComposition>(DEFAULT_COMP);
   const [crafting, setCrafting] = useState(false);
@@ -184,7 +186,7 @@ export function V3SpellCrafter({ character, onCrafted }: V3SpellCrafterProps) {
     if (!valid || crafting) return;
     setCrafting(true);
     try {
-      const result = await api.craftV3Spell(character.id, comp);
+      const result = await api.craftV3Spell(character.id, comp, spellbookItemId);
       if (result.success) {
         toast({
           title: "Spell crafted!",

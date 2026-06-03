@@ -141,6 +141,7 @@ const itemTypeIcons: Record<string, any> = {
   utility: Sparkles,
   container: Box,
   currency: Coins,
+  spellbook: BookOpen,
 };
 
 const rarityColors: Record<string, string> = {

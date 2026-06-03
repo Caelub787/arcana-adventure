@@ -916,7 +916,8 @@ export const hotbars = pgTable("hotbars", {
   hotbarType: text("hotbar_type").notNull(), // "weapons", "magic", "skills", "consumables", "utility", "armor"
   slotNumber: integer("slot_number").notNull(), // 0-4 for most, 0-2 for weapons, 0-1 for consumables, 0-4 for armor (helm/chest/arm/legs/boots)
   itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }), // For weapons, consumables, utility
-  spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar
+  spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar (V2 spells)
+  v3SpellId: varchar("v3_spell_id").references((): any => v3Spells.id, { onDelete: "set null" }), // For magic hotbar (AA V3 crafted spells)
   skillName: text("skill_name"), // For skills hotbar
   traitId: varchar("trait_id").references(() => characterTraits.id, { onDelete: "set null" }), // For skills hotbar (traits)
 }, (table) => ({
@@ -2255,6 +2256,9 @@ export type OutgoingWebhook = typeof outgoingWebhooks.$inferSelect;
 export const v3Spells = pgTable("v3_spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  // Spellbook item this spell lives in (null for canonical/template rows). When the
+  // spellbook item is deleted the crafted spell rows are removed with it.
+  spellbookItemId: varchar("spellbook_item_id").references((): any => items.id, { onDelete: "cascade" }),
   // Full composition snapshot { core, secondaries:[{element,role}], intent, delivery, reach, duration }
   composition: jsonb("composition").$type<V3SpellComposition>().notNull(),
   // Order-independent canonical hash of the composition (for canonical matching)

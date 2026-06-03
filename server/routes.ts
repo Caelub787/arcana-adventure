@@ -6095,7 +6095,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Craft a spell from a composition. Costs mana (always) + 1 token (on success).
   app.post("/api/v3/spells/craft", requireAuth, async (req, res) => {
     try {
-      const { characterId, composition } = req.body || {};
+      const { characterId, composition, spellbookItemId } = req.body || {};
       if (!characterId || !composition) {
         return res.status(400).json({ error: "characterId and composition are required" });
       }
@@ -6111,6 +6111,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = access.campaign;
       if (campaign?.system !== "aa-v3") {
         return res.status(400).json({ error: "Spell crafting is only available in A.A. V3 campaigns" });
+      }
+
+      // If crafting into a spellbook, the item must exist, be a spellbook, and
+      // belong to the crafting character.
+      if (spellbookItemId) {
+        const book = await storage.getItem(spellbookItemId);
+        if (!book) return res.status(404).json({ error: "Spellbook not found" });
+        if (book.itemType !== "spellbook") {
+          return res.status(400).json({ error: "Target item is not a spellbook" });
+        }
+        if (book.characterId !== character.id) {
+          return res.status(403).json({ error: "That spellbook does not belong to this character" });
+        }
       }
 
       // Recompute cost & DC server-side (never trust the client).
@@ -6159,6 +6172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const spell = await storage.createV3Spell({
         campaignId: campaign?.id || null,
+        spellbookItemId: spellbookItemId || null,
         composition,
         compositionHash,
         name: canonical?.name || "",
@@ -6285,6 +6299,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(canonical || null);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load canonical spell" });
+    }
+  });
+
+  // List the spells held inside a spellbook item.
+  app.get("/api/v3/spellbooks/:itemId/spells", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item) return res.status(404).json({ error: "Spellbook not found" });
+      if (item.itemType !== "spellbook") return res.status(400).json({ error: "Item is not a spellbook" });
+      // A spellbook is owned by a character; gate on that character's view access.
+      if (item.characterId) {
+        const access = await checkCharacterAccess(item.characterId, req.session.userId!, "view");
+        if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+      }
+      const spells = await storage.getV3SpellsForSpellbook(req.params.itemId);
+      res.json(spells);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load spellbook spells" });
+    }
+  });
+
+  // Remove a crafted spell from its spellbook (detaches; deletes the row).
+  app.post("/api/v3/spells/:id/remove-from-spellbook", requireAuth, async (req, res) => {
+    try {
+      const spell = await storage.getV3Spell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      if (!spell.spellbookItemId) return res.status(400).json({ error: "Spell is not in a spellbook" });
+      const item = await storage.getItem(spell.spellbookItemId);
+      if (item?.characterId) {
+        const access = await checkCharacterAccess(item.characterId, req.session.userId!, "edit");
+        if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+      }
+      await storage.deleteV3Spell(spell.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to remove spell" });
     }
   });
 

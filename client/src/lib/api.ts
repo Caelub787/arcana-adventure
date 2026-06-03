@@ -211,6 +211,7 @@ export interface Hotbar {
   slotNumber: number;
   itemId?: string;
   spellId?: string;
+  v3SpellId?: string;
   skillName?: string;
   traitId?: string;
 }
@@ -2472,11 +2473,19 @@ class ApiClient {
   }
 
   // ---- AA V3 spell crafting ----
-  async craftV3Spell(characterId: string, composition: V3SpellComposition): Promise<V3CraftResult> {
+  async craftV3Spell(characterId: string, composition: V3SpellComposition, spellbookItemId?: string): Promise<V3CraftResult> {
     return this.request(`/v3/spells/craft`, {
       method: 'POST',
-      body: JSON.stringify({ characterId, composition }),
+      body: JSON.stringify({ characterId, composition, spellbookItemId }),
     });
+  }
+
+  async getSpellbookSpells(itemId: string): Promise<V3Spell[]> {
+    return this.request(`/v3/spellbooks/${itemId}/spells`);
+  }
+
+  async removeSpellFromSpellbook(spellId: string): Promise<{ success: boolean }> {
+    return this.request(`/v3/spells/${spellId}/remove-from-spellbook`, { method: 'POST' });
   }
 
   async authorV3Spell(spellId: string, data: { name: string; description?: string; image?: string | null }): Promise<V3Spell> {
@@ -2556,6 +2565,7 @@ export interface V3SpellComposition {
 export interface V3Spell {
   id: string;
   campaignId: string | null;
+  spellbookItemId: string | null;
   composition: V3SpellComposition;
   compositionHash: string;
   name: string;
