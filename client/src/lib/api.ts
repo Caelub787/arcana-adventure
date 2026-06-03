@@ -2500,6 +2500,10 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/v3-spell-requests`);
   }
 
+  async getCampaignV3Spells(campaignId: string): Promise<V3Spell[]> {
+    return this.request(`/campaigns/${campaignId}/v3-spells`);
+  }
+
   async getCharacterV3Spells(characterId: string): Promise<V3Spell[]> {
     return this.request(`/v3/characters/${characterId}/spells`);
   }

@@ -6315,6 +6315,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GM: list every crafted spell in a campaign for review/re-editing.
+  app.get("/api/campaigns/:id/v3-spells", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+      const isAdmin = await isAdminUser(req.session.userId!);
+      if (!isGM && !isAdmin) return res.status(403).json({ error: "GM access required" });
+      const spells = await storage.getV3SpellsForCampaign(campaign.id);
+      res.json(spells.map((s) => censorV3SpellForCampaign(s, campaign.is18Plus)));
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load campaign spells" });
+    }
+  });
+
   // List the spells a character has crafted.
   app.get("/api/v3/characters/:id/spells", requireAuth, async (req, res) => {
     try {

@@ -383,6 +383,7 @@ export interface IStorage {
   getCampaignAuthoredV3SpellByHash(campaignId: string, hash: string): Promise<V3Spell | undefined>;
   getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
   getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]>;
+  getV3SpellsForCampaign(campaignId: string): Promise<V3Spell[]>;
   getV3SpellsForSpellbook(spellbookItemId: string): Promise<V3Spell[]>;
   updateV3Spell(id: string, data: Partial<InsertV3Spell>): Promise<V3Spell | undefined>;
   deleteV3Spell(id: string): Promise<void>;
@@ -2994,6 +2995,12 @@ export class DatabaseStorage implements IStorage {
   async getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]> {
     return await db.select().from(v3Spells)
       .where(eq(v3Spells.createdByCharacterId, characterId))
+      .orderBy(desc(v3Spells.createdAt));
+  }
+
+  async getV3SpellsForCampaign(campaignId: string): Promise<V3Spell[]> {
+    return await db.select().from(v3Spells)
+      .where(eq(v3Spells.campaignId, campaignId))
       .orderBy(desc(v3Spells.createdAt));
   }
 

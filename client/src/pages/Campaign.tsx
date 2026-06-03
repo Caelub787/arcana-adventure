@@ -18,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { V3_ATTRIBUTES } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
-import { V3SpellAuthoringListener } from "@/components/game/V3SpellCrafter";
+import { V3SpellAuthoringListener, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -49,7 +49,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2 } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -7832,6 +7832,7 @@ export default function Campaign() {
 
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
+  const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
 
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
@@ -10744,6 +10745,16 @@ export default function Campaign() {
       {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (
         <V3SpellAuthoringListener campaignId={effectiveCampaignId} isGM={role === 'gm'} />
       )}
+
+      {/* AA V3: GM crafted-spell manager (review + re-edit existing spells) */}
+      {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && role === 'gm' && (
+        <V3GmSpellManager
+          campaignId={effectiveCampaignId}
+          isGM={role === 'gm'}
+          open={v3SpellManagerOpen}
+          onClose={() => setV3SpellManagerOpen(false)}
+        />
+      )}
       
       {/* Incognito Mode Indicator Badge */}
       {isIncognitoMode && isAdmin && (
@@ -11104,6 +11115,27 @@ export default function Campaign() {
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>My Library</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {role === 'gm' && campaignSystemSlug === 'aa-v3' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setV3SpellManagerOpen(true)}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${v3SpellManagerOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-crafted-spells"
+                  >
+                    <Wand2 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Crafted Spells</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

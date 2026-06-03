@@ -583,3 +583,250 @@ export function V3SpellAuthoringListener({
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// GM crafted-spell manager — lets a GM review every crafted spell already in
+// their campaign and re-edit the name / description / image after the fact.
+// Canonical/approved spells are admin-governed and shown read-only here.
+// ---------------------------------------------------------------------------
+const V3_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  awaiting_gm: { label: "Awaiting GM", className: "bg-amber-900/40 text-amber-300 border border-amber-700" },
+  ready: { label: "Ready", className: "bg-blue-900/40 text-blue-300 border border-blue-700" },
+  approved: { label: "Approved", className: "bg-emerald-900/40 text-emerald-300 border border-emerald-700" },
+  rejected: { label: "Rejected", className: "bg-red-900/40 text-red-300 border border-red-700" },
+};
+
+export function V3GmSpellManager({
+  campaignId,
+  isGM,
+  open,
+  onClose,
+}: {
+  campaignId: string;
+  isGM: boolean;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [spells, setSpells] = useState<V3Spell[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<V3Spell | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const reload = useCallback(() => {
+    if (!campaignId || !isGM) return;
+    setLoading(true);
+    api
+      .getCampaignV3Spells(campaignId)
+      .then(setSpells)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [campaignId, isGM]);
+
+  useEffect(() => {
+    if (open) reload();
+  }, [open, reload]);
+
+  // Keep the list fresh while open as players craft / GMs author spells.
+  useEffect(() => {
+    if (!open || !isGM) return;
+    const unsubscribe = gameWs.onMessage((data: any) => {
+      if (data?.type === "v3_spell_authored" || data?.type === "v3_spell_request") {
+        reload();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [open, isGM, reload]);
+
+  const openEditor = (spell: V3Spell) => {
+    setEditing(spell);
+    setName(spell.name || "");
+    setDescription(spell.description || "");
+    setImage(spell.image || null);
+  };
+
+  const isLocked = (spell: V3Spell) => spell.isCanonical || spell.status === "approved";
+
+  const handleSave = async () => {
+    if (!editing || !name.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await api.authorV3Spell(editing.id, { name: name.trim(), description, image });
+      toast({ title: "Spell updated", description: `"${name.trim()}" was saved.` });
+      setEditing(null);
+      reload();
+    } catch (err: any) {
+      toast({
+        title: "Could not save",
+        description: err?.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!isGM) return null;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-v3-spell-manager">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-amber-400" />
+              Crafted Spells
+            </DialogTitle>
+            <DialogDescription>
+              Review and tweak the spells your players have crafted. Canonical spells are managed by admins.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loading ? (
+            <div className="py-10 text-center text-stone-400 text-sm" data-testid="text-spell-manager-loading">
+              <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+              Loading crafted spells…
+            </div>
+          ) : spells.length === 0 ? (
+            <div className="py-10 text-center text-stone-500" data-testid="text-spell-manager-empty">
+              <Sparkles className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No crafted spells in this campaign yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {spells.map((spell) => {
+                const locked = isLocked(spell);
+                const badge = V3_STATUS_BADGE[spell.status];
+                return (
+                  <div
+                    key={spell.id}
+                    className="rounded-lg border border-stone-700 bg-stone-900/60 p-3"
+                    data-testid={`spell-manager-row-${spell.id}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="h-12 w-12 shrink-0 rounded-lg border border-stone-700 bg-stone-800 overflow-hidden flex items-center justify-center">
+                        {spell.image ? (
+                          <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <Sparkles className="h-5 w-5 text-purple-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-semibold text-stone-100 truncate" data-testid={`text-spell-name-${spell.id}`}>
+                            {spell.name || <span className="italic text-stone-500">Unnamed spell</span>}
+                          </h4>
+                          {badge && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
+                          )}
+                          {spell.isCanonical && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-700">Canonical</span>
+                          )}
+                          {spell.flagged && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300 border border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Flagged</span>
+                          )}
+                        </div>
+                        {spell.composition && <div className="mt-1.5"><FormulaDisplay comp={spell.composition} /></div>}
+                        {spell.description && (
+                          <p className="text-xs text-stone-400 mt-1 line-clamp-2">{spell.description}</p>
+                        )}
+                        <p className="text-[10px] text-stone-500 mt-1">{spell.manaCost} mana · DC {spell.craftDc}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        disabled={locked}
+                        title={locked ? "Canonical spells can only be edited by an admin" : undefined}
+                        onClick={() => openEditor(spell)}
+                        data-testid={`button-edit-spell-${spell.id}`}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit form */}
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
+        <DialogContent className="max-w-lg" data-testid="dialog-edit-crafted-spell">
+          <DialogHeader>
+            <DialogTitle>Edit Crafted Spell</DialogTitle>
+            <DialogDescription>Update this spell's name, description, and profile image.</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-3">
+              {editing.composition && (
+                <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2">
+                  <FormulaDisplay comp={editing.composition} />
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowImageBrowser(true)}
+                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500 transition-colors"
+                  data-testid="button-edit-spell-image"
+                >
+                  {image ? (
+                    <img src={image} alt="Spell" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-6 w-6 text-stone-500" />
+                  )}
+                </button>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs text-stone-400">Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    data-testid="input-edit-spell-name"
+                  />
+                  <p className="text-[10px] text-stone-500">Click the box to set a profile image.</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Description</Label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                  data-testid="input-edit-spell-description"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={handleSave}
+              disabled={!name.trim() || submitting}
+              className="bg-amber-600 hover:bg-amber-700 text-stone-950"
+              data-testid="button-save-crafted-spell"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ImageBrowser
+        open={showImageBrowser}
+        onOpenChange={setShowImageBrowser}
+        onSelect={(url) => setImage(url)}
+        saveToFile
+        title="Select Spell Image"
+      />
+    </>
+  );
+}
