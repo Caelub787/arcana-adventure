@@ -473,6 +473,92 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     expect(h.storage.updateCharacter).not.toHaveBeenCalled();
     expect(h.storage.createV3Spell).not.toHaveBeenCalled();
   });
+
+  // Spellbook ownership/type guards: a player must only be able to drop a
+  // crafted spell into a spellbook that exists, is actually a spellbook, and
+  // belongs to the crafting character. All guards run BEFORE any resource
+  // deduction or spell creation, so a rejected request consumes nothing.
+  it("returns 404 and consumes nothing when the spellbook item is missing", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    h.storage.getItem.mockResolvedValue(undefined);
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition, spellbookItemId: "missing-book" },
+    });
+    expect(res.status).toBe(404);
+
+    expect(h.storage.getItem).toHaveBeenCalledWith("missing-book");
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 and consumes nothing when the target item is not a spellbook", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    h.storage.getItem.mockResolvedValue({
+      id: "sword1",
+      itemType: "weapon",
+      characterId,
+    });
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition, spellbookItemId: "sword1" },
+    });
+    expect(res.status).toBe(400);
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 and consumes nothing when the spellbook belongs to another character", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    h.storage.getItem.mockResolvedValue({
+      id: "book-other",
+      itemType: "spellbook",
+      characterId: "someoneElse",
+    });
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition, spellbookItemId: "book-other" },
+    });
+    expect(res.status).toBe(403);
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("succeeds and stamps the spellbookItemId when the character owns the spellbook", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    h.storage.getItem.mockResolvedValue({
+      id: "my-book",
+      itemType: "spellbook",
+      characterId,
+    });
+    stubD20(0.999); // d20 = 20 -> success
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition, spellbookItemId: "my-book" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // The spell row is created and carries the owned spellbook id.
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
+    expect(h.storage.createV3Spell.mock.calls[0][0].spellbookItemId).toBe("my-book");
+    // Resources are consumed exactly once on success.
+    expect(h.storage.updateCharacter).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("GET /api/v3/spells/canonical/:hash — admin only", () => {
