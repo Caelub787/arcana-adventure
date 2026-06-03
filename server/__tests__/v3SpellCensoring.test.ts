@@ -454,6 +454,42 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     expect(h.storage.createV3Spell).not.toHaveBeenCalled();
   });
 
+  it("returns 404 and consumes nothing when the character does not exist", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    // The access check resolves the character via storage.getCharacter; an
+    // unknown id yields no character -> 404 before any work happens.
+    h.storage.getCharacter.mockResolvedValue(undefined);
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(404);
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 and consumes nothing when the requester can't control the character", async () => {
+    // setupCharacter wires an owner-controlled character; craft as someone who
+    // is not the owner, not a GM, not an admin, and not a campaign member.
+    const { characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    const intruder = "intruder1";
+    stubD20(0.999);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user: intruder,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(403);
+
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
   it("rejects crafting in a non-aa-v3 campaign", async () => {
     const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
     h.storage.getCampaign.mockResolvedValue({
