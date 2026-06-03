@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import { SpeciesDialog } from '@arcana/library-dialogs';
+import { V3SystemSpeciesDialog } from '@/components/admin/V3SystemSpeciesDialog';
 import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
@@ -1297,25 +1298,44 @@ export default function AdminSettings() {
           />
         )}
 
-        <SpeciesDialog
-          open={showAddSpecies}
-          onOpenChange={setShowAddSpecies}
-          mode="create"
-          host={libraryDialogsHost}
-          campaignSystem={systemSlug}
-          onSaved={() => setShowAddSpecies(false)}
-        />
-
-        {editingSpecies && (
+        {systemSlug === 'aa-v3' ? (
+          <V3SystemSpeciesDialog
+            open={showAddSpecies}
+            onOpenChange={setShowAddSpecies}
+            systemName={selectedSystem}
+            onSaved={() => setShowAddSpecies(false)}
+          />
+        ) : (
           <SpeciesDialog
-            open={!!editingSpecies}
-            onOpenChange={(open) => { if (!open) setEditingSpecies(null); }}
-            mode="edit"
-            initialValue={toSpeciesDraft(editingSpecies)}
+            open={showAddSpecies}
+            onOpenChange={setShowAddSpecies}
+            mode="create"
             host={libraryDialogsHost}
             campaignSystem={systemSlug}
-            onSaved={() => setEditingSpecies(null)}
+            onSaved={() => setShowAddSpecies(false)}
           />
+        )}
+
+        {editingSpecies && (
+          systemSlug === 'aa-v3' ? (
+            <V3SystemSpeciesDialog
+              open={!!editingSpecies}
+              onOpenChange={(open) => { if (!open) setEditingSpecies(null); }}
+              systemName={selectedSystem}
+              initialData={editingSpecies}
+              onSaved={() => setEditingSpecies(null)}
+            />
+          ) : (
+            <SpeciesDialog
+              open={!!editingSpecies}
+              onOpenChange={(open) => { if (!open) setEditingSpecies(null); }}
+              mode="edit"
+              initialValue={toSpeciesDraft(editingSpecies)}
+              host={libraryDialogsHost}
+              campaignSystem={systemSlug}
+              onSaved={() => setEditingSpecies(null)}
+            />
+          )
         )}
         {libraryDialogsImageBrowser}
 

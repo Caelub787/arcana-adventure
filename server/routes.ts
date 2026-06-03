@@ -92,6 +92,139 @@ async function migrateEntityTypesToTags() {
   }
 }
 
+// AA V3: resolve a species by name (campaign-local first, then system aa-v3
+// library) and apply its defaults to a freshly created character — attribute
+// bonuses added on top of the base attribute values, plus default custom
+// skills + traits tagged with `fromSpeciesId` so a later species change can
+// wipe + re-apply only the species-sourced entries.
+const V3_ATTR_COLS = ['might', 'finesse', 'constitution', 'will', 'anemos', 'intelligence'] as const;
+
+async function applyV3SpeciesDefaults(character: any, campaignId: string, raceName: string) {
+  const campaignList = await storage.getCampaignSpecies(campaignId);
+  let species: any = campaignList.find(s => s.name === raceName);
+  if (!species) {
+    // System (admin/personal) V3 species are stored with the display systemName 'A.A. V3'.
+    species = await storage.getSpeciesByName(raceName, 'A.A. V3');
+  }
+  if (!species) return undefined;
+
+  const speciesId: string = species.id;
+
+  // Attribute bonuses: add on top of the character's current attribute values.
+  const bonuses = (species.attributeBonuses || {}) as Record<string, number>;
+  const attrUpdate: Record<string, number> = {};
+  for (const col of V3_ATTR_COLS) {
+    const bonus = Number(bonuses[col] || 0);
+    if (bonus !== 0) {
+      attrUpdate[col] = (Number(character[col]) || 0) + bonus;
+    }
+  }
+
+  let updated = character;
+  if (Object.keys(attrUpdate).length > 0) {
+    updated = (await storage.updateCharacter(character.id, attrUpdate as any)) || character;
+  }
+
+  // Default custom skills.
+  const defaultSkills = (species.defaultCustomSkills || []) as any[];
+  for (const sk of defaultSkills) {
+    if (!sk?.name) continue;
+    try {
+      await storage.addCharacterCustomSkill({
+        characterId: character.id,
+        name: sk.name,
+        parentAttribute: sk.parentAttribute || 'might',
+        value: Number(sk.value) || 0,
+        fromSpeciesId: speciesId,
+      } as any);
+    } catch (e: any) {
+      console.error("[V3 Species] skill insert failed:", sk?.name, e?.message);
+    }
+  }
+
+  // Default traits.
+  const defaultTraits = (species.defaultTraits || []) as any[];
+  for (const tr of defaultTraits) {
+    if (!tr?.name) continue;
+    const usesPerLongRest = Number(tr.usesPerLongRest) || 1;
+    try {
+      await storage.addCharacterTrait({
+        characterId: character.id,
+        name: tr.name,
+        description: tr.description || null,
+        parentAttribute: tr.parentAttribute || 'will',
+        usesPerLongRest,
+        currentUses: usesPerLongRest,
+        fromSpeciesId: speciesId,
+      } as any);
+    } catch (e: any) {
+      console.error("[V3 Species] trait insert failed:", tr?.name, e?.message);
+    }
+  }
+
+  return updated;
+}
+
+// On a V3 species change: revert the OLD species' attribute bonuses, delete the
+// custom skills + traits it sourced (player-added entries have no fromSpeciesId
+// and are preserved), then apply the new species' defaults.
+async function reapplyV3SpeciesOnChange(character: any, campaignId: string, oldRace: string | null | undefined, newRace: string) {
+  // Resolve old species (campaign first, then system A.A. V3).
+  if (oldRace && oldRace !== newRace) {
+    const campaignList = await storage.getCampaignSpecies(campaignId);
+    let oldSpecies: any = campaignList.find(s => s.name === oldRace);
+    if (!oldSpecies) {
+      oldSpecies = await storage.getSpeciesByName(oldRace, 'A.A. V3');
+    }
+    if (oldSpecies) {
+      const oldId: string = oldSpecies.id;
+
+      // Revert attribute bonuses.
+      const bonuses = (oldSpecies.attributeBonuses || {}) as Record<string, number>;
+      const attrUpdate: Record<string, number> = {};
+      for (const col of V3_ATTR_COLS) {
+        const bonus = Number(bonuses[col] || 0);
+        if (bonus !== 0) {
+          attrUpdate[col] = (Number(character[col]) || 0) - bonus;
+        }
+      }
+      if (Object.keys(attrUpdate).length > 0) {
+        character = (await storage.updateCharacter(character.id, attrUpdate as any)) || character;
+      }
+
+      // Delete species-sourced custom skills.
+      try {
+        const skills = await storage.getCharacterCustomSkills(character.id);
+        for (const sk of skills) {
+          if ((sk as any).fromSpeciesId === oldId) {
+            await storage.removeCharacterCustomSkill(sk.id);
+          }
+        }
+      } catch (e: any) {
+        console.error("[V3 Species] old skill cleanup failed:", e?.message);
+      }
+
+      // Delete species-sourced traits.
+      try {
+        const traits = await storage.getCharacterTraits(character.id);
+        for (const tr of traits) {
+          if ((tr as any).fromSpeciesId === oldId) {
+            await storage.removeCharacterTrait(tr.id);
+          }
+        }
+      } catch (e: any) {
+        console.error("[V3 Species] old trait cleanup failed:", e?.message);
+      }
+    }
+  }
+
+  // Always return the freshest persisted character: if the new species can't be
+  // resolved, applyV3SpeciesDefaults returns undefined, but the old-species revert
+  // above may already have mutated `character`, so fall back to it (never undefined).
+  const applied = await applyV3SpeciesDefaults(character, campaignId, newRace);
+  return applied || character;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -3501,9 +3634,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const expectedTotal = level + 2 * Math.floor(level / 3);
         charData.classSkillPoints = expectedTotal;
       }
-      const character = await storage.createCharacter(charData);
+      let character = await storage.createCharacter(charData);
       console.log("[Character Create] Success:", character.id);
-      
+
+      // AA V3: apply species defaults (attribute bonuses + default custom skills + traits).
+      if (campaign?.system === 'aa-v3' && charData.race) {
+        try {
+          const updated = await applyV3SpeciesDefaults(character, req.params.campaignId, charData.race);
+          if (updated) character = updated;
+        } catch (e: any) {
+          console.error("[Character Create] V3 species defaults failed:", e?.message);
+        }
+      }
+
       broadcastToCampaign(req.params.campaignId, {
         type: "character_created",
         character
@@ -3690,9 +3833,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Detect a V3 species change so we can revert old + apply new species defaults after save.
+      const oldRaceForV3 = charData?.race;
+      const isV3RaceChange = access.campaign?.system === 'aa-v3'
+        && typeof updates.race === 'string'
+        && updates.race !== oldRaceForV3;
+
       console.log('[Character Update] Saving updates for character', req.params.id, ':', req.body);
-      const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
+      let updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
       console.log('[Character Update] Saved successfully:', updatedCharacter);
+
+      // V3 species change: swap species-sourced attribute bonuses, custom skills, and traits.
+      if (isV3RaceChange && updatedCharacter?.campaignId) {
+        try {
+          const reapplied = await reapplyV3SpeciesOnChange(updatedCharacter, updatedCharacter.campaignId, oldRaceForV3, updates.race);
+          if (reapplied) updatedCharacter = reapplied;
+        } catch (e: any) {
+          console.error('[V3 Species] re-apply on species change failed:', e?.message);
+        }
+      }
       
       // Broadcast character update to all campaign members
       if (updatedCharacter?.campaignId) {

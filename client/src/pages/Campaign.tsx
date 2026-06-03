@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { V3_ATTRIBUTES } from "@shared/v3";
+import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -430,6 +432,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     visionType: string;
     dayVisionDistance: number | string;
     nightVisionDistance: number | string;
+    attributeBonuses: Record<string, number>;
+    defaultCustomSkills: { name: string; description?: string; parentAttribute: string; value: number }[];
+    defaultTraits: { name: string; description?: string; parentAttribute: string; usesPerLongRest: number }[];
   }>({
     name: '',
     description: '',
@@ -453,6 +458,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     visionType: 'normal',
     dayVisionDistance: 120,
     nightVisionDistance: 60,
+    attributeBonuses: {},
+    defaultCustomSkills: [],
+    defaultTraits: [],
   });
   
   const { toast } = useToast();
@@ -484,6 +492,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         visionType: (initialData as any)?.visionType || 'normal',
         dayVisionDistance: (initialData as any)?.dayVisionDistance ?? 120,
         nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
+        attributeBonuses: (initialData as any)?.attributeBonuses || {},
+        defaultCustomSkills: (initialData as any)?.defaultCustomSkills || [],
+        defaultTraits: (initialData as any)?.defaultTraits || [],
       });
     }
   }, [open, initialData]);
@@ -840,14 +851,15 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
+              {campaignSystem !== 'aa-v3' && (
               <div className="col-span-2">
-                <Label>{(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') ? 'Skill Tree' : 'Feat Tree'}</Label>
+                <Label>{campaignSystem === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
                 <Select 
                   value={formData.featTree || "_none"} 
                   onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
-                    <SelectValue placeholder={(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') ? 'Select a skill tree...' : 'Select a feat tree...'} />
+                    <SelectValue placeholder={campaignSystem === 'aa-v2' ? 'Select a skill tree...' : 'Select a feat tree...'} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">None</SelectItem>
@@ -859,6 +871,18 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   </SelectContent>
                 </Select>
               </div>
+              )}
+
+              {campaignSystem === 'aa-v3' && (
+                <div className="col-span-2 space-y-4 border-t border-stone-700 pt-4">
+                  <V3SpeciesDefaultsEditor
+                    attributeBonuses={formData.attributeBonuses}
+                    defaultCustomSkills={formData.defaultCustomSkills}
+                    defaultTraits={formData.defaultTraits}
+                    onChange={(patch) => setFormData({ ...formData, ...patch })}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

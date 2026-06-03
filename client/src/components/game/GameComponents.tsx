@@ -15665,24 +15665,24 @@ function V3AttrsAndSkillsTab({
         <p className="text-xs text-stone-500">
           Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
         </p>
-        {V3_ATTRIBUTES.map(attr => {
-          const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
-          const dieSides = attrValueToDieSides(attrVal);
-          const dieType = `d${dieSides}`;
-          const skillsForAttr = V3_SKILLS.filter(s => s.parent === attr.key);
-          return (
-            <Card key={attr.key} className="bg-stone-900 border-stone-600" data-testid={`card-v3-attr-${attr.key}`}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    className="text-amber-500 font-semibold text-left flex-1 hover:underline disabled:no-underline disabled:cursor-default"
-                    disabled={editing}
-                    onClick={() => !editing && handleRoll(attr.name, 0, 0, 'none', false, dieType)}
-                    data-testid={`button-roll-v3-attr-${attr.key}`}
-                  >
-                    {attr.name} <span className="text-xs text-stone-400">({dieType})</span>
-                  </button>
+
+        {/* Attributes grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {V3_ATTRIBUTES.map(attr => {
+            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+            const dieType = `d${attrValueToDieSides(attrVal)}`;
+            return (
+              <Card
+                key={attr.key}
+                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors'}`}
+                onClick={() => !editing && handleRoll(attr.name, 0, 0, 'none', false, dieType)}
+                data-testid={`card-v3-attr-${attr.key}`}
+              >
+                <CardContent className="p-3 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <Label className="text-xs text-stone-400">{attr.name}</Label>
+                    <span className="text-[10px] text-stone-500">({attr.abbr})</span>
+                  </div>
                   {editing ? (
                     <Input
                       type="number"
@@ -15693,63 +15693,79 @@ function V3AttrsAndSkillsTab({
                         const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
                         setAttrData({ ...attrData, [attr.key]: v });
                       }}
-                      className="w-16 h-8 text-center bg-stone-800 border-amber-700 text-amber-500"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
                       data-testid={`input-v3-attr-${attr.key}`}
                     />
                   ) : (
-                    <span className="text-2xl font-bold text-amber-500" data-testid={`text-v3-attr-${attr.key}`}>
-                      {attrVal >= 0 ? `+${attrVal}` : attrVal}
+                    <div className="mt-1" data-testid={`text-v3-attr-${attr.key}`}>
+                      <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
+                      <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Skills — single alphabetical list across all attributes */}
+        <Card className="bg-stone-900 border-stone-600" data-testid="card-v3-skills">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-green-400 text-sm font-medium flex items-center gap-2">
+              <Zap className="h-4 w-4" /> Skills
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-2 space-y-1">
+            {[...V3_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
+              const parent = V3_ATTRIBUTES.find(a => a.key === skill.parent);
+              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
+              const dieType = `d${attrValueToDieSides(attrVal)}`;
+              const skillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+              return (
+                <div
+                  key={skill.key}
+                  className="flex items-start justify-between gap-2 py-1 px-2 rounded hover:bg-stone-800"
+                  data-testid={`row-v3-skill-${skill.key}`}
+                >
+                  <button
+                    type="button"
+                    className="flex-1 text-left disabled:cursor-default group"
+                    disabled={editing}
+                    title={skill.description}
+                    onClick={() => !editing && handleRoll(skill.name, skillVal, 0, 'none', true, dieType)}
+                    data-testid={`button-roll-v3-skill-${skill.key}`}
+                  >
+                    <div className="text-xs">
+                      <span className="text-stone-200 group-hover:text-amber-300 font-medium">{skill.name}</span>
+                      <span className="text-stone-500 ml-1">({parent?.abbr})</span>
+                      <span className="text-amber-400/70 ml-1.5">{dieType}</span>
+                    </div>
+                    <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
+                  </button>
+                  {editing ? (
+                    <Input
+                      type="number"
+                      min={-2}
+                      max={5}
+                      value={skillData[skill.key] ?? 0}
+                      onChange={e => {
+                        const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
+                        setSkillData({ ...skillData, [skill.key]: v });
+                      }}
+                      className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs shrink-0"
+                      data-testid={`input-v3-skill-${skill.key}`}
+                    />
+                  ) : (
+                    <span className="text-amber-400 text-xs font-semibold w-10 text-right shrink-0" data-testid={`text-v3-skill-${skill.key}`}>
+                      {skillVal >= 0 ? `+${skillVal}` : skillVal}
                     </span>
                   )}
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0 pb-2 space-y-1">
-                {skillsForAttr.length === 0 ? (
-                  <div className="text-[10px] text-stone-500 italic px-2">No fixed skills under this attribute.</div>
-                ) : skillsForAttr.map(skill => {
-                  const skillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
-                  return (
-                    <div
-                      key={skill.key}
-                      className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-stone-800"
-                      data-testid={`row-v3-skill-${skill.key}`}
-                    >
-                      <button
-                        type="button"
-                        className="flex-1 text-left text-xs disabled:cursor-default group"
-                        disabled={editing}
-                        title={skill.description}
-                        onClick={() => !editing && handleRoll(skill.name, skillVal, 0, 'none', true, dieType)}
-                        data-testid={`button-roll-v3-skill-${skill.key}`}
-                      >
-                        <span className="text-stone-200 group-hover:text-amber-300">{skill.name}</span>
-                        <span className="text-stone-500 ml-1.5 text-[10px]">— {skill.description}</span>
-                      </button>
-                      {editing ? (
-                        <Input
-                          type="number"
-                          min={-2}
-                          max={5}
-                          value={skillData[skill.key] ?? 0}
-                          onChange={e => {
-                            const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
-                            setSkillData({ ...skillData, [skill.key]: v });
-                          }}
-                          className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
-                          data-testid={`input-v3-skill-${skill.key}`}
-                        />
-                      ) : (
-                        <span className="text-amber-400 text-xs font-semibold w-10 text-right" data-testid={`text-v3-skill-${skill.key}`}>
-                          {skillVal >= 0 ? `+${skillVal}` : skillVal}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          );
-        })}
+              );
+            })}
+          </CardContent>
+        </Card>
         {editing && (
           <div className="flex gap-2 pt-2 border-t border-stone-700">
             <Button size="sm" onClick={save} data-testid="button-save-v3-attrs">Save Changes</Button>
