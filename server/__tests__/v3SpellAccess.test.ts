@@ -40,6 +40,7 @@ const h = vi.hoisted(() => {
     getCanonicalV3SpellByHash: fn(),
     getV3SpellsForSpellbook: fn(),
     getV3SpellsForCharacter: fn(),
+    deleteV3Spell: fn(),
     listV3Spells: fn(),
     deleteExpiredSpectatorTokens: fn(),
     unbanUser: fn(),
@@ -220,6 +221,158 @@ describe("GET /api/v3/spellbooks/:itemId/spells — ownerless access control", (
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body[0].name).toBe("*darn* Bolt");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Removing a crafted spell from its spellbook must check who's allowed to do
+// it: a character-owned spellbook requires "edit" access to that character; an
+// ownerless library/template spellbook requires creator/GM/admin. Neither path
+// should let an unrelated player delete someone else's spells.
+// ---------------------------------------------------------------------------
+describe("POST /api/v3/spells/:id/remove-from-spellbook — access control", () => {
+  const spellId = "spellX";
+  const characterId = "charR";
+  const owner = "ownerR";
+  const campaignId = "campR";
+  const gm = "gmR";
+  const itemId = "bookR";
+
+  it("returns 401 for an unauthenticated request", async () => {
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, { method: "POST" });
+    expect(res.status).toBe(401);
+    expect(h.storage.deleteV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the spell does not exist", async () => {
+    h.storage.getV3Spell.mockResolvedValue(undefined);
+    const res = await api(`/api/v3/spells/missing/remove-from-spellbook`, {
+      method: "POST",
+      user: owner,
+    });
+    expect(res.status).toBe(404);
+    expect(h.storage.deleteV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the spell is not in a spellbook", async () => {
+    h.storage.getV3Spell.mockResolvedValue({ id: spellId, spellbookItemId: null });
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: owner,
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.deleteV3Spell).not.toHaveBeenCalled();
+  });
+
+  // --- Character-owned spellbook: requires "edit" access to the character. ---
+  function mockCharacterOwnedBook() {
+    h.storage.getV3Spell.mockResolvedValue({ id: spellId, spellbookItemId: itemId });
+    h.storage.getItem.mockResolvedValue({
+      id: itemId,
+      itemType: "spellbook",
+      characterId,
+    });
+    h.storage.getCharacter.mockResolvedValue({
+      id: characterId,
+      userId: owner,
+      campaignId,
+      isTemplate: false,
+    });
+    h.storage.getCampaign.mockResolvedValue({
+      id: campaignId,
+      gmUserId: gm,
+      system: "aa-v3",
+      is18Plus: false,
+    });
+  }
+
+  it("returns 403 for an unrelated user on a character-owned spellbook", async () => {
+    mockCharacterOwnedBook();
+    h.storage.getCampaignMembership.mockResolvedValue(null);
+    h.storage.getCampaignMembers.mockResolvedValue([]); // intruder is not a member
+    h.storage.getCharacterPermission.mockResolvedValue(undefined);
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: "intruder",
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.deleteV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 and deletes for an authorized editor (the character owner)", async () => {
+    mockCharacterOwnedBook();
+    h.storage.getCampaignMembership.mockResolvedValue({ role: "player" });
+    h.storage.getCampaignMembers.mockResolvedValue([{ userId: owner, role: "player" }]);
+    h.storage.deleteV3Spell.mockResolvedValue(undefined);
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: owner,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(h.storage.deleteV3Spell).toHaveBeenCalledWith(spellId);
+  });
+
+  // --- Ownerless library/template spellbook: requires creator/GM/admin. ---
+  function mockOwnerlessBook() {
+    h.storage.getV3Spell.mockResolvedValue({ id: spellId, spellbookItemId: itemId });
+    h.storage.getItem.mockResolvedValue({
+      id: itemId,
+      itemType: "spellbook",
+      characterId: null,
+      createdByUserId: owner,
+      campaignId,
+    });
+    h.storage.getCampaign.mockResolvedValue({
+      id: campaignId,
+      gmUserId: gm,
+      system: "aa-v3",
+      is18Plus: false,
+    });
+    h.storage.getCampaignMembership.mockResolvedValue(null);
+    h.storage.deleteV3Spell.mockResolvedValue(undefined);
+  }
+
+  it("returns 403 for an unrelated user on an ownerless spellbook", async () => {
+    mockOwnerlessBook();
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: "stranger",
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.deleteV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 and deletes for the creator of an ownerless spellbook", async () => {
+    mockOwnerlessBook();
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: owner,
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.deleteV3Spell).toHaveBeenCalledWith(spellId);
+  });
+
+  it("returns 200 and deletes for the campaign GM of an ownerless spellbook", async () => {
+    mockOwnerlessBook();
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: gm,
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.deleteV3Spell).toHaveBeenCalledWith(spellId);
+  });
+
+  it("returns 200 and deletes for an admin on an ownerless spellbook", async () => {
+    mockOwnerlessBook();
+    h.adminUserIds.add("admin1");
+    const res = await api(`/api/v3/spells/${spellId}/remove-from-spellbook`, {
+      method: "POST",
+      user: "admin1",
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.deleteV3Spell).toHaveBeenCalledWith(spellId);
   });
 });
 
