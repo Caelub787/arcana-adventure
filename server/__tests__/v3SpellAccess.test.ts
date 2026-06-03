@@ -757,3 +757,173 @@ describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => 
     expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Admin edit (rename / re-image / re-describe) of any recognized spell. This is
+// admin-only governance: unlike the GM author route, it MAY edit a
+// canonical/approved row. It rejects non-admins, 404s unknown spells, refuses a
+// blank name, trims the name, preserves description/image when omitted, and
+// recomputes the flagged value from the new name.
+// ---------------------------------------------------------------------------
+describe("PATCH /api/admin/v3-spells/:id — admin edit governance", () => {
+  const spellId = "spellE";
+
+  function mockExistingSpell(overrides: Record<string, any> = {}) {
+    h.storage.getV3Spell.mockResolvedValue({
+      id: spellId,
+      name: "Old Name",
+      description: "old desc",
+      image: "old.png",
+      compositionHash: "hashEdit",
+      isCanonical: false,
+      status: "ready",
+      flagged: false,
+      ...overrides,
+    });
+    h.storage.updateV3Spell.mockImplementation(async (id: string, patch: any) => ({
+      id,
+      ...patch,
+    }));
+  }
+
+  it("rejects an unauthenticated request with 401", async () => {
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      body: { name: "New Name" },
+    });
+    expect(res.status).toBe(401);
+    expect(h.storage.getV3Spell).not.toHaveBeenCalled();
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-admin with 403", async () => {
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "player1",
+      body: { name: "New Name" },
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the spell does not exist", async () => {
+    h.adminUserIds.add("admin1");
+    h.storage.getV3Spell.mockResolvedValue(undefined);
+    const res = await api(`/api/admin/v3-spells/missing`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "New Name" },
+    });
+    expect(res.status).toBe(404);
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a blank (whitespace-only) name", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell();
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "   " },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("trims the name and writes the new description and image", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell();
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "  Frost Lance  ", description: "a shard of ice", image: "frost.png" },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.updateV3Spell).toHaveBeenCalledWith(spellId, {
+      name: "Frost Lance",
+      description: "a shard of ice",
+      image: "frost.png",
+      flagged: false,
+    });
+    const body = await res.json();
+    expect(body.name).toBe("Frost Lance");
+  });
+
+  it("preserves the existing description and image when those fields are omitted", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell();
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "Renamed Only" },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.updateV3Spell).toHaveBeenCalledWith(spellId, {
+      name: "Renamed Only",
+      description: "old desc",
+      image: "old.png",
+      flagged: false,
+    });
+  });
+
+  it("clears the image when an empty string is supplied", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell();
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "No Image", image: "" },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.updateV3Spell).toHaveBeenCalledWith(spellId, {
+      name: "No Image",
+      description: "old desc",
+      image: null,
+      flagged: false,
+    });
+  });
+
+  it("recomputes the flagged value from the new name", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell({ flagged: false });
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "Damn Bolt" },
+    });
+    expect(res.status).toBe(200);
+    const call = h.storage.updateV3Spell.mock.calls.at(-1);
+    expect(call?.[1].name).toBe("Damn Bolt");
+    expect(call?.[1].flagged).toBe(true);
+  });
+
+  it("clears a stale flagged value when the new name is clean", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell({ name: "Damn Bolt", flagged: true });
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "Holy Bolt" },
+    });
+    expect(res.status).toBe(200);
+    const call = h.storage.updateV3Spell.mock.calls.at(-1);
+    expect(call?.[1].flagged).toBe(false);
+  });
+
+  it("CAN edit a canonical/approved row (unlike the GM author route)", async () => {
+    h.adminUserIds.add("admin1");
+    mockExistingSpell({ isCanonical: true, status: "approved", name: "Fireball" });
+    const res = await api(`/api/admin/v3-spells/${spellId}`, {
+      method: "PATCH",
+      user: "admin1",
+      body: { name: "Greater Fireball", description: "bigger boom" },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.updateV3Spell).toHaveBeenCalledWith(spellId, {
+      name: "Greater Fireball",
+      description: "bigger boom",
+      image: "old.png",
+      flagged: false,
+    });
+  });
+});
