@@ -77,6 +77,7 @@ import {
   type CraftRecipeIngredient, type InsertCraftRecipeIngredient,
   type CraftRecipeOutcome, type InsertCraftRecipeOutcome,
   type V3Spell, type InsertV3Spell, v3Spells,
+  type V3ElementRequirement, type InsertV3ElementRequirement, v3ElementRequirements,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
@@ -387,6 +388,12 @@ export interface IStorage {
   getV3SpellsForSpellbook(spellbookItemId: string): Promise<V3Spell[]>;
   updateV3Spell(id: string, data: Partial<InsertV3Spell>): Promise<V3Spell | undefined>;
   deleteV3Spell(id: string): Promise<void>;
+
+  // AA V3 element craft requirement operations
+  getV3ElementRequirements(): Promise<V3ElementRequirement[]>;
+  createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement>;
+  updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined>;
+  deleteV3ElementRequirement(id: string): Promise<void>;
 
   // System Skill operations (admin-defined custom skills)
   getSystemSkills(system?: string): Promise<SystemSkill[]>;
@@ -3071,6 +3078,30 @@ export class DatabaseStorage implements IStorage {
     await db.update(systemSpells)
       .set({ isArchived: true })
       .where(and(...conditions));
+  }
+
+  // AA V3 element craft requirement operations
+  async getV3ElementRequirements(): Promise<V3ElementRequirement[]> {
+    return await db.select()
+      .from(v3ElementRequirements)
+      .orderBy(v3ElementRequirements.element, v3ElementRequirements.createdAt);
+  }
+
+  async createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement> {
+    const [created] = await db.insert(v3ElementRequirements).values(data).returning();
+    return created;
+  }
+
+  async updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined> {
+    const [updated] = await db.update(v3ElementRequirements)
+      .set(data)
+      .where(eq(v3ElementRequirements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteV3ElementRequirement(id: string): Promise<void> {
+    await db.delete(v3ElementRequirements).where(eq(v3ElementRequirements.id, id));
   }
 
   // System Skill operations (admin-defined custom skills)

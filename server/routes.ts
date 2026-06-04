@@ -6233,6 +6233,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No spell creation tokens remaining", reason: "tokens" });
       }
 
+      // Element eligibility (AA V3 element craft requirements). Re-validate that
+      // the crafting character may use every element in the composition; collect
+      // any consumable items to charge on a SUCCESSFUL craft. Done before the
+      // roll so an ineligible craft never wastes mana/token.
+      const usedElementKeys = Array.from(new Set([
+        composition.core,
+        ...(composition.secondaries || []).map((s: any) => s.element),
+      ].filter(Boolean)));
+      const elementConditions = await storage.getV3ElementRequirements();
+      const conditionsByElement: Record<string, any[]> = {};
+      for (const r of elementConditions) (conditionsByElement[r.element] ||= []).push(r);
+      const charKnowledge = await storage.getCharacterCustomSkills(character.id);
+      const charInventory = await storage.getItemsByCharacter(character.id);
+      const eligibilityInput = {
+        knowledgeNames: charKnowledge.map((k) => k.name),
+        items: charInventory.map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
+      };
+      // Inventory-aware allocation: when an element's ONLY satisfying path is a
+      // consumable item, reserve one available unit. This makes eligibility
+      // correct across the whole composition — two distinct elements that both
+      // depend on the same single consumable can't both be satisfied by one
+      // unit. Knowledge / non-consumable-item paths reserve nothing.
+      const remainingQty = new Map<string, number>();
+      for (const it of charInventory as any[]) remainingQty.set(it.id, it.quantity ?? 1);
+      const reservedItemRowIds: string[] = [];
+      const rejectLocked = (key: string, requirements: string[]) => {
+        const elName = v3spells.V3_ELEMENT_MAP[key]?.name ?? key;
+        return res.status(403).json({
+          error: `You cannot use ${elName} yet`,
+          reason: "element_locked",
+          element: key,
+          requirements,
+        });
+      };
+      for (const key of usedElementKeys) {
+        const result = v3spells.evaluateV3ElementEligibility(conditionsByElement[key], eligibilityInput);
+        if (!result.usable) {
+          return rejectLocked(key, result.requirements);
+        }
+        if (result.consumeItem) {
+          const want = result.consumeItem;
+          const match = (charInventory as any[]).find((it) => {
+            if ((remainingQty.get(it.id) ?? 0) <= 0) return false;
+            if (want.itemId && it.templateItemId && it.templateItemId === want.itemId) return true;
+            if (want.name && it.name && it.name.trim().toLowerCase() === (want.name || "").trim().toLowerCase()) return true;
+            return false;
+          });
+          if (!match) {
+            // The consumable was already reserved by another element — no unit
+            // remains, so this element is effectively locked for this craft.
+            return rejectLocked(key, result.requirements);
+          }
+          remainingQty.set(match.id, (remainingQty.get(match.id) ?? 0) - 1);
+          reservedItemRowIds.push(match.id);
+        }
+      }
+
       // Roll the DC check: 1d20 + Anemos vs craftDc. DC 0 = automatic success.
       const anemos = character.anemos || 0;
       const d20 = Math.floor(Math.random() * 20) + 1;
@@ -6294,6 +6351,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mana: currentMana - manaCost,
         spellCreationTokens: currentTokens - 1,
       });
+
+      // Consume the inventory units reserved above (sole-path consumables). Done
+      // after resources are deducted (create-row-then-deduct ordering) so a
+      // failed insert wastes nothing. Reservations were validated against
+      // available quantity, so the per-row count never exceeds what's in stock.
+      if (reservedItemRowIds.length > 0) {
+        const consumeCount = new Map<string, number>();
+        for (const id of reservedItemRowIds) consumeCount.set(id, (consumeCount.get(id) ?? 0) + 1);
+        for (const [rowId, count] of Array.from(consumeCount.entries())) {
+          const match = (charInventory as any[]).find((it) => it.id === rowId);
+          if (!match) continue;
+          const qty = match.quantity ?? 1;
+          const newQty = qty - count;
+          if (newQty <= 0) {
+            await storage.deleteItem(rowId);
+          } else {
+            await storage.updateItem(rowId, { quantity: newQty } as any);
+          }
+        }
+      }
 
       if (campaign?.id) {
         broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
@@ -6665,6 +6742,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[V3 Spell Admin Delete] Error:", err?.message);
       res.status(500).json({ error: "Failed to delete spell" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // AA V3 element craft requirements (admin-configurable element unlock gating)
+  // ---------------------------------------------------------------------------
+  // Admin: list all element conditions.
+  app.get("/api/admin/v3-element-requirements", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await storage.getV3ElementRequirements();
+      res.json(rows);
+    } catch (err: any) {
+      console.error("[V3 Element Reqs List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load element requirements" });
+    }
+  });
+
+  // Admin: create a condition for an element.
+  app.post("/api/admin/v3-element-requirements", requireAdmin, async (req, res) => {
+    try {
+      const { element, conditionType, knowledgeName, itemId, itemName, consumed } = req.body || {};
+      if (!element || !v3spells.V3_ELEMENT_MAP[element]) {
+        return res.status(400).json({ error: "A valid element is required" });
+      }
+      if (conditionType !== "knowledge" && conditionType !== "item") {
+        return res.status(400).json({ error: "conditionType must be 'knowledge' or 'item'" });
+      }
+      if (conditionType === "knowledge" && !String(knowledgeName || "").trim()) {
+        return res.status(400).json({ error: "knowledgeName is required for a knowledge condition" });
+      }
+      if (conditionType === "item" && !itemId) {
+        return res.status(400).json({ error: "itemId is required for an item condition" });
+      }
+      const created = await storage.createV3ElementRequirement({
+        element,
+        conditionType,
+        knowledgeName: conditionType === "knowledge" ? String(knowledgeName).trim() : null,
+        itemId: conditionType === "item" ? itemId : null,
+        itemName: conditionType === "item" ? (itemName || null) : null,
+        consumed: conditionType === "item" ? !!consumed : false,
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[V3 Element Reqs Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create element requirement" });
+    }
+  });
+
+  // Admin: update a condition (e.g. toggle the consumed flag).
+  app.patch("/api/admin/v3-element-requirements/:id", requireAdmin, async (req, res) => {
+    try {
+      const { consumed, knowledgeName, itemName } = req.body || {};
+      const patch: any = {};
+      if (consumed !== undefined) patch.consumed = !!consumed;
+      if (knowledgeName !== undefined) patch.knowledgeName = knowledgeName;
+      if (itemName !== undefined) patch.itemName = itemName;
+      const updated = await storage.updateV3ElementRequirement(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Requirement not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Element Reqs Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update element requirement" });
+    }
+  });
+
+  // Admin: delete a condition.
+  app.delete("/api/admin/v3-element-requirements/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteV3ElementRequirement(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Element Reqs Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete element requirement" });
+    }
+  });
+
+  // Player-facing read: the crafter needs the global config to render locks.
+  app.get("/api/v3/element-requirements", requireAuth, async (_req, res) => {
+    try {
+      const rows = await storage.getV3ElementRequirements();
+      res.json(rows);
+    } catch (err: any) {
+      console.error("[V3 Element Reqs Read] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load element requirements" });
     }
   });
 

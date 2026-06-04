@@ -270,3 +270,91 @@ export function isValidV3Composition(comp: V3SpellComposition): boolean {
 }
 
 export type V3SpellStatus = "awaiting_gm" | "ready" | "approved" | "rejected";
+
+// ---------------------------------------------------------------------------
+// AA V3 element craft requirements (eligibility gating)
+// ---------------------------------------------------------------------------
+// A single OR'd unlock condition for an element. Meeting ANY one condition
+// unlocks the element; an element with no conditions is freely usable.
+export interface V3ElementCondition {
+  conditionType: "knowledge" | "item";
+  knowledgeName?: string | null; // for knowledge conditions
+  itemId?: string | null; // admin system item id (item conditions)
+  itemName?: string | null; // denormalized item name (display + fallback match)
+  consumed?: boolean | null; // item consumed on successful craft (item conditions)
+}
+
+export interface V3CharacterEligibilityInput {
+  knowledgeNames: string[]; // the crafting character's custom-skill (Knowledge) names
+  items: { templateItemId?: string | null; name?: string | null }[]; // inventory
+}
+
+export interface V3ElementEligibility {
+  usable: boolean;
+  // Human-readable requirement lines for locked display (one per condition).
+  requirements: string[];
+  // The item to consume on a successful craft — set only when the element is
+  // usable AND its only satisfied condition is a consumable item (so a free
+  // path, e.g. Knowledge or a non-consumable item, is always preferred).
+  consumeItem?: { itemId?: string | null; name?: string | null } | null;
+}
+
+/**
+ * Evaluate whether a character may use an element given its OR'd conditions.
+ * - No conditions => freely usable.
+ * - Prefers a non-consuming satisfaction (Knowledge / non-consumable item);
+ *   only charges a consumable item when that is the sole satisfying path.
+ */
+export function evaluateV3ElementEligibility(
+  conditions: V3ElementCondition[] | undefined | null,
+  input: V3CharacterEligibilityInput,
+): V3ElementEligibility {
+  if (!conditions || conditions.length === 0) {
+    return { usable: true, requirements: [] };
+  }
+
+  const knowledgeSet = new Set(
+    (input.knowledgeNames || []).map((n) => (n || "").trim().toLowerCase()).filter(Boolean),
+  );
+  const hasItem = (c: V3ElementCondition): boolean =>
+    (input.items || []).some((it) => {
+      if (c.itemId && it.templateItemId && it.templateItemId === c.itemId) return true;
+      if (
+        c.itemName &&
+        it.name &&
+        it.name.trim().toLowerCase() === c.itemName.trim().toLowerCase()
+      )
+        return true;
+      return false;
+    });
+
+  let usable = false;
+  let satisfiedNonConsuming = false;
+  let consumableCandidate: { itemId?: string | null; name?: string | null } | null = null;
+  const requirements: string[] = [];
+
+  for (const c of conditions) {
+    if (c.conditionType === "knowledge") {
+      const name = (c.knowledgeName || "").trim();
+      requirements.push(`Requires Knowledge: ${name || "?"}`);
+      if (name && knowledgeSet.has(name.toLowerCase())) {
+        usable = true;
+        satisfiedNonConsuming = true;
+      }
+    } else if (c.conditionType === "item") {
+      const label = (c.itemName || "item").trim();
+      requirements.push(`Requires item: ${label}${c.consumed ? " (consumed)" : ""}`);
+      if (hasItem(c)) {
+        usable = true;
+        if (c.consumed) {
+          if (!consumableCandidate) consumableCandidate = { itemId: c.itemId, name: c.itemName };
+        } else {
+          satisfiedNonConsuming = true;
+        }
+      }
+    }
+  }
+
+  const consumeItem = usable && !satisfiedNonConsuming ? consumableCandidate : null;
+  return { usable, requirements, consumeItem };
+}

@@ -51,6 +51,9 @@ const h = vi.hoisted(() => {
     getRollEntries: fn(),
     createRollEntry: fn(),
     createRollEntriesBulk: fn(),
+    getV3ElementRequirements: fn(),
+    getCharacterCustomSkills: fn(),
+    getItemsByCharacter: fn(),
     deleteExpiredSpectatorTokens: fn(),
     unbanUser: fn(),
   };
@@ -141,6 +144,11 @@ beforeEach(() => {
   h.storage.createRollEntriesBulk.mockResolvedValue([]);
   h.storage.getCampaignAuthoredV3SpellByHash.mockResolvedValue(undefined);
   h.storage.getCanonicalV3SpellByHash.mockResolvedValue(undefined);
+  // AA V3 element craft requirements: default to no requirements / empty
+  // knowledge & inventory so every element is freely usable.
+  h.storage.getV3ElementRequirements.mockResolvedValue([]);
+  h.storage.getCharacterCustomSkills.mockResolvedValue([]);
+  h.storage.getItemsByCharacter.mockResolvedValue([]);
 });
 
 function api(pathName: string, opts: { method?: string; user?: string; body?: any } = {}) {

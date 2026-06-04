@@ -2298,6 +2298,30 @@ export const insertV3SpellSchema = createInsertSchema(v3Spells, {
 export type InsertV3Spell = z.infer<typeof insertV3SpellSchema>;
 export type V3Spell = typeof v3Spells.$inferSelect;
 
+// AA V3 only: admin-configurable unlock conditions gating which of the 17 V3
+// elements a player may use when crafting a spell. Each row is one OR'd
+// condition for an element: a required Knowledge (custom skill, matched by name)
+// OR a required item (matched by template/name; optionally consumed on craft).
+// An element with zero rows is freely usable by everyone (current behavior).
+export const v3ElementRequirements = pgTable("v3_element_requirements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  element: text("element").notNull(), // one of the 17 V3 element keys
+  conditionType: text("condition_type").notNull(), // 'knowledge' | 'item'
+  knowledgeName: text("knowledge_name"), // for knowledge conditions (matched case-insensitively by name)
+  itemId: varchar("item_id").references((): any => items.id, { onDelete: "cascade" }), // admin system item id (item conditions)
+  itemName: text("item_name"), // denormalized item name for display + name fallback match
+  consumed: boolean("consumed").notNull().default(false), // item consumed on successful craft (item conditions only)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  elementIdx: index("v3_element_requirements_element_idx").on(t.element),
+}));
+export const insertV3ElementRequirementSchema = createInsertSchema(v3ElementRequirements).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertV3ElementRequirement = z.infer<typeof insertV3ElementRequirementSchema>;
+export type V3ElementRequirement = typeof v3ElementRequirements.$inferSelect;
+
 export const outboundWebhookJobs = pgTable("outbound_webhook_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   webhookId: varchar("webhook_id").references(() => outgoingWebhooks.id, { onDelete: "cascade" }).notNull(),

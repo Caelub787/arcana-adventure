@@ -2556,6 +2556,34 @@ class ApiClient {
     return this.request(`/admin/v3-spells/${spellId}`, { method: 'DELETE' });
   }
 
+  // AA V3 element craft requirements
+  async getV3ElementRequirements(): Promise<V3ElementRequirement[]> {
+    return this.request(`/v3/element-requirements`);
+  }
+
+  async getAdminV3ElementRequirements(): Promise<V3ElementRequirement[]> {
+    return this.request(`/admin/v3-element-requirements`);
+  }
+
+  async createV3ElementRequirement(data: {
+    element: string;
+    conditionType: 'knowledge' | 'item';
+    knowledgeName?: string | null;
+    itemId?: string | null;
+    itemName?: string | null;
+    consumed?: boolean;
+  }): Promise<V3ElementRequirement> {
+    return this.request(`/admin/v3-element-requirements`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateV3ElementRequirement(id: string, data: { consumed?: boolean; knowledgeName?: string | null; itemName?: string | null }): Promise<V3ElementRequirement> {
+    return this.request(`/admin/v3-element-requirements/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteV3ElementRequirement(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-element-requirements/${id}`, { method: 'DELETE' });
+  }
+
 }
 
 export interface SandboxTemplate {
@@ -2619,6 +2647,17 @@ export interface V3Spell {
   createdAt: string;
   updatedAt: string;
   createdByCharacterName?: string | null;
+}
+
+export interface V3ElementRequirement {
+  id: string;
+  element: string;
+  conditionType: 'knowledge' | 'item';
+  knowledgeName: string | null;
+  itemId: string | null;
+  itemName: string | null;
+  consumed: boolean;
+  createdAt: string;
 }
 
 export interface V3CraftResult {

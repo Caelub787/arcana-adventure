@@ -46,6 +46,11 @@ const h = vi.hoisted(() => {
     getItem: fn(),
     getCampaignAuthoredV3SpellByHash: fn(),
     createV3Spell: fn(),
+    getV3ElementRequirements: fn(),
+    getCharacterCustomSkills: fn(),
+    getItemsByCharacter: fn(),
+    updateItem: fn(),
+    deleteItem: fn(),
   };
   const adminUserIds = new Set<string>();
   return {
@@ -131,6 +136,11 @@ beforeEach(() => {
     bannedAt: null,
   }));
   h.storage.deleteExpiredSpectatorTokens.mockResolvedValue(0);
+  // AA V3 element craft requirements: default to no requirements / empty
+  // knowledge & inventory so every element is freely usable.
+  h.storage.getV3ElementRequirements.mockResolvedValue([]);
+  h.storage.getCharacterCustomSkills.mockResolvedValue([]);
+  h.storage.getItemsByCharacter.mockResolvedValue([]);
 });
 
 function api(pathName: string, opts: { method?: string; user?: string; body?: any } = {}) {
@@ -594,6 +604,99 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     expect(h.storage.createV3Spell.mock.calls[0][0].spellbookItemId).toBe("my-book");
     // Resources are consumed exactly once on success.
     expect(h.storage.updateCharacter).toHaveBeenCalledTimes(1);
+  });
+
+  // -- AA V3 element craft requirements -------------------------------------
+  // The 2-element composition uses `fire` (core) and `water` (secondary).
+
+  it("rejects a craft that uses an element the character hasn't unlocked", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999);
+    // `water` requires a Knowledge the character lacks.
+    h.storage.getV3ElementRequirements.mockResolvedValue([
+      { id: "r1", element: "water", conditionType: "knowledge", knowledgeName: "Hydromancy", itemId: null, itemName: null, consumed: false },
+    ]);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.reason).toBe("element_locked");
+    expect(body.element).toBe("water");
+    // Nothing was spent or created.
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+  });
+
+  it("allows the craft when a Knowledge condition is satisfied, consuming no item", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999);
+    h.storage.getV3ElementRequirements.mockResolvedValue([
+      { id: "r1", element: "water", conditionType: "knowledge", knowledgeName: "Hydromancy", itemId: null, itemName: null, consumed: false },
+    ]);
+    h.storage.getCharacterCustomSkills.mockResolvedValue([{ id: "k1", name: "Hydromancy" }]);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
+    expect(h.storage.deleteItem).not.toHaveBeenCalled();
+    expect(h.storage.updateItem).not.toHaveBeenCalled();
+  });
+
+  it("consumes one unit of a sole-path consumable item on success", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999);
+    h.storage.getV3ElementRequirements.mockResolvedValue([
+      { id: "r1", element: "water", conditionType: "item", knowledgeName: null, itemId: "tmpl-pearl", itemName: "Pearl", consumed: true },
+    ]);
+    h.storage.getItemsByCharacter.mockResolvedValue([
+      { id: "inv1", templateItemId: "tmpl-pearl", name: "Pearl", quantity: 3 },
+    ]);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
+    // One unit consumed: quantity 3 -> 2 (decrement, not delete).
+    expect(h.storage.updateItem).toHaveBeenCalledWith("inv1", { quantity: 2 });
+    expect(h.storage.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects when two elements both need the same single consumable (inventory-aware)", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999);
+    // Both fire and water require a consumed Pearl, but only ONE is in stock.
+    h.storage.getV3ElementRequirements.mockResolvedValue([
+      { id: "r1", element: "fire", conditionType: "item", knowledgeName: null, itemId: "tmpl-pearl", itemName: "Pearl", consumed: true },
+      { id: "r2", element: "water", conditionType: "item", knowledgeName: null, itemId: "tmpl-pearl", itemName: "Pearl", consumed: true },
+    ]);
+    h.storage.getItemsByCharacter.mockResolvedValue([
+      { id: "inv1", templateItemId: "tmpl-pearl", name: "Pearl", quantity: 1 },
+    ]);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.reason).toBe("element_locked");
+    // Nothing spent or consumed.
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+    expect(h.storage.deleteItem).not.toHaveBeenCalled();
+    expect(h.storage.updateItem).not.toHaveBeenCalled();
   });
 });
 

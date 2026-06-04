@@ -21,9 +21,12 @@ import {
   v3ElementCount,
   v3RoleColor,
   isValidV3Composition,
+  evaluateV3ElementEligibility,
   type V3SpellComposition,
+  type V3ElementEligibility,
+  type V3ElementCondition,
 } from "@shared/v3spells";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, gameWs, type V3Spell } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +55,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Plus, X, Wand2, Loader2, Droplet, Image as ImageIcon, ChevronUp, ChevronDown } from "lucide-react";
+import { Sparkles, Plus, X, Wand2, Loader2, Droplet, Image as ImageIcon, ChevronUp, ChevronDown, Lock } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -148,18 +151,29 @@ function FormulaDisplay({ comp }: { comp: V3SpellComposition }) {
 export function V3CompositionEditor({
   value: comp,
   onChange,
+  eligibility,
 }: {
   value: V3SpellComposition;
   onChange: (next: V3SpellComposition) => void;
+  // AA V3 element gating. When provided, elements whose `usable` is false are
+  // locked (un-selectable) with their requirements surfaced. When undefined
+  // (e.g. the admin library manager), every element is freely selectable.
+  eligibility?: Record<string, V3ElementEligibility>;
 }) {
   const setComp = (updater: (c: V3SpellComposition) => V3SpellComposition) => onChange(updater(comp));
 
-  const setCore = (key: string) => setComp((c) => ({ ...c, core: c.core === key ? "" : key }));
+  const isUsable = (key: string) => !eligibility || eligibility[key]?.usable !== false;
+  const firstUsableElement = () => V3_ELEMENTS.find((el) => isUsable(el.key))?.key ?? V3_ELEMENTS[0].key;
+
+  const setCore = (key: string) => {
+    if (!isUsable(key)) return;
+    setComp((c) => ({ ...c, core: c.core === key ? "" : key }));
+  };
 
   const addSecondary = () =>
     setComp((c) => ({
       ...c,
-      secondaries: [...c.secondaries, { element: V3_ELEMENTS[0].key, role: V3_SECONDARY_ROLES[0].key }],
+      secondaries: [...c.secondaries, { element: firstUsableElement(), role: V3_SECONDARY_ROLES[0].key }],
     }));
 
   const updateSecondary = (i: number, patch: Partial<{ element: string; role: string }>) =>
@@ -191,25 +205,40 @@ export function V3CompositionEditor({
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
             {V3_ELEMENTS.map((el) => {
               const selected = comp.core === el.key;
+              const locked = !isUsable(el.key);
+              const reqs = eligibility?.[el.key]?.requirements ?? [];
               return (
                 <Tooltip key={el.key}>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       onClick={() => setCore(el.key)}
-                      className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        selected
+                      disabled={locked}
+                      aria-disabled={locked}
+                      className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors flex items-center justify-center gap-1 ${
+                        locked
+                          ? "bg-stone-900/60 border-stone-800 text-stone-600 cursor-not-allowed"
+                          : selected
                           ? "bg-amber-500/20 border-amber-500 text-amber-200"
                           : "bg-stone-900 border-stone-700 text-stone-300 hover:border-stone-500"
                       }`}
                       data-testid={`button-core-${el.key}`}
                     >
+                      {locked && <Lock className="h-3 w-3 shrink-0" />}
                       {el.name}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="font-semibold">{el.name}</p>
                     <p className="text-xs text-stone-300">{el.description}</p>
+                    {locked && reqs.length > 0 && (
+                      <div className="mt-1 pt-1 border-t border-stone-700" data-testid={`text-core-locked-${el.key}`}>
+                        <p className="text-[10px] uppercase tracking-wide text-amber-400">Locked</p>
+                        {reqs.map((r, ri) => (
+                          <p key={ri} className="text-xs text-amber-300">{r}</p>
+                        ))}
+                      </div>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               );
@@ -274,11 +303,21 @@ export function V3CompositionEditor({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {V3_ELEMENTS.map((el) => (
-                          <SelectItem key={el.key} value={el.key} className="text-xs">
-                            {el.name}
-                          </SelectItem>
-                        ))}
+                        {V3_ELEMENTS.map((el) => {
+                          const locked = !isUsable(el.key);
+                          const reqs = eligibility?.[el.key]?.requirements ?? [];
+                          return (
+                            <SelectItem key={el.key} value={el.key} disabled={locked} className="text-xs">
+                              <span className="flex items-center gap-1">
+                                {locked && <Lock className="h-3 w-3 shrink-0" />}
+                                {el.name}
+                                {locked && reqs.length > 0 && (
+                                  <span className="ml-1 text-[10px] text-amber-400/80">{reqs.join(" · ")}</span>
+                                )}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                     <Select value={s.role} onValueChange={(v) => updateSecondary(i, { role: v })}>
@@ -366,10 +405,59 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
   const [comp, setComp] = useState<V3SpellComposition>(DEFAULT_COMP);
   const [crafting, setCrafting] = useState(false);
 
+  // Element craft requirements (AA V3) — gate which elements this character may
+  // use, based on admin-configured OR'd conditions vs. the character's Knowledge
+  // (custom skills) and inventory.
+  const { data: elementRequirements } = useQuery({
+    queryKey: ["v3-element-requirements"],
+    queryFn: () => api.getV3ElementRequirements(),
+  });
+  const { data: customSkills } = useQuery({
+    queryKey: ["character-custom-skills", character.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+  });
+  const { data: inventory } = useQuery({
+    queryKey: ["character-items", character.id],
+    queryFn: () => api.getItems(character.id),
+  });
+
+  const eligibility = useMemo<Record<string, V3ElementEligibility>>(() => {
+    const byElement: Record<string, V3ElementCondition[]> = {};
+    for (const r of elementRequirements ?? []) {
+      (byElement[r.element] ||= []).push({
+        conditionType: r.conditionType,
+        knowledgeName: r.knowledgeName,
+        itemId: r.itemId,
+        itemName: r.itemName,
+        consumed: r.consumed,
+      });
+    }
+    const input = {
+      knowledgeNames: (customSkills ?? []).map((s: any) => s.name).filter(Boolean),
+      items: (inventory ?? []).map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
+    };
+    const map: Record<string, V3ElementEligibility> = {};
+    for (const el of V3_ELEMENTS) {
+      map[el.key] = evaluateV3ElementEligibility(byElement[el.key], input);
+    }
+    return map;
+  }, [elementRequirements, customSkills, inventory]);
+
   const manaCost = useMemo(() => v3ManaCost(comp), [comp]);
   const craftDc = useMemo(() => v3CraftDc(comp), [comp]);
   const elementCount = useMemo(() => v3ElementCount(comp), [comp]);
-  const valid = useMemo(() => isValidV3Composition(comp) && !!comp.core && !!comp.intent && !!comp.delivery, [comp]);
+  const usedElementKeys = useMemo(
+    () => [comp.core, ...comp.secondaries.map((s) => s.element)].filter(Boolean),
+    [comp],
+  );
+  const lockedUsed = useMemo(
+    () => usedElementKeys.filter((k) => eligibility[k]?.usable === false),
+    [usedElementKeys, eligibility],
+  );
+  const valid = useMemo(
+    () => isValidV3Composition(comp) && !!comp.core && !!comp.intent && !!comp.delivery && lockedUsed.length === 0,
+    [comp, lockedUsed],
+  );
 
   const currentMana = character.mana ?? 0;
   const currentTokens = character.spellCreationTokens ?? 0;
@@ -412,7 +500,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
 
   return (
     <div className="space-y-4" data-testid="v3-spell-crafter">
-      <V3CompositionEditor value={comp} onChange={setComp} />
+      <V3CompositionEditor value={comp} onChange={setComp} eligibility={eligibility} />
 
       {/* Cost summary + craft */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -447,6 +535,11 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
           {atCapacity
             ? `Spellbook full — ${spellsUsed ?? maxSpells} of ${maxSpells} spells used. Remove a spell to craft a new one.`
             : `${spellsUsed ?? 0} of ${maxSpells} spells used.`}
+        </p>
+      )}
+      {!atCapacity && lockedUsed.length > 0 && (
+        <p className="text-xs text-red-400" data-testid="text-crafter-locked-element">
+          You haven't unlocked {lockedUsed.map((k) => V3_ELEMENT_MAP[k]?.name ?? k).join(", ")}. Remove or replace to craft.
         </p>
       )}
       {!atCapacity && notEnoughMana && <p className="text-xs text-red-400">Not enough mana to craft this spell.</p>}

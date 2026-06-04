@@ -43,7 +43,7 @@ import { V3SystemSpeciesDialog } from '@/components/admin/V3SystemSpeciesDialog'
 import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -58,7 +58,7 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -1012,6 +1012,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'archived-items' ? 'Archived Items' :
                currentView === 'archived-spells' ? 'Archived Spells' : 
                currentView === 'v3-spells' ? 'Crafted Spells (A.A. V3)' : 
+               currentView === 'element-requirements' ? 'Element Requirements (A.A. V3)' : 
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1038,6 +1039,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
         {currentView === 'v3-spells' && (
           <V3SpellsApprovalView />
+        )}
+
+        {currentView === 'element-requirements' && (
+          <V3ElementRequirementsView systemSlug={systemSlug} />
         )}
 
         {currentView === 'items' && (
@@ -2160,6 +2165,212 @@ function V3SpellsApprovalView() {
   );
 }
 
+function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [element, setElement] = useState<string>(V3_ELEMENTS[0]?.key ?? '');
+  const [conditionType, setConditionType] = useState<'knowledge' | 'item'>('knowledge');
+  const [knowledgeName, setKnowledgeName] = useState<string>('');
+  const [itemId, setItemId] = useState<string>('');
+  const [consumed, setConsumed] = useState(false);
+
+  const { data: requirements = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-element-requirements'],
+    queryFn: () => api.getAdminV3ElementRequirements(),
+  });
+
+  // Knowledge picker = the V3 system custom skills ("Knowledge").
+  const { data: knowledgeOptions = [] } = useQuery({
+    queryKey: ['system-skills', 'aa-v3'],
+    queryFn: () => api.getSystemSkills('aa-v3'),
+  });
+
+  // Item picker = admin V3 system items.
+  const { data: itemOptions = [] } = useQuery({
+    queryKey: ['admin-system-items', 'aa-v3'],
+    queryFn: () => api.getSystemItems('aa-v3'),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-element-requirements'] });
+
+  const createMutation = useMutation({
+    mutationFn: () => {
+      if (conditionType === 'knowledge') {
+        return api.createV3ElementRequirement({ element, conditionType: 'knowledge', knowledgeName });
+      }
+      const it = (itemOptions as any[]).find((i) => i.id === itemId);
+      return api.createV3ElementRequirement({ element, conditionType: 'item', itemId, itemName: it?.name ?? null, consumed });
+    },
+    onSuccess: () => {
+      toast({ title: 'Requirement added' });
+      setKnowledgeName('');
+      setItemId('');
+      setConsumed(false);
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const toggleConsumedMutation = useMutation({
+    mutationFn: (vars: { id: string; consumed: boolean }) => api.updateV3ElementRequirement(vars.id, { consumed: vars.consumed }),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteV3ElementRequirement(id),
+    onSuccess: () => { toast({ title: 'Requirement removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const canCreate = !!element && (conditionType === 'knowledge' ? !!knowledgeName : !!itemId);
+
+  const byElement = useMemo(() => {
+    const map: Record<string, typeof requirements> = {};
+    for (const r of requirements) (map[r.element] ||= []).push(r);
+    return map;
+  }, [requirements]);
+
+  if (systemSlug !== 'aa-v3') {
+    return <p className="text-stone-400">Element requirements are only available in the A.A. V3 system.</p>;
+  }
+
+  return (
+    <div className="space-y-6" data-testid="view-element-requirements">
+      <Card className="bg-stone-900 border-stone-700">
+        <CardHeader>
+          <CardTitle className="text-amber-400 text-base">Add Requirement</CardTitle>
+          <CardDescription className="text-stone-400">
+            Conditions for an element are OR'd: a player may use the element if they satisfy <span className="text-stone-300">any</span> one of them.
+            An element with no requirements is freely usable.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Element</Label>
+              <Select value={element} onValueChange={setElement}>
+                <SelectTrigger data-testid="select-req-element"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {V3_ELEMENTS.map((el) => <SelectItem key={el.key} value={el.key}>{el.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Condition Type</Label>
+              <Select value={conditionType} onValueChange={(v) => setConditionType(v as 'knowledge' | 'item')}>
+                <SelectTrigger data-testid="select-req-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="knowledge">Knowledge</SelectItem>
+                  <SelectItem value="item">Item</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {conditionType === 'knowledge' ? (
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Required Knowledge</Label>
+              <Select value={knowledgeName} onValueChange={setKnowledgeName}>
+                <SelectTrigger data-testid="select-req-knowledge"><SelectValue placeholder="Select Knowledge" /></SelectTrigger>
+                <SelectContent>
+                  {(knowledgeOptions as any[]).length === 0 && <div className="px-2 py-1.5 text-xs text-stone-500">No Knowledge defined yet.</div>}
+                  {(knowledgeOptions as any[]).map((k) => <SelectItem key={k.id} value={k.name}>{k.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Required Item</Label>
+                <Select value={itemId} onValueChange={setItemId}>
+                  <SelectTrigger data-testid="select-req-item"><SelectValue placeholder="Select Item" /></SelectTrigger>
+                  <SelectContent>
+                    {(itemOptions as any[]).length === 0 && <div className="px-2 py-1.5 text-xs text-stone-500">No items defined yet.</div>}
+                    {(itemOptions as any[]).map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
+                <Checkbox checked={consumed} onCheckedChange={(c) => setConsumed(!!c)} data-testid="checkbox-req-consumed" />
+                Consume this item on a successful craft
+              </label>
+            </div>
+          )}
+
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={!canCreate || createMutation.isPending}
+            className="bg-amber-600 hover:bg-amber-700 text-stone-950"
+            data-testid="button-add-requirement"
+          >
+            <Plus className="h-4 w-4 mr-1" /> Add Requirement
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {V3_ELEMENTS.map((el) => {
+            const reqs = byElement[el.key] ?? [];
+            return (
+              <Card key={el.key} className="bg-stone-900 border-stone-700" data-testid={`card-req-element-${el.key}`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    {reqs.length > 0 ? <Lock className="h-3.5 w-3.5 text-amber-500" /> : <Sparkles className="h-3.5 w-3.5 text-stone-500" />}
+                    {el.name}
+                  </CardTitle>
+                  {reqs.length === 0 && <CardDescription className="text-xs text-stone-500">Freely usable</CardDescription>}
+                </CardHeader>
+                {reqs.length > 0 && (
+                  <CardContent className="space-y-1.5 pt-0">
+                    {reqs.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between gap-2 rounded border border-stone-700 bg-stone-950/40 px-2 py-1.5" data-testid={`row-requirement-${r.id}`}>
+                        <div className="min-w-0 text-xs">
+                          {r.conditionType === 'knowledge' ? (
+                            <span className="text-violet-300">Knowledge: {r.knowledgeName}</span>
+                          ) : (
+                            <span className="text-emerald-300">
+                              Item: {r.itemName}
+                              {r.consumed && <span className="text-amber-400"> (consumed)</span>}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {r.conditionType === 'item' && (
+                            <label className="flex items-center gap-1 text-[10px] text-stone-400 cursor-pointer">
+                              <Checkbox
+                                checked={r.consumed}
+                                onCheckedChange={(c) => toggleConsumedMutation.mutate({ id: r.id, consumed: !!c })}
+                                data-testid={`checkbox-toggle-consumed-${r.id}`}
+                              />
+                              consume
+                            </label>
+                          )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-stone-400 hover:text-red-400"
+                            onClick={() => deleteMutation.mutate(r.id)}
+                            data-testid={`button-delete-requirement-${r.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   return (
@@ -2259,6 +2470,24 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <CardTitle className="text-violet-500">Crafted Spells</CardTitle>
           <CardDescription className="text-stone-400">
             Review player-crafted V3 spells and approve a canonical name, description, and image per composition
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      )}
+
+      {isAdmin && systemSlug === 'aa-v3' && (
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('element-requirements')}
+        data-testid="card-element-requirements"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <Lock className="h-6 w-6 text-amber-500" />
+          </div>
+          <CardTitle className="text-amber-500">Element Requirements</CardTitle>
+          <CardDescription className="text-stone-400">
+            Gate which spell elements players may craft with — require a Knowledge or item (optionally consumed) per element
           </CardDescription>
         </CardHeader>
       </Card>

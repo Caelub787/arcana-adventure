@@ -1,1 +1,2 @@
 - [AA V3 "Knowledge" label convention](v3-knowledge-label.md) — V3 shows "Custom Skill(s)" as "Knowledge" (labels only; gate on aa-v3 system var); code identifiers unchanged.
+- [V3 craft consumable accounting](v3-craft-consumable-accounting.md) — gate-by-consumed-item eligibility must reserve inventory across the whole composition, not per-element.
