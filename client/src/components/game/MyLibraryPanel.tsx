@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ItemDialog,
@@ -57,6 +57,25 @@ const GM_KINDS: LibKind[] = [
 ];
 const PLAYER_KINDS: LibKind[] = ["item"];
 
+// Supported library systems and their canonical display labels. The display
+// label is what the species transport and create routes expect (V2/V3 species
+// are resolved by label, e.g. "A.A. V3"), while the slug is what item/feat/
+// class routes use.
+const SYSTEM_OPTIONS: { slug: string; label: string }[] = [
+  { slug: "arcana-adventure", label: "Arcana Adventure" },
+  { slug: "aa-v2", label: "A.A. V2" },
+  { slug: "aa-v3", label: "A.A. V3" },
+];
+const SYSTEM_SLUGS = SYSTEM_OPTIONS.map((s) => s.slug);
+function systemLabelFor(slug: string): string {
+  return SYSTEM_OPTIONS.find((s) => s.slug === slug)?.label ?? "Arcana Adventure";
+}
+// Roll Templates are an AA V2 / V3 only concept; the base system has none.
+function kindsForSystem(base: LibKind[], slug: string): LibKind[] {
+  const isAaV2OrV3 = slug === "aa-v2" || slug === "aa-v3";
+  return isAaV2OrV3 ? base : base.filter((k) => k !== "roll-template");
+}
+
 // Kinds whose transport supports get-by-id hydration (so the edit dialog can
 // load full nested data). Spell / roll-template have no get-by-id endpoint, so
 // editing those happens in the dedicated admin library instead.
@@ -89,11 +108,18 @@ interface MyLibraryPanelProps {
 
 export function MyLibraryPanel({ campaignSystem, isGM }: MyLibraryPanelProps) {
   const { toast } = useToast();
-  const kinds = isGM ? GM_KINDS : PLAYER_KINDS;
 
   const defaultSlug =
-    campaignSystem === "aa-v3" ? "aa-v3" : "aa-v2";
+    campaignSystem && SYSTEM_SLUGS.includes(campaignSystem)
+      ? campaignSystem
+      : "arcana-adventure";
   const [systemSlug, setSystemSlug] = useState<string>(defaultSlug);
+
+  const kinds = useMemo(
+    () => kindsForSystem(isGM ? GM_KINDS : PLAYER_KINDS, systemSlug),
+    [isGM, systemSlug],
+  );
+
   const [activeKind, setActiveKind] = useState<LibKind>(kinds[0]);
   const [dialog, setDialog] = useState<{
     kind: LibKind;
@@ -101,7 +127,15 @@ export function MyLibraryPanel({ campaignSystem, isGM }: MyLibraryPanelProps) {
     value?: any;
   } | null>(null);
 
-  const systemDisplayName = systemSlug === "aa-v3" ? "A.A. V3" : "A.A. V2";
+  // If switching systems removes the currently-selected kind (e.g. roll-template
+  // when moving to the base system), fall back to the first available kind.
+  useEffect(() => {
+    if (!kinds.includes(activeKind)) {
+      setActiveKind(kinds[0]);
+    }
+  }, [kinds, activeKind]);
+
+  const systemDisplayName = systemLabelFor(systemSlug);
 
   const { imagePicker, element: imageBrowserElement } = useImageBrowserBridge();
 
@@ -204,8 +238,11 @@ export function MyLibraryPanel({ campaignSystem, isGM }: MyLibraryPanelProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-stone-900 border-stone-700">
-            <SelectItem value="aa-v2">A.A. V2</SelectItem>
-            <SelectItem value="aa-v3">A.A. V3</SelectItem>
+            {SYSTEM_OPTIONS.map((opt) => (
+              <SelectItem key={opt.slug} value={opt.slug}>
+                {opt.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
