@@ -837,9 +837,10 @@ class ApiClient {
   }
 
   // Rest actions
-  async shortRest(characterId: string): Promise<{
+  async shortRest(characterId: string, skipFood?: boolean): Promise<{
     success: boolean;
     hpRestored: number;
+    energyRestored?: number;
     newHp: number;
     rationsConsumed: number;
     character: Character;
@@ -848,10 +849,11 @@ class ApiClient {
   }> {
     return this.request(`/characters/${characterId}/short-rest`, {
       method: 'POST',
+      body: JSON.stringify({ skipFood: !!skipFood }),
     });
   }
 
-  async longRest(characterId: string): Promise<{
+  async longRest(characterId: string, skipFood?: boolean): Promise<{
     success: boolean;
     hpRestored: number;
     newHp: number;
@@ -862,6 +864,7 @@ class ApiClient {
   }> {
     return this.request(`/characters/${characterId}/long-rest`, {
       method: 'POST',
+      body: JSON.stringify({ skipFood: !!skipFood }),
     });
   }
 

@@ -3944,45 +3944,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const character = access.character;
       const rationsRequired = 2;
+      const skipFood = req.body?.skipFood === true;
       
-      // Get all ration items for this character (items with rationServings > 0)
-      const items = await storage.getItemsByCharacter(character.id);
-      const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
-      
-      // Count total rations available (sum of rationServings * quantity for each item)
-      let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
-      
-      if (totalRations < rationsRequired) {
-        return res.status(400).json({ 
-          error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
-        });
-      }
-      
-      // Consume rations from inventory
-      // Each item provides rationServings rations per quantity
-      let rationsToConsume = rationsRequired;
-      for (const item of rationItems) {
-        if (rationsToConsume <= 0) break;
+      if (!skipFood) {
+        // Get all ration items for this character (items with rationServings > 0)
+        const items = await storage.getItemsByCharacter(character.id);
+        const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
         
-        const rationServingsPerItem = item.rationServings || 1;
-        const itemQuantity = item.quantity || 0;
+        // Count total rations available (sum of rationServings * quantity for each item)
+        let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
         
-        // Calculate how many items we need to consume
-        const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
-        const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
-        const rationsFromThis = itemsToConsume * rationServingsPerItem;
-        
-        const newQuantity = itemQuantity - itemsToConsume;
-        
-        if (newQuantity <= 0) {
-          // Delete the item
-          await storage.deleteItem(item.id);
-        } else {
-          // Update quantity
-          await storage.updateItem(item.id, { quantity: newQuantity });
+        if (totalRations < rationsRequired) {
+          return res.status(400).json({ 
+            error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
+          });
         }
         
-        rationsToConsume -= rationsFromThis;
+        // Consume rations from inventory
+        // Each item provides rationServings rations per quantity
+        let rationsToConsume = rationsRequired;
+        for (const item of rationItems) {
+          if (rationsToConsume <= 0) break;
+          
+          const rationServingsPerItem = item.rationServings || 1;
+          const itemQuantity = item.quantity || 0;
+          
+          // Calculate how many items we need to consume
+          const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
+          const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
+          const rationsFromThis = itemsToConsume * rationServingsPerItem;
+          
+          const newQuantity = itemQuantity - itemsToConsume;
+          
+          if (newQuantity <= 0) {
+            // Delete the item
+            await storage.deleteItem(item.id);
+          } else {
+            // Update quantity
+            await storage.updateItem(item.id, { quantity: newQuantity });
+          }
+          
+          rationsToConsume -= rationsFromThis;
+        }
       }
       
       // Get character's species hpPerLevel for the die roll
@@ -4075,7 +4078,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dieType: `d${hpPerLevel}`,
         newHp,
         newEnergy,
-        rationsConsumed: rationsRequired,
+        rationsConsumed: skipFood ? 0 : rationsRequired,
         character: updatedCharacter,
         traits: updatedTraits
       });
@@ -4100,45 +4103,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const character = access.character;
       const rationsRequired = 4;
+      const skipFood = req.body?.skipFood === true;
       
-      // Get all ration items for this character (items with rationServings > 0)
-      const items = await storage.getItemsByCharacter(character.id);
-      const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
-      
-      // Count total rations available (sum of rationServings * quantity for each item)
-      let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
-      
-      if (totalRations < rationsRequired) {
-        return res.status(400).json({ 
-          error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
-        });
-      }
-      
-      // Consume rations from inventory
-      // Each item provides rationServings rations per quantity
-      let rationsToConsume = rationsRequired;
-      for (const item of rationItems) {
-        if (rationsToConsume <= 0) break;
+      if (!skipFood) {
+        // Get all ration items for this character (items with rationServings > 0)
+        const items = await storage.getItemsByCharacter(character.id);
+        const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
         
-        const rationServingsPerItem = item.rationServings || 1;
-        const itemQuantity = item.quantity || 0;
+        // Count total rations available (sum of rationServings * quantity for each item)
+        let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
         
-        // Calculate how many items we need to consume
-        const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
-        const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
-        const rationsFromThis = itemsToConsume * rationServingsPerItem;
-        
-        const newQuantity = itemQuantity - itemsToConsume;
-        
-        if (newQuantity <= 0) {
-          // Delete the item
-          await storage.deleteItem(item.id);
-        } else {
-          // Update quantity
-          await storage.updateItem(item.id, { quantity: newQuantity });
+        if (totalRations < rationsRequired) {
+          return res.status(400).json({ 
+            error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
+          });
         }
         
-        rationsToConsume -= rationsFromThis;
+        // Consume rations from inventory
+        // Each item provides rationServings rations per quantity
+        let rationsToConsume = rationsRequired;
+        for (const item of rationItems) {
+          if (rationsToConsume <= 0) break;
+          
+          const rationServingsPerItem = item.rationServings || 1;
+          const itemQuantity = item.quantity || 0;
+          
+          // Calculate how many items we need to consume
+          const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
+          const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
+          const rationsFromThis = itemsToConsume * rationServingsPerItem;
+          
+          const newQuantity = itemQuantity - itemsToConsume;
+          
+          if (newQuantity <= 0) {
+            // Delete the item
+            await storage.deleteItem(item.id);
+          } else {
+            // Update quantity
+            await storage.updateItem(item.id, { quantity: newQuantity });
+          }
+          
+          rationsToConsume -= rationsFromThis;
+        }
       }
       
       // Calculate effective max HP including feat bonuses
@@ -4216,7 +4222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         newEnergy,
         exhaustionRecovered,
         newExhaustion,
-        rationsConsumed: rationsRequired,
+        rationsConsumed: skipFood ? 0 : rationsRequired,
         character: updatedCharacter,
         traits: updatedTraits
       });

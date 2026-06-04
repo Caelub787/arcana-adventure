@@ -17727,9 +17727,30 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
   });
 
+  // Rest-without-food confirmation (triggered by long-press on rest buttons)
+  const [restWithoutFoodType, setRestWithoutFoodType] = useState<'short' | 'long' | null>(null);
+  const restLongPressFiredRef = useRef(false);
+  const restLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startRestLongPress = (type: 'short' | 'long') => {
+    restLongPressFiredRef.current = false;
+    if (restLongPressTimerRef.current) clearTimeout(restLongPressTimerRef.current);
+    restLongPressTimerRef.current = setTimeout(() => {
+      restLongPressFiredRef.current = true;
+      setRestWithoutFoodType(type);
+    }, 500);
+  };
+
+  const cancelRestLongPress = () => {
+    if (restLongPressTimerRef.current) {
+      clearTimeout(restLongPressTimerRef.current);
+      restLongPressTimerRef.current = null;
+    }
+  };
+
   // Short Rest mutation
   const shortRestMutation = useMutation({
-    mutationFn: () => api.shortRest(character.id),
+    mutationFn: (skipFood?: boolean) => api.shortRest(character.id, skipFood),
     onSuccess: (result) => {
       if (result.character) {
         setLiveCharacter(result.character);
@@ -17742,9 +17763,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
       const dieInfo = result.dieType ? ` (rolled ${result.hpRoll} on ${result.dieType})` : '';
       const energyInfo = result.energyRestored ? `, ${result.energyRestored} Energy` : '';
+      const rationInfo = result.rationsConsumed > 0 ? ` Consumed ${result.rationsConsumed} rations.` : ' No rations consumed.';
       toast({ 
         title: "Short Rest Complete", 
-        description: `Restored ${result.hpRestored} HP${energyInfo}${dieInfo}. Consumed ${result.rationsConsumed} rations.` 
+        description: `Restored ${result.hpRestored} HP${energyInfo}${dieInfo}.${rationInfo}` 
       });
     },
     onError: (error: any) => {
@@ -17758,7 +17780,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   // Long Rest mutation
   const longRestMutation = useMutation({
-    mutationFn: () => api.longRest(character.id),
+    mutationFn: (skipFood?: boolean) => api.longRest(character.id, skipFood),
     onSuccess: (result) => {
       if (result.character) {
         setLiveCharacter(result.character);
@@ -17770,9 +17792,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       // Reset trait uses after long rest
       queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
       const exhaustionMsg = result.exhaustionRecovered > 0 ? ` Exhaustion reduced by ${result.exhaustionRecovered}.` : '';
+      const rationInfo = result.rationsConsumed > 0 ? ` Consumed ${result.rationsConsumed} rations.` : ' No rations consumed.';
       toast({ 
         title: "Long Rest Complete", 
-        description: `Fully restored HP and Energy.${exhaustionMsg} Consumed ${result.rationsConsumed} rations.` 
+        description: `Fully restored HP and Energy.${exhaustionMsg}${rationInfo}` 
       });
     },
     onError: (error: any) => {
@@ -18261,7 +18284,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 size="sm"
                                 variant="outline"
                                 className="border-cyan-600 text-cyan-400 hover:bg-cyan-600/20"
-                                onClick={() => shortRestMutation.mutate()}
+                                onClick={() => {
+                                  if (restLongPressFiredRef.current) { restLongPressFiredRef.current = false; return; }
+                                  shortRestMutation.mutate(false);
+                                }}
+                                onPointerDown={() => startRestLongPress('short')}
+                                onPointerUp={cancelRestLongPress}
+                                onPointerLeave={cancelRestLongPress}
+                                onContextMenu={(e) => { e.preventDefault(); cancelRestLongPress(); setRestWithoutFoodType('short'); }}
                                 disabled={shortRestMutation.isPending}
                                 data-testid="button-short-rest"
                               >
@@ -18270,6 +18300,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
                               <p>Short Rest (2 rations, roll HP/Energy die)</p>
+                              <p className="text-stone-400">Long-press to rest without food</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -18282,7 +18313,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 size="sm"
                                 variant="outline"
                                 className="border-indigo-600 text-indigo-400 hover:bg-indigo-600/20"
-                                onClick={() => longRestMutation.mutate()}
+                                onClick={() => {
+                                  if (restLongPressFiredRef.current) { restLongPressFiredRef.current = false; return; }
+                                  longRestMutation.mutate(false);
+                                }}
+                                onPointerDown={() => startRestLongPress('long')}
+                                onPointerUp={cancelRestLongPress}
+                                onPointerLeave={cancelRestLongPress}
+                                onContextMenu={(e) => { e.preventDefault(); cancelRestLongPress(); setRestWithoutFoodType('long'); }}
                                 disabled={longRestMutation.isPending}
                                 data-testid="button-long-rest"
                               >
@@ -18291,6 +18329,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
                               <p>Long Rest (4 rations, full HP/Energy, -1 exhaustion)</p>
+                              <p className="text-stone-400">Long-press to rest without food</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -22658,6 +22697,39 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           </div>
         </FloatingPanel>
       )}
+
+      <AlertDialog open={restWithoutFoodType !== null} onOpenChange={(open) => { if (!open) setRestWithoutFoodType(null); }}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700" data-testid="dialog-rest-without-food">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-500">
+              {restWithoutFoodType === 'long' ? 'Long Rest Without Food?' : 'Short Rest Without Food?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will perform a {restWithoutFoodType === 'long' ? 'long' : 'short'} rest without requiring or consuming any rations. Resources will be restored as usual.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-600 text-stone-200 hover:bg-stone-700" data-testid="button-cancel-rest-without-food">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-700 text-stone-100 hover:bg-amber-600"
+              onClick={() => {
+                const type = restWithoutFoodType;
+                setRestWithoutFoodType(null);
+                if (type === 'long') {
+                  longRestMutation.mutate(true);
+                } else if (type === 'short') {
+                  shortRestMutation.mutate(true);
+                }
+              }}
+              data-testid="button-confirm-rest-without-food"
+            >
+              Rest Without Food
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });
