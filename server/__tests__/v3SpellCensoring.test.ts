@@ -698,6 +698,34 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     expect(h.storage.deleteItem).not.toHaveBeenCalled();
     expect(h.storage.updateItem).not.toHaveBeenCalled();
   });
+
+  it("allocates OR'd consumable alternatives so a valid assignment isn't falsely rejected", async () => {
+    const { user, characterId } = setupCharacter({ mana: 5, tokens: 3 });
+    stubD20(0.999);
+    // fire unlocks via consumed Pearl OR consumed Ruby; water needs consumed Pearl.
+    // Stock: 1 Pearl, 1 Ruby. The only valid assignment is fire->Ruby, water->Pearl.
+    h.storage.getV3ElementRequirements.mockResolvedValue([
+      { id: "r1", element: "fire", conditionType: "item", knowledgeName: null, itemId: "tmpl-pearl", itemName: "Pearl", consumed: true },
+      { id: "r2", element: "fire", conditionType: "item", knowledgeName: null, itemId: "tmpl-ruby", itemName: "Ruby", consumed: true },
+      { id: "r3", element: "water", conditionType: "item", knowledgeName: null, itemId: "tmpl-pearl", itemName: "Pearl", consumed: true },
+    ]);
+    h.storage.getItemsByCharacter.mockResolvedValue([
+      { id: "inv-pearl", templateItemId: "tmpl-pearl", name: "Pearl", quantity: 1 },
+      { id: "inv-ruby", templateItemId: "tmpl-ruby", name: "Ruby", quantity: 1 },
+    ]);
+
+    const res = await api("/api/v3/spells/craft", {
+      method: "POST",
+      user,
+      body: { characterId, composition },
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
+    // Both consumables (qty 1 each) are deleted — one per element.
+    expect(h.storage.deleteItem).toHaveBeenCalledWith("inv-pearl");
+    expect(h.storage.deleteItem).toHaveBeenCalledWith("inv-ruby");
+    expect(h.storage.deleteItem).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("GET /api/v3/spells/canonical/:hash — admin only", () => {

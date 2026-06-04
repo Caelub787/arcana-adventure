@@ -1,25 +1,27 @@
 ---
 name: V3 spell-craft consumable accounting
-description: Why element-eligibility consumption must be inventory-aware across the whole composition
+description: Why element-eligibility consumption needs whole-composition allocation, not per-element greedy reservation
 ---
 
 # V3 spell-craft consumable accounting
 
-When a V3 spell craft gates elements behind unlock conditions where the only
-satisfying path is a *consumed* item, eligibility/consumption MUST be evaluated
-across the whole composition with units reserved as you go — not per-element
-independently.
+When a spell craft gates each element behind OR'd unlock conditions and the only
+satisfying path is a *consumed* item, deciding which items to consume is a
+**capacity-constrained bipartite matching over the whole composition**, not a
+per-element decision.
 
-**Why:** Per-element evaluation against the same full inventory snapshot lets two
-distinct elements that both depend on the same single consumable each pass on
-their own; consumption then matches that one inventory row once and silently
-skips the rest, so the craft succeeds while under-consuming. This was caught in
-code review for the element-requirements feature.
+**Why:** Two independent traps were each found in code review:
+1. Per-element eligibility against the same full inventory snapshot lets two
+   elements that both depend on the same single unit each pass on their own, so
+   the craft under-consumes.
+2. Greedily reserving the *first* satisfied consumable per element falsely
+   rejects valid crafts when elements have alternative consumable paths
+   (A:[X|Y], B:[X], stock X=1,Y=1 has the valid assignment A→Y, B→X but greedy
+   picks A→X then fails B).
 
-**How to apply:** In `server/routes.ts` `/api/v3/spells/craft`, reserve a unit
-(track remaining `quantity` per inventory row) for each element whose sole path
-is a consumable; reject the craft (before creating the spell row, so no
-mana/token/item is wasted — Neon HTTP driver has no interactive transactions) if
-a unit can't be uniquely allocated. Aggregate reservations per row before
-deducting (decrement, or delete at qty<=0). A row with quantity>1 can satisfy
-multiple paths.
+**How to apply:** Have the eligibility helper expose ALL satisfied consumable
+alternatives per element (plus a "free path exists" flag), then run a matching
+that assigns each consume-needing element one unit honoring per-row quantity;
+reject only if no complete assignment exists. Do this *before* creating the
+spell row so a rejected craft wastes no mana/token/item (the DB driver here has
+no interactive transactions, so ordering is the only safeguard).

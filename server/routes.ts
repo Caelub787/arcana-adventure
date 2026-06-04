@@ -6250,14 +6250,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         knowledgeNames: charKnowledge.map((k) => k.name),
         items: charInventory.map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
       };
-      // Inventory-aware allocation: when an element's ONLY satisfying path is a
-      // consumable item, reserve one available unit. This makes eligibility
-      // correct across the whole composition — two distinct elements that both
-      // depend on the same single consumable can't both be satisfied by one
-      // unit. Knowledge / non-consumable-item paths reserve nothing.
-      const remainingQty = new Map<string, number>();
-      for (const it of charInventory as any[]) remainingQty.set(it.id, it.quantity ?? 1);
-      const reservedItemRowIds: string[] = [];
       const rejectLocked = (key: string, requirements: string[]) => {
         const elName = v3spells.V3_ELEMENT_MAP[key]?.name ?? key;
         return res.status(403).json({
@@ -6267,27 +6259,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
           requirements,
         });
       };
+
+      // First pass: confirm every used element is usable at all, and collect the
+      // ones whose ONLY satisfying path is a consumable item (each carries its
+      // OR'd consumable alternatives). Free paths (Knowledge / non-consumable
+      // item / no conditions) charge nothing.
+      const consumeNeeders: { key: string; options: { itemId?: string | null; name?: string | null }[]; requirements: string[] }[] = [];
       for (const key of usedElementKeys) {
         const result = v3spells.evaluateV3ElementEligibility(conditionsByElement[key], eligibilityInput);
         if (!result.usable) {
           return rejectLocked(key, result.requirements);
         }
-        if (result.consumeItem) {
-          const want = result.consumeItem;
-          const match = (charInventory as any[]).find((it) => {
-            if ((remainingQty.get(it.id) ?? 0) <= 0) return false;
-            if (want.itemId && it.templateItemId && it.templateItemId === want.itemId) return true;
-            if (want.name && it.name && it.name.trim().toLowerCase() === (want.name || "").trim().toLowerCase()) return true;
-            return false;
-          });
-          if (!match) {
-            // The consumable was already reserved by another element — no unit
-            // remains, so this element is effectively locked for this craft.
-            return rejectLocked(key, result.requirements);
-          }
-          remainingQty.set(match.id, (remainingQty.get(match.id) ?? 0) - 1);
-          reservedItemRowIds.push(match.id);
+        if (!result.freeToUse && result.consumeOptions.length > 0) {
+          consumeNeeders.push({ key, options: result.consumeOptions, requirements: result.requirements });
         }
+      }
+
+      // Inventory-aware allocation: assign each consume-needing element ONE unit
+      // from an inventory row that satisfies any of its consumable alternatives,
+      // honoring per-row quantity. Because an element can be satisfied by several
+      // OR'd consumables, this is a capacity-constrained bipartite matching — a
+      // greedy "first option" reservation can falsely reject a craft that has a
+      // valid assignment (e.g. A:[X|Y], B:[X], stock X=1,Y=1 -> A:Y, B:X).
+      const inv = charInventory as any[];
+      const matchesOption = (it: any, opt: { itemId?: string | null; name?: string | null }) => {
+        if (opt.itemId && it.templateItemId && it.templateItemId === opt.itemId) return true;
+        if (opt.name && it.name && it.name.trim().toLowerCase() === (opt.name || "").trim().toLowerCase()) return true;
+        return false;
+      };
+      // Expand inventory into discrete unit-slots (capped at the number of
+      // needers per row, since we never consume more than that).
+      const slots: { rowId: string; row: any }[] = [];
+      for (const it of inv) {
+        const cap = Math.min(it.quantity ?? 1, consumeNeeders.length);
+        for (let i = 0; i < cap; i++) slots.push({ rowId: it.id, row: it });
+      }
+      // Kuhn's algorithm: match each needer to a distinct slot.
+      const slotToNeeder: (number | undefined)[] = new Array(slots.length).fill(undefined);
+      const tryAssign = (neederIdx: number, seen: boolean[]): boolean => {
+        const needer = consumeNeeders[neederIdx];
+        for (let s = 0; s < slots.length; s++) {
+          if (seen[s]) continue;
+          if (!needer.options.some((opt) => matchesOption(slots[s].row, opt))) continue;
+          seen[s] = true;
+          if (slotToNeeder[s] === undefined || tryAssign(slotToNeeder[s]!, seen)) {
+            slotToNeeder[s] = neederIdx;
+            return true;
+          }
+        }
+        return false;
+      };
+      for (let n = 0; n < consumeNeeders.length; n++) {
+        if (!tryAssign(n, new Array(slots.length).fill(false))) {
+          // No feasible assignment includes this element -> not enough stock.
+          return rejectLocked(consumeNeeders[n].key, consumeNeeders[n].requirements);
+        }
+      }
+      // Collect the reserved inventory rows from the final matching.
+      const reservedItemRowIds: string[] = [];
+      for (let s = 0; s < slots.length; s++) {
+        if (slotToNeeder[s] !== undefined) reservedItemRowIds.push(slots[s].rowId);
       }
 
       // Roll the DC check: 1d20 + Anemos vs craftDc. DC 0 = automatic success.

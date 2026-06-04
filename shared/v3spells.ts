@@ -296,7 +296,17 @@ export interface V3ElementEligibility {
   // The item to consume on a successful craft — set only when the element is
   // usable AND its only satisfied condition is a consumable item (so a free
   // path, e.g. Knowledge or a non-consumable item, is always preferred).
+  // NOTE: this is the FIRST satisfied consumable; for multi-element crafts use
+  // `consumeOptions` so alternative consumable paths can be allocated.
   consumeItem?: { itemId?: string | null; name?: string | null } | null;
+  // True when the element is usable via a non-consuming path (no conditions, a
+  // known Knowledge, or a non-consumable item) — i.e. crafting it costs no item.
+  freeToUse: boolean;
+  // When the element is usable ONLY via consumable item(s), every satisfied
+  // consumable condition (the OR alternatives). Empty when `freeToUse`. Lets the
+  // server allocate scarce inventory across all used elements instead of
+  // greedily reserving the first candidate.
+  consumeOptions: { itemId?: string | null; name?: string | null }[];
 }
 
 /**
@@ -310,7 +320,7 @@ export function evaluateV3ElementEligibility(
   input: V3CharacterEligibilityInput,
 ): V3ElementEligibility {
   if (!conditions || conditions.length === 0) {
-    return { usable: true, requirements: [] };
+    return { usable: true, requirements: [], freeToUse: true, consumeOptions: [] };
   }
 
   const knowledgeSet = new Set(
@@ -330,7 +340,7 @@ export function evaluateV3ElementEligibility(
 
   let usable = false;
   let satisfiedNonConsuming = false;
-  let consumableCandidate: { itemId?: string | null; name?: string | null } | null = null;
+  const consumeOptions: { itemId?: string | null; name?: string | null }[] = [];
   const requirements: string[] = [];
 
   for (const c of conditions) {
@@ -347,7 +357,7 @@ export function evaluateV3ElementEligibility(
       if (hasItem(c)) {
         usable = true;
         if (c.consumed) {
-          if (!consumableCandidate) consumableCandidate = { itemId: c.itemId, name: c.itemName };
+          consumeOptions.push({ itemId: c.itemId, name: c.itemName });
         } else {
           satisfiedNonConsuming = true;
         }
@@ -355,6 +365,16 @@ export function evaluateV3ElementEligibility(
     }
   }
 
-  const consumeItem = usable && !satisfiedNonConsuming ? consumableCandidate : null;
-  return { usable, requirements, consumeItem };
+  const freeToUse = usable && satisfiedNonConsuming;
+  // Consumable allocation only matters when there is NO free path. The single
+  // `consumeItem` is kept for backward compatibility (first option); the server
+  // uses `consumeOptions` to allocate across the whole composition.
+  const consumeItem = freeToUse ? null : consumeOptions[0] ?? null;
+  return {
+    usable,
+    requirements,
+    consumeItem,
+    freeToUse,
+    consumeOptions: freeToUse ? [] : consumeOptions,
+  };
 }
