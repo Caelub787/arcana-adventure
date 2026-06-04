@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { MyLibraryPanel } from "@/components/game/MyLibraryPanel";
+import AdminSettings from "@/pages/AdminSettings";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -11816,13 +11816,14 @@ export default function Campaign() {
           panelKey="my-library"
           zIndex={floatingZIndicesRef.current['my-library'] || 10300}
           onBringToFront={() => bringToFront('my-library')}
-          defaultSize={{ width: 380, height: 520 }}
-          minWidth={320}
-          minHeight={320}
+          defaultSize={{ width: 760, height: 620 }}
+          minWidth={480}
+          minHeight={380}
         >
-          <MyLibraryPanel
-            campaignSystem={campaignSystemSlug}
-            isGM={role === 'gm'}
+          <AdminSettings
+            embedded
+            forcePersonal
+            embeddedSystem={campaignSystemSlug === 'aa-v2' ? 'A.A. V2' : campaignSystemSlug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure'}
           />
         </FloatingPanel>
       )}

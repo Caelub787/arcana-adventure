@@ -204,17 +204,29 @@ function toSpeciesDraft(s: SystemSpecies): SpeciesDraft {
   };
 }
 
-export default function AdminSettings() {
+interface AdminSettingsProps {
+  // When true, render as an embedded floating panel (no full-screen chrome /
+  // "back to home" navigation) instead of the standalone /admin page.
+  embedded?: boolean;
+  // Force personal-library scope regardless of admin status or URL params.
+  forcePersonal?: boolean;
+  // Initial system display label ('Arcana Adventure' | 'A.A. V2' | 'A.A. V3')
+  // used to seed the system switcher when embedded in a campaign.
+  embeddedSystem?: string;
+}
+
+export default function AdminSettings({ embedded = false, forcePersonal = false, embeddedSystem }: AdminSettingsProps = {}) {
   const [, setLocation] = useLocation();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const search = useSearch();
   // "My Library" personal mode: scopes every list/create to the current user
   // (own + global rows only), even for admins. Non-admins are always personal.
-  const personalMode = new URLSearchParams(search).get('personal') === '1' || !isAdmin;
+  const personalMode = forcePersonal || new URLSearchParams(search).get('personal') === '1' || !isAdmin;
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
+    if (embedded && embeddedSystem) return embeddedSystem;
     if (!isAdmin) return 'A.A. V2';
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
@@ -225,8 +237,8 @@ export default function AdminSettings() {
   // Non-admin GMs are scoped to their AA V2 private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
   useEffect(() => {
-    if (!isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
-  }, [isAdmin, selectedSystem]);
+    if (!embedded && !isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
+  }, [isAdmin, selectedSystem, embedded]);
   useEffect(() => {
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
   }, [isAdmin, currentView]);
@@ -965,20 +977,24 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="h-screen bg-stone-950 text-stone-200 flex flex-col overflow-auto">
-      <div className="w-full px-4 py-4 flex flex-col flex-1 min-h-0">
+    <div className={`${embedded ? 'h-full' : 'h-screen'} bg-stone-950 text-stone-200 flex flex-col overflow-auto`}>
+      <div className={`w-full ${embedded ? 'px-3 py-3' : 'px-4 py-4'} flex flex-col flex-1 min-h-0`}>
         <div className="flex items-center gap-4 mb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBackNavigation}
-            className="text-stone-400 hover:text-stone-200"
-            data-testid="button-back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          {(!embedded || currentView !== 'dashboard') && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBackNavigation}
+              className="text-stone-400 hover:text-stone-200"
+              data-testid="button-back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          )}
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-amber-500">{(isAdmin && !personalMode) ? 'Admin Settings' : 'My Library'}</h1>
+            {!embedded && (
+              <h1 className="text-2xl font-bold text-amber-500">{(isAdmin && !personalMode) ? 'Admin Settings' : 'My Library'}</h1>
+            )}
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
@@ -998,9 +1014,9 @@ export default function AdminSettings() {
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
           </div>
-          {isAdmin && (
-            <div className="w-[200px]">
-              <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); localStorage.setItem('admin-selected-system', val); }}>
+          {(isAdmin || embedded) && (
+            <div className={embedded ? 'w-[150px]' : 'w-[200px]'}>
+              <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); if (!embedded) localStorage.setItem('admin-selected-system', val); }}>
                 <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">
                   <SelectValue placeholder="Select System" />
                 </SelectTrigger>

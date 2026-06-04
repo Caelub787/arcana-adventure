@@ -1,18 +1,24 @@
 ---
 name: Personal library scoping (My Library)
-description: How the additive `personal` flag isolates a user's own library rows from the global admin library, even for admins.
+description: How the additive `personal` flag gives every user (admins included) a per-user library distinct from the global admin library, sharing the same admin-library REST surface.
 ---
 
 # Personal library scoping
 
-The admin-library REST surface (`/api/admin/{system-items,item-templates,system-species,feat-trees,spells,character-templates}`) is shared by BOTH the global admin library UI (AdminSettings) and the in-campaign "My Library" panel.
+The admin-library REST surface is shared by BOTH the global admin library UI and the per-user "My Library". A single additive, default-OFF `personal` flag separates the two:
 
-To give every user — including admins — a PERSONAL library distinct from the global one, there is an additive, default-OFF `personal` flag:
+- **Scope rule:** when `personal` is true, the library scope resolves to `[callerUserId]` for EVERYONE (admins included). Implicit global null-owner rows are still unioned in, so a personal view = own rows + global, never other users' rows.
+- **Write rule:** a personal create lands under the caller's user id, NOT the global library. Admin-global ownership is gated as `(isAdmin && !personal)`. The `personal` flag must NEVER reach a `storage.create*` call as a column — strip it from POST bodies before insert.
+- **End-to-end threading:** the flag has to be carried through every layer — GET query param, POST body (then stripped + ownership gate), client list methods, and the dialog transport factories — including deep nested pickers (effect-target item pickers, roll-template link panels). In global mode the flag is off so behavior is byte-for-byte unchanged.
 
-- `getLibraryScope(userId, campaignId, personal)` in `server/lib/library-acl.ts`: when `personal` is true it returns `[userId]` for EVERYONE (admins included). The storage layer still unions implicit global null-owner rows, so a personal view = own rows + global, never other users' rows.
-- GET routes read `?personal=1`; POST routes read `req.body.personal===true`, **strip it from the body** (drizzle rejects unknown columns for species/feat-tree/spell/char-template; items go through `insertItemSchema.parse` which strips), and gate admin-global ownership as `(isAdmin && !personal)` so a personal create lands under the caller's user id instead of the global library.
-- Client: `api.ts` list methods + both transport factories (`arcanaApiTransport`, `createArcanaApiTransport`) take optional `personal` and propagate it to list reads and create bodies. `MyLibraryPanel` passes `personal:true`. AdminSettings derives `personalMode` (`?personal=1` OR `!isAdmin`) and threads it everywhere — including deep effect-target pickers and roll-template link panels (item/spell/feat/class dialogs fetch `/api/system-items`, `item-templates`, `crafter-recipe-templates`); in global mode `personalMode` is false so query strings/scope are unchanged.
+**Why:** An earlier attempt let admins fall through to `undefined` scope (all rows) with writes landing in the global library, so admins had no personal library at all. Keeping the flag default-OFF guarantees existing admin/GM/player behavior is untouched unless a caller opts in.
 
-**Why:** A prior attempt failed because admins always got `undefined` scope (all rows) and writes landed in the global library, so admins had no personal library. Keeping the flag default-OFF means existing admin/GM/player behavior is untouched unless a caller opts in.
+**How to apply:** Any new admin-library kind or any new surface that needs a per-user library must thread this same `personal` flag end-to-end.
 
-**How to apply:** Any new admin-library kind or new surface that needs a per-user library should thread this same `personal` flag end-to-end (GET query, POST body strip + ownership gate, api list method, transport). Never let `personal` reach `storage.create*` as a column.
+## In-campaign "My Library" = embedded AdminSettings
+
+The in-campaign floating "My Library" panel renders the full `AdminSettings` page in an embedded/personal mode (props `embedded`, `forcePersonal`, `embeddedSystem`) rather than a parallel lightweight panel.
+
+**Why:** A separate lightweight panel could not reach feature parity — classes and crafter-recipe-templates are not part of the portable library-dialogs/sync-kind surface (no dialog, `class` transport unimplemented), and spell/roll-template have no get-by-id for edit. Reusing AdminSettings (which already exposes the full creatable-type set to non-admins in personal mode) is the only way to guarantee parity and avoid drift.
+
+**How to apply:** When a surface must match the library page exactly, embed `AdminSettings` with `embedded`/`forcePersonal` instead of re-implementing a subset. AdminSettings's non-admin path already whitelists the allowed views; embedded mode also unlocks the system switcher for non-admins and seeds it from the campaign system.
