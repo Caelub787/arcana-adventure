@@ -688,10 +688,13 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
   // Cone & Line originate from the caster token center, projecting toward target.
   const dirX = targetX - casterX;
   const dirY = targetY - casterY;
-  const dirLen = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
-  const normX = dirX / dirLen;
-  const normY = dirY / dirLen;
-  const angleRad = Math.atan2(dirY, dirX);
+  const rawLen = Math.sqrt(dirX * dirX + dirY * dirY);
+  // Guard against a zero-length direction (cursor on the caster's own cell):
+  // fall back to pointing right so the shape still renders with valid geometry.
+  const dirLen = rawLen || 1;
+  const normX = rawLen < 0.0001 ? 1 : dirX / dirLen;
+  const normY = rawLen < 0.0001 ? 0 : dirY / dirLen;
+  const angleRad = Math.atan2(normY, normX);
 
   if (marker.shape === 'cone') {
     const lengthFeet = marker.length ?? 15;

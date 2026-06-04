@@ -8521,8 +8521,17 @@ export default function Campaign() {
     const casterCharId = role === 'gm'
       ? (inspectedChar?.id || currentTurnCharacterId || character?.id)
       : character?.id;
-    if (!casterCharId) return null;
-    return tokens.find((t: any) => t.characterId === casterCharId) || null;
+    if (casterCharId) {
+      const byChar = tokens.find((t: any) => t.characterId === casterCharId);
+      if (byChar) return byChar;
+    }
+    // Fallback: anchor to the currently selected token on the map (helps GMs
+    // who aren't inspecting a character and players whose token is selected).
+    if (selectedTokenId) {
+      const bySelection = tokens.find((t: any) => t.id === selectedTokenId);
+      if (bySelection) return bySelection;
+    }
+    return null;
   };
 
   // Build a RulerMarker for the given shape at a raw world coordinate.
@@ -8560,10 +8569,17 @@ export default function Campaign() {
       targetX,
       targetY,
     };
-    if (shape === 'cone') { marker.length = rulerDims.coneLength; marker.arc = rulerDims.coneArc; }
-    else if (shape === 'line') { marker.length = rulerDims.lineLength; marker.width = rulerDims.lineWidth; }
-    else if (shape === 'square') { marker.side = rulerDims.squareSide; }
-    else if (shape === 'circle') { marker.radius = rulerDims.circleRadius; }
+    if (shape === 'cone') {
+      marker.length = rulerDims.coneLength > 0 ? rulerDims.coneLength : 15;
+      marker.arc = rulerDims.coneArc > 0 ? rulerDims.coneArc : 90;
+    } else if (shape === 'line') {
+      marker.length = rulerDims.lineLength > 0 ? rulerDims.lineLength : 30;
+      marker.width = rulerDims.lineWidth > 0 ? rulerDims.lineWidth : 5;
+    } else if (shape === 'square') {
+      marker.side = rulerDims.squareSide > 0 ? rulerDims.squareSide : 15;
+    } else if (shape === 'circle') {
+      marker.radius = rulerDims.circleRadius > 0 ? rulerDims.circleRadius : 15;
+    }
     return marker;
   };
 
@@ -8572,6 +8588,14 @@ export default function Campaign() {
   };
 
   const handleRulerCommit = (x: number, y: number) => {
+    if ((rulerShape === 'cone' || rulerShape === 'line') && !getActiveRulerCasterToken()) {
+      toast({
+        title: 'No caster to anchor from',
+        description: `The ${rulerShape} is measured from your character's token. Place/assign a character token on the map, or select a token first.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     const marker = buildRulerMarker(rulerShape, x, y);
     if (!marker) return;
     marker.id = `ruler-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
