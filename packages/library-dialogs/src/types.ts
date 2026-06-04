@@ -84,6 +84,14 @@ export interface HostAdapter {
    * own centered overlay with default styling.
    */
   modal?: HostModalComponent;
+
+  /**
+   * Optional. Partner-supplied surface for managing the spells pre-loaded
+   * into a spellbook item (AA V3). Rendered inside the ItemDialog's
+   * "Spellbook" section once the item has been saved (so an itemId exists).
+   * The package stays dependency-free; the host supplies the component.
+   */
+  spellbookManager?: ComponentType<{ itemId?: string; maxSpells: number; campaignSystem?: string }>;
 }
 
 /** Stable prop signature shared by every dialog the package exports. */

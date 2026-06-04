@@ -22,6 +22,7 @@
  * browser component, modal component, REST client) must be supplied by
  * the caller at the migration site so this file stays dependency-free.
  */
+import type { ComponentType } from "react";
 import type {
   HostAdapter,
   LibraryTransport,
@@ -73,6 +74,8 @@ export interface ArcanaSessionHostOptions {
   imagePicker?: (opts: ImagePickerOpts) => Promise<{ url: string } | null>;
   /** Bridge to Arcana's existing Dialog chrome (Radix-based). */
   modal?: HostModalComponent;
+  /** Bridge to Arcana's spellbook pre-load manager (AA V3). */
+  spellbookManager?: ComponentType<{ itemId?: string; maxSpells: number; campaignSystem?: string }>;
 }
 
 /**
@@ -90,5 +93,6 @@ export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAd
     notify: opts.notify,
     imagePicker: opts.imagePicker,
     modal: opts.modal,
+    spellbookManager: opts.spellbookManager,
   };
 }

@@ -6151,6 +6151,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (book.characterId !== character.id) {
           return res.status(403).json({ error: "That spellbook does not belong to this character" });
         }
+        // Enforce capacity BEFORE rolling/spending so a full book never wastes
+        // mana or a token. maxSpells === 0 means unlimited.
+        const cap = book.maxSpells ?? 0;
+        if (cap > 0) {
+          const existing = await storage.getV3SpellsForSpellbook(spellbookItemId);
+          if (existing.length >= cap) {
+            return res.status(400).json({ error: "This spellbook is full", reason: "capacity", cap });
+          }
+        }
       }
 
       // Recompute cost & DC server-side (never trust the client).
@@ -6423,6 +6432,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to remove spell" });
+    }
+  });
+
+  // Add a pre-loaded spell directly to a spellbook item (no resource cost).
+  // Used to populate a library/template spellbook so it arrives stocked when
+  // granted to a character. Access mirrors the spellbook read/remove routes.
+  app.post("/api/v3/spellbooks/:itemId/spells", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item) return res.status(404).json({ error: "Spellbook not found" });
+      if (item.itemType !== "spellbook") return res.status(400).json({ error: "Item is not a spellbook" });
+
+      if (item.characterId) {
+        const access = await checkCharacterAccess(item.characterId, req.session.userId!, "edit");
+        if (!access.allowed) return res.status(403).json({ error: "No access to this spellbook" });
+      } else if (!(await canAccessOwnerlessSpellbook(item, req))) {
+        return res.status(403).json({ error: "No access to this spellbook" });
+      }
+
+      const { composition, name, description, image } = req.body || {};
+      if (!composition || !v3spells.isValidV3Composition(composition)) {
+        return res.status(400).json({ error: "Invalid spell composition" });
+      }
+      const trimmedName = String(name || "").trim();
+      if (!trimmedName) return res.status(400).json({ error: "A spell name is required" });
+
+      // Enforce capacity (0 = unlimited).
+      const cap = item.maxSpells ?? 0;
+      if (cap > 0) {
+        const existing = await storage.getV3SpellsForSpellbook(item.id);
+        if (existing.length >= cap) {
+          return res.status(400).json({ error: "This spellbook is full", reason: "capacity", cap });
+        }
+      }
+
+      const compositionHash = hashV3Composition(composition);
+      const spell = await storage.createV3Spell({
+        campaignId: item.campaignId || null,
+        spellbookItemId: item.id,
+        composition,
+        compositionHash,
+        name: trimmedName,
+        description: description ? String(description) : "",
+        image: image || null,
+        manaCost: v3spells.v3ManaCost(composition),
+        craftDc: v3spells.v3CraftDc(composition),
+        createdByUserId: req.session.userId!,
+        createdByCharacterId: null,
+        authoredByUserId: req.session.userId!,
+        status: "ready",
+        isCanonical: false,
+        flagged: containsProfanity(trimmedName),
+      } as any);
+      res.json(spell);
+    } catch (err: any) {
+      console.error("[V3 Spellbook Add] Error:", err?.message);
+      res.status(500).json({ error: "Failed to add spell to spellbook" });
     }
   });
 
@@ -10974,6 +11040,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
             diceFormula: '1d6', sortOrder: 0,
           } as any);
+        }
+      }
+
+      // Clone any pre-loaded spells when granting a spellbook from a library
+      // item so the character receives a populated spellbook. The copies are
+      // owned by the new item and attributed to the receiving character.
+      if (item.itemType === 'spellbook' && sourceTemplateId) {
+        try {
+          const sourceBook = await storage.getItem(sourceTemplateId);
+          if (sourceBook?.itemType === 'spellbook') {
+            const sourceSpells = await storage.getV3SpellsForSpellbook(sourceTemplateId);
+            for (const s of sourceSpells) {
+              await storage.createV3Spell({
+                campaignId: access.character?.campaignId || null,
+                spellbookItemId: item.id,
+                composition: s.composition,
+                compositionHash: s.compositionHash,
+                name: s.name,
+                description: s.description,
+                image: s.image,
+                manaCost: s.manaCost,
+                craftDc: s.craftDc,
+                createdByUserId: req.session.userId!,
+                createdByCharacterId: req.params.characterId,
+                authoredByUserId: s.authoredByUserId,
+                status: s.status === 'awaiting_gm' ? 'ready' : s.status,
+                isCanonical: false,
+                flagged: s.flagged,
+              } as any);
+            }
+          }
+        } catch (spellCloneErr) {
+          console.error('Failed to clone spellbook spells on grant:', spellCloneErr);
         }
       }
 

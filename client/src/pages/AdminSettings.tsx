@@ -56,6 +56,7 @@ import {
   useImageBrowserBridge,
   itemToDraft,
 } from '@/lib/library-dialog-bridges';
+import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
 type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells';
 
@@ -263,6 +264,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           }),
         imagePicker,
         modal: ArcanaModalChrome,
+        spellbookManager: SpellbookLibraryManager,
       }),
     [itemDialogTransport, imagePicker],
   );

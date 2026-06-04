@@ -79,6 +79,7 @@ export interface ItemDraft {
   detonateAoeShape?: string | null;
   detonateAoeRange?: number | null;
   canApplyEffects?: boolean;
+  maxSpells?: number | null;
   isTemplate?: boolean;
   isLiveTemplate?: boolean;
   templatePriority?: number;
@@ -106,6 +107,7 @@ const FRESH: ItemDraft = {
   rolls: [],
   craftRecipes: [],
   templateLinks: [],
+  maxSpells: 10,
   system: "aa-v2",
 };
 
@@ -378,6 +380,35 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   </div>
                 </Grid2>
               )}
+            </Section>
+          )}
+
+          {aav3 && it === "spellbook" && (
+            <Section title="Spellbook">
+              <Stack gap="sm">
+                <div><Label>Max spells (0 = unlimited)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={draft.maxSpells ?? 0}
+                    onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
+                    data-testid="input-spellbook-max-spells"
+                  />
+                </div>
+                {host.spellbookManager ? (
+                  draft.id ? (
+                    <host.spellbookManager
+                      itemId={draft.id}
+                      maxSpells={draft.maxSpells ?? 0}
+                      campaignSystem={campaignSystem ?? draft.system}
+                    />
+                  ) : (
+                    <div className="ld-subtle" data-testid="text-spellbook-save-first">
+                      Save this spellbook first to pre-load spells into it.
+                    </div>
+                  )
+                ) : null}
+              </Stack>
             </Section>
           )}
 

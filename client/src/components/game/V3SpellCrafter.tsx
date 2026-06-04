@@ -141,38 +141,18 @@ function FormulaDisplay({ comp }: { comp: V3SpellComposition }) {
 }
 
 // ---------------------------------------------------------------------------
-// Reusable crafter component
+// Reusable composition editor — the Core / Secondary / Intent / Delivery /
+// Reach / Duration picker plus the live formula. Shared by the player-facing
+// crafter and the admin/library spellbook pre-load manager.
 // ---------------------------------------------------------------------------
-export interface V3SpellCrafterProps {
-  character: CrafterCharacter;
-  onCrafted?: (spell: V3Spell | undefined, autoFilled: boolean) => void;
-  // When set, crafted spells are added to this spellbook item.
-  spellbookItemId?: string;
-}
-
-const DEFAULT_COMP: V3SpellComposition = {
-  core: "",
-  secondaries: [],
-  intent: "",
-  delivery: "",
-  reach: "self",
-  duration: "instant",
-};
-
-export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3SpellCrafterProps) {
-  const { toast } = useToast();
-  const [comp, setComp] = useState<V3SpellComposition>(DEFAULT_COMP);
-  const [crafting, setCrafting] = useState(false);
-
-  const manaCost = useMemo(() => v3ManaCost(comp), [comp]);
-  const craftDc = useMemo(() => v3CraftDc(comp), [comp]);
-  const elementCount = useMemo(() => v3ElementCount(comp), [comp]);
-  const valid = useMemo(() => isValidV3Composition(comp) && !!comp.core && !!comp.intent && !!comp.delivery, [comp]);
-
-  const currentMana = character.mana ?? 0;
-  const currentTokens = character.spellCreationTokens ?? 0;
-  const notEnoughMana = currentMana < manaCost;
-  const noTokens = currentTokens < 1;
+export function V3CompositionEditor({
+  value: comp,
+  onChange,
+}: {
+  value: V3SpellComposition;
+  onChange: (next: V3SpellComposition) => void;
+}) {
+  const setComp = (updater: (c: V3SpellComposition) => V3SpellComposition) => onChange(updater(comp));
 
   const setCore = (key: string) => setComp((c) => ({ ...c, core: c.core === key ? "" : key }));
 
@@ -200,41 +180,8 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
       return { ...c, secondaries };
     });
 
-  const handleCraft = async () => {
-    if (!valid || crafting) return;
-    setCrafting(true);
-    try {
-      const result = await api.craftV3Spell(character.id, comp, spellbookItemId);
-      if (result.success) {
-        toast({
-          title: "Spell crafted!",
-          description: result.autoFilled
-            ? `Roll ${result.roll.total} vs DC ${result.roll.dc}. This composition is already known — its details were filled in automatically.`
-            : `Roll ${result.roll.total} vs DC ${result.roll.dc}. Your GM has been asked to name and describe it.`,
-        });
-        setComp(DEFAULT_COMP);
-        onCrafted?.(result.spell, !!result.autoFilled);
-      } else {
-        toast({
-          title: "Crafting failed",
-          description: `Roll ${result.roll.total} vs DC ${result.roll.dc}. The mana was spent, but your token was not consumed — try again.`,
-          variant: "destructive",
-        });
-        onCrafted?.(undefined, false);
-      }
-    } catch (err: any) {
-      toast({
-        title: "Could not craft spell",
-        description: err?.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    } finally {
-      setCrafting(false);
-    }
-  };
-
   return (
-    <div className="space-y-4" data-testid="v3-spell-crafter">
+    <div className="space-y-4">
       {/* Core element */}
       <div className="space-y-2">
         <Label className="text-xs uppercase tracking-wide text-amber-400 flex items-center gap-1">
@@ -385,6 +332,80 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
         <Label className="text-[10px] uppercase tracking-wide text-stone-500">Formula</Label>
         <FormulaDisplay comp={comp} />
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reusable crafter component
+// ---------------------------------------------------------------------------
+export interface V3SpellCrafterProps {
+  character: CrafterCharacter;
+  onCrafted?: (spell: V3Spell | undefined, autoFilled: boolean) => void;
+  // When set, crafted spells are added to this spellbook item.
+  spellbookItemId?: string;
+}
+
+const DEFAULT_COMP: V3SpellComposition = {
+  core: "",
+  secondaries: [],
+  intent: "",
+  delivery: "",
+  reach: "self",
+  duration: "instant",
+};
+
+export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3SpellCrafterProps) {
+  const { toast } = useToast();
+  const [comp, setComp] = useState<V3SpellComposition>(DEFAULT_COMP);
+  const [crafting, setCrafting] = useState(false);
+
+  const manaCost = useMemo(() => v3ManaCost(comp), [comp]);
+  const craftDc = useMemo(() => v3CraftDc(comp), [comp]);
+  const elementCount = useMemo(() => v3ElementCount(comp), [comp]);
+  const valid = useMemo(() => isValidV3Composition(comp) && !!comp.core && !!comp.intent && !!comp.delivery, [comp]);
+
+  const currentMana = character.mana ?? 0;
+  const currentTokens = character.spellCreationTokens ?? 0;
+  const notEnoughMana = currentMana < manaCost;
+  const noTokens = currentTokens < 1;
+
+  const handleCraft = async () => {
+    if (!valid || crafting) return;
+    setCrafting(true);
+    try {
+      const result = await api.craftV3Spell(character.id, comp, spellbookItemId);
+      if (result.success) {
+        toast({
+          title: "Spell crafted!",
+          description: result.autoFilled
+            ? `Roll ${result.roll.total} vs DC ${result.roll.dc}. This composition is already known — its details were filled in automatically.`
+            : `Roll ${result.roll.total} vs DC ${result.roll.dc}. Your GM has been asked to name and describe it.`,
+        });
+        setComp(DEFAULT_COMP);
+        onCrafted?.(result.spell, !!result.autoFilled);
+      } else {
+        toast({
+          title: "Crafting failed",
+          description: `Roll ${result.roll.total} vs DC ${result.roll.dc}. The mana was spent, but your token was not consumed — try again.`,
+          variant: "destructive",
+        });
+        onCrafted?.(undefined, false);
+      }
+    } catch (err: any) {
+      toast({
+        title: "Could not craft spell",
+        description: err?.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setCrafting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="v3-spell-crafter">
+      <V3CompositionEditor value={comp} onChange={setComp} />
 
       {/* Cost summary + craft */}
       <div className="flex flex-wrap items-center justify-between gap-2">

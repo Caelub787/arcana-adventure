@@ -268,7 +268,17 @@ export function SpellbookPanel({
     <FloatingPanel
       open={open}
       onClose={onClose}
-      title={item.name || "Spellbook"}
+      title={
+        <span className="flex items-center gap-2">
+          <span className="truncate">{item.name || "Spellbook"}</span>
+          <span
+            className="shrink-0 rounded-full bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-xs font-medium text-amber-300"
+            data-testid="text-spellbook-capacity"
+          >
+            {spells.length}{(item.maxSpells ?? 0) > 0 ? ` / ${item.maxSpells}` : ""}
+          </span>
+        </span>
+      }
       defaultSize={{ width: 640, height: 560 }}
       minWidth={360}
       minHeight={360}

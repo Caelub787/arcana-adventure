@@ -518,6 +518,9 @@ export const items = pgTable("items", {
   detonateAoeRange: integer("detonate_aoe_range").default(15),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
+  // Spellbook capacity (AA V3 only): maximum number of crafted/pre-loaded spells
+  // a spellbook item may hold. 0 means unlimited.
+  maxSpells: integer("max_spells").default(10).notNull(),
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
   templateItemId: varchar("template_item_id").references(() => items.id, { onDelete: "set null" }),

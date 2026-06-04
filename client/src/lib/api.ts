@@ -241,6 +241,7 @@ export interface Item {
   durability: number;
   itemType: string;
   rarity: string;
+  maxSpells?: number;
   isContainer: boolean;
   carryCapacity?: number;
   isEquipped: boolean;
@@ -2502,6 +2503,10 @@ class ApiClient {
 
   async removeSpellFromSpellbook(spellId: string): Promise<{ success: boolean }> {
     return this.request(`/v3/spells/${spellId}/remove-from-spellbook`, { method: 'POST' });
+  }
+
+  async addSpellToSpellbook(itemId: string, data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null }): Promise<V3Spell> {
+    return this.request(`/v3/spellbooks/${itemId}/spells`, { method: 'POST', body: JSON.stringify(data) });
   }
 
   async authorV3Spell(spellId: string, data: { name: string; description?: string; image?: string | null }): Promise<V3Spell> {
