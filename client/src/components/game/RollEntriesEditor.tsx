@@ -332,7 +332,7 @@ function HiddenRollSkillPicker({
   return (
     <div className="space-y-2">
       <div>
-        <Label className="text-xs text-stone-400">Required Custom Skill</Label>
+        <Label className="text-xs text-stone-400">{campaignSystem === 'aa-v3' ? 'Required Knowledge' : 'Required Custom Skill'}</Label>
         {selectedSkill ? (
           <div className="flex items-center gap-2 mt-1">
             <div className="flex-1 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-xs text-stone-200 flex items-center justify-between">
@@ -1157,7 +1157,7 @@ function RollForm({
               className="rounded border-stone-600"
               data-testid={`checkbox-${prefix}-isHidden`}
             />
-            <Label className="text-xs text-stone-300">Hide this roll (requires custom skill)</Label>
+            <Label className="text-xs text-stone-300">{campaignSystem === 'aa-v3' ? 'Hide this roll (requires knowledge)' : 'Hide this roll (requires custom skill)'}</Label>
           </div>
           {form.isHidden && (
             <HiddenRollSkillPicker

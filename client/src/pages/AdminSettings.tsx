@@ -1004,7 +1004,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'crafter-recipe-templates' ? 'Crafter Recipe Templates' :
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
-               currentView === 'skills' ? 'Custom Skills' : 
+               currentView === 'skills' ? (systemSlug === 'aa-v3' ? 'Knowledge' : 'Custom Skills') : 
                currentView === 'traits' ? 'Traits' : 
                currentView === 'characters' ? 'Character Templates' : 
                currentView === 'token-effects' ? 'Token Effects' : 
@@ -1150,6 +1150,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         {currentView === 'skills' && (
           <SkillsView
             skills={filteredSkills}
+            systemSlug={systemSlug}
             isLoading={skillsLoading}
             searchQuery={skillSearchQuery}
             setSearchQuery={setSkillSearchQuery}
@@ -2273,9 +2274,9 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <div className="h-12 w-12 rounded-lg bg-cyan-700/20 flex items-center justify-center mb-2">
             <BookOpen className="h-6 w-6 text-cyan-500" />
           </div>
-          <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
+          <CardTitle className="text-cyan-500">{systemSlug === 'aa-v3' ? 'Knowledge' : 'Custom Skills'}</CardTitle>
           <CardDescription className="text-stone-400">
-            Create custom skills that can be added to character sheets
+            {systemSlug === 'aa-v3' ? 'Create knowledge that can be added to character sheets' : 'Create custom skills that can be added to character sheets'}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -3263,6 +3264,7 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
 
 interface SkillsViewProps {
   skills: SystemSkill[];
+  systemSlug: string;
   isLoading: boolean;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -3280,18 +3282,19 @@ const parentAttributeColors: Record<string, string> = {
   craft: 'text-orange-400',
 };
 
-function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill, onEditSkill, onDeleteSkill }: SkillsViewProps) {
+function SkillsView({ skills, systemSlug, isLoading, searchQuery, setSearchQuery, onAddSkill, onEditSkill, onDeleteSkill }: SkillsViewProps) {
+  const isV3 = systemSlug === 'aa-v3';
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
-        <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
+        <CardTitle className="text-cyan-500">{isV3 ? 'Knowledge' : 'Custom Skills'}</CardTitle>
         <Button
           onClick={onAddSkill}
           className="bg-cyan-700 hover:bg-cyan-600"
           data-testid="button-add-skill"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Skill
+          {isV3 ? 'Add Knowledge' : 'Add Skill'}
         </Button>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0">
@@ -3313,8 +3316,8 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
         ) : skills.length === 0 ? (
           <div className="text-center py-12 text-stone-400">
             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p className="font-bold">No custom skills found</p>
-            <p className="text-sm mt-2">Create custom skills that can be added to character sheets</p>
+            <p className="font-bold">{isV3 ? 'No knowledge found' : 'No custom skills found'}</p>
+            <p className="text-sm mt-2">{isV3 ? 'Create knowledge that can be added to character sheets' : 'Create custom skills that can be added to character sheets'}</p>
           </div>
         ) : (
           <ScrollArea className="flex-1 min-h-0">
@@ -6892,7 +6895,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                       <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
                       <SelectItem value="spell_grant">Grant Spell</SelectItem>
                       <SelectItem value="item_grant">Grant Item</SelectItem>
-                      <SelectItem value="skill_grant">Grant Custom Skill</SelectItem>
+                      <SelectItem value="skill_grant">{systemSlug === 'aa-v3' ? 'Grant Knowledge' : 'Grant Custom Skill'}</SelectItem>
                       <SelectItem value="trait_grant">Grant Trait</SelectItem>
                     </SelectContent>
                   </Select>
@@ -7161,7 +7164,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                           {(customSkills as SystemSkill[]).find(s => s.id === newEffect.target)?.name || 'Select skill...'}
                         </span>
                       ) : (
-                        <span className="text-stone-400">Select custom skill...</span>
+                        <span className="text-stone-400">{systemSlug === 'aa-v3' ? 'Select knowledge...' : 'Select custom skill...'}</span>
                       )}
                       <Search className="h-3 w-3" />
                     </Button>
@@ -7171,7 +7174,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                         <DialogHeader>
                           <DialogTitle className="text-pink-400 flex items-center gap-2">
                             <Sparkles className="h-5 w-5" />
-                            Select Custom Skill
+                            {systemSlug === 'aa-v3' ? 'Select Knowledge' : 'Select Custom Skill'}
                           </DialogTitle>
                         </DialogHeader>
                         <div className="relative mb-3">
@@ -7188,7 +7191,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                           {(customSkills as SystemSkill[]).length === 0 ? (
                             <div className="text-center py-8 text-stone-400">
                               <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                              <p>No custom skills created yet</p>
+                              <p>{systemSlug === 'aa-v3' ? 'No knowledge created yet' : 'No custom skills created yet'}</p>
                             </div>
                           ) : (
                             (customSkills as SystemSkill[])

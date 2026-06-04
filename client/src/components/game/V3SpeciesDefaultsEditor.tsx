@@ -98,7 +98,7 @@ export function V3SpeciesDefaultsEditor({
       {/* Default custom skills */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <Label className="text-amber-500">Default Custom Skills</Label>
+          <Label className="text-amber-500">Default Knowledge</Label>
           <Button type="button" size="sm" variant="outline" onClick={addSkill} className="bg-stone-800 border-stone-700 h-7" data-testid="button-add-v3-species-skill">
             <Plus className="h-3 w-3 mr-1" /> Add Skill
           </Button>

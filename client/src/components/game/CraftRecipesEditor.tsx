@@ -179,6 +179,7 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
         <RecipeRow
           key={r.id}
           recipe={r}
+          systemSlug={systemSlug}
           systemItems={systemItems}
           expanded={expandedId === r.id}
           onToggle={() => setExpandedId(expandedId === r.id ? null : r.id)}
@@ -200,6 +201,7 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
 
 function RecipeRow({
   recipe,
+  systemSlug,
   systemItems,
   expanded,
   onToggle,
@@ -209,6 +211,7 @@ function RecipeRow({
   onMoveDown,
 }: {
   recipe: any;
+  systemSlug: string;
   systemItems: any[];
   expanded: boolean;
   onToggle: () => void;
@@ -487,7 +490,7 @@ function RecipeRow({
           {/* Custom Skill Restriction */}
           <div className="border border-stone-700 rounded p-2">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-amber-500">Skill Restriction</span>
+              <span className="text-xs font-bold text-amber-500">{systemSlug === 'aa-v3' ? 'Knowledge Restriction' : 'Skill Restriction'}</span>
               <div className="flex items-center gap-2">
                 <Switch checked={!!draft.requireCustomSkill} onCheckedChange={(c) => setDraft({ ...draft, requireCustomSkill: !!c })} data-testid="switch-require-skill" />
                 <Label className="text-xs">Required</Label>
@@ -496,7 +499,7 @@ function RecipeRow({
             {draft.requireCustomSkill && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs">Custom Skill Name</Label>
+                  <Label className="text-xs">{systemSlug === 'aa-v3' ? 'Knowledge Name' : 'Custom Skill Name'}</Label>
                   <Input
                     value={draft.requiredSkillName || ''}
                     onChange={(e) => setDraft({ ...draft, requiredSkillName: e.target.value })}

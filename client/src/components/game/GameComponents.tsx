@@ -12438,6 +12438,7 @@ interface HotbarsTabContentProps {
   character: any;
   isGM: boolean;
   isOwner: boolean;
+  campaignSystem?: string;
 }
 
 // Type guard for items with weapon fields
@@ -12453,7 +12454,8 @@ interface ItemWithWeaponFields {
   imageData?: string;
 }
 
-function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps) {
+function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: HotbarsTabContentProps) {
+  const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const canEdit = isOwner || isGM;
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -13270,7 +13272,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
               {/* Custom Skills Section */}
               {characterCustomSkills.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-stone-700">
-                  <Label className="text-xs text-stone-400 mb-2 block">Tap or drag custom skills to equip:</Label>
+                  <Label className="text-xs text-stone-400 mb-2 block">{isAAV3 ? 'Tap or drag knowledge to equip:' : 'Tap or drag custom skills to equip:'}</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                     {characterCustomSkills.map((customSkill: any) => {
                       const skillVal = customSkill.value || 0;
@@ -18949,7 +18951,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <AlertDialogHeader>
                             <AlertDialogTitle className="text-stone-200">Change Species?</AlertDialogTitle>
                             <AlertDialogDescription className="text-stone-400">
-                              Changing this character's species to <span className="text-amber-400">{pendingV3RaceChange}</span> will replace the attribute bonuses, custom skills, and traits granted by the current species (<span className="text-amber-400">{liveCharacter.race}</span>) with those of the new one. Custom skills and traits you added yourself are kept. This takes effect when you save.
+                              Changing this character's species to <span className="text-amber-400">{pendingV3RaceChange}</span> will replace the attribute bonuses, knowledge, and traits granted by the current species (<span className="text-amber-400">{liveCharacter.race}</span>) with those of the new one. Knowledge and traits you added yourself are kept. This takes effect when you save.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -19627,7 +19629,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           </TabsContent>
 
           {/* SKILLS TAB */}
-          <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
+          <TabsContent value="skills" className={`${isAAV3 ? 'flex flex-col gap-4' : 'space-y-4'} mt-0`} data-testid="content-skills">
             <Card className={`bg-stone-800 border-stone-700${isAAV3 ? ' hidden' : ''}`}>
               <CardContent className="pt-4">
                 {(liveCharacter.exhaustion || 0) >= 1 && (
@@ -19944,12 +19946,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             </Card>
 
             {/* Custom Skills Section */}
-            <Card className="bg-stone-800 border-stone-700 mt-4">
+            <Card className={`bg-stone-800 border-stone-700 ${isAAV3 ? 'order-2' : 'mt-4'}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-cyan-500 text-sm font-medium flex items-center gap-2">
                     <BookOpen className="h-4 w-4" />
-                    Custom Skills
+                    {isAAV3 ? 'Knowledge' : 'Custom Skills'}
                   </CardTitle>
                   {isGM && (
                     <Button
@@ -19969,7 +19971,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       data-testid="button-add-custom-skill"
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      Add Skill
+                      {isAAV3 ? 'Add Knowledge' : 'Add Skill'}
                     </Button>
                   )}
                 </div>
@@ -19977,7 +19979,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <CardContent className="pt-3">
                 {characterCustomSkills.length === 0 ? (
                   <div className="text-center py-4 text-stone-500 text-sm">
-                    No custom skills added yet
+                    {isAAV3 ? 'No knowledge added yet' : 'No custom skills added yet'}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -20151,7 +20153,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             <FloatingPanel
               open={showAddCustomSkill}
               onClose={() => setShowAddCustomSkill(false)}
-              title={<span className="text-cyan-500">Add Custom Skill</span>}
+              title={<span className="text-cyan-500">{isAAV3 ? 'Add Knowledge' : 'Add Custom Skill'}</span>}
               panelKey={`skill-add${charPanelSuffix}`}
               zIndex={floatingZIndices?.[`skill-add${charPanelSuffix}`] || 10200}
               onBringToFront={() => bringToFront?.(`skill-add${charPanelSuffix}`)}
@@ -20175,7 +20177,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <FloatingPanel
                 open={!!editingCustomSkill}
                 onClose={() => setEditingCustomSkill(null)}
-                title={<span className="text-cyan-500">Edit Custom Skill</span>}
+                title={<span className="text-cyan-500">{isAAV3 ? 'Edit Knowledge' : 'Edit Custom Skill'}</span>}
                 panelKey={`skill-edit${charPanelSuffix}`}
                 zIndex={floatingZIndices?.[`skill-edit${charPanelSuffix}`] || 10200}
                 onBringToFront={() => bringToFront?.(`skill-edit${charPanelSuffix}`)}
@@ -20232,7 +20234,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             )}
 
             {/* Traits Section */}
-            <Card className="bg-stone-800 border-stone-700 mt-4">
+            <Card className={`bg-stone-800 border-stone-700 ${isAAV3 ? 'order-1' : 'mt-4'}`}>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-rose-500 text-sm font-medium flex items-center gap-2">
@@ -21866,7 +21868,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
           {/* HOTBARS TAB */}
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
-            <HotbarsTabContent character={character} isGM={isGM} isOwner={isOwner} />
+            <HotbarsTabContent character={character} isGM={isGM} isOwner={isOwner} campaignSystem={campaignSystem} />
           </TabsContent>
 
           {/* BACKGROUND TAB */}
