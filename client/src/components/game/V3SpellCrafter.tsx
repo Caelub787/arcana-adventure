@@ -344,6 +344,12 @@ export interface V3SpellCrafterProps {
   onCrafted?: (spell: V3Spell | undefined, autoFilled: boolean) => void;
   // When set, crafted spells are added to this spellbook item.
   spellbookItemId?: string;
+  // When true, the target spellbook is at capacity — crafting is blocked.
+  atCapacity?: boolean;
+  // Spells currently used in the target spellbook (for the "x of y" readout).
+  spellsUsed?: number;
+  // Spellbook capacity (0/undefined = unlimited).
+  maxSpells?: number;
 }
 
 const DEFAULT_COMP: V3SpellComposition = {
@@ -355,7 +361,7 @@ const DEFAULT_COMP: V3SpellComposition = {
   duration: "instant",
 };
 
-export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3SpellCrafterProps) {
+export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapacity = false, spellsUsed, maxSpells }: V3SpellCrafterProps) {
   const { toast } = useToast();
   const [comp, setComp] = useState<V3SpellComposition>(DEFAULT_COMP);
   const [crafting, setCrafting] = useState(false);
@@ -369,9 +375,10 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
   const currentTokens = character.spellCreationTokens ?? 0;
   const notEnoughMana = currentMana < manaCost;
   const noTokens = currentTokens < 1;
+  const hasCapacity = (maxSpells ?? 0) > 0;
 
   const handleCraft = async () => {
-    if (!valid || crafting) return;
+    if (!valid || crafting || atCapacity) return;
     setCrafting(true);
     try {
       const result = await api.craftV3Spell(character.id, comp, spellbookItemId);
@@ -424,16 +431,26 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
         </div>
         <Button
           onClick={handleCraft}
-          disabled={!valid || crafting || notEnoughMana || noTokens}
+          disabled={!valid || crafting || notEnoughMana || noTokens || atCapacity}
           className="bg-amber-600 hover:bg-amber-700 text-stone-950"
           data-testid="button-craft-spell"
         >
           {crafting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
-          Craft ({elementCount} element{elementCount === 1 ? "" : "s"})
+          {atCapacity ? "Spellbook full" : `Craft (${elementCount} element${elementCount === 1 ? "" : "s"})`}
         </Button>
       </div>
-      {notEnoughMana && <p className="text-xs text-red-400">Not enough mana to craft this spell.</p>}
-      {!notEnoughMana && noTokens && <p className="text-xs text-red-400">No spell creation tokens left. Take a long rest to refill.</p>}
+      {hasCapacity && (
+        <p
+          className={`text-xs ${atCapacity ? "text-red-400" : "text-stone-400"}`}
+          data-testid="text-crafter-capacity"
+        >
+          {atCapacity
+            ? `Spellbook full — ${spellsUsed ?? maxSpells} of ${maxSpells} spells used. Remove a spell to craft a new one.`
+            : `${spellsUsed ?? 0} of ${maxSpells} spells used.`}
+        </p>
+      )}
+      {!atCapacity && notEnoughMana && <p className="text-xs text-red-400">Not enough mana to craft this spell.</p>}
+      {!atCapacity && !notEnoughMana && noTokens && <p className="text-xs text-red-400">No spell creation tokens left. Take a long rest to refill.</p>}
     </div>
   );
 }

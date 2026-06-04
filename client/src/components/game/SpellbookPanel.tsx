@@ -383,6 +383,9 @@ export function SpellbookPanel({
           <V3SpellCrafter
             character={character}
             spellbookItemId={item.id}
+            spellsUsed={spells.length}
+            maxSpells={item.maxSpells ?? 0}
+            atCapacity={(item.maxSpells ?? 0) > 0 && spells.length >= item.maxSpells}
             onCrafted={(spell, autoFilled) => { if (spell) invalidateSpells(); }}
           />
         </TabsContent>
