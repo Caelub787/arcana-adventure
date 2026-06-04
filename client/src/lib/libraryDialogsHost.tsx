@@ -43,6 +43,13 @@ function notImpl(kind: SyncKind, op: string): never {
 export interface ArcanaApiTransportContext {
   systemSlug: string;
   systemDisplayName: string;
+  /**
+   * When true, all list reads request the caller's personal library scope
+   * (`?personal=1`) and all creates tag the body with `personal: true` so the
+   * server stores the row under the caller's user id — even for admins. Powers
+   * the in-campaign "My Library" surface.
+   */
+  personal?: boolean;
 }
 
 /**
@@ -58,17 +65,17 @@ export interface ArcanaApiTransportContext {
 export function createArcanaApiTransport(
   ctx: ArcanaApiTransportContext,
 ): LibraryTransport {
-  const { systemSlug, systemDisplayName } = ctx;
+  const { systemSlug, systemDisplayName, personal } = ctx;
 
   const transport: LibraryTransport = {
     async list<T>(kind: SyncKind): Promise<{ data: T[] }> {
       switch (kind) {
-        case "item":              return { data: (await api.getSystemItems(systemSlug)) as T[] };
-        case "spell":             return { data: (await api.getSystemSpells(systemSlug)) as T[] };
-        case "roll-template":     return { data: (await api.getItemTemplates(systemSlug)) as T[] };
-        case "species":           return { data: (await api.getSystemSpecies(systemDisplayName)) as T[] };
-        case "feat-tree":         return { data: (await api.getFeatTrees(systemSlug)) as T[] };
-        case "character-template":return { data: (await api.getCharacterTemplates()) as T[] };
+        case "item":              return { data: (await api.getSystemItems(systemSlug, undefined, personal)) as T[] };
+        case "spell":             return { data: (await api.getSystemSpells(systemSlug, personal)) as T[] };
+        case "roll-template":     return { data: (await api.getItemTemplates(systemSlug, personal)) as T[] };
+        case "species":           return { data: (await api.getSystemSpecies(systemDisplayName, undefined, personal)) as T[] };
+        case "feat-tree":         return { data: (await api.getFeatTrees(systemSlug, undefined, personal)) as T[] };
+        case "character-template":return { data: (await api.getCharacterTemplates(personal)) as T[] };
         case "character":         return { data: [] as T[] };
         case "class":             return notImpl("class", "list");
         default:                  return notImpl(kind, "list");
@@ -86,13 +93,13 @@ export function createArcanaApiTransport(
           return envelope("character", data);
         }
         case "species": {
-          const list = await api.getSystemSpecies(systemDisplayName);
+          const list = await api.getSystemSpecies(systemDisplayName, undefined, personal);
           const data = list.find((s) => s.id === id);
           if (!data) throw new Error(`Species ${id} not found`);
           return envelope("species", data as unknown as T);
         }
         case "character-template": {
-          const list = await api.getCharacterTemplates();
+          const list = await api.getCharacterTemplates(personal);
           const data = list.find((c) => c.id === id);
           if (!data) throw new Error(`Character template ${id} not found`);
           return envelope("character-template", data as unknown as T);
@@ -114,27 +121,27 @@ export function createArcanaApiTransport(
     async upsert<T>(kind: SyncKind, body: T & Record<string, unknown>): Promise<SyncEnvelope<T>> {
       switch (kind) {
         case "item": {
-          const created = await api.createSystemItem({ ...body, system: systemSlug } as Record<string, unknown>);
+          const created = await api.createSystemItem({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("item", created as unknown as T);
         }
         case "spell": {
-          const created = await api.createSystemSpell({ ...body, system: systemSlug } as Record<string, unknown>);
+          const created = await api.createSystemSpell({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("spell", created as unknown as T);
         }
         case "roll-template": {
-          const created = await api.createItemTemplate({ ...body, system: systemSlug } as Record<string, unknown>);
+          const created = await api.createItemTemplate({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("roll-template", created as unknown as T);
         }
         case "species": {
-          const created = await api.createSystemSpecies({ ...body, systemName: systemDisplayName } as Record<string, unknown>);
+          const created = await api.createSystemSpecies({ ...body, systemName: systemDisplayName, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("species", created as unknown as T);
         }
         case "feat-tree": {
-          const created = await api.createFeatTree({ ...body, system: systemSlug } as Record<string, unknown>);
+          const created = await api.createFeatTree({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("feat-tree", created as unknown as T);
         }
         case "character-template": {
-          const created = await api.createCharacterTemplate(body as Record<string, unknown>);
+          const created = await api.createCharacterTemplate({ ...body, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
           return envelope("character-template", created as unknown as T);
         }
         case "character": {

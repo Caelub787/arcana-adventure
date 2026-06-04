@@ -59,11 +59,11 @@ export function itemToDraft(item: ApiItem): ItemDraft {
   } as ItemDraft;
 }
 
-export function arcanaApiTransport(systemSlug: string): LibraryTransport {
+export function arcanaApiTransport(systemSlug: string, personal?: boolean): LibraryTransport {
   return {
     list: async <T,>(kind: SyncKind): Promise<{ data: T[] }> => {
-      if (kind === 'item') return { data: (await api.getSystemItems(systemSlug)) as T[] };
-      if (kind === 'roll-template') return { data: (await api.getItemTemplates(systemSlug)) as T[] };
+      if (kind === 'item') return { data: (await api.getSystemItems(systemSlug, undefined, personal)) as T[] };
+      if (kind === 'roll-template') return { data: (await api.getItemTemplates(systemSlug, personal)) as T[] };
       throw new Error(`arcanaApiTransport: unsupported list kind "${kind}"`);
     },
     get: async <T,>(kind: SyncKind, id: string): Promise<SyncEnvelope<T>> => {
@@ -95,6 +95,7 @@ export function arcanaApiTransport(systemSlug: string): LibraryTransport {
         const created = await api.createSystemItem({
           ...(itemFields as Partial<ApiItem>),
           system: systemSlug,
+          ...(personal ? { personal: true } : {}),
         } as Partial<ApiItem>);
 
         // Server may auto-create rolls (e.g. Detonate when isDetonatable=true).

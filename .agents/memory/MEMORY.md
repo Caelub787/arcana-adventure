@@ -3,3 +3,4 @@
 - [V3 schema uses db:push](v3-schema-migrations.md) — V3 schema applied via db:push only; no migration files, no runtime migrate(); don't run drizzle-kit generate.
 - [V3 spell name censoring](v3-spell-censoring.md) — all player-facing V3 spell egress (REST + WS broadcast) must censor flagged names by viewing campaign's is18Plus; admin never censors; 18+ toggle is V3-only
 - [Server API test harness](testing-harness.md) — vitest pattern to boot registerRoutes with storage/db/sync/library-acl mocked, named `session` middleware for auth, real ws client to capture broadcasts.
+- [Personal library scoping](personal-library-scoping.md) — additive default-OFF `personal` flag gives every user (incl admins) a personal library separate from global admin rows.

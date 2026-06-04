@@ -1167,10 +1167,11 @@ class ApiClient {
   }
 
   // Admin System Items
-  async getSystemItems(system?: string, campaignId?: string): Promise<Item[]> {
+  async getSystemItems(system?: string, campaignId?: string, personal?: boolean): Promise<Item[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
+    if (personal) qs.set('personal', '1');
     const s = qs.toString();
     return this.request(`/admin/system-items${s ? `?${s}` : ''}`);
   }
@@ -1217,9 +1218,12 @@ class ApiClient {
   }
 
   // Item Templates (admin live templates whose roll edits propagate to linked items)
-  async getItemTemplates(system?: string): Promise<Item[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/item-templates${params}`);
+  async getItemTemplates(system?: string, personal?: boolean): Promise<Item[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (personal) qs.set('personal', '1');
+    const s = qs.toString();
+    return this.request(`/admin/item-templates${s ? `?${s}` : ''}`);
   }
 
   async getItemTemplate(id: string): Promise<Item> {
@@ -1349,10 +1353,11 @@ class ApiClient {
   }
 
   // Admin System Species
-  async getSystemSpecies(systemName?: string, campaignId?: string): Promise<SystemSpecies[]> {
+  async getSystemSpecies(systemName?: string, campaignId?: string, personal?: boolean): Promise<SystemSpecies[]> {
     const qs = new URLSearchParams();
     if (systemName) qs.set('system', systemName);
     if (campaignId) qs.set('campaignId', campaignId);
+    if (personal) qs.set('personal', '1');
     const s = qs.toString();
     return this.request(`/admin/system-species${s ? `?${s}` : ''}`);
   }
@@ -1502,9 +1507,12 @@ class ApiClient {
   }
 
   // Admin System Spells
-  async getSystemSpells(system?: string): Promise<SystemSpell[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/spells${params}`);
+  async getSystemSpells(system?: string, personal?: boolean): Promise<SystemSpell[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (personal) qs.set('personal', '1');
+    const s = qs.toString();
+    return this.request(`/admin/spells${s ? `?${s}` : ''}`);
   }
 
   // Lightweight summaries (no icon base64, no effects jsonb) for fast loading
@@ -1670,8 +1678,9 @@ class ApiClient {
   }
 
   // Admin Character Templates
-  async getCharacterTemplates(): Promise<Character[]> {
-    return this.request('/admin/character-templates');
+  async getCharacterTemplates(personal?: boolean): Promise<Character[]> {
+    const params = personal ? '?personal=1' : '';
+    return this.request(`/admin/character-templates${params}`);
   }
 
   async getCharacterTemplate(id: string): Promise<Character> {
@@ -1786,10 +1795,11 @@ class ApiClient {
   }
 
   // Admin Feat Trees
-  async getFeatTrees(system?: string, campaignId?: string): Promise<FeatTree[]> {
+  async getFeatTrees(system?: string, campaignId?: string, personal?: boolean): Promise<FeatTree[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
+    if (personal) qs.set('personal', '1');
     const s = qs.toString();
     return this.request(`/admin/feat-trees${s ? `?${s}` : ''}`);
   }

@@ -6781,7 +6781,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/system-items", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const items = await storage.getSystemItems(system, scope);
       res.json(items);
     } catch (err) {
@@ -6794,7 +6795,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
       const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
         ...body,
         isTemplate: true,
@@ -7685,7 +7688,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/item-templates", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const templates = await storage.getSystemItemTemplates(system, scope);
       res.json(templates);
     } catch (err) {
@@ -7711,7 +7715,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
       const requestedTplSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedTplSystem, createdByUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedTplSystem, createdByUserId: req.session.userId };
       const itemData = insertItemSchema.parse({
         ...body,
         isTemplate: true,
@@ -8358,7 +8364,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/system-species", requireAuth, async (req, res) => {
     try {
       const systemName = req.query.system as string | undefined;
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const species = await storage.getSystemSpecies(systemName, scope);
       res.json(species);
     } catch (err) {
@@ -8373,7 +8380,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Personal library is only available for the AA V2 and AA V3 systems" });
       }
       const requestedSpeciesSystem = req.body.systemName === 'A.A. V3' ? 'A.A. V3' : 'A.A. V2';
-      const body = isA ? req.body : { ...req.body, systemName: requestedSpeciesSystem, ownerUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, systemName: requestedSpeciesSystem, ownerUserId: req.session.userId };
       const species = await storage.createSystemSpecies(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(species);
@@ -9099,7 +9108,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const campaignId = req.query.campaignId as string | undefined;
-      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
       const trees = await storage.getFeatTrees(system, scope);
       res.json(trees);
     } catch (err) {
@@ -9131,7 +9141,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
       const requestedTreeSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedTreeSystem, ownerUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedTreeSystem, ownerUserId: req.session.userId };
       const tree = await storage.createFeatTree(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(tree);
@@ -9654,7 +9666,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/spells", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const spellList = await storage.getSystemSpells(system, scope);
       res.json(spellList);
     } catch (err) {
@@ -9707,7 +9720,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
       const requestedSpellSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedSpellSystem, ownerUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedSpellSystem, ownerUserId: req.session.userId };
       const spell = await storage.createSystemSpell(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
@@ -9856,7 +9871,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Character Template routes (admin)
   app.get("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const templates = await storage.getCharacterTemplates(scope);
       res.json(templates);
     } catch (err) {
@@ -9880,7 +9896,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      const body = isA ? req.body : { ...req.body, ownerUserId: req.session.userId };
+      const personal = req.body.personal === true;
+      if (personal) delete req.body.personal;
+      const body = (isA && !personal) ? req.body : { ...req.body, ownerUserId: req.session.userId };
       const template = await storage.createCharacterTemplate(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
@@ -10930,7 +10948,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } as any);
         }
       }
-      
+
+      // Auto-save brand-new character-sheet items to the campaign's local
+      // library so the rest of the table can reuse them. Items linked from an
+      // existing template are skipped (they already live in a library).
+      try {
+        const autoCampaignId = access.character?.campaignId;
+        if (autoCampaignId && !linkToTemplate && item.name) {
+          const existingTemplates = await storage.getCampaignTemplateItems(autoCampaignId);
+          const dup = existingTemplates.find(
+            (t) => t.name && t.name.toLowerCase() === item.name.toLowerCase(),
+          );
+          if (!dup) {
+            const {
+              id: _id, characterId: _ch, campaignId: _cid, templateItemId: _tid,
+              isTemplate: _t, isLiveTemplate: _lt, createdByUserId: _cu,
+              equipped: _eq, isEquipped: _ie, quantity: _q,
+              ...itemFields
+            } = item as any;
+            const templateData = insertItemSchema.parse({
+              ...itemFields,
+              isTemplate: true,
+              characterId: null,
+              campaignId: autoCampaignId,
+              createdByUserId: req.session.userId,
+            });
+            const templateItem = await storage.createItem(templateData);
+            const charRolls = await storage.getRollEntries('item', item.id);
+            if (charRolls.length > 0) {
+              const rollsToInsert = charRolls.map((r) => {
+                const {
+                  id: _rid, ownerId: _oid, ownerType: _ot,
+                  fromTemplateRollId: _ftr, isOverridden: _io,
+                  createdAt: _ca, updatedAt: _ua, ...rollRest
+                } = r as any;
+                return { ...rollRest, ownerType: 'item' as const, ownerId: templateItem.id };
+              });
+              await storage.createRollEntriesBulk(rollsToInsert as InsertRollEntry[]);
+            }
+            broadcastToCampaign(autoCampaignId, {
+              type: 'campaign_data_changed', entity: 'template-items', campaignId: autoCampaignId,
+            });
+          }
+        }
+      } catch (autoSaveErr) {
+        console.log('Auto-save to campaign library skipped:', autoSaveErr);
+      }
+
       if (access.character?.campaignId) {
         broadcastToCampaign(access.character.campaignId, {
           type: "item_created",

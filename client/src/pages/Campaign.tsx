@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
+import { MyLibraryPanel } from "@/components/game/MyLibraryPanel";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -7833,6 +7834,7 @@ export default function Campaign() {
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
   const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
+  const [myLibraryOpen, setMyLibraryOpen] = useState(false);
 
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
@@ -11099,15 +11101,22 @@ export default function Campaign() {
           </TooltipProvider>
           )}
 
-          {role === 'gm' && (
+          {!spectatorMode && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => window.open('/admin', '_blank')}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    onClick={() => {
+                      if (myLibraryOpen) {
+                        setMyLibraryOpen(false);
+                      } else {
+                        setMyLibraryOpen(true);
+                        bringToFront('my-library');
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${myLibraryOpen ? 'text-amber-400 bg-white/10' : ''}`}
                     data-testid="button-panel-my-library"
                   >
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11795,6 +11804,26 @@ export default function Campaign() {
               })
             )}
           </div>
+        </FloatingPanel>
+      )}
+
+      {/* My Library FloatingPanel */}
+      {!spectatorMode && myLibraryOpen && effectiveCampaignId && (
+        <FloatingPanel
+          open={myLibraryOpen}
+          onClose={() => setMyLibraryOpen(false)}
+          title={<span className="text-amber-500">My Library</span>}
+          panelKey="my-library"
+          zIndex={floatingZIndicesRef.current['my-library'] || 10300}
+          onBringToFront={() => bringToFront('my-library')}
+          defaultSize={{ width: 380, height: 520 }}
+          minWidth={320}
+          minHeight={320}
+        >
+          <MyLibraryPanel
+            campaignSystem={campaignSystemSlug}
+            isGM={role === 'gm'}
+          />
         </FloatingPanel>
       )}
 

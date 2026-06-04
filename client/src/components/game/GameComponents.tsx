@@ -11569,26 +11569,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               )}
             </div>
           )}
-          {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (
-            <Button
-              variant="secondary"
-              className="w-full bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700"
-              onClick={onOpenCampaignSpecies}
-              data-testid="button-campaign-species-settings-inline"
-            >
-              <Dna className="mr-2 h-4 w-4" /> Campaign Species
-            </Button>
-          )}
-          {!charactersOnly && role === 'gm' && (
-            <Button 
-              variant="secondary" 
-              className="w-full bg-amber-800 hover:bg-amber-700" 
-              onClick={() => setShowLevelUpDialog(true)}
-              data-testid="button-level-up-all-inline"
-            >
-              <TrendingUp className="mr-2 h-4 w-4" /> Level Up All
-            </Button>
-          )}
           {!charactersOnly && <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-4">
             <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
               <Bell className="h-3 w-3 text-blue-400" /> Display Settings
@@ -11716,6 +11696,17 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             )}
           </div>}
           {charactersOnly ? (
+            <>
+              {role === 'gm' && (
+                <Button
+                  variant="secondary"
+                  className="w-full mb-3 bg-amber-800 hover:bg-amber-700"
+                  onClick={() => setShowLevelUpDialog(true)}
+                  data-testid="button-level-up-all-characters"
+                >
+                  <TrendingUp className="mr-2 h-4 w-4" /> Level Up All
+                </Button>
+              )}
             <CharacterManagementContent
               role={role}
               characters={characters}
@@ -11749,6 +11740,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               myPermissions={myPermissions}
               onPlaceCharacterToken={onPlaceCharacterToken}
             />
+            </>
           ) : (
           <div className={system === 'sandbox' ? "space-y-4" : "mt-4 space-y-4"}>
               <div className="space-y-2">

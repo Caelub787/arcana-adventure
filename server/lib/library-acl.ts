@@ -21,8 +21,14 @@ export async function isAdminUser(userId: string | undefined): Promise<boolean> 
 export async function getLibraryScope(
   userId: string | undefined,
   campaignId?: string,
+  personal?: boolean,
 ): Promise<string[] | undefined> {
   if (!userId) return [];
+  // Personal mode: restrict to the caller's own rows (plus implicit global
+  // null-owner rows added by the storage layer) for EVERYONE, including
+  // admins. This powers the "My Library" surface so an admin sees their own
+  // personal library rather than every user's rows.
+  if (personal) return [userId];
   if (await isAdminUser(userId)) return undefined;
   const ids = [userId];
   if (campaignId) {
