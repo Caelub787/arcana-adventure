@@ -44,12 +44,12 @@ export interface V3Role extends V3Option {
 export const V3_CORE_ROLE_KEY = "core";
 
 export const V3_ROLES: V3Role[] = [
-  { key: "core", name: "Core", color: "#f59e0b", description: "The primary element and the spell's fundamental identity. What the spell is made of at its heart. Every spell must have one and only one Core. Everything else exists to support, shape, or modify it." },
-  { key: "catalyst", name: "Catalyst", color: "#ef4444", description: "Drives the reaction or transformation without being part of the final output. The Catalyst changes how the Core manifests but does not become the spell itself. Like fire beneath a pot, it provides the force that causes the change." },
-  { key: "carrier", name: "Carrier", color: "#3b82f6", description: "The vessel or medium the spell travels through or is contained within. The Core rides inside or along the Carrier to reach its destination. The Carrier gives the spell its path and shape in transit." },
-  { key: "amplifier", name: "Amplifier", color: "#a855f7", description: "Strengthens one other element in the spell, making it more intense, more far-reaching, or more powerful than it could be on its own. Does not change what the element does, only how much." },
-  { key: "seal", name: "Seal", color: "#10b981", description: "Anchors and stabilizes the spell, giving it persistence and preventing it from dispersing. Without a Seal, most spells fade quickly. The nature of the Seal element determines how and where the spell is held." },
-  { key: "trigger", name: "Trigger", color: "#ec4899", description: "Defines the condition that activates or detonates the spell. The Core lies dormant and does nothing until the Trigger condition is met. The Trigger element's natural properties define what that condition is." },
+  { key: "core", name: "Core", color: "#f59e0b", description: "What element the spell is made from" },
+  { key: "catalyst", name: "Catalyst", color: "#ef4444", description: "Drives the reaction between the spells with the core being the main focus" },
+  { key: "carrier", name: "Carrier", color: "#3b82f6", description: "Is the vessel or medium the spell moves through or is contained within" },
+  { key: "amplifier", name: "Amplifier", color: "#a855f7", description: "Strengthens or weakens the core element in the spell by merging the two" },
+  { key: "seal", name: "Seal", color: "#10b981", description: "Anchors and stabilizes the spell or unstabilizes it" },
+  { key: "trigger", name: "Trigger", color: "#ec4899", description: "What causes the spell to activate or detonate" },
 ];
 
 // Secondary roles only (exclude Core)
@@ -80,39 +80,52 @@ export const V3_INTENTS: V3Option[] = [
 // Delivery (6)
 // ---------------------------------------------------------------------------
 export const V3_DELIVERIES: V3Option[] = [
-  { key: "projectile", name: "Projectile", description: "Fires directly from the caster toward a single target. Travels in a straight line and hits the first thing in its path." },
-  { key: "stream", name: "Stream", description: "A continuous flow that extends in a straight line from the caster outward, hitting everything along that line. Line area of effect." },
-  { key: "wave", name: "Wave", description: "Expands outward in a square area from the point of origin, pushing in all forward directions at once. Square area of effect." },
-  { key: "pulse", name: "Pulse", description: "Bursts outward in a full circle from the point of origin, hitting everything within its radius equally. Circle area of effect." },
-  { key: "conjure", name: "Conjure", description: "The effect does not travel at all. It rises from the ground or surfaces directly at the chosen target location." },
-  { key: "rain", name: "Rain", description: "The effect descends from above over the target area. Falls from the sky onto whatever is below." },
+  { key: "projectile", name: "Projectile", description: "From cast to target in a straight line" },
+  { key: "stream", name: "Stream", description: "A continuous flowing line" },
+  { key: "wave", name: "Wave", description: "A moving wall/wave" },
+  { key: "pulse", name: "Pulse", description: "From the final spot in a circular radius" },
+  { key: "conjure", name: "Conjure", description: "From the ground" },
+  { key: "rain", name: "Rain", description: "From the sky" },
 ];
+
+// Deliveries that produce an area of effect and therefore expose an AOE Range.
+export const V3_AOE_DELIVERY_KEYS = ["stream", "wave", "pulse"];
+
+export function v3IsAoeDelivery(deliveryKey: string): boolean {
+  return V3_AOE_DELIVERY_KEYS.includes(deliveryKey);
+}
 
 // ---------------------------------------------------------------------------
 // Reach (7) — index is the "slot"; mana = +1 per slot above Self (index 0).
 // ---------------------------------------------------------------------------
 export const V3_REACHES: V3Option[] = [
-  { key: "self", name: "Self", description: "Affects only the caster or originates directly from the caster's own body. Cannot be directed at anything else." },
-  { key: "touch", name: "Touch", description: "Requires direct physical contact between the caster and the target. The caster must be able to reach out and touch what they are targeting." },
-  { key: "close", name: "Close", description: "A short distance. Roughly within a few steps of the caster. Close enough to feel the heat of it." },
-  { key: "near", name: "Near", description: "A moderate distance. Across a room or a small open space. Far enough to be out of arm's reach but still clearly visible." },
-  { key: "far", name: "Far", description: "A significant distance. Across a large hall, a courtyard, or a short stretch of open ground." },
-  { key: "extreme", name: "Extreme", description: "A very long distance. Pushing the limits of what the caster can see or perceive. Requires focus to aim accurately." },
-  { key: "unlimited", name: "Unlimited", description: "No distance restriction. The spell can reach anything the caster is aware of regardless of how far away it is." },
+  { key: "self", name: "Self", description: "Stays at origin" },
+  { key: "touch", name: "Touch", description: "5ft" },
+  { key: "close", name: "Close", description: "15ft" },
+  { key: "near", name: "Near", description: "30ft" },
+  { key: "far", name: "Far", description: "60ft" },
+  { key: "extreme", name: "Extreme", description: "90ft" },
+  { key: "unlimited", name: "Unlimited", description: "No range limit" },
 ];
+
+// AOE Range reuses the Reach options minus Self and Unlimited. Only shown for
+// area-of-effect deliveries (stream, wave, pulse).
+export const V3_AOE_RANGES: V3Option[] = V3_REACHES.filter(
+  (r) => r.key !== "self" && r.key !== "unlimited",
+);
 
 // ---------------------------------------------------------------------------
 // Duration (8) — index is the "slot"; mana = +1 per slot above Instant (index 0).
 // ---------------------------------------------------------------------------
 export const V3_DURATIONS: V3Option[] = [
-  { key: "instant", name: "Instant", description: "The effect happens once and is immediately over. No lingering presence. One moment it exists, the next it does not." },
-  { key: "brief", name: "Brief", description: "Lasts only a short moment. Roughly one round or a few seconds at most. Fades almost as quickly as it arrives." },
-  { key: "short", name: "Short", description: "Lasts for a brief period. Roughly one minute. Long enough to matter in a fight but not something that sticks around afterward." },
-  { key: "medium", name: "Medium", description: "Lasts for a moderate period. Roughly ten minutes. Persists through most encounters and short stretches of travel." },
-  { key: "long", name: "Long", description: "Lasts for an extended period. Roughly one hour. Reliable enough to plan around." },
-  { key: "permanent", name: "Permanent", description: "The effect does not end on its own. It persists until something specifically undoes it, whether that is dispelling, physical destruction, or another spell." },
-  { key: "concentration", name: "Concentration", description: "Lasts as long as the caster actively maintains focus on it. Ends immediately if the caster is disrupted, knocked unconscious, or chooses to release it." },
-  { key: "until_triggered", name: "Until Triggered", description: "The spell lies dormant with no active effect. It activates only when a specific condition defined at the time of casting is met. Once triggered it behaves according to its own Duration from that point." },
+  { key: "instant", name: "Instant", description: "Happens immediately, no lasting effect" },
+  { key: "brief", name: "Brief", description: "6 seconds" },
+  { key: "short", name: "Short", description: "30 seconds" },
+  { key: "medium", name: "Medium", description: "1 minute" },
+  { key: "long", name: "Long", description: "1 hour" },
+  { key: "permanent", name: "Permanent", description: "Lasts forever" },
+  { key: "concentration", name: "Concentration", description: "Requires concentration to maintain" },
+  { key: "until_triggered", name: "Until Triggered", description: "Stays until a condition activates it" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -127,6 +140,7 @@ export const V3_ROLE_MAP: Record<string, V3Role> = Object.fromEntries(V3_ROLES.m
 export const V3_INTENT_MAP = toMap(V3_INTENTS);
 export const V3_DELIVERY_MAP = toMap(V3_DELIVERIES);
 export const V3_REACH_MAP = toMap(V3_REACHES);
+export const V3_AOE_RANGE_MAP = toMap(V3_AOE_RANGES);
 export const V3_DURATION_MAP = toMap(V3_DURATIONS);
 
 export function v3ReachIndex(key: string): number {
@@ -158,6 +172,9 @@ export interface V3SpellComposition {
   delivery: string;
   reach: string;
   duration: string;
+  // Only meaningful for area-of-effect deliveries (stream/wave/pulse). A reach
+  // key excluding "self"/"unlimited". Optional for backward compatibility.
+  aoeRange?: string;
 }
 
 /** Total elements in the spell (Core + secondaries). */
@@ -194,14 +211,17 @@ export function v3CraftDc(comp: V3SpellComposition): number {
  */
 export function serializeV3Composition(comp: V3SpellComposition): string {
   const secondaries = (comp.secondaries ?? []).map((s) => ({ role: s.role, element: s.element }));
-  return JSON.stringify({
+  const obj: Record<string, unknown> = {
     core: comp.core,
     secondaries,
     intent: comp.intent,
     delivery: comp.delivery,
     reach: comp.reach,
     duration: comp.duration,
-  });
+  };
+  // Only include aoeRange when set, so existing (non-AOE) spells hash unchanged.
+  if (comp.aoeRange) obj.aoeRange = comp.aoeRange;
+  return JSON.stringify(obj);
 }
 
 /** Validate that a composition references only known keys and a single Core. */
@@ -211,6 +231,7 @@ export function isValidV3Composition(comp: V3SpellComposition): boolean {
   if (!V3_DELIVERY_MAP[comp.delivery]) return false;
   if (!V3_REACH_MAP[comp.reach]) return false;
   if (!V3_DURATION_MAP[comp.duration]) return false;
+  if (comp.aoeRange && !V3_AOE_RANGE_MAP[comp.aoeRange]) return false;
   if (!Array.isArray(comp.secondaries)) return false;
   for (const s of comp.secondaries) {
     if (!V3_ELEMENT_MAP[s.element]) return false;

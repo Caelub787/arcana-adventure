@@ -7,12 +7,15 @@ import {
   V3_INTENTS,
   V3_DELIVERIES,
   V3_REACHES,
+  V3_AOE_RANGES,
   V3_DURATIONS,
   V3_ELEMENT_MAP,
   V3_INTENT_MAP,
   V3_DELIVERY_MAP,
   V3_REACH_MAP,
+  V3_AOE_RANGE_MAP,
   V3_DURATION_MAP,
+  v3IsAoeDelivery,
   v3ManaCost,
   v3CraftDc,
   v3ElementCount,
@@ -104,7 +107,7 @@ function FormulaDisplay({ comp }: { comp: V3SpellComposition }) {
           </span>
         );
       })}
-      {(comp.intent || comp.delivery || comp.reach || comp.duration) && (
+      {(comp.intent || comp.delivery || comp.reach || comp.duration || comp.aoeRange) && (
         <span className="text-stone-500">·</span>
       )}
       {comp.intent && (
@@ -115,6 +118,11 @@ function FormulaDisplay({ comp }: { comp: V3SpellComposition }) {
       {comp.delivery && (
         <span className="px-1.5 py-0.5 rounded bg-stone-800 text-stone-300 text-xs" data-testid="formula-delivery">
           {V3_DELIVERY_MAP[comp.delivery]?.name}
+        </span>
+      )}
+      {comp.aoeRange && (
+        <span className="px-1.5 py-0.5 rounded bg-stone-800 text-stone-300 text-xs" data-testid="formula-aoe-range">
+          AOE {V3_AOE_RANGE_MAP[comp.aoeRange]?.name}
         </span>
       )}
       {comp.reach && (
@@ -283,8 +291,9 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
         <div className="space-y-1.5">
           {comp.secondaries.map((s, i) => {
             const roleColor = v3RoleColor(s.role);
+            const roleDesc = V3_ROLE_MAP[s.role]?.description;
             return (
-              <div key={i} className="flex items-center gap-1.5" data-testid={`row-secondary-${i}`}>
+              <div key={i} className="flex gap-1.5" data-testid={`row-secondary-${i}`}>
                 <span className="w-1.5 self-stretch rounded" style={{ backgroundColor: roleColor }} />
                 <div className="flex flex-col">
                   <Button
@@ -310,40 +319,49 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
                     <ChevronDown className="h-3 w-3" />
                   </Button>
                 </div>
-                <Select value={s.element} onValueChange={(v) => updateSecondary(i, { element: v })}>
-                  <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-secondary-element-${i}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {V3_ELEMENTS.map((el) => (
-                      <SelectItem key={el.key} value={el.key} className="text-xs">
-                        {el.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={s.role} onValueChange={(v) => updateSecondary(i, { role: v })}>
-                  <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-secondary-role-${i}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {V3_SECONDARY_ROLES.map((r) => (
-                      <SelectItem key={r.key} value={r.key} className="text-xs">
-                        <span style={{ color: r.color }}>{r.name}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-stone-400 hover:text-red-400"
-                  onClick={() => removeSecondary(i)}
-                  data-testid={`button-remove-secondary-${i}`}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Select value={s.element} onValueChange={(v) => updateSecondary(i, { element: v })}>
+                      <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-secondary-element-${i}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {V3_ELEMENTS.map((el) => (
+                          <SelectItem key={el.key} value={el.key} className="text-xs">
+                            {el.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={s.role} onValueChange={(v) => updateSecondary(i, { role: v })}>
+                      <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-secondary-role-${i}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {V3_SECONDARY_ROLES.map((r) => (
+                          <SelectItem key={r.key} value={r.key} className="text-xs">
+                            <span style={{ color: r.color }}>{r.name}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-stone-400 hover:text-red-400"
+                      onClick={() => removeSecondary(i)}
+                      data-testid={`button-remove-secondary-${i}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {roleDesc && (
+                    <p className="text-[11px] leading-snug text-stone-500" data-testid={`text-secondary-role-description-${i}`}>
+                      {roleDesc}
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -353,9 +371,12 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
       {/* Intent / Delivery / Reach / Duration */}
       <div className="grid grid-cols-2 gap-2">
         <V3SelectField label="Intent" value={comp.intent} options={V3_INTENTS} onChange={(v) => setComp((c) => ({ ...c, intent: v }))} testid="select-intent" placeholder="Choose…" />
-        <V3SelectField label="Delivery" value={comp.delivery} options={V3_DELIVERIES} onChange={(v) => setComp((c) => ({ ...c, delivery: v }))} testid="select-delivery" placeholder="Choose…" />
-        <V3SelectField label="Reach" value={comp.reach} options={V3_REACHES} onChange={(v) => setComp((c) => ({ ...c, reach: v }))} testid="select-reach" />
-        <V3SelectField label="Duration" value={comp.duration} options={V3_DURATIONS} onChange={(v) => setComp((c) => ({ ...c, duration: v }))} testid="select-duration" />
+        <V3SelectField label="Delivery" value={comp.delivery} options={V3_DELIVERIES} onChange={(v) => setComp((c) => ({ ...c, delivery: v, aoeRange: v3IsAoeDelivery(v) ? c.aoeRange : "" }))} testid="select-delivery" placeholder="Choose…" showDescription />
+        {v3IsAoeDelivery(comp.delivery) && (
+          <V3SelectField label="AOE Range" value={comp.aoeRange || ""} options={V3_AOE_RANGES} onChange={(v) => setComp((c) => ({ ...c, aoeRange: v }))} testid="select-aoe-range" placeholder="Choose…" showDescription />
+        )}
+        <V3SelectField label="Reach" value={comp.reach} options={V3_REACHES} onChange={(v) => setComp((c) => ({ ...c, reach: v }))} testid="select-reach" showDescription />
+        <V3SelectField label="Duration" value={comp.duration} options={V3_DURATIONS} onChange={(v) => setComp((c) => ({ ...c, duration: v }))} testid="select-duration" showDescription />
       </div>
 
       {/* Live formula */}
@@ -402,6 +423,7 @@ function V3SelectField({
   onChange,
   testid,
   placeholder,
+  showDescription,
 }: {
   label: string;
   value: string;
@@ -409,7 +431,9 @@ function V3SelectField({
   onChange: (v: string) => void;
   testid: string;
   placeholder?: string;
+  showDescription?: boolean;
 }) {
+  const selected = options.find((o) => o.key === value);
   return (
     <div className="space-y-1">
       <Label className="text-xs text-stone-400">{label}</Label>
@@ -425,6 +449,11 @@ function V3SelectField({
           ))}
         </SelectContent>
       </Select>
+      {showDescription && selected?.description && (
+        <p className="text-[11px] leading-snug text-stone-500" data-testid={`${testid}-description`}>
+          {selected.description}
+        </p>
+      )}
     </div>
   );
 }
