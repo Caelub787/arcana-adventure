@@ -691,6 +691,8 @@ export interface IStorage {
   createClass(data: InsertClass): Promise<GameClass>;
   updateClass(id: string, data: Partial<InsertClass>): Promise<GameClass | undefined>;
   deleteClass(id: string): Promise<void>;
+  getUniversalClasses(systemName: string): Promise<GameClass[]>;
+  getCharacterIdsByCampaignSystem(systemName: string): Promise<string[]>;
 
   // Class skill node operations
   getClassSkillNodes(classId: string): Promise<ClassSkillNode[]>;
@@ -4784,6 +4786,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClass(id: string): Promise<void> {
     await db.delete(classes).where(eq(classes.id, id));
+  }
+
+  async getUniversalClasses(systemName: string): Promise<GameClass[]> {
+    // Only global admin-library classes (ownerUserId IS NULL) may be universal.
+    // Personal-library classes never fan out to other users' characters.
+    return db.select().from(classes).where(
+      and(
+        eq(classes.system, systemName),
+        eq(classes.applyToAll, true),
+        isNull(classes.ownerUserId),
+      )
+    );
+  }
+
+  async getCharacterIdsByCampaignSystem(systemName: string): Promise<string[]> {
+    const rows = await db
+      .select({ id: characters.id })
+      .from(characters)
+      .innerJoin(campaigns, eq(characters.campaignId, campaigns.id))
+      .where(eq(campaigns.system, systemName));
+    return rows.map(r => r.id);
   }
 
   async getClassSkillNodes(classId: string): Promise<ClassSkillNode[]> {

@@ -225,6 +225,54 @@ async function reapplyV3SpeciesOnChange(character: any, campaignId: string, oldR
   return applied || character;
 }
 
+// AA V3: assign every "universal" (applyToAll) V3 class to one character,
+// skipping any class the character already has. The unique index on
+// character_classes (characterId, classId) is the final safety net against
+// duplicate rows; we also pre-filter to avoid noisy insert errors.
+async function assignUniversalV3Classes(characterId: string): Promise<number> {
+  const universal = await storage.getUniversalClasses('aa-v3');
+  if (universal.length === 0) return 0;
+  const existing = await storage.getCharacterClasses(characterId);
+  const existingIds = new Set(existing.map(cc => cc.classId));
+  let added = 0;
+  for (const cls of universal) {
+    if (existingIds.has(cls.id)) continue;
+    try {
+      await storage.createCharacterClass({
+        characterId,
+        classId: cls.id,
+        classLevel: 1,
+        classPoints: 0,
+      });
+      added++;
+    } catch (e: any) {
+      console.error('[V3 Class] universal assign failed:', cls.id, e?.message);
+    }
+  }
+  return added;
+}
+
+// AA V3: backfill one newly-universal class onto every existing V3 character
+// that does not already have it. Toggling the flag off never strips existing
+// assignments — this only ever adds.
+async function backfillUniversalV3Class(classId: string): Promise<void> {
+  const charIds = await storage.getCharacterIdsByCampaignSystem('aa-v3');
+  for (const charId of charIds) {
+    const existing = await storage.getCharacterClasses(charId);
+    if (existing.some(cc => cc.classId === classId)) continue;
+    try {
+      await storage.createCharacterClass({
+        characterId: charId,
+        classId,
+        classLevel: 1,
+        classPoints: 0,
+      });
+    } catch (e: any) {
+      console.error('[V3 Class] backfill assign failed:', charId, e?.message);
+    }
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -3699,6 +3747,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (anemos !== (character.spellCreationTokens || 0)) {
           const updated = await storage.updateCharacter(character.id, { spellCreationTokens: anemos });
           if (updated) character = updated;
+        }
+      }
+
+      // AA V3: auto-assign every universal ("apply to everyone") class.
+      if (campaign?.system === 'aa-v3') {
+        try {
+          await assignUniversalV3Classes(character.id);
+        } catch (e: any) {
+          console.error("[Character Create] V3 universal class assign failed:", e?.message);
         }
       }
 
@@ -8609,6 +8666,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const body = (isA && !personal) ? classBody : { ...classBody, system: requestedClassSystem, ownerUserId: req.session.userId };
       const newClass = await storage.createClass(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      // AA V3: a global (admin-library) class created already flagged universal
+      // backfills onto every existing V3 character. Personal-library classes
+      // never fan out.
+      if ((newClass as any).system === 'aa-v3' && (newClass as any).applyToAll && (newClass as any).ownerUserId == null) {
+        backfillUniversalV3Class(newClass.id).catch(e =>
+          console.error('[V3 Class] create-time backfill failed:', e?.message));
+      }
       res.json(newClass);
     } catch (err) {
       res.status(400).json({ error: "Failed to create class" });
@@ -8620,9 +8684,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getClass(req.params.id);
       if (!existing) return res.status(404).json({ error: "Class not found" });
       if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
-      const updated = await storage.updateClass(req.params.id, req.body);
+      // Only global admins may change a class's ownership scope or system. A
+      // non-admin must never be able to globalize their personal class (set
+      // ownerUserId=null) — that would let them fan a universal class out to
+      // everyone via the AA V3 backfill path below.
+      const isAdminPatch = await isAdminUser(req.session.userId);
+      const classPatch = { ...req.body };
+      if (!isAdminPatch) {
+        delete classPatch.ownerUserId;
+        delete classPatch.system;
+      }
+      const updated = await storage.updateClass(req.params.id, classPatch);
       if (!updated) return res.status(404).json({ error: "Class not found" });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
+      // AA V3: when this edit turns the universal flag on for a global
+      // (admin-library) class, backfill it onto every existing V3 character.
+      // Personal-library classes never fan out, and toggle-off never strips rows.
+      if (
+        req.body.applyToAll === true &&
+        (existing as any).applyToAll !== true &&
+        (updated as any).system === 'aa-v3' &&
+        (updated as any).ownerUserId == null
+      ) {
+        backfillUniversalV3Class(updated.id).catch(e =>
+          console.error('[V3 Class] toggle-on backfill failed:', e?.message));
+      }
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update class" });

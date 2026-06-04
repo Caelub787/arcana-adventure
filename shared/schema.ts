@@ -2038,6 +2038,10 @@ export const classes = pgTable("classes", {
   description: text("description"),
   image: text("image"),
   system: text("system").notNull().default("aa-v2"),
+  // AA V3 only: when true this class is "universal" — auto-assigned to every
+  // V3 character on creation and backfilled onto existing V3 characters when
+  // the flag is turned on. Ignored for V2/other systems.
+  applyToAll: boolean("apply_to_all").default(false).notNull(),
   skillTreeId: text("skill_tree_id"),
   gridWidth: integer("grid_width").default(7).notNull(),
   gridHeight: integer("grid_height").default(10).notNull(),

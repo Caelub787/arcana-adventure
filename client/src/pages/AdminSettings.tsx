@@ -8273,6 +8273,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
   const [classDesc, setClassDesc] = useState('');
   const [classImage, setClassImage] = useState('');
   const [classSkillTreeId, setClassSkillTreeId] = useState('');
+  const [classApplyToAll, setClassApplyToAll] = useState(false);
   const [showClassImageBrowser, setShowClassImageBrowser] = useState(false);
   const classImageInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
@@ -8366,7 +8367,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
   });
 
   const createClassMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string }) => {
+    mutationFn: async (data: { name: string; description: string; applyToAll?: boolean }) => {
       const res = await fetch('/api/admin/classes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8921,7 +8922,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
                       <CardTitle className="text-fuchsia-400">{cls.name}</CardTitle>
                     </div>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); setClassImage(cls.image || ''); setClassSkillTreeId(cls.skillTreeId || ''); }} data-testid={`button-edit-class-${cls.id}`}>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); setClassImage(cls.image || ''); setClassSkillTreeId(cls.skillTreeId || ''); setClassApplyToAll(!!cls.applyToAll); }} data-testid={`button-edit-class-${cls.id}`}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="sm" variant="ghost" className="text-red-400" onClick={(e) => { e.stopPropagation(); deleteClassMutation.mutate(cls.id); }} data-testid={`button-delete-class-${cls.id}`}>
@@ -8936,7 +8937,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
           </div>
         )}
 
-        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); setClassImage(''); setClassSkillTreeId(''); } }}>
+        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); setClassImage(''); setClassSkillTreeId(''); setClassApplyToAll(false); } }}>
           <DialogContent className="bg-stone-900 border-stone-700">
             <DialogHeader>
               <DialogTitle className="text-fuchsia-400">{editingClass ? 'Edit Class' : 'New Class'}</DialogTitle>
@@ -9002,14 +9003,29 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
                   </SelectContent>
                 </Select>
               </div>
+              {effectiveClassSystem === 'aa-v3' && !personal && (
+                <div className="flex items-start gap-3 rounded-md border border-stone-700 bg-stone-800/60 p-3">
+                  <Checkbox
+                    id="class-apply-to-all"
+                    checked={classApplyToAll}
+                    onCheckedChange={(v) => setClassApplyToAll(v === true)}
+                    className="mt-0.5"
+                    data-testid="checkbox-class-apply-to-all"
+                  />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="class-apply-to-all" className="text-stone-300 cursor-pointer">Apply to everyone</Label>
+                    <p className="text-xs text-stone-500">Automatically give this class to every V3 character. Turning this on also adds it to existing characters; turning it off leaves them as-is.</p>
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setShowAddClass(false); setEditingClass(null); }}>Cancel</Button>
               <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => {
                 if (editingClass) {
-                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc, image: classImage || null, skillTreeId: classSkillTreeId || null } });
+                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc, image: classImage || null, skillTreeId: classSkillTreeId || null, ...(effectiveClassSystem === 'aa-v3' ? { applyToAll: classApplyToAll } : {}) } });
                 } else {
-                  createClassMutation.mutate({ name: className, description: classDesc });
+                  createClassMutation.mutate({ name: className, description: classDesc, ...(effectiveClassSystem === 'aa-v3' ? { applyToAll: classApplyToAll } : {}) });
                 }
               }} data-testid="button-save-class">
                 {editingClass ? 'Update' : 'Create'}

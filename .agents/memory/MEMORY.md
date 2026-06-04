@@ -5,3 +5,4 @@
 - [Server API test harness](testing-harness.md) — vitest pattern to boot registerRoutes with storage/db/sync/library-acl mocked, named `session` middleware for auth, real ws client to capture broadcasts.
 - [Personal library scoping](personal-library-scoping.md) — additive default-OFF `personal` flag gives every user (incl admins) a personal library separate from global admin rows.
 - [AA V3 spell rolling](v3-spell-rolling.md) — V3 level-scaled NdX casts roll client-side (v3cast.ts); server dice endpoint is single-die only.
+- [Admin library routes](admin-library-routes.md) — in-app class editor is in AdminSettings.tsx (not library-dialogs ClassDialog); fan-out features need ownerUserId IS NULL; strip ownerUserId/system from non-admin PATCH bodies.
