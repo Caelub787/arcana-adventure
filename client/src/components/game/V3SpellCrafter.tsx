@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Plus, X, Wand2, Loader2, Droplet, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Plus, X, Wand2, Loader2, Droplet, Image as ImageIcon, ChevronUp, ChevronDown } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,6 +182,15 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
   const removeSecondary = (i: number) =>
     setComp((c) => ({ ...c, secondaries: c.secondaries.filter((_, idx) => idx !== i) }));
 
+  const moveSecondary = (i: number, dir: -1 | 1) =>
+    setComp((c) => {
+      const j = i + dir;
+      if (j < 0 || j >= c.secondaries.length) return c;
+      const secondaries = [...c.secondaries];
+      [secondaries[i], secondaries[j]] = [secondaries[j], secondaries[i]];
+      return { ...c, secondaries };
+    });
+
   const handleCraft = async () => {
     if (!valid || crafting) return;
     setCrafting(true);
@@ -277,6 +286,30 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId }: V3Spel
             return (
               <div key={i} className="flex items-center gap-1.5" data-testid={`row-secondary-${i}`}>
                 <span className="w-1.5 self-stretch rounded" style={{ backgroundColor: roleColor }} />
+                <div className="flex flex-col">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-4 w-5 text-stone-400 hover:text-amber-400 disabled:opacity-30"
+                    onClick={() => moveSecondary(i, -1)}
+                    disabled={i === 0}
+                    data-testid={`button-move-secondary-up-${i}`}
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-4 w-5 text-stone-400 hover:text-amber-400 disabled:opacity-30"
+                    onClick={() => moveSecondary(i, 1)}
+                    disabled={i === comp.secondaries.length - 1}
+                    data-testid={`button-move-secondary-down-${i}`}
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </div>
                 <Select value={s.element} onValueChange={(v) => updateSecondary(i, { element: v })}>
                   <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-secondary-element-${i}`}>
                     <SelectValue />

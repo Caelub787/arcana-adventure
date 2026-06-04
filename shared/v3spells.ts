@@ -187,14 +187,13 @@ export function v3CraftDc(comp: V3SpellComposition): number {
 }
 
 /**
- * Canonical, order-independent serialization of a composition. Secondary
- * [role, element] pairs are sorted so two spells built in a different order
- * but with the same parts hash identically.
+ * Canonical, order-dependent serialization of a composition. Secondary
+ * [role, element] pairs are kept in their listed order, so two spells built
+ * with the same parts in a different order hash differently and are treated
+ * as distinct compositions.
  */
 export function serializeV3Composition(comp: V3SpellComposition): string {
-  const secondaries = [...(comp.secondaries ?? [])]
-    .map((s) => ({ role: s.role, element: s.element }))
-    .sort((a, b) => (a.role === b.role ? a.element.localeCompare(b.element) : a.role.localeCompare(b.role)));
+  const secondaries = (comp.secondaries ?? []).map((s) => ({ role: s.role, element: s.element }));
   return JSON.stringify({
     core: comp.core,
     secondaries,
