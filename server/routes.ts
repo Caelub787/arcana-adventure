@@ -10874,8 +10874,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(req.session.userId!);
       const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
       
-      // Adding items requires owner, GM, or admin access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM && !userIsAdmin) {
+      // Adding items requires owner, GM, trusted-player, or admin access (plain
+      // edit access alone is not sufficient). trustedSelf is the explicit
+      // trusted-player tier (a player flagged trustedPlayer editing their own
+      // character) and is the same source of truth the client gates on.
+      if (!access.isOwner && !access.isGM && !access.trustedSelf && !userIsAdmin) {
         return res.status(403).json({ error: "Only the character owner or GM can add items" });
       }
 
@@ -11031,7 +11034,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           item
         });
       }
-      
+
+      await emitTrustedAudit(access, req.session.userId!, `added item "${item?.name || ''}"`);
+
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create item" });

@@ -14769,11 +14769,57 @@ interface InventoryItemRowProps {
   charPanelSuffix?: string;
   onOpenSpellbook?: (item: any) => void;
   isAAV3?: boolean;
+  canEditQuantity?: boolean;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3 }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
+  const qtyPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qtyClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qtyPressFiredRef = useRef(false);
+
+  // AA V3 only: long-press (touch) / double-click (mouse) an inventory item opens
+  // the quantity editor (GM + trusted players only). Tap still opens the item
+  // detail; the single-click open is deferred so a double-click can cancel it
+  // (onClick fires before onDoubleClick in the DOM).
+  const canHoldEditQty = !!isAAV3 && !!canEditQuantity && !!onUpdateQuantity;
+  const qtyHoldHandlers = canHoldEditQty
+    ? {
+        onDoubleClick: (e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (qtyClickTimerRef.current) {
+            clearTimeout(qtyClickTimerRef.current);
+            qtyClickTimerRef.current = null;
+          }
+          setShowQuantityDialog(true);
+        },
+        onTouchStart: () => {
+          qtyPressFiredRef.current = false;
+          if (qtyPressTimerRef.current) clearTimeout(qtyPressTimerRef.current);
+          qtyPressTimerRef.current = setTimeout(() => {
+            qtyPressFiredRef.current = true;
+            if (qtyClickTimerRef.current) {
+              clearTimeout(qtyClickTimerRef.current);
+              qtyClickTimerRef.current = null;
+            }
+            setShowQuantityDialog(true);
+          }, 500);
+        },
+        onTouchEnd: () => {
+          if (qtyPressTimerRef.current) {
+            clearTimeout(qtyPressTimerRef.current);
+            qtyPressTimerRef.current = null;
+          }
+        },
+      }
+    : {};
+
+  const openItemDetail = () => {
+    if (isAAV3 && item.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(item); return; }
+    setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
+  };
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStackedItems, setShowStackedItems] = useState(false);
   const [showSingleDeleteConfirm, setShowSingleDeleteConfirm] = useState(false);
@@ -14927,9 +14973,15 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           <div 
             className="flex items-center gap-3 flex-1 cursor-pointer"
             onClick={() => {
-              if (isAAV3 && item.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(item); return; }
-              setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
+              if (qtyPressFiredRef.current) { qtyPressFiredRef.current = false; return; }
+              if (!canHoldEditQty) { openItemDetail(); return; }
+              if (qtyClickTimerRef.current) clearTimeout(qtyClickTimerRef.current);
+              qtyClickTimerRef.current = setTimeout(() => {
+                qtyClickTimerRef.current = null;
+                openItemDetail();
+              }, 250);
             }}
+            {...qtyHoldHandlers}
           >
             <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
               {item.image ? (
@@ -15139,6 +15191,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               charPanelSuffix={charPanelSuffix}
               onOpenSpellbook={onOpenSpellbook}
               isAAV3={isAAV3}
+              canEditQuantity={canEditQuantity}
             />
           ))}
         </div>
@@ -16010,11 +16063,62 @@ function V3AttrsAndSkillsTab({
   canEditSheet: boolean;
   updateCharacterMutation: any;
   handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
-  openRollPanel: (name: string, mod: number, type: 'skill'|'attribute') => void;
+  openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [attrData, setAttrData] = React.useState<Record<string, number>>({});
   const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+  const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skillPressFiredRef = React.useRef(false);
+
+  // Tap a skill rolls directly; long-press (touch) / double-click (mouse) opens
+  // the Advantage/Disadvantage + extra-modifier roll panel (AA V3 only).
+  // The single-click roll is deferred so a double-click can cancel it before it
+  // fires (onClick fires before onDoubleClick in the DOM).
+  const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
+    if (editing) return {};
+    return {
+      onClick: () => {
+        if (skillPressFiredRef.current) {
+          skillPressFiredRef.current = false;
+          return;
+        }
+        if (skillClickTimerRef.current) clearTimeout(skillClickTimerRef.current);
+        skillClickTimerRef.current = setTimeout(() => {
+          skillClickTimerRef.current = null;
+          handleRoll(name, mod, 0, 'none', true, dieOverride);
+        }, 250);
+      },
+      onDoubleClick: (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (skillClickTimerRef.current) {
+          clearTimeout(skillClickTimerRef.current);
+          skillClickTimerRef.current = null;
+        }
+        openRollPanel(name, mod, 'skill', dieOverride);
+      },
+      onTouchStart: () => {
+        skillPressFiredRef.current = false;
+        if (skillPressTimerRef.current) clearTimeout(skillPressTimerRef.current);
+        skillPressTimerRef.current = setTimeout(() => {
+          skillPressFiredRef.current = true;
+          if (skillClickTimerRef.current) {
+            clearTimeout(skillClickTimerRef.current);
+            skillClickTimerRef.current = null;
+          }
+          openRollPanel(name, mod, 'skill', dieOverride);
+        }, 500);
+      },
+      onTouchEnd: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+    };
+  };
 
   const startEdit = () => {
     const a: Record<string, number> = {};
@@ -16057,8 +16161,7 @@ function V3AttrsAndSkillsTab({
             return (
               <Card
                 key={attr.key}
-                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors'}`}
-                onClick={() => !editing && handleRoll(attr.name, 0, 0, 'none', false, dieType)}
+                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600'}`}
                 data-testid={`card-v3-attr-${attr.key}`}
               >
                 <CardContent className="p-3 text-center">
@@ -16116,7 +16219,7 @@ function V3AttrsAndSkillsTab({
                     className="flex-1 text-left disabled:cursor-default group"
                     disabled={editing}
                     title={skill.description}
-                    onClick={() => !editing && handleRoll(skill.name, skillVal, 0, 'none', true, dieType)}
+                    {...skillPressHandlers(skill.name, skillVal, dieType)}
                     data-testid={`button-roll-v3-skill-${skill.key}`}
                   >
                     <div className="text-xs">
@@ -16458,7 +16561,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const effectiveMaxMana = (liveCharacter.maxMana || 0) + featBonuses.mana + bonusMaxMana;
 
   // ===== Quick-edit (AA V2): long-press / double-click on HP/Energy/Mana value =====
-  const [quickEditBar, setQuickEditBar] = useState<null | 'hp' | 'energy' | 'mana'>(null);
+  const [quickEditBar, setQuickEditBar] = useState<null | 'hp' | 'energy' | 'mana' | 'level'>(null);
   const [quickEditData, setQuickEditData] = useState<{
     current: number | '';
     max: number | '';
@@ -16470,8 +16573,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   // Inlined permission check (canEdit/canEditSheet are declared later in this component; avoid TDZ)
   const canQuickEdit = isAAV2 && (isOwner || isGM || accessLevel === 'edit');
+  // AA V3 only: long-press / double-click the level value to quick-edit it
+  // (V3 has no overview Edit button, so this is the level's edit path).
+  const canQuickEditLevel = isAAV3 && (isOwner || isGM || accessLevel === 'edit');
 
-  const openQuickEdit = (bar: 'hp' | 'energy' | 'mana') => {
+  const openQuickEdit = (bar: 'hp' | 'energy' | 'mana' | 'level') => {
+    if (bar === 'level') {
+      if (!canQuickEditLevel) return;
+      setQuickEditData({
+        current: liveCharacter.level ?? 1,
+        max: 0,
+        bonus: 0,
+        prevBonus: 0,
+      });
+      setQuickEditBar('level');
+      return;
+    }
     if (!canQuickEdit) return;
     if (bar === 'hp') {
       setQuickEditData({
@@ -16498,8 +16615,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     setQuickEditBar(bar);
   };
 
-  const quickPressHandlers = (bar: 'hp' | 'energy' | 'mana') => {
-    if (!canQuickEdit) return {};
+  const quickPressHandlers = (bar: 'hp' | 'energy' | 'mana' | 'level') => {
+    if (bar === 'level' ? !canQuickEditLevel : !canQuickEdit) return {};
     return {
       onDoubleClick: (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -16550,7 +16667,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
 
   const saveQuickEdit = () => {
-    if (!quickEditBar || !canQuickEdit) return;
+    if (!quickEditBar) return;
+    if (quickEditBar === 'level') {
+      if (!canQuickEditLevel) return;
+      const lvl = typeof quickEditData.current === 'number' ? quickEditData.current : 1;
+      onUpdate?.({ level: Math.max(1, lvl) });
+      setQuickEditBar(null);
+      return;
+    }
+    if (!canQuickEdit) return;
     const currentVal = typeof quickEditData.current === 'number' ? quickEditData.current : 0;
     const maxVal = typeof quickEditData.max === 'number' ? quickEditData.max : 0;
     const bonusVal = Math.max(0, typeof quickEditData.bonus === 'number' ? quickEditData.bonus : 0);
@@ -16572,8 +16697,49 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     setQuickEditBar(null);
   };
 
-  const quickEditPanel = (bar: 'hp' | 'energy' | 'mana') => {
+  const quickEditPanel = (bar: 'hp' | 'energy' | 'mana' | 'level') => {
     if (quickEditBar !== bar) return null;
+    if (bar === 'level') {
+      return (
+        <div
+          className="mt-1 p-2 bg-stone-900/95 border border-amber-700/60 rounded space-y-2"
+          data-testid="quick-edit-level"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[10px] font-bold uppercase text-amber-400">Quick Edit Level</div>
+          <div className="flex items-center gap-2">
+            <Label className="text-[10px] text-stone-400 w-16">Level</Label>
+            <Input
+              type="number"
+              min={1}
+              value={quickEditData.current}
+              onChange={(e) => setQuickEditData({ ...quickEditData, current: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+              className="h-7 text-xs bg-stone-900 border-amber-700 text-stone-200"
+              data-testid="input-quick-level-current"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-emerald-700 hover:bg-emerald-600 text-white flex-1"
+              onClick={saveQuickEdit}
+              data-testid="button-quick-level-save"
+            >
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-stone-700 text-stone-300"
+              onClick={() => setQuickEditBar(null)}
+              data-testid="button-quick-level-cancel"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
     const labels = {
       hp: { title: 'HP', color: 'text-red-400', border: 'border-red-700/60' },
       energy: { title: 'Energy', color: 'text-blue-400', border: 'border-blue-700/60' },
@@ -17040,7 +17206,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
   
   const [rollPanelOpen, setRollPanelOpen] = useState(false);
-  const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
+  const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute', dieOverride?: string} | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
   const [hasAdvantage, setHasAdvantage] = useState(false);
   const [hasDisadvantage, setHasDisadvantage] = useState(false);
@@ -17326,13 +17492,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     if (rollDataRef.current && rollPanelData) {
       const { name, modifier } = rollDataRef.current;
       const isSkill = rollPanelData.type === 'skill';
-      handleRoll(name, modifier, extraModifier, getAdvantageType(), isSkill);
+      handleRoll(name, modifier, extraModifier, getAdvantageType(), isSkill, rollPanelData.dieOverride);
     }
   };
   
-  const openRollPanel = (name: string, modifier: number, type: 'skill' | 'attribute') => {
+  const openRollPanel = (name: string, modifier: number, type: 'skill' | 'attribute', dieOverride?: string) => {
     rollDataRef.current = { name, modifier };
-    setRollPanelData({ name, modifier, type });
+    setRollPanelData({ name, modifier, type, dieOverride });
     setExtraModifier(0);
     setHasAdvantage(false);
     setHasDisadvantage(false);
@@ -18843,6 +19009,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           className="bg-stone-900 border-stone-700 text-stone-200"
                           data-testid="input-edit-level"
                         />
+                      ) : isAAV3 ? (
+                        <>
+                          <p
+                            className="text-stone-200"
+                            data-testid="text-level"
+                            {...quickPressHandlers('level')}
+                          >
+                            {liveCharacter.level}
+                          </p>
+                          {quickEditPanel('level')}
+                        </>
                       ) : (
                         <p className="text-stone-200">{liveCharacter.level}</p>
                       )}
@@ -20259,7 +20436,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <Layers className="h-4 w-4 mr-1" /> Templates
                     </Button>
                   )}
-                  {isGM && (
+                  {canEditAsGM && (
                     <Button size="sm" onClick={() => { setShowAddItem(true); bringToFront?.(`add-item${charPanelSuffix}`); }} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
@@ -20426,6 +20603,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           }}
                           bringToFront={bringToFront}
                           charPanelSuffix={charPanelSuffix}
+                          canEditQuantity={canEditAsGM}
                         />
                       ))}
                     </div>
@@ -22189,7 +22367,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           <div className="p-4 space-y-4">
             <p className="text-sm text-stone-400">
               Base modifier: {(rollPanelData.modifier ?? 0) >= 0 ? '+' : ''}{rollPanelData.modifier ?? 0}
-              {rollPanelData.modifier === 5 ? ' (d30)' : ' (d20)'}
+              {rollPanelData.dieOverride
+                ? ` (${rollPanelData.dieOverride})`
+                : (rollPanelData.modifier === 5 ? ' (d30)' : ' (d20)')}
             </p>
             <div className="flex items-center justify-center gap-3">
               <Label className="text-stone-400">Extra Modifier:</Label>
