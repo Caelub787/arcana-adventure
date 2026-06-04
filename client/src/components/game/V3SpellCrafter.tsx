@@ -162,6 +162,9 @@ export function V3CompositionEditor({
 }) {
   const setComp = (updater: (c: V3SpellComposition) => V3SpellComposition) => onChange(updater(comp));
 
+  // Mobile tap-to-reveal: which locked core element's requirements are shown.
+  const [revealedLocked, setRevealedLocked] = useState<string | null>(null);
+
   const isUsable = (key: string) => !eligibility || eligibility[key]?.usable !== false;
   const firstUsableElement = () => V3_ELEMENTS.find((el) => isUsable(el.key))?.key ?? V3_ELEMENTS[0].key;
 
@@ -206,45 +209,72 @@ export function V3CompositionEditor({
             {V3_ELEMENTS.map((el) => {
               const selected = comp.core === el.key;
               const locked = !isUsable(el.key);
-              const reqs = eligibility?.[el.key]?.requirements ?? [];
+              const revealed = revealedLocked === el.key;
+              // Locked elements are NOT wrapped in a Radix Tooltip: on touch
+              // devices the tooltip's pointer handling can swallow the first tap,
+              // so the reveal never fired. A plain button guarantees the tap
+              // toggles the inline requirements banner on every device. Unlocked
+              // elements keep the hover tooltip with the element description.
+              if (locked) {
+                return (
+                  <button
+                    key={el.key}
+                    type="button"
+                    onClick={() => setRevealedLocked((cur) => (cur === el.key ? null : el.key))}
+                    aria-disabled
+                    aria-expanded={revealed}
+                    title="Locked — tap to see how to unlock"
+                    className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors flex items-center justify-center gap-1 cursor-help ${
+                      revealed
+                        ? "bg-amber-500/10 border-amber-500/50 text-amber-300"
+                        : "bg-stone-900/60 border-stone-800 text-stone-500 hover:border-stone-600"
+                    }`}
+                    data-testid={`button-core-${el.key}`}
+                  >
+                    <Lock className="h-3 w-3 shrink-0" />
+                    {el.name}
+                  </button>
+                );
+              }
               return (
                 <Tooltip key={el.key}>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       onClick={() => setCore(el.key)}
-                      disabled={locked}
-                      aria-disabled={locked}
                       className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors flex items-center justify-center gap-1 ${
-                        locked
-                          ? "bg-stone-900/60 border-stone-800 text-stone-600 cursor-not-allowed"
-                          : selected
+                        selected
                           ? "bg-amber-500/20 border-amber-500 text-amber-200"
                           : "bg-stone-900 border-stone-700 text-stone-300 hover:border-stone-500"
                       }`}
                       data-testid={`button-core-${el.key}`}
                     >
-                      {locked && <Lock className="h-3 w-3 shrink-0" />}
                       {el.name}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="font-semibold">{el.name}</p>
                     <p className="text-xs text-stone-300">{el.description}</p>
-                    {locked && reqs.length > 0 && (
-                      <div className="mt-1 pt-1 border-t border-stone-700" data-testid={`text-core-locked-${el.key}`}>
-                        <p className="text-[10px] uppercase tracking-wide text-amber-400">Locked</p>
-                        {reqs.map((r, ri) => (
-                          <p key={ri} className="text-xs text-amber-300">{r}</p>
-                        ))}
-                      </div>
-                    )}
                   </TooltipContent>
                 </Tooltip>
               );
             })}
           </div>
         </TooltipProvider>
+        {/* Mobile/tap reveal — Tooltips are hover-only, so surface the tapped
+            locked element's requirements inline as well. */}
+        {revealedLocked && !isUsable(revealedLocked) && eligibility?.[revealedLocked]?.requirementSummary && (
+          <div
+            className="rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 flex items-start gap-1.5"
+            data-testid={`text-core-locked-reveal-${revealedLocked}`}
+          >
+            <Lock className="h-3 w-3 shrink-0 mt-0.5 text-amber-400" />
+            <p className="text-xs text-amber-200 leading-snug">
+              <span className="font-semibold">{V3_ELEMENT_MAP[revealedLocked]?.name ?? revealedLocked} is locked.</span>{" "}
+              {eligibility[revealedLocked].requirementSummary}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Secondary elements */}
@@ -305,14 +335,14 @@ export function V3CompositionEditor({
                       <SelectContent>
                         {V3_ELEMENTS.map((el) => {
                           const locked = !isUsable(el.key);
-                          const reqs = eligibility?.[el.key]?.requirements ?? [];
+                          const summary = eligibility?.[el.key]?.requirementSummary ?? "";
                           return (
                             <SelectItem key={el.key} value={el.key} disabled={locked} className="text-xs">
                               <span className="flex items-center gap-1">
                                 {locked && <Lock className="h-3 w-3 shrink-0" />}
                                 {el.name}
-                                {locked && reqs.length > 0 && (
-                                  <span className="ml-1 text-[10px] text-amber-400/80">{reqs.join(" · ")}</span>
+                                {locked && summary && (
+                                  <span className="ml-1 text-[10px] text-amber-400/80">{summary}</span>
                                 )}
                               </span>
                             </SelectItem>

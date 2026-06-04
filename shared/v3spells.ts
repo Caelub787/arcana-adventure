@@ -293,6 +293,10 @@ export interface V3ElementEligibility {
   usable: boolean;
   // Human-readable requirement lines for locked display (one per condition).
   requirements: string[];
+  // A single OR'd plain-language summary of all unlock conditions, e.g.
+  // "Requires Knowledge: Hydromancy, OR a Pearl (consumed)". Empty when the
+  // element has no conditions (freely usable).
+  requirementSummary: string;
   // The item to consume on a successful craft — set only when the element is
   // usable AND its only satisfied condition is a consumable item (so a free
   // path, e.g. Knowledge or a non-consumable item, is always preferred).
@@ -320,7 +324,7 @@ export function evaluateV3ElementEligibility(
   input: V3CharacterEligibilityInput,
 ): V3ElementEligibility {
   if (!conditions || conditions.length === 0) {
-    return { usable: true, requirements: [], freeToUse: true, consumeOptions: [] };
+    return { usable: true, requirements: [], requirementSummary: "", freeToUse: true, consumeOptions: [] };
   }
 
   const knowledgeSet = new Set(
@@ -342,11 +346,14 @@ export function evaluateV3ElementEligibility(
   let satisfiedNonConsuming = false;
   const consumeOptions: { itemId?: string | null; name?: string | null }[] = [];
   const requirements: string[] = [];
+  // Short OR'd phrases (no leading "Requires") for the combined summary line.
+  const summaryParts: string[] = [];
 
   for (const c of conditions) {
     if (c.conditionType === "knowledge") {
       const name = (c.knowledgeName || "").trim();
       requirements.push(`Requires Knowledge: ${name || "?"}`);
+      summaryParts.push(`Knowledge: ${name || "?"}`);
       if (name && knowledgeSet.has(name.toLowerCase())) {
         usable = true;
         satisfiedNonConsuming = true;
@@ -354,6 +361,7 @@ export function evaluateV3ElementEligibility(
     } else if (c.conditionType === "item") {
       const label = (c.itemName || "item").trim();
       requirements.push(`Requires item: ${label}${c.consumed ? " (consumed)" : ""}`);
+      summaryParts.push(`a ${label}${c.consumed ? " (consumed)" : ""}`);
       if (hasItem(c)) {
         usable = true;
         if (c.consumed) {
@@ -365,6 +373,8 @@ export function evaluateV3ElementEligibility(
     }
   }
 
+  const requirementSummary = summaryParts.length ? `Requires ${summaryParts.join(", OR ")}` : "";
+
   const freeToUse = usable && satisfiedNonConsuming;
   // Consumable allocation only matters when there is NO free path. The single
   // `consumeItem` is kept for backward compatibility (first option); the server
@@ -373,6 +383,7 @@ export function evaluateV3ElementEligibility(
   return {
     usable,
     requirements,
+    requirementSummary,
     consumeItem,
     freeToUse,
     consumeOptions: freeToUse ? [] : consumeOptions,
