@@ -1024,7 +1024,7 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
             <Button
               size="sm"
               variant="outline"
-              onClick={() => window.open('/admin', '_blank')}
+              onClick={() => window.open('/admin?personal=1', '_blank')}
               className="border-amber-700/50 hover:bg-amber-900/30 text-amber-400 hover:text-amber-300 h-7 text-xs"
               data-testid="button-my-library"
             >

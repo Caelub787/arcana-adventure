@@ -212,7 +212,7 @@ export function createArcanaApiTransport(
  * inside the component tree so the imagePicker promise resolves
  * correctly.
  */
-export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: string): {
+export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: string, personal?: boolean): {
   host: HostAdapter;
   imageBrowserNode: React.ReactNode;
 } {
@@ -224,8 +224,8 @@ export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: str
   }>({ open: false });
 
   const transport = useMemo(
-    () => createArcanaApiTransport({ systemSlug, systemDisplayName }),
-    [systemSlug, systemDisplayName],
+    () => createArcanaApiTransport({ systemSlug, systemDisplayName, personal }),
+    [systemSlug, systemDisplayName, personal],
   );
 
   const notify = useCallback(

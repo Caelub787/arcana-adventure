@@ -1064,8 +1064,8 @@ class ApiClient {
   }
 
   // Crafter Recipe Templates (AA V2 only)
-  async listCrafterRecipeTemplates(system: string = 'aa-v2'): Promise<any[]> {
-    return this.request(`/admin/crafter-recipe-templates?system=${encodeURIComponent(system)}`);
+  async listCrafterRecipeTemplates(system: string = 'aa-v2', personal?: boolean): Promise<any[]> {
+    return this.request(`/admin/crafter-recipe-templates?system=${encodeURIComponent(system)}${personal ? '&personal=1' : ''}`);
   }
   async getCrafterRecipeTemplate(id: string): Promise<any> {
     return this.request(`/admin/crafter-recipe-templates/${id}`);
@@ -1149,10 +1149,11 @@ class ApiClient {
   }
 
   // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
-  async getSystemItemSummaries(system?: string, campaignId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+  async getSystemItemSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
+    if (personal) qs.set('personal', '1');
     const s = qs.toString();
     return this.request(`/system-items/summary${s ? `?${s}` : ''}`);
   }
@@ -1516,10 +1517,11 @@ class ApiClient {
   }
 
   // Lightweight summaries (no icon base64, no effects jsonb) for fast loading
-  async getSystemSpellSummaries(system?: string, campaignId?: string): Promise<any[]> {
+  async getSystemSpellSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<any[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
+    if (personal) qs.set('personal', '1');
     const s = qs.toString();
     return this.request(`/system-spells/summary${s ? `?${s}` : ''}`);
   }

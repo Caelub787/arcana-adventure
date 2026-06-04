@@ -6739,7 +6739,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const campaignId = req.query.campaignId as string | undefined;
-      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
       const summaries = await storage.getSystemItemSummaries(system, scope);
       console.log('[Summary] System items:', summaries.length);
       res.json(summaries);
@@ -7084,7 +7085,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const system = (req.query.system as string) || 'aa-v2';
       if (system !== 'aa-v2' && system !== 'aa-v3') return res.json([]);
       const isA = await isAdminUser(req.session.userId);
-      const ownerScope = isA ? undefined : [req.session.userId!];
+      const personal = req.query.personal === '1';
+      const ownerScope = (isA && !personal) ? undefined : [req.session.userId!];
       const list = await storage.listCrafterRecipeTemplates({ system, ownerScope });
       res.json(list);
     } catch (err: any) {
@@ -7110,8 +7112,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const personal = req.body.personal === true;
       const requestedCRTSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedCRTSystem, ownerUserId: req.session.userId };
+      const { personal: _crtPersonal, ...crtBody } = req.body;
+      const body = (isA && !personal) ? crtBody : { ...crtBody, system: requestedCRTSystem, ownerUserId: req.session.userId };
       const data = insertCrafterRecipeTemplateSchema.parse({ ...body, system: requestedCRTSystem });
       const created = await storage.createCrafterRecipeTemplate(data);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'crafter-recipe-templates' });
@@ -8505,7 +8509,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/classes", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      const scope = await getLibraryScope(req.session.userId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const result = await storage.getClasses(system, scope);
       res.json(result);
     } catch (err) {
@@ -8517,8 +8522,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      const personal = req.body.personal === true;
       const requestedClassSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const body = isA ? req.body : { ...req.body, system: requestedClassSystem, ownerUserId: req.session.userId };
+      const { personal: _classPersonal, ...classBody } = req.body;
+      const body = (isA && !personal) ? classBody : { ...classBody, system: requestedClassSystem, ownerUserId: req.session.userId };
       const newClass = await storage.createClass(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'classes' });
       res.json(newClass);
@@ -8638,7 +8645,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = (req.query.system as string) || 'aa-v2';
       const campaignId = req.query.campaignId as string | undefined;
-      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
       const result = await storage.getClasses(system, scope);
       res.json(result);
     } catch (err) {
@@ -9680,7 +9688,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const campaignId = req.query.campaignId as string | undefined;
-      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
       const summaries = await storage.getSystemSpellSummaries(system, scope);
       res.json(summaries);
     } catch (err) {
@@ -10546,7 +10555,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const campaignId = req.query.campaignId as string | undefined;
-      const scope = await getLibraryScope(req.session.userId, campaignId);
+      const personal = req.query.personal === '1';
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
       const itemList = await storage.getSystemItems(system, scope);
       res.json(itemList);
     } catch (err) {
@@ -10952,9 +10962,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Auto-save brand-new character-sheet items to the campaign's local
       // library so the rest of the table can reuse them. Items linked from an
       // existing template are skipped (they already live in a library).
+      // GM-gated: only the campaign GM (or an admin) may seed the SHARED
+      // campaign library. A plain character owner (player) creating an item on
+      // their own sheet must NOT silently publish a campaign-wide template.
       try {
         const autoCampaignId = access.character?.campaignId;
-        if (autoCampaignId && !linkToTemplate && item.name) {
+        const canSeedCampaignLibrary = access.isGM || userIsAdmin;
+        if (autoCampaignId && canSeedCampaignLibrary && !linkToTemplate && item.name) {
           const existingTemplates = await storage.getCampaignTemplateItems(autoCampaignId);
           const dup = existingTemplates.find(
             (t) => t.name && t.name.toLowerCase() === item.name.toLowerCase(),

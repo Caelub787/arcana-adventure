@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
 import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell } from '@/lib/api';
@@ -208,6 +208,10 @@ export default function AdminSettings() {
   const [, setLocation] = useLocation();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const search = useSearch();
+  // "My Library" personal mode: scopes every list/create to the current user
+  // (own + global rows only), even for admins. Non-admins are always personal.
+  const personalMode = new URLSearchParams(search).get('personal') === '1' || !isAdmin;
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
@@ -216,7 +220,7 @@ export default function AdminSettings() {
   });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : 'arcana-adventure';
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
-  const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem);
+  const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their AA V2 private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
@@ -234,7 +238,7 @@ export default function AdminSettings() {
   // session-cookie LibraryTransport, bridges Arcana's <ImageBrowser> as the
   // image picker, and uses Radix Dialog chrome for the modal slot.
   const { imagePicker, element: imageBrowserElement } = useImageBrowserBridge();
-  const itemDialogTransport = useMemo(() => arcanaApiTransport(systemSlug), [systemSlug]);
+  const itemDialogTransport = useMemo(() => arcanaApiTransport(systemSlug, personalMode), [systemSlug, personalMode]);
   const itemDialogHost = useMemo(
     () =>
       arcanaSessionHostAdapter({
@@ -252,7 +256,7 @@ export default function AdminSettings() {
   );
   const createItemMutation = useMutation({
     mutationFn: async ({ item, draftRolls, templateLinks }: { item: Partial<Item>; draftRolls?: any[]; templateLinks?: string[] }) => {
-      const created = await api.createSystemItem({ ...item, system: systemSlug });
+      const created = await api.createSystemItem({ ...item, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any);
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
           const { id, ...rollData } = roll;
@@ -347,21 +351,21 @@ export default function AdminSettings() {
 
   // Use lightweight summary endpoint for fast list loading (no images)
   const { data: systemItemSummaries = [], isLoading: itemsLoading } = useQuery({
-    queryKey: ['system-items-summary', systemSlug],
-    queryFn: () => api.getSystemItemSummaries(systemSlug),
+    queryKey: ['system-items-summary', systemSlug, personalMode],
+    queryFn: () => api.getSystemItemSummaries(systemSlug, undefined, personalMode),
     enabled: currentView === 'items',
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: systemSpecies = [], isLoading: speciesLoading } = useQuery({
-    queryKey: ['system-species', selectedSystem],
-    queryFn: () => api.getSystemSpecies(selectedSystem),
+    queryKey: ['system-species', selectedSystem, personalMode],
+    queryFn: () => api.getSystemSpecies(selectedSystem, undefined, personalMode),
     enabled: currentView === 'species',
   });
 
   const { data: systemSpells = [], isLoading: spellsLoading } = useQuery({
-    queryKey: ['system-spells-summary', systemSlug],
-    queryFn: () => api.getSystemSpellSummaries(systemSlug),
+    queryKey: ['system-spells-summary', systemSlug, personalMode],
+    queryFn: () => api.getSystemSpellSummaries(systemSlug, undefined, personalMode),
     enabled: currentView === 'spells',
   });
 
@@ -378,8 +382,8 @@ export default function AdminSettings() {
   });
 
   const { data: characterTemplates = [], isLoading: charactersLoading } = useQuery({
-    queryKey: ['character-templates'],
-    queryFn: () => api.getCharacterTemplates(),
+    queryKey: ['character-templates', personalMode],
+    queryFn: () => api.getCharacterTemplates(personalMode),
     enabled: currentView === 'characters',
   });
 
@@ -396,8 +400,8 @@ export default function AdminSettings() {
   });
 
   const { data: allFeatTrees = [] } = useQuery({
-    queryKey: ['feat-trees', systemSlug],
-    queryFn: () => api.getFeatTrees(systemSlug),
+    queryKey: ['feat-trees', systemSlug, personalMode],
+    queryFn: () => api.getFeatTrees(systemSlug, undefined, personalMode),
   });
 
   const deleteItemMutation = useMutation({
@@ -413,15 +417,15 @@ export default function AdminSettings() {
 
   // ===== Item Templates =====
   const { data: itemTemplates = [], isLoading: templatesLoading } = useQuery({
-    queryKey: ['item-templates', systemSlug],
-    queryFn: () => api.getItemTemplates(systemSlug),
+    queryKey: ['item-templates', systemSlug, personalMode],
+    queryFn: () => api.getItemTemplates(systemSlug, personalMode),
     enabled: currentView === 'item-templates',
     staleTime: 5 * 60 * 1000,
   });
 
   const createItemTemplateMutation = useMutation({
     mutationFn: async ({ item, draftRolls }: { item: Partial<Item>; draftRolls?: any[] }) => {
-      const created = await api.createItemTemplate({ ...item, system: systemSlug });
+      const created = await api.createItemTemplate({ ...item, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any);
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
           const { id, ...rollData } = roll;
@@ -510,7 +514,8 @@ export default function AdminSettings() {
         name: `${source.name} (Copy)`,
         system: systemSlug,
         isLiveTemplate: true,
-      });
+        ...(personalMode ? { personal: true } : {}),
+      } as any);
       // The server auto-creates rolls for some item flags (e.g. a "Detonate"
       // roll when isDetonatable is true). Skip any source roll whose name
       // already exists on the copy to avoid duplicates.
@@ -556,7 +561,7 @@ export default function AdminSettings() {
 
   const createSpellMutation = useMutation({
     mutationFn: async ({ spell, draftRolls, templateLinks }: { spell: Partial<SystemSpell>; draftRolls?: any[]; templateLinks?: string[] }) => {
-      const created = await api.createSystemSpell({ ...spell, system: systemSlug });
+      const created = await api.createSystemSpell({ ...spell, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any);
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
           const { id, ...rollData } = roll;
@@ -729,7 +734,7 @@ export default function AdminSettings() {
   });
 
   const createCharacterMutation = useMutation({
-    mutationFn: (character: Partial<Character>) => api.createCharacterTemplate(character),
+    mutationFn: (character: Partial<Character>) => api.createCharacterTemplate({ ...character, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['character-templates'] });
       setShowAddCharacter(false);
@@ -973,7 +978,7 @@ export default function AdminSettings() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-amber-500">{isAdmin ? 'Admin Settings' : 'My Library'}</h1>
+            <h1 className="text-2xl font-bold text-amber-500">{(isAdmin && !personalMode) ? 'Admin Settings' : 'My Library'}</h1>
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
@@ -1053,7 +1058,7 @@ export default function AdminSettings() {
         )}
 
         {currentView === 'crafter-recipe-templates' && (
-          <CrafterRecipeTemplatesView systemSlug={systemSlug} />
+          <CrafterRecipeTemplatesView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'item-templates' && (
@@ -1210,11 +1215,11 @@ export default function AdminSettings() {
         )}
 
         {currentView === 'feat-trees' && (
-          <FeatTreesView systemSlug={systemSlug} />
+          <FeatTreesView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'classes' && (
-          <ClassesView systemSlug={systemSlug} />
+          <ClassesView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'notifications' && (
@@ -1286,6 +1291,7 @@ export default function AdminSettings() {
               }
               isLoading={createItemMutation.isPending}
               campaignSystem={systemSlug}
+              personal={personalMode}
             />
 
             {editingItem && (
@@ -1298,6 +1304,7 @@ export default function AdminSettings() {
                 initialData={editingItem}
                 isLoading={updateItemMutation.isPending}
                 campaignSystem={systemSlug}
+                personal={personalMode}
               />
             )}
           </>
@@ -1371,6 +1378,7 @@ export default function AdminSettings() {
           onSave={(data, draftRolls, templateLinks) => createSpellMutation.mutate({ spell: data, draftRolls, templateLinks })}
           isLoading={createSpellMutation.isPending}
           campaignSystem={systemSlug}
+          personal={personalMode}
         />
 
         {editingSpell && (
@@ -1381,6 +1389,7 @@ export default function AdminSettings() {
             initialData={editingSpell}
             isLoading={updateSpellMutation.isPending}
             campaignSystem={systemSlug}
+            personal={personalMode}
           />
         )}
 
@@ -4863,7 +4872,7 @@ const NODE_HEIGHT = 100;
 const NODE_CIRCLE_SIZE = 80;
 const NODE_CIRCLE_CENTER_Y = NODE_CIRCLE_SIZE / 2;
 
-function FeatTreesView({ systemSlug }: { systemSlug: string }) {
+function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
   const [showAddTree, setShowAddTree] = useState(false);
@@ -4879,8 +4888,8 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   const treeLabelPlural = isAAV2 ? 'Skill Trees' : 'Feat Trees';
 
   const { data: featTrees = [], isLoading: treesLoading } = useQuery({
-    queryKey: ['feat-trees', systemSlug],
-    queryFn: () => api.getFeatTrees(systemSlug),
+    queryKey: ['feat-trees', systemSlug, personal],
+    queryFn: () => api.getFeatTrees(systemSlug, undefined, personal),
   });
 
   const { data: treeData, isLoading: treeDataLoading } = useQuery({
@@ -4896,13 +4905,13 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
 
   // Query spells, traits, and skills for fallback descriptions (filtered by system)
   const { data: systemSpellsForFeats = [] } = useQuery({
-    queryKey: ['system-spells', systemSlug],
-    queryFn: () => api.getSystemSpells(systemSlug),
+    queryKey: ['system-spells', systemSlug, personal],
+    queryFn: () => api.getSystemSpells(systemSlug, personal),
   });
 
   const { data: systemItemsForFeats = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', systemSlug],
-    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`, { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['/api/system-items', systemSlug, personal],
+    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}${personal ? '&personal=1' : ''}` : ''}`, { credentials: 'include' }).then(r => r.json()),
   });
   
   const { data: systemTraitsForFeats = [] } = useQuery({
@@ -4983,7 +4992,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
   });
 
   const createTreeMutation = useMutation({
-    mutationFn: (tree: Partial<FeatTree>) => api.createFeatTree({ ...tree, system: systemSlug }),
+    mutationFn: (tree: Partial<FeatTree>) => api.createFeatTree({ ...tree, system: systemSlug, ...(personal ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feat-trees', systemSlug] });
       setShowAddTree(false);
@@ -6279,6 +6288,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           setShowSaveAsTemplate(true);
         }}
         systemSlug={systemSlug}
+        personal={personal}
       />
 
       <SaveAsTemplateDialog
@@ -6486,6 +6496,7 @@ interface FeatFormDialogProps {
   featTemplates?: FeatTemplate[];
   onSaveAsTemplate?: (feat: Partial<Feat>) => void;
   systemSlug?: string;
+  personal?: boolean;
 }
 
 const SKILLS_LIST = [
@@ -6517,7 +6528,7 @@ const ATTRIBUTES_LIST = [
   { key: 'will', name: 'Will' },
 ];
 
-function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate, systemSlug }: FeatFormDialogProps) {
+function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate, systemSlug, personal }: FeatFormDialogProps) {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showFeatImageBrowser, setShowFeatImageBrowser] = useState(false);
   const [formData, setFormData] = useState({
@@ -6567,8 +6578,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
 
   // Query system items for item_grant dropdown (filtered by system)
   const { data: systemItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', systemSlug],
-    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`).then(r => r.json()),
+    queryKey: ['/api/system-items', systemSlug, personal],
+    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}${personal ? '&personal=1' : ''}` : ''}`, { credentials: 'include' }).then(r => r.json()),
     enabled: open,
   });
 
@@ -7556,11 +7567,12 @@ interface SpellFormDialogProps {
   initialData?: SystemSpell;
   isLoading?: boolean;
   campaignSystem?: string;
+  personal?: boolean;
 }
 
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
-function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: SpellFormDialogProps) {
+function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem, personal }: SpellFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
   const isAaV2 = campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3';
 
@@ -7842,6 +7854,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
             <div className="pt-4 border-t border-stone-700">
               <ItemTemplateLinksPanel
                 systemSlug={campaignSystem || 'aa-v2'}
+                personal={personal}
                 selectedIds={selectedTemplateLinks}
                 onSelectedIdsChange={setSelectedTemplateLinks}
                 ownerType="spell"
@@ -8024,8 +8037,10 @@ function ItemTemplateLinksPanel({
   onSelectedIdsChange,
   ownerType,
   ownerId,
+  personal,
 }: {
   systemSlug: string;
+  personal?: boolean;
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
   // When ownerType + ownerId are provided, every checkbox toggle commits to
@@ -8042,8 +8057,8 @@ function ItemTemplateLinksPanel({
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery<Item[]>({
-    queryKey: ['item-templates', systemSlug],
-    queryFn: () => api.getItemTemplates(systemSlug),
+    queryKey: ['item-templates', systemSlug, personal],
+    queryFn: () => api.getItemTemplates(systemSlug, personal),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -8146,7 +8161,7 @@ function ItemTemplateLinksPanel({
   );
 }
 
-function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { itemId: string; currentTemplateId: string | null; systemSlug: string }) {
+function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug, personal }: { itemId: string; currentTemplateId: string | null; systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string>(currentTemplateId || 'none');
 
@@ -8155,8 +8170,8 @@ function ItemTemplateLinkPicker({ itemId, currentTemplateId, systemSlug }: { ite
   }, [currentTemplateId]);
 
   const { data: templates = [] } = useQuery({
-    queryKey: ['item-templates', systemSlug],
-    queryFn: () => api.getItemTemplates(systemSlug),
+    queryKey: ['item-templates', systemSlug, personal],
+    queryFn: () => api.getItemTemplates(systemSlug, personal),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -8230,7 +8245,7 @@ const classTierStyles: Record<number, { border: string; bg: string; glow: string
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
 };
 
-function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) {
+function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: string; personal?: boolean }) {
   const effectiveClassSystem: 'aa-v2' | 'aa-v3' = parentSystemSlug === 'aa-v3' ? 'aa-v3' : 'aa-v2';
   const queryClient = useQueryClient();
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -8273,21 +8288,21 @@ function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) 
   const pendingPointerRef = useRef<{ element: HTMLElement; pointerId: number; nodeId: string; clientX: number; clientY: number } | null>(null);
 
   const { data: classes = [], isLoading } = useQuery({
-    queryKey: ['admin-classes', effectiveClassSystem],
+    queryKey: ['admin-classes', effectiveClassSystem, personal],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/classes?system=${effectiveClassSystem}`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/classes?system=${effectiveClassSystem}${personal ? '&personal=1' : ''}`, { credentials: 'include' });
       return res.json();
     },
   });
 
   const { data: classSpells = [] } = useQuery({
-    queryKey: ['system-spells', effectiveClassSystem],
-    queryFn: () => api.getSystemSpells(effectiveClassSystem),
+    queryKey: ['system-spells', effectiveClassSystem, personal],
+    queryFn: () => api.getSystemSpells(effectiveClassSystem, personal),
   });
 
   const { data: classItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', effectiveClassSystem],
-    queryFn: () => fetch(`/api/system-items?system=${effectiveClassSystem}`).then(r => r.json()),
+    queryKey: ['/api/system-items', effectiveClassSystem, personal],
+    queryFn: () => fetch(`/api/system-items?system=${effectiveClassSystem}${personal ? '&personal=1' : ''}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   const getNodeImage = (node: any): string | null => {
@@ -8308,8 +8323,8 @@ function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) 
   };
 
   const { data: skillTreesForClasses = [] } = useQuery({
-    queryKey: ['feat-trees', effectiveClassSystem],
-    queryFn: () => api.getFeatTrees(effectiveClassSystem),
+    queryKey: ['feat-trees', effectiveClassSystem, personal],
+    queryFn: () => api.getFeatTrees(effectiveClassSystem, undefined, personal),
   });
 
   const { data: nodes = [] } = useQuery({
@@ -8338,7 +8353,7 @@ function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...data, system: effectiveClassSystem, image: classImage || null, skillTreeId: classSkillTreeId || null }),
+        body: JSON.stringify({ ...data, system: effectiveClassSystem, image: classImage || null, skillTreeId: classSkillTreeId || null, ...(personal ? { personal: true } : {}) }),
       });
       return res.json();
     },
@@ -9379,16 +9394,18 @@ function ClassesView({ systemSlug: parentSystemSlug }: { systemSlug?: string }) 
           setShowNodeEditor(false);
           setEditingNode(null);
         }}
+        personal={personal}
       />
     </div>
   );
 }
 
-function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
+function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   node: any;
   onSave: (data: any) => void;
+  personal?: boolean;
 }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -9435,8 +9452,8 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
   });
 
   const { data: systemItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items', systemSlug],
-    queryFn: () => fetch(`/api/system-items?system=${systemSlug}`).then(r => r.json()),
+    queryKey: ['/api/system-items', systemSlug, personal],
+    queryFn: () => fetch(`/api/system-items?system=${systemSlug}${personal ? '&personal=1' : ''}`, { credentials: 'include' }).then(r => r.json()),
     enabled: open,
   });
 
@@ -10124,20 +10141,20 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave }: {
 // CRAFTER RECIPE TEMPLATES (AA V2 only)
 // ============================================================
 
-function CrafterRecipeTemplatesView({ systemSlug }: { systemSlug: string }) {
+function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
 
   const { data: templates = [], isLoading } = useQuery<any[]>({
-    queryKey: ['crafter-recipe-templates', systemSlug],
-    queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
+    queryKey: ['crafter-recipe-templates', systemSlug, personal],
+    queryFn: () => api.listCrafterRecipeTemplates(systemSlug, personal),
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
   const createMut = useMutation({
-    mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: systemSlug }),
+    mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: systemSlug, ...(personal ? { personal: true } : {}) }),
     onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] });
       setCreating(false);
@@ -10361,14 +10378,14 @@ function CrafterRecipeTemplateEditDialog({ open, templateId, onOpenChange }: {
   );
 }
 
-function CrafterTemplateLinksPanel({ itemId, systemSlug }: { itemId: string; systemSlug: string }) {
+function CrafterTemplateLinksPanel({ itemId, systemSlug, personal }: { itemId: string; systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery<any[]>({
-    queryKey: ['crafter-recipe-templates', systemSlug],
-    queryFn: () => api.listCrafterRecipeTemplates(systemSlug),
+    queryKey: ['crafter-recipe-templates', systemSlug, personal],
+    queryFn: () => api.listCrafterRecipeTemplates(systemSlug, personal),
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
@@ -10462,9 +10479,10 @@ interface ItemFormDialogProps {
   initialData?: Item;
   isLoading?: boolean;
   campaignSystem?: string;
+  personal?: boolean;
 }
 
-function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: ItemFormDialogProps) {
+function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem, personal }: ItemFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
   // Multi-template selection (AAv2 only). Always parent-controlled; the parent
   // applies on save for both create and edit flows to avoid race conditions.
@@ -11146,6 +11164,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               <div className="pt-4 border-t border-stone-700">
                 <ItemTemplateLinksPanel
                   systemSlug={campaignSystem || (initialData as any)?.system || 'aa-v2'}
+                  personal={personal}
                   selectedIds={selectedTemplateLinks}
                   onSelectedIdsChange={setSelectedTemplateLinks}
                   ownerType="item"
@@ -11159,6 +11178,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   itemId={initialData.id}
                   currentTemplateId={(initialData as any)?.templateItemId || null}
                   systemSlug={campaignSystem || (initialData as any)?.system || 'arcana-adventure'}
+                  personal={personal}
                 />
               </div>
             )}
@@ -11176,7 +11196,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
 
             {isAaV2 && formData.itemType === 'crafter' && initialData?.id && (
               <div className="pt-4 border-t border-stone-700">
-                <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug={(campaignSystem === 'aa-v3' || (initialData as any)?.system === 'aa-v3') ? 'aa-v3' : 'aa-v2'} />
+                <CrafterTemplateLinksPanel itemId={initialData.id} systemSlug={(campaignSystem === 'aa-v3' || (initialData as any)?.system === 'aa-v3') ? 'aa-v3' : 'aa-v2'} personal={personal} />
               </div>
             )}
 
