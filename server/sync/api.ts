@@ -44,6 +44,7 @@ const KIND_PLURAL: Record<string, string> = {
   "feat-tree": "feat-trees",
   "character-template": "character-templates",
   "roll-template": "roll-templates",
+  "element": "elements",
 };
 export type Kind = keyof typeof KIND_PLURAL;
 export const SYNC_KINDS = Object.keys(KIND_PLURAL) as Kind[];
@@ -53,11 +54,15 @@ export function pluralFor(kind: Kind): string { return KIND_PLURAL[kind]; }
 // because not every entity uses the same field name / value: e.g. species
 // uses `systemName` with the human-readable value `"A.A. V2"`, while items,
 // spells, characters, classes, feat-trees use `system` = `"aa-v2"`.
-const KIND_META: Record<Kind, {
+// `element` (v3_element_requirements) is intentionally absent: it is a single
+// global admin-only config table with no owner/system columns, so it bypasses
+// owner routing entirely (see the early-returns in applyOwnerRouting /
+// applyPatchOwnerRouting and the admin-only write guards in the route loop).
+const KIND_META: Partial<Record<Kind, {
   ownerCol: "ownerUserId" | "createdByUserId";
   systemCol: "system" | "systemName";
   aaV2Value: string;
-}> = {
+}>> = {
   "item":               { ownerCol: "createdByUserId", systemCol: "system",     aaV2Value: "aa-v2" },
   "spell":              { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
   "character":          { ownerCol: "ownerUserId",     systemCol: "system",     aaV2Value: "aa-v2" },
@@ -69,7 +74,9 @@ const KIND_META: Record<Kind, {
 };
 
 function applyOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmin: boolean }) {
-  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind];
+  // Global admin-only config kinds (element) have no owner/system columns.
+  if (!KIND_META[kind]) return { ...body };
+  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind]!;
   const out = { ...body };
   if (syncUser.isAdmin) {
     out[ownerCol] = null;
@@ -88,7 +95,9 @@ function applyOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmi
  * AA V2 namespace or away from the caller. Pin owner + system field per kind.
  */
 function applyPatchOwnerRouting(kind: Kind, body: any, syncUser: { id: string; isAdmin: boolean }) {
-  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind];
+  // Global admin-only config kinds (element) have no owner/system columns.
+  if (!KIND_META[kind]) return { ...body };
+  const { ownerCol, systemCol, aaV2Value } = KIND_META[kind]!;
   const out = { ...body };
   if (!syncUser.isAdmin) {
     out[systemCol] = aaV2Value;
@@ -153,6 +162,7 @@ const matchesKind: Record<Kind, (row: any) => boolean> = {
   "feat-tree":          (r) => !!r,
   "character-template": (r) => !!r && r.isTemplate === true,
   "roll-template":      (r) => !!r && r.isLiveTemplate === true,
+  "element":            (r) => !!r,
 };
 
 const adapters: Record<Kind, {
@@ -249,6 +259,19 @@ const adapters: Record<Kind, {
     update: (id, d) => storage.updateItem(id, d),
     delete: (id) => storage.deleteItem(id),
     getOwner: (r) => r?.createdByUserId,
+  },
+  "element": {
+    // AA V3 element craft-requirement rules. A single global admin-only config
+    // table (no per-user libraries), so every row is treated as a global admin
+    // row (getOwner → null): readable by everyone, writable by admins only
+    // (enforced both by canWrite on the null owner and by the admin-only write
+    // guards in the route loop below).
+    list: () => storage.getV3ElementRequirements(),
+    get: (id) => storage.getV3ElementRequirement(id),
+    create: (d) => storage.createV3ElementRequirement(d),
+    update: (id, d) => storage.updateV3ElementRequirement(id, d),
+    delete: (id) => storage.deleteV3ElementRequirement(id),
+    getOwner: () => null,
   },
 };
 
@@ -349,6 +372,9 @@ export function registerSyncRoutes(app: Express) {
     app.post(base, requireSyncAuth("library:write"), async (req: Request, res: Response) => {
       try {
         const u = req.syncUser!;
+        // `element` is global admin-only config — block non-admin creates
+        // (canWrite already blocks non-admin updates of the null-owner row).
+        if (kind === "element" && !u.isAdmin) return res.status(403).json({ error: "forbidden", message: "element requirements are admin-only" });
         const externalId = req.body?.externalId as string | undefined;
         let existing: any = null;
         if (externalId) {

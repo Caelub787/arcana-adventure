@@ -30,7 +30,8 @@ export type SyncKind =
   | "class"
   | "feat-tree"
   | "character-template"
-  | "roll-template";
+  | "roll-template"
+  | "element";
 
 const KIND_PLURAL: Record<SyncKind, string> = {
   "item": "items",
@@ -41,6 +42,7 @@ const KIND_PLURAL: Record<SyncKind, string> = {
   "feat-tree": "feat-trees",
   "character-template": "character-templates",
   "roll-template": "roll-templates",
+  "element": "elements",
 };
 function pluralize(kind: SyncKind): string { return KIND_PLURAL[kind]; }
 

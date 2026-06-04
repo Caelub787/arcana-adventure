@@ -21,6 +21,7 @@ The following entity kinds are mirrored bidirectionally:
 | `feat-tree`            | `/api/sync/v1/feat-trees`                    |
 | `character-template`   | `/api/sync/v1/character-templates`           |
 | `roll-template`        | `/api/sync/v1/roll-templates`                |
+| `element`              | `/api/sync/v1/elements`                      |
 
 ### Library routing (where writes land)
 
@@ -29,10 +30,18 @@ The following entity kinds are mirrored bidirectionally:
   `system` is forced to `'aa-v2'`.
 
 > **AA V3 note**: The external sync API does not currently mirror
-> `system = 'aa-v3'` rows. V3 admin content is local-only for now —
-> partner apps continue to see V2 (and legacy Arcana) lanes only.
-> If V3 sharing is needed later, add `'aa-v3'` to `KIND_META` system
-> values in `server/sync/api.ts` and seed the corresponding admin lane.
+> per-user `system = 'aa-v3'` library rows (items/spells/etc.). V3 admin
+> library content is local-only for now — partner apps continue to see V2
+> (and legacy Arcana) lanes only. If V3 library sharing is needed later,
+> add `'aa-v3'` to `KIND_META` system values in `server/sync/api.ts` and
+> seed the corresponding admin lane.
+>
+> **Exception — `element`**: AA V3 element craft-requirement rules
+> (`v3_element_requirements`) *are* mirrored, via the `element` kind. They
+> are global game-design config (not a per-user library): there is no
+> owner/system column, so every row reads as a global admin row —
+> **readable by any authorized token, writable by admin tokens only**.
+> Non-admin POST/PATCH/DELETE on `element` returns `403`.
 
 The token user determines this — partner apps don't pick a routing
 mode. The `/api/sync/v1/me` endpoint returns the resolved

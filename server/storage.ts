@@ -391,6 +391,7 @@ export interface IStorage {
 
   // AA V3 element craft requirement operations
   getV3ElementRequirements(): Promise<V3ElementRequirement[]>;
+  getV3ElementRequirement(id: string): Promise<V3ElementRequirement | undefined>;
   createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement>;
   updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined>;
   deleteV3ElementRequirement(id: string): Promise<void>;
@@ -3085,6 +3086,13 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(v3ElementRequirements)
       .orderBy(v3ElementRequirements.element, v3ElementRequirements.createdAt);
+  }
+
+  async getV3ElementRequirement(id: string): Promise<V3ElementRequirement | undefined> {
+    const [row] = await db.select()
+      .from(v3ElementRequirements)
+      .where(eq(v3ElementRequirements.id, id));
+    return row;
   }
 
   async createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement> {

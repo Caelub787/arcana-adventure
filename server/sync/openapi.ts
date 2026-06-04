@@ -25,6 +25,7 @@ import {
   insertFeatSchema,
   insertFeatConnectionSchema,
   insertSpellSchema,
+  insertV3ElementRequirementSchema,
 } from "@shared/schema";
 
 extendZodWithOpenApi(z);
@@ -33,6 +34,7 @@ const KIND_PLURAL: Record<string, string> = {
   "item": "items", "spell": "spells", "character": "characters", "species": "species",
   "class": "classes", "feat-tree": "feat-trees",
   "character-template": "character-templates", "roll-template": "roll-templates",
+  "element": "elements",
 };
 
 // Map each sync kind to the Zod insert schema that backs it. Roll templates
@@ -47,6 +49,7 @@ const KIND_ZOD: Record<string, z.ZodTypeAny> = {
   "feat-tree": insertFeatTreeSchema,
   "character-template": insertCharacterSchema,
   "roll-template": insertItemSchema,
+  "element": insertV3ElementRequirementSchema,
 };
 
 const KINDS = Object.keys(KIND_PLURAL);
@@ -184,6 +187,7 @@ function buildSpec() {
       connections: z.array(featConnSchema).optional(),
     },
     "species": {},
+    "element": {},
   };
 
   const refByKind: Record<string, any> = {};
