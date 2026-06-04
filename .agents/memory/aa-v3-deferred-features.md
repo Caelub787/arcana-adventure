@@ -1,23 +1,28 @@
 ---
-name: AA V3 deferred spell features
-description: Two AA V3 spell features specified but NOT yet implemented — read before building V3 spell crafting.
+name: AA V3 spell features (now built)
+description: Two AA V3 spell features — NO-AI GM authoring + spell levels — are now implemented. How they actually work.
 ---
 
-# AA V3 deferred spell features (not yet built)
+# AA V3 spell features (implemented)
 
-Two spell-related features were specified for AA V3 but are NOT implemented yet.
+Both features below were specified as deferred and are now built.
 
-## 1. NO-AI GM popup for spell creation
-When a player tries to create a spell in a V3 campaign, the feature must use **no AI**.
-Instead, a GM-side popup/menu lets the GM author the spell's **name**, **description**, and **profile image** for the player's spell.
+## 1. NO-AI GM authoring (no auto-popup)
+Player spell crafting uses **no AI**. When a player crafts a brand-new composition the
+server creates a `v3_spells` row `status='awaiting_gm'` and broadcasts `v3_spell_request`.
+The GM authors name/description/image. The GM surface is the **Crafted Spells manager**
+(`V3GmSpellManager` in `client/src/components/game/V3SpellCrafter.tsx`) which has a
+**"Pending requests"** section; a non-blocking listener (`V3SpellAuthoringListener`)
+only toasts + drives a badge count (it does NOT auto-open a dialog — that was the old
+blocking behavior, intentionally removed). `V3SpellLiveSync` invalidates
+`['spellbook-spells']` + `['v3-character-spells']` for all aa-v3 users so authored spells
+appear live.
 
-**Why:** explicit user instruction — the spell-creation feature must not rely on AI generation; the GM authors the content manually.
+**Why no auto-popup:** a forced modal interrupted the GM mid-game; authoring must be
+GM-initiated from the manager.
 
-**How to apply:** when building V3 spell crafting, route player spell-creation requests to a GM approval/authoring dialog rather than any AI generation path.
-
-## 2. V3 spell-levels
-- Level 1 = 1d6, scaling up to level 5 = 2d6 (per-level damage scaling).
-- Each level adds +1 mana cost.
-- Base spell level is 1–4, plus an up-cast input to cast at a higher level.
-
-**How to apply:** layer onto the V3 spell model when spell crafting is built.
+## 2. V3 spell levels
+Dice + mana math lives in `shared/v3spells.ts`: `v3LevelDice(level)` →
+count=1+floor((level-1)/4), sides cycle [6,8,10,12] by (level-1)%4, **no cap**;
+`v3LevelExtraMana(level)` = level-1. Casting (level stepper + roll) is in the V3 spell
+detail dialog and rolls **client-side** (see `v3-spell-rolling.md`).

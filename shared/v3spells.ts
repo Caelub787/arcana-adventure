@@ -203,6 +203,35 @@ export function v3CraftDc(comp: V3SpellComposition): number {
   return n <= 1 ? 0 : (n - 1) * 6;
 }
 
+// ---------------------------------------------------------------------------
+// Cast level → dice + mana scaling
+// ---------------------------------------------------------------------------
+const V3_LEVEL_DIE_SIDES = [6, 8, 10, 12];
+
+/**
+ * Dice for a crafted spell cast at a given level (>= 1). Every 4 levels adds
+ * one die and the die size cycles d6 -> d8 -> d10 -> d12. There is no upper
+ * bound on level.
+ *   1->1d6, 2->1d8, 3->1d10, 4->1d12, 5->2d6, 6->2d8, 7->2d10, 8->2d12, 9->3d6 ...
+ */
+export function v3LevelDice(level: number): { count: number; sides: number } {
+  const lv = Math.max(1, Math.floor(level || 1));
+  const count = 1 + Math.floor((lv - 1) / 4);
+  const sides = V3_LEVEL_DIE_SIDES[(lv - 1) % 4];
+  return { count, sides };
+}
+
+/** Dice notation for a cast level, e.g. level 5 -> "2d6". */
+export function v3LevelDiceNotation(level: number): string {
+  const { count, sides } = v3LevelDice(level);
+  return `${count}d${sides}`;
+}
+
+/** Extra mana for casting above level 1 (level 1 = 0 extra, each level +1). */
+export function v3LevelExtraMana(level: number): number {
+  return Math.max(0, Math.floor(level || 1) - 1);
+}
+
 /**
  * Canonical, order-dependent serialization of a composition. Secondary
  * [role, element] pairs are kept in their listed order, so two spells built

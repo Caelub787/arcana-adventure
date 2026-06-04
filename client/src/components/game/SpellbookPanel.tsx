@@ -4,9 +4,11 @@ import { api, type V3Spell } from "@/lib/api";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { V3SpellCrafter } from "./V3SpellCrafter";
+import { castV3Spell, type V3CastCharacter } from "@/lib/v3cast";
 import {
   V3_INTENT_MAP,
   V3_DELIVERY_MAP,
@@ -14,8 +16,10 @@ import {
   V3_REACH_MAP,
   V3_DURATION_MAP,
   V3_ROLE_MAP,
+  v3LevelDiceNotation,
+  v3LevelExtraMana,
 } from "@shared/v3spells";
-import { BookOpen, Sparkles, Send, Trash2, Wand2, Clock, Eye } from "lucide-react";
+import { BookOpen, Sparkles, Send, Trash2, Wand2, Clock, Eye, Minus, Plus, Dices } from "lucide-react";
 
 interface SpellbookCharacter {
   id: string;
@@ -52,16 +56,40 @@ export function V3SpellDetailDialog({
   open,
   onOpenChange,
   spell,
+  castCharacter,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spell: V3Spell | null;
+  castCharacter?: V3CastCharacter;
 }) {
+  const [level, setLevel] = useState(1);
   if (!spell) return null;
   const comp = spell.composition;
   const awaiting = spell.status === "awaiting_gm";
+  const lv = Math.max(1, Math.floor(level || 1));
+  const diceLabel = v3LevelDiceNotation(lv);
+  const extraMana = v3LevelExtraMana(lv);
+  const baseMana = spell.manaCost ?? 0;
+  const totalMana = baseMana + extraMana;
+  const canCast = !!castCharacter && !awaiting;
+
+  const handleOpenChange = (o: boolean) => {
+    if (!o) setLevel(1);
+    onOpenChange(o);
+  };
+
+  const handleCast = () => {
+    if (!castCharacter) return;
+    const ok = castV3Spell(castCharacter, spell, lv);
+    if (ok) {
+      setLevel(1);
+      onOpenChange(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-md" data-testid="dialog-v3-spell-detail">
         <DialogHeader>
           <DialogTitle className="text-purple-300 flex items-center gap-2">
@@ -106,6 +134,63 @@ export function V3SpellDetailDialog({
               {comp.duration && <p className="text-xs"><span className="text-stone-500">Duration:</span> <span className="text-stone-300">{V3_DURATION_MAP[comp.duration]?.name ?? comp.duration}</span></p>}
             </div>
           )}
+
+          {canCast && (
+            <div className="space-y-2 border-t border-stone-700 pt-3" data-testid="section-v3-spell-cast">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wide text-stone-500">Cast Level</span>
+                <span className="flex items-center gap-1 text-purple-300 font-semibold" data-testid="text-v3-dice-readout">
+                  <Dices className="h-4 w-4" /> {diceLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+                  onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1) - 1))}
+                  disabled={lv <= 1}
+                  data-testid="button-v3-level-minus"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="number"
+                  min={1}
+                  value={lv}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
+                  }}
+                  className="h-8 w-20 text-center bg-stone-950 border-stone-600"
+                  data-testid="input-v3-level"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+                  onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1)) + 1)}
+                  data-testid="button-v3-level-plus"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-stone-400" data-testid="text-v3-total-mana">
+                Total mana: <span className="text-blue-300">{totalMana}</span>
+                <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""})</span>
+              </p>
+              <Button
+                type="button"
+                className="w-full bg-purple-700 hover:bg-purple-600 text-white"
+                onClick={handleCast}
+                data-testid="button-v3-roll-spell"
+              >
+                <Dices className="h-4 w-4 mr-2" /> Roll {diceLabel}
+              </Button>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -125,13 +210,17 @@ export function SpellbookPanel({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const panelKey = `spellbook${charPanelSuffix}`;
-  const [detailSpell, setDetailSpell] = useState<V3Spell | null>(null);
+  const [detailSpellId, setDetailSpellId] = useState<string | null>(null);
 
   const { data: spells = [], isLoading } = useQuery<V3Spell[]>({
     queryKey: ["spellbook-spells", item?.id],
     queryFn: () => api.getSpellbookSpells(item.id),
     enabled: open && !!item?.id,
   });
+
+  // Derive the open detail spell from the live list so it updates in place
+  // when the GM authors it (status awaiting_gm -> ready) with no manual refresh.
+  const detailSpell = detailSpellId ? (spells.find((s) => s.id === detailSpellId) ?? null) : null;
 
   const invalidateSpells = () =>
     queryClient.invalidateQueries({ queryKey: ["spellbook-spells", item?.id] });
@@ -244,7 +333,7 @@ export function SpellbookPanel({
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs text-stone-300 hover:bg-stone-800"
-                            onClick={() => setDetailSpell(spell)}
+                            onClick={() => setDetailSpellId(spell.id)}
                             data-testid={`button-detail-spell-${spell.id}`}
                           >
                             <Eye className="h-3 w-3 mr-1" /> Details
@@ -291,8 +380,9 @@ export function SpellbookPanel({
     </FloatingPanel>
     <V3SpellDetailDialog
       open={!!detailSpell}
-      onOpenChange={(o) => { if (!o) setDetailSpell(null); }}
+      onOpenChange={(o) => { if (!o) setDetailSpellId(null); }}
       spell={detailSpell}
+      castCharacter={character}
     />
     </>
   );

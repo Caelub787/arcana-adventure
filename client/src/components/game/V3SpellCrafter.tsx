@@ -23,6 +23,7 @@ import {
   isValidV3Composition,
   type V3SpellComposition,
 } from "@shared/v3spells";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, gameWs, type V3Spell } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -459,191 +460,75 @@ function V3SelectField({
 }
 
 // ---------------------------------------------------------------------------
-// GM authoring pop-up — listens for craft requests and lets the GM author
-// the spell's name / description / profile image.
-// ---------------------------------------------------------------------------
-interface PendingRequest {
-  spell: V3Spell;
-  characterName?: string;
-}
-
+// Non-blocking notifier: GMs get a dismissible toast and a live pending-count
+// (surfaced as a badge on the Crafted Spells button). Authoring happens in the
+// Crafted Spells manager, never via an auto-opening pop-up.
 export function V3SpellAuthoringListener({
   campaignId,
   isGM,
+  onPendingCountChange,
 }: {
   campaignId: string;
   isGM: boolean;
+  onPendingCountChange?: (count: number) => void;
 }) {
   const { toast } = useToast();
-  const [queue, setQueue] = useState<PendingRequest[]>([]);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [image, setImage] = useState<string | null>(null);
-  const [showImageBrowser, setShowImageBrowser] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
-  const active = queue[0];
-
-  const enqueue = useCallback((req: PendingRequest) => {
-    setQueue((q) => {
-      if (q.some((r) => r.spell.id === req.spell.id)) return q;
-      return [...q, req];
-    });
-  }, []);
-
-  // Load any already-pending requests on mount (e.g. GM joined after the craft).
-  useEffect(() => {
-    if (!isGM || !campaignId) return;
-    let cancelled = false;
+  const refresh = useCallback(() => {
+    if (!isGM || !campaignId) {
+      onPendingCountChange?.(0);
+      return;
+    }
     api
       .getV3SpellRequests(campaignId)
-      .then((rows) => {
-        if (cancelled) return;
-        rows.forEach((spell) => enqueue({ spell }));
-      })
+      .then((rows) => onPendingCountChange?.(rows.length))
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [campaignId, isGM, enqueue]);
+  }, [campaignId, isGM, onPendingCountChange]);
 
-  // Listen for real-time craft requests.
+  // Load the current pending count on mount (e.g. GM joined after the craft).
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Listen for real-time craft requests + authoring to keep the badge accurate.
   useEffect(() => {
     if (!isGM) return;
     const unsubscribe = gameWs.onMessage((data: any) => {
       if (data?.type === "v3_spell_request" && data.spell) {
-        enqueue({ spell: data.spell, characterName: data.characterName });
         toast({
           title: "New spell crafted",
-          description: `${data.characterName || "A player"} crafted a new spell. Author its details.`,
+          description: `${data.characterName || "A player"} crafted a new spell. Open Crafted Spells to author it.`,
         });
+        refresh();
+      } else if (data?.type === "v3_spell_authored") {
+        refresh();
       }
     });
     return () => {
       unsubscribe();
     };
-  }, [isGM, enqueue, toast]);
+  }, [isGM, refresh, toast]);
 
-  // Reset the form whenever the active request changes.
+  return null;
+}
+
+// Live-sync for ALL AA V3 users (players included): when a spell is crafted or
+// authored, refresh the spellbook + hotbar spell queries so any open panel or
+// detail dialog updates in place with no manual refresh.
+export function V3SpellLiveSync({ campaignId: _campaignId }: { campaignId: string }) {
+  const queryClient = useQueryClient();
   useEffect(() => {
-    if (active) {
-      setName(active.spell.name || "");
-      setDescription(active.spell.description || "");
-      setImage(active.spell.image || null);
-    }
-  }, [active?.spell.id]);
-
-  if (!isGM || !active) return null;
-
-  const handleSubmit = async () => {
-    if (!name.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      await api.authorV3Spell(active.spell.id, { name: name.trim(), description, image });
-      toast({ title: "Spell authored", description: `"${name.trim()}" is ready for the player.` });
-      setQueue((q) => q.slice(1));
-    } catch (err: any) {
-      toast({
-        title: "Could not save",
-        description: err?.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const comp = active.spell.composition;
-
-  return (
-    <>
-      <Dialog open onOpenChange={() => {}}>
-        <DialogContent className="max-w-lg" data-testid="dialog-v3-spell-authoring">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-amber-400" />
-              Author a Crafted Spell
-            </DialogTitle>
-            <DialogDescription>
-              {active.characterName ? `${active.characterName} crafted` : "A player crafted"} a new spell. Give it a
-              name, description, and profile image.
-              {queue.length > 1 && (
-                <span className="ml-1 text-amber-400">({queue.length - 1} more waiting)</span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            {comp && (
-              <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-3 space-y-1">
-                <Label className="text-[10px] uppercase tracking-wide text-stone-500">Composition</Label>
-                <FormulaDisplay comp={comp} />
-                <p className="text-xs text-stone-500 pt-1">
-                  {active.spell.manaCost} mana · DC {active.spell.craftDc}
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowImageBrowser(true)}
-                className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500 transition-colors"
-                data-testid="button-spell-image"
-              >
-                {image ? (
-                  <img src={image} alt="Spell" className="h-full w-full object-cover" />
-                ) : (
-                  <ImageIcon className="h-6 w-6 text-stone-500" />
-                )}
-              </button>
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs text-stone-400">Name</Label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Cinderlance"
-                  data-testid="input-spell-name"
-                />
-                <p className="text-[10px] text-stone-500">Click the box to set a profile image.</p>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-stone-400">Description</Label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe what this spell looks and feels like…"
-                rows={4}
-                data-testid="input-spell-description"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              onClick={handleSubmit}
-              disabled={!name.trim() || submitting}
-              className="bg-amber-600 hover:bg-amber-700 text-stone-950"
-              data-testid="button-submit-authoring"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-              Finalize Spell
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ImageBrowser
-        open={showImageBrowser}
-        onOpenChange={setShowImageBrowser}
-        onSelect={(url) => setImage(url)}
-        saveToFile
-        title="Select Spell Image"
-      />
-    </>
-  );
+    const unsubscribe = gameWs.onMessage((data: any) => {
+      if (data?.type === "v3_spell_authored" || data?.type === "v3_spell_request") {
+        queryClient.invalidateQueries({ queryKey: ["spellbook-spells"] });
+        queryClient.invalidateQueries({ queryKey: ["v3-character-spells"] });
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [queryClient]);
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -736,6 +621,69 @@ export function V3GmSpellManager({
 
   if (!isGM) return null;
 
+  const renderSpellRow = (spell: V3Spell) => {
+    const locked = isLocked(spell);
+    const badge = V3_STATUS_BADGE[spell.status];
+    const isPending = spell.status === "awaiting_gm";
+    return (
+      <div
+        key={spell.id}
+        className="rounded-lg border border-stone-700 bg-stone-900/60 p-3"
+        data-testid={`spell-manager-row-${spell.id}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="h-12 w-12 shrink-0 rounded-lg border border-stone-700 bg-stone-800 overflow-hidden flex items-center justify-center">
+            {spell.image ? (
+              <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" />
+            ) : (
+              <Sparkles className="h-5 w-5 text-purple-400" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-semibold text-stone-100 truncate" data-testid={`text-spell-name-${spell.id}`}>
+                {spell.name || <span className="italic text-stone-500">Unnamed spell</span>}
+              </h4>
+              {badge && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
+              )}
+              {spell.isCanonical && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-700">Canonical</span>
+              )}
+              {spell.flagged && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300 border border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Flagged</span>
+              )}
+            </div>
+            {spell.createdByCharacterName && (
+              <p className="text-[10px] text-stone-400 mt-0.5" data-testid={`text-spell-requester-${spell.id}`}>
+                Crafted by {spell.createdByCharacterName}
+              </p>
+            )}
+            {spell.composition && <div className="mt-1.5"><FormulaDisplay comp={spell.composition} /></div>}
+            {spell.description && (
+              <p className="text-xs text-stone-400 mt-1 line-clamp-2">{spell.description}</p>
+            )}
+            <p className="text-[10px] text-stone-500 mt-1">{spell.manaCost} mana · DC {spell.craftDc}</p>
+          </div>
+          <Button
+            size="sm"
+            variant={isPending ? "default" : "outline"}
+            className={`h-7 text-xs shrink-0 ${isPending ? "bg-amber-600 hover:bg-amber-700 text-stone-950" : ""}`}
+            disabled={locked}
+            title={locked ? "Canonical spells can only be edited by an admin" : undefined}
+            onClick={() => openEditor(spell)}
+            data-testid={`button-edit-spell-${spell.id}`}
+          >
+            {isPending ? "Author" : "Edit"}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const pendingSpells = spells.filter((s) => s.status === "awaiting_gm");
+  const otherSpells = spells.filter((s) => s.status !== "awaiting_gm");
+
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -761,60 +709,28 @@ export function V3GmSpellManager({
               <p className="text-sm">No crafted spells in this campaign yet.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {spells.map((spell) => {
-                const locked = isLocked(spell);
-                const badge = V3_STATUS_BADGE[spell.status];
-                return (
-                  <div
-                    key={spell.id}
-                    className="rounded-lg border border-stone-700 bg-stone-900/60 p-3"
-                    data-testid={`spell-manager-row-${spell.id}`}
+            <div className="space-y-4">
+              {pendingSpells.length > 0 && (
+                <div className="space-y-2">
+                  <h3
+                    className="text-xs font-semibold uppercase tracking-wide text-amber-400"
+                    data-testid="heading-pending-requests"
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="h-12 w-12 shrink-0 rounded-lg border border-stone-700 bg-stone-800 overflow-hidden flex items-center justify-center">
-                        {spell.image ? (
-                          <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <Sparkles className="h-5 w-5 text-purple-400" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-semibold text-stone-100 truncate" data-testid={`text-spell-name-${spell.id}`}>
-                            {spell.name || <span className="italic text-stone-500">Unnamed spell</span>}
-                          </h4>
-                          {badge && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
-                          )}
-                          {spell.isCanonical && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-700">Canonical</span>
-                          )}
-                          {spell.flagged && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300 border border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Flagged</span>
-                          )}
-                        </div>
-                        {spell.composition && <div className="mt-1.5"><FormulaDisplay comp={spell.composition} /></div>}
-                        {spell.description && (
-                          <p className="text-xs text-stone-400 mt-1 line-clamp-2">{spell.description}</p>
-                        )}
-                        <p className="text-[10px] text-stone-500 mt-1">{spell.manaCost} mana · DC {spell.craftDc}</p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs shrink-0"
-                        disabled={locked}
-                        title={locked ? "Canonical spells can only be edited by an admin" : undefined}
-                        onClick={() => openEditor(spell)}
-                        data-testid={`button-edit-spell-${spell.id}`}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                    Pending requests ({pendingSpells.length})
+                  </h3>
+                  {pendingSpells.map(renderSpellRow)}
+                </div>
+              )}
+              {otherSpells.length > 0 && (
+                <div className="space-y-2">
+                  {pendingSpells.length > 0 && (
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                      All crafted spells
+                    </h3>
+                  )}
+                  {otherSpells.map(renderSpellRow)}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

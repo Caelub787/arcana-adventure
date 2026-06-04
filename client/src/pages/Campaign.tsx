@@ -18,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { V3_ATTRIBUTES } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
-import { V3SpellAuthoringListener, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
+import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -7834,6 +7834,7 @@ export default function Campaign() {
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
   const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
+  const [v3PendingCount, setV3PendingCount] = useState(0);
   const [myLibraryOpen, setMyLibraryOpen] = useState(false);
 
   // Floating notes panel state
@@ -10769,7 +10770,10 @@ export default function Campaign() {
 
       {/* AA V3: GM spell authoring pop-up (listens for craft requests) */}
       {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (
-        <V3SpellAuthoringListener campaignId={effectiveCampaignId} isGM={role === 'gm'} />
+        <V3SpellAuthoringListener campaignId={effectiveCampaignId} isGM={role === 'gm'} onPendingCountChange={setV3PendingCount} />
+      )}
+      {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (
+        <V3SpellLiveSync campaignId={effectiveCampaignId} />
       )}
 
       {/* AA V3: GM crafted-spell manager (review + re-edit existing spells) */}
@@ -11161,10 +11165,18 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setV3SpellManagerOpen(true)}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${v3SpellManagerOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                    className={`relative text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${v3SpellManagerOpen ? 'text-amber-400 bg-white/10' : ''}`}
                     data-testid="button-crafted-spells"
                   >
                     <Wand2 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    {v3PendingCount > 0 && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-stone-950 text-[10px] font-bold flex items-center justify-center"
+                        data-testid="badge-pending-spell-count"
+                      >
+                        {v3PendingCount}
+                      </span>
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">

@@ -4694,6 +4694,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isLongPressRef.current = false;
+    // AA V3 crafted spells never open the long-press info panel — a tap opens
+    // the detail/roll dialog instead, and holding should do nothing.
+    if (hotbar?.v3SpellId) return;
     longPressTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
       setShowInfoPanel(true);
@@ -8539,7 +8542,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       )}
 
       {hotbar?.v3SpellId && v3SpellData && (
-        <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} />
+        <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} castCharacter={character} />
       )}
 
     </>
@@ -14574,6 +14577,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
           spell={v3SpellData}
           open={showV3Detail}
           onOpenChange={setShowV3Detail}
+          castCharacter={character}
         />
       )}
     </div>

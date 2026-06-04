@@ -6330,7 +6330,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = await isAdminUser(req.session.userId!);
       if (!isGM && !isAdmin) return res.status(403).json({ error: "GM access required" });
       const spells = await storage.getV3SpellsForCampaign(campaign.id);
-      res.json(spells.map((s) => censorV3SpellForCampaign(s, campaign.is18Plus)));
+      const chars = await storage.getCampaignCharacters(campaign.id);
+      const charNameById = new Map(chars.map((c) => [c.id, c.name]));
+      res.json(
+        spells.map((s) => ({
+          ...censorV3SpellForCampaign(s, campaign.is18Plus),
+          createdByCharacterName: s.createdByCharacterId
+            ? charNameById.get(s.createdByCharacterId) ?? null
+            : null,
+        })),
+      );
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load campaign spells" });
     }

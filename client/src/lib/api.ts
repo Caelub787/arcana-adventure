@@ -2613,6 +2613,7 @@ export interface V3Spell {
   flagged: boolean;
   createdAt: string;
   updatedAt: string;
+  createdByCharacterName?: string | null;
 }
 
 export interface V3CraftResult {
