@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, SearchableEntity } from "@/lib/api";
@@ -28,31 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import {
-  Type,
-  FileText,
-  Sparkles,
-  Package,
-  Shield,
-  Zap,
-  Users,
-  Link2,
-  Trash2,
-  Plus,
-  RotateCcw,
-  Search,
-  Loader2,
-  GripHorizontal,
-  X,
-  ArrowLeft,
-  Settings2,
-  Image,
-  Video,
-  Link,
-  Play,
-  ExternalLink,
-  Upload,
-} from "lucide-react";
+import { Type, FileText, Sparkles, Package, Shield, Zap, Users, Link2, Trash2, Plus, RotateCcw, Search, GripHorizontal, X, ArrowLeft, Settings2, Image, Video, Link, Play, ExternalLink, Upload } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -2462,7 +2439,7 @@ export function CanvasEditor({
               <ScrollArea className="h-60">
                 {notesLoading || isCreatingNote ? (
                   <div className="flex items-center justify-center py-8 text-stone-500">
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    <LoadingLogo className="h-5 w-5 mr-2" />
                     {isCreatingNote ? 'Creating note...' : noteSearchQuery.length > 0 ? 'Searching...' : 'Loading notes...'}
                   </div>
                 ) : (

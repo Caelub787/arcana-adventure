@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
@@ -25,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, Users, UserPlus, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
+import { ArrowLeft, Globe, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, Users, UserPlus, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil, Layout, Tag } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -879,7 +880,7 @@ export default function WorldBuilder() {
 
             <div className="p-2 space-y-0.5">
               {entitiesLoading ? (
-                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-stone-600" /></div>
+                <div className="flex justify-center py-8"><LoadingLogo className="h-5 w-5 text-stone-600" /></div>
               ) : filteredEntities.length === 0 ? (
                 <div className="text-center py-6 text-stone-600 text-xs">
                   {searchQuery ? "No matching articles" : "No articles yet — create one!"}
@@ -954,7 +955,7 @@ export default function WorldBuilder() {
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-0.5">
               {timelinesLoading ? (
-                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-stone-600" /></div>
+                <div className="flex justify-center py-8"><LoadingLogo className="h-5 w-5 text-stone-600" /></div>
               ) : filteredTimelines.length === 0 && !searchQuery ? (
                 <div className="text-center py-6 text-stone-600 text-xs">
                   No timelines yet — create one from the timeline panel!
@@ -1100,7 +1101,7 @@ export default function WorldBuilder() {
                         disabled={createShareLink.isPending}
                         data-testid="button-generate-share-link"
                       >
-                        {createShareLink.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Share2 className="h-3.5 w-3.5 mr-1.5" />}
+                        {createShareLink.isPending ? <LoadingLogo className="h-3.5 w-3.5 mr-1.5" /> : <Share2 className="h-3.5 w-3.5 mr-1.5" />}
                         Generate Share Link
                       </Button>
                     )}
@@ -1115,7 +1116,7 @@ export default function WorldBuilder() {
 
       {worldsLoading ? (
         <div className="flex items-center justify-center h-[calc(100vh-49px)]">
-          <Loader2 className="h-8 w-8 animate-spin text-stone-500" />
+          <LoadingLogo className="h-8 w-8 text-stone-500" />
         </div>
       ) : worlds.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-[calc(100vh-49px)] p-6 text-center">
@@ -1283,7 +1284,7 @@ export default function WorldBuilder() {
                           data-testid="button-save-home-content"
                         >
                           {updateWorldMutation.isPending ? (
-                            <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                            <LoadingLogo className="h-3 w-3 mr-1.5" />
                           ) : (
                             <Save className="h-3 w-3 mr-1.5" />
                           )}
@@ -1543,7 +1544,7 @@ export default function WorldBuilder() {
                     <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
                       <div className="max-w-5xl mx-auto">
                         {entitiesLoading ? (
-                          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-stone-600" /></div>
+                          <div className="flex justify-center py-16"><LoadingLogo className="h-6 w-6 text-stone-600" /></div>
                         ) : filteredEntities.length === 0 ? (
                           <div className="text-center py-16">
                             <BookOpen className="h-10 w-10 text-stone-700 mx-auto mb-3" />
@@ -1949,7 +1950,7 @@ function WikiLinkPreviewDialog({ type, id, worldId, onClose }: { type: string; i
         </DialogHeader>
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+            <LoadingLogo className="h-6 w-6 text-stone-500" />
           </div>
         ) : data ? (
           <div className="space-y-3">

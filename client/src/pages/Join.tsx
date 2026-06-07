@@ -1,8 +1,8 @@
 import { useRoute, useLocation } from "wouter";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
 
 export default function Join() {
   const [, params] = useRoute("/join/:code");
@@ -44,7 +44,7 @@ export default function Join() {
     return (
       <div className="min-h-screen bg-stone-900 flex items-center justify-center" data-testid="join-loading">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-amber-500 mx-auto mb-4" />
+          <LoadingLogo className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h1 className="text-2xl font-medieval text-amber-500">Joining Campaign...</h1>
           <p className="text-stone-400 mt-2">Please wait while we add you to the adventure</p>
         </div>

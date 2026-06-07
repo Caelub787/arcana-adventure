@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useCalendars, useCreateCalendar, useUpdateCalendar, useDeleteCalendar, useTimelineEvents, useCalendarSyncs, useCreateCalendarSync, useDeleteCalendarSync, type WorldCalendar as WorldCalendarType, type WorldTimelineEvent, type WorldCalendarSync } from "@/lib/worldbuilding-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink, PartyPopper } from "lucide-react";
+import { Calendar, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Settings, Trash2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink, PartyPopper } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface WorldCalendarProps {
@@ -517,7 +518,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
           <DialogFooter>
             <Button variant="ghost" className="text-stone-400" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
             <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={handleCreateCalendar} disabled={createCalendar.isPending} data-testid="button-confirm-create-calendar">
-              {createCalendar.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              {createCalendar.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
               Create
             </Button>
           </DialogFooter>
@@ -529,7 +530,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-stone-500" />
+        <LoadingLogo className="h-8 w-8 text-stone-500" />
       </div>
     );
   }
@@ -798,7 +799,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
           <DialogFooter>
             <Button variant="ghost" className="text-stone-400" onClick={() => setShowSettingsDialog(false)}>Cancel</Button>
             <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={handleUpdateSettings} disabled={updateCalendar.isPending} data-testid="button-confirm-update-calendar">
-              {updateCalendar.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              {updateCalendar.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
               Save
             </Button>
           </DialogFooter>
@@ -983,7 +984,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
               disabled={!eventFormName.trim() || updateCalendar.isPending}
               data-testid="button-save-cal-event"
             >
-              {updateCalendar.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {updateCalendar.isPending && <LoadingLogo className="h-3.5 w-3.5 mr-1.5" />}
               {editingEventIdx !== null ? "Save" : "Create"}
             </Button>
           </DialogFooter>
@@ -1155,7 +1156,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
             <Button variant="ghost" className="text-stone-400" onClick={() => setShowSyncDialog(false)}>Close</Button>
             {syncTargetCalendarId && (
               <Button className="bg-blue-600 hover:bg-blue-500 text-white" onClick={handleCreateSync} disabled={createSync.isPending} data-testid="button-confirm-sync">
-                {createSync.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
+                {createSync.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
                 Sync
               </Button>
             )}

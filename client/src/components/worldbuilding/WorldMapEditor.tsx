@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import {
   useWorldMaps, useWorldMapPins, useEntities,
   useCreateWorldMap, useUpdateWorldMap, useDeleteWorldMap,
@@ -12,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Image, Upload, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -266,7 +267,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
             </Button>
           )}
           <Button size="sm" className="bg-amber-600 hover:bg-amber-500 text-white h-7 text-xs" onClick={handleSaveMap} disabled={saving || !title.trim()} data-testid="button-save-map">
-            {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+            {saving ? <LoadingLogo className="h-3 w-3 mr-1" /> : <Save className="h-3 w-3 mr-1" />}
             Save
           </Button>
         </div>
@@ -302,7 +303,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 disabled={uploading}
                 data-testid="button-upload-map-image"
               >
-                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                {uploading ? <LoadingLogo className="h-3 w-3" /> : <Upload className="h-3 w-3" />}
                 <span className="ml-1 hidden md:inline">{uploading ? "Uploading..." : "Upload"}</span>
               </Button>
             </div>

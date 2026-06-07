@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-import { Folder, FolderOpen, ArrowLeft, Search, Image, Loader2, Check, Home, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { Folder, FolderOpen, ArrowLeft, Search, Image, Check, Home, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 
@@ -292,7 +293,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
           >
             {isLoading ? (
               <div className="flex items-center justify-center h-[200px] sm:h-[300px]">
-                <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+                <LoadingLogo className="h-8 w-8 text-amber-500" />
               </div>
             ) : (
               <div className="space-y-4 pr-2 sm:pr-4">
@@ -348,7 +349,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                           
                           {selectedImageId === image.id && isLoadingImage && (
                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                              <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                              <LoadingLogo className="h-6 w-6 text-amber-500" />
                             </div>
                           )}
                           

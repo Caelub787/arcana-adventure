@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useWorldMaps, useWorldMapPins, useEntities, type WorldMap, type WorldMapPin, type Entity } from "@/lib/worldbuilding-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Map, MapPin, Plus, ChevronRight, ZoomIn, ZoomOut, Maximize2, Eye, Loader2, FileText, Navigation, Link2, X } from "lucide-react";
+import { Map, MapPin, Plus, ChevronRight, ZoomIn, ZoomOut, Maximize2, Eye, FileText, Navigation, Link2, X } from "lucide-react";
 
 interface WorldMapViewerProps {
   campaignId?: string;
@@ -63,7 +64,7 @@ export function WorldMapViewer({ campaignId, worldId, isGM, onEditMap, onCreateM
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-stone-500" />
+        <LoadingLogo className="h-8 w-8 text-stone-500" />
       </div>
     );
   }

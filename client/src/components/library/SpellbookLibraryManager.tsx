@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   v3ManaCost,
@@ -14,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { V3CompositionEditor } from "@/components/game/V3SpellCrafter";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Loader2, Image as ImageIcon, BookOpen } from "lucide-react";
+import { Plus, Trash2, Image as ImageIcon, BookOpen } from "lucide-react";
 
 const DEFAULT_COMP: V3SpellComposition = {
   core: "",
@@ -119,7 +120,7 @@ export function SpellbookLibraryManager({
 
       {isLoading ? (
         <div className="text-xs text-stone-500 flex items-center gap-1.5">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+          <LoadingLogo className="h-3.5 w-3.5" /> Loading…
         </div>
       ) : spells.length === 0 ? (
         <p className="text-xs text-stone-500 italic">No spells pre-loaded yet.</p>
@@ -240,7 +241,7 @@ export function SpellbookLibraryManager({
                 disabled={!valid || addMutation.isPending}
                 data-testid="button-save-preloaded-spell"
               >
-                {addMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+                {addMutation.isPending ? <LoadingLogo className="h-3.5 w-3.5 mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
                 Add to spellbook
               </Button>
             </div>

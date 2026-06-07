@@ -1,13 +1,14 @@
-import { Loader2Icon } from "lucide-react"
-
 import { cn } from "@/lib/utils"
+import loadingLogo from "@assets/IMG_0029_1780866832907.gif"
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+function Spinner({ className, ...props }: React.ComponentProps<"img">) {
   return (
-    <Loader2Icon
+    <img
+      src={loadingLogo}
       role="status"
       aria-label="Loading"
-      className={cn("size-4 animate-spin", className)}
+      draggable={false}
+      className={cn("inline-block size-4 object-contain select-none", className)}
       {...props}
     />
   )

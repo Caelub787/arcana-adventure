@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, Check, X, Trash2, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, Check, X, Trash2, CheckCheck } from "lucide-react";
 import {
   api,
   globalWs,
@@ -193,7 +194,7 @@ export default function NotificationsBell() {
             data-testid={`button-accept-friend-${notification.id}`}
           >
             {acceptFriendMutation.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <LoadingLogo className="h-3 w-3" />
             ) : (
               <>
                 <Check className="h-3 w-3 mr-1" />
@@ -210,7 +211,7 @@ export default function NotificationsBell() {
             data-testid={`button-decline-friend-${notification.id}`}
           >
             {declineFriendMutation.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <LoadingLogo className="h-3 w-3" />
             ) : (
               <>
                 <X className="h-3 w-3 mr-1" />
@@ -260,7 +261,7 @@ export default function NotificationsBell() {
               data-testid="button-mark-all-read"
             >
               {markAllReadMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <LoadingLogo className="h-3 w-3" />
               ) : (
                 <>
                   <CheckCheck className="h-3 w-3 mr-1" />
@@ -298,7 +299,7 @@ export default function NotificationsBell() {
             <ScrollArea className="h-72">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+                  <LoadingLogo className="h-6 w-6 text-stone-500" />
                 </div>
               ) : unreadNotifications.length === 0 ? (
                 <div className="py-8 text-center text-stone-500">
@@ -317,7 +318,7 @@ export default function NotificationsBell() {
             <ScrollArea className="h-72">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+                  <LoadingLogo className="h-6 w-6 text-stone-500" />
                 </div>
               ) : readNotifications.length === 0 ? (
                 <div className="py-8 text-center text-stone-500">

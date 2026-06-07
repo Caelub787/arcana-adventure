@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, Check, AlertCircle, Loader2 } from "lucide-react";
+import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, Check, AlertCircle } from "lucide-react";
 import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -313,7 +314,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                     <p className="font-medium text-stone-200">Google Docs</p>
                     {googleStatusLoading ? (
                       <div className="flex items-center gap-1.5 text-sm text-stone-500">
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <LoadingLogo className="h-3 w-3" />
                         <span>Checking connection...</span>
                       </div>
                     ) : googleStatus?.connected ? (

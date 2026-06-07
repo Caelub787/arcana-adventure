@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { TAG_COLORS, useWorldGraphData, type WorldGraphData } from "@/lib/worldbuilding-api";
 import { Button } from "@/components/ui/button";
 import { PREDEFINED_TAGS } from "@shared/schema";
-import { Filter, Tag, Loader2, FileText, Sparkles, Package, Shield, Zap, UserCircle, X, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { Filter, Tag, FileText, Sparkles, Package, Shield, Zap, UserCircle, X, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 
 type NodeCategory = "article" | "canvas" | "spell" | "item" | "trait" | "skill" | "character";
 
@@ -605,7 +606,7 @@ export function RelationshipGraph({ worldId, onSelectEntity, selectedEntityId }:
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-stone-500" data-testid="graph-loading">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        <LoadingLogo className="h-6 w-6 mr-2" />
         <span className="text-sm">Loading graph data...</span>
       </div>
     );

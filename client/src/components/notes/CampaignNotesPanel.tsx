@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, globalWs, noteWs, NotePresence } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
@@ -56,39 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Plus,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  FileText,
-  Pin,
-  Archive,
-  Trash2,
-  Share2,
-  MoreVertical,
-  ChevronRight,
-  ChevronDown,
-  ChevronLeft,
-  Users,
-  Loader2,
-  Search,
-  X,
-  Edit,
-  Eye,
-  EyeOff,
-  Link2,
-  Grid3X3,
-  Network,
-  CloudUpload,
-  CloudDownload,
-  ExternalLink,
-  Home,
-  ArrowUp,
-  ArrowLeft,
-  BookOpen,
-  Globe,
-} from "lucide-react";
+import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, CloudDownload, ExternalLink, Home, ArrowUp, ArrowLeft, BookOpen, Globe } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
@@ -1944,7 +1913,7 @@ export function CampaignNotesPanel({
         <div className="space-y-0.5 group">
           {foldersLoading ? (
             <div className="flex items-center justify-center py-2">
-              <Loader2 className="h-3 w-3 animate-spin text-stone-500" />
+              <LoadingLogo className="h-3 w-3 text-stone-500" />
             </div>
           ) : (
             rootFolders.map((folder, folderIndex) => (
@@ -2178,7 +2147,7 @@ export function CampaignNotesPanel({
       <ScrollArea className="flex-1">
         {notesLoading ? (
           <div className="flex items-center justify-center py-8 text-stone-500">
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <LoadingLogo className="h-4 w-4 mr-2" />
             <span className="text-xs">Loading...</span>
           </div>
         ) : sortedNotes.length === 0 ? (
@@ -2368,7 +2337,7 @@ export function CampaignNotesPanel({
             title={currentNote?.type === 'canvas' ? 'Canvas notes cannot be exported' : 'Export to Google Docs'}
           >
             {exportingNoteId === selectedNoteId ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <LoadingLogo className="h-3 w-3" />
             ) : (
               <CloudUpload className="h-3 w-3" />
             )}
@@ -2390,7 +2359,7 @@ export function CampaignNotesPanel({
       </div>
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
+          <LoadingLogo className="h-5 w-5 text-stone-500" />
         </div>
       ) : (
         <ScrollArea className="flex-1 p-3">
@@ -2410,7 +2379,7 @@ export function CampaignNotesPanel({
       if (noteLoading) {
         return (
           <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
+            <LoadingLogo className="h-5 w-5 text-stone-500" />
           </div>
         );
       }
@@ -2492,7 +2461,7 @@ export function CampaignNotesPanel({
         </div>
         {noteLoading ? (
           <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
+            <LoadingLogo className="h-5 w-5 text-stone-500" />
           </div>
         ) : (
           <div className="flex-1 flex flex-col p-2 overflow-hidden min-h-0 min-w-0">
@@ -2839,7 +2808,7 @@ export function CampaignNotesPanel({
               disabled={!folderName.trim() || createFolderMutation.isPending || updateFolderMutation.isPending}
             >
               {(createFolderMutation.isPending || updateFolderMutation.isPending) && (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                <LoadingLogo className="h-3 w-3 mr-1" />
               )}
               {editingFolder ? "Save" : "Create"}
             </Button>
@@ -2939,7 +2908,7 @@ export function CampaignNotesPanel({
                     disabled={shareNoteMutation.isPending}
                   >
                     {shareNoteMutation.isPending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <LoadingLogo className="h-3 w-3" />
                     ) : (
                       <Plus className="h-3 w-3" />
                     )}
@@ -3079,7 +3048,7 @@ export function CampaignNotesPanel({
           <div className="py-2">
             {entityLoading ? (
               <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+                <LoadingLogo className="h-5 w-5 text-amber-500" />
               </div>
             ) : entityData ? (
               <div className="space-y-3 text-xs">
@@ -3405,7 +3374,7 @@ export function CampaignNotesPanel({
           <div className="py-3">
             {driveFilesLoading ? (
               <div className="flex flex-col items-center justify-center py-6">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-400 mb-2" />
+                <LoadingLogo className="h-6 w-6 text-blue-400 mb-2" />
                 <p className="text-stone-400 text-sm">Loading your Google Docs...</p>
               </div>
             ) : driveFiles.length === 0 ? (
@@ -3478,7 +3447,7 @@ export function CampaignNotesPanel({
             >
               {importFromDriveMutation.isPending ? (
                 <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  <LoadingLogo className="h-3 w-3 mr-1" />
                   Importing...
                 </>
               ) : (

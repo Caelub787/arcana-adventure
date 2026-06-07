@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Search,
-  UserPlus,
-  UserMinus,
-  Check,
-  X,
-  Loader2,
-  Users,
-  Mail,
-  Clock,
-} from "lucide-react";
+import { Search, UserPlus, UserMinus, Check, X, Users, Mail, Clock } from "lucide-react";
 import {
   api,
   globalWs,
@@ -203,7 +194,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
             <TabsContent value="friends" className="mt-4 space-y-3">
               {friendsLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+                  <LoadingLogo className="h-6 w-6 text-stone-500" />
                 </div>
               ) : friends.length === 0 ? (
                 <div className="py-8 text-center text-stone-500">
@@ -383,7 +374,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                   data-testid="button-search-user"
                 >
                   {isSearching ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <LoadingLogo className="h-4 w-4" />
                   ) : (
                     <Search className="h-4 w-4" />
                   )}
@@ -442,7 +433,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                     data-testid="button-send-request"
                   >
                     {sendRequestMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <LoadingLogo className="h-4 w-4 mr-2" />
                     ) : (
                       <UserPlus className="h-4 w-4 mr-2" />
                     )}

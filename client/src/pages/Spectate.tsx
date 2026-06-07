@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, Eye, Loader2, MapPin, Swords, MessageSquare, Dice5 } from "lucide-react";
+import { ArrowDown, Eye, MapPin, Swords, MessageSquare, Dice5 } from "lucide-react";
 
 interface SpectatorBundle {
   campaign: { id: string; name: string; activeSceneId: string | null; inCombat: boolean };
@@ -370,7 +371,7 @@ export default function Spectate() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-stone-300 gap-2" data-testid="spectator-loading">
-        <Loader2 className="animate-spin h-5 w-5" /> Loading spectator view...
+        <LoadingLogo className="h-5 w-5" /> Loading spectator view...
       </div>
     );
   }

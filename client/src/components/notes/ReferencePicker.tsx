@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, SearchableEntity } from "@/lib/api";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -12,20 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Sparkles,
-  Swords,
-  Shield,
-  Zap,
-  Users,
-  Package,
-  Search,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  FileText,
-  Plus,
-} from "lucide-react";
+import { Sparkles, Swords, Shield, Zap, Users, Package, Search, AlertCircle, RefreshCw, FileText, Plus } from "lucide-react";
 import type { Note } from "@/lib/api";
 
 interface ReferencePickerProps {
@@ -156,7 +144,7 @@ export function ReferencePicker({
               data-testid="input-reference-search"
             />
             {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 animate-spin" />
+              <LoadingLogo className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             )}
           </div>
         </div>
@@ -199,7 +187,7 @@ export function ReferencePicker({
               </div>
             ) : showLoading ? (
               <div className="flex items-center justify-center py-8 text-stone-500">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <LoadingLogo className="h-5 w-5 mr-2" />
                 {searchQuery.length === 0 ? "Loading..." : "Searching..."}
               </div>
             ) : entities.length === 0 ? (

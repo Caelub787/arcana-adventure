@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home, Layout } from "lucide-react";
+import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home, Layout } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -979,7 +980,7 @@ export default function SharedWorldView() {
     return (
       <div className="min-h-screen bg-stone-950 flex items-center justify-center" data-testid="shared-world-loading">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-amber-500 mx-auto mb-3" />
+          <LoadingLogo className="h-8 w-8 text-amber-500 mx-auto mb-3" />
           <p className="text-stone-500 text-sm">Loading world...</p>
         </div>
       </div>

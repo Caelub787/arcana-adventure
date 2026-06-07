@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Loader2, Copy } from "lucide-react";
+import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Copy } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/AuthContext";
@@ -183,7 +184,7 @@ export default function MyCampaigns() {
                   data-testid={`button-duplicate-${campaign.id}`}
                   disabled={duplicateCampaignMutation.isPending}
                 >
-                  {duplicateCampaignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                  {duplicateCampaignMutation.isPending ? <LoadingLogo className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               )}
               <Button 
@@ -264,7 +265,7 @@ export default function MyCampaigns() {
             <TabsContent value="all" className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12 text-stone-500">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <LoadingLogo className="h-6 w-6 mr-2" />
                   Loading campaigns...
                 </div>
               ) : (
@@ -325,7 +326,7 @@ export default function MyCampaigns() {
                               disabled={joinCampaignMutation.isPending}
                               data-testid="button-join-submit"
                             >
-                              {joinCampaignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                              {joinCampaignMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : null}
                               Join Adventure
                             </Button>
                           </DialogFooter>
@@ -349,7 +350,7 @@ export default function MyCampaigns() {
             <TabsContent value="favorites" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12 text-stone-500">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <LoadingLogo className="h-6 w-6 mr-2" />
                   Loading favorites...
                 </div>
               ) : (

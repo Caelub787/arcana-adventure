@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import {
   V3_ELEMENTS,
   V3_SECONDARY_ROLES,
@@ -55,7 +56,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Plus, X, Wand2, Loader2, Droplet, Image as ImageIcon, ChevronUp, ChevronDown, Lock } from "lucide-react";
+import { Sparkles, Plus, X, Wand2, Droplet, Image as ImageIcon, ChevronUp, ChevronDown, Lock } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -553,7 +554,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
           className="bg-amber-600 hover:bg-amber-700 text-stone-950"
           data-testid="button-craft-spell"
         >
-          {crafting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
+          {crafting ? <LoadingLogo className="h-4 w-4 mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
           {atCapacity ? "Spellbook full" : `Craft (${elementCount} element${elementCount === 1 ? "" : "s"})`}
         </Button>
       </div>
@@ -861,7 +862,7 @@ export function V3GmSpellManager({
 
           {loading ? (
             <div className="py-10 text-center text-stone-400 text-sm" data-testid="text-spell-manager-loading">
-              <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+              <LoadingLogo className="h-5 w-5 mx-auto mb-2" />
               Loading crafted spells…
             </div>
           ) : spells.length === 0 ? (
@@ -952,7 +953,7 @@ export function V3GmSpellManager({
               className="bg-amber-600 hover:bg-amber-700 text-stone-950"
               data-testid="button-save-crafted-spell"
             >
-              {submitting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+              {submitting ? <LoadingLogo className="h-4 w-4 mr-1" /> : null}
               Save Changes
             </Button>
           </DialogFooter>

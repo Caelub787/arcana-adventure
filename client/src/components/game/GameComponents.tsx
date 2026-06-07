@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
@@ -23,13 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  Sword, Shield, Scroll, Map as MapIcon, Settings, 
-  Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square
-} from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, api, gameWs } from "@/lib/api";
@@ -12382,7 +12377,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           <div className="space-y-4 mt-4">
             {loadingImportable ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                <LoadingLogo className="h-6 w-6 text-amber-500" />
               </div>
             ) : importableData.length === 0 ? (
               <div className="text-center py-8 text-stone-500">
@@ -12418,7 +12413,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                           <div className="text-xs text-stone-400">{char.race} • Lv {char.level || 1}</div>
                         </div>
                         {importCharacterMutation.isPending && importCharacterMutation.variables === char.id && (
-                          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                          <LoadingLogo className="h-4 w-4 text-amber-500" />
                         )}
                       </div>
                     ))}
@@ -24874,7 +24869,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               {/* Template Items List */}
               {isLoading ? (
                 <div className="text-center py-12 text-stone-400">
-                  <div className="animate-spin h-8 w-8 border-2 border-amber-500 border-t-transparent rounded-full mx-auto mb-3" />
+                  <LoadingLogo className="h-8 w-8 mx-auto mb-3" />
                   <p>Loading items...</p>
                 </div>
               ) : filteredTemplates.length === 0 ? (

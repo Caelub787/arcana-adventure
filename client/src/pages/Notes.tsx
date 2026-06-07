@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -62,41 +63,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  ArrowLeft,
-  Plus,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  FileText,
-  Pin,
-  Archive,
-  Trash2,
-  Share2,
-  MoreVertical,
-  ChevronRight,
-  ChevronDown,
-  ChevronLeft,
-  PanelLeftClose,
-  PanelLeft,
-  Menu,
-  Users,
-  Loader2,
-  Search,
-  X,
-  Edit,
-  Eye,
-  Link2,
-  Grid3X3,
-  Network,
-  Palette,
-  Cloud,
-  CloudDownload,
-  CloudUpload,
-  ExternalLink,
-  Home,
-  ArrowUp,
-} from "lucide-react";
+import { ArrowLeft, Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, PanelLeftClose, PanelLeft, Menu, Users, Search, X, Edit, Eye, Link2, Grid3X3, Network, Palette, Cloud, CloudDownload, CloudUpload, ExternalLink, Home, ArrowUp } from "lucide-react";
 import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
@@ -1978,7 +1945,7 @@ export default function Notes() {
         <div className="space-y-0.5 group">
           {foldersLoading ? (
             <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-stone-500" />
+              <LoadingLogo className="h-4 w-4 text-stone-500" />
             </div>
           ) : (
             rootFolders.map((folder, folderIndex) => (
@@ -2115,7 +2082,7 @@ export default function Notes() {
 
       {notesLoading ? (
         <div className="flex items-center justify-center py-12 text-stone-500">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <LoadingLogo className="h-6 w-6 mr-2" />
           Loading notes...
         </div>
       ) : sortedNotes.length === 0 ? (
@@ -2348,7 +2315,7 @@ export default function Notes() {
             data-testid="button-export-note"
           >
             {exportingNoteId === noteId ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <LoadingLogo className="h-4 w-4" />
             ) : (
               <CloudUpload className="h-4 w-4" />
             )}
@@ -2371,7 +2338,7 @@ export default function Notes() {
       </div>
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+          <LoadingLogo className="h-6 w-6 text-stone-500" />
         </div>
       ) : (
         <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
@@ -2391,7 +2358,7 @@ export default function Notes() {
       if (noteLoading) {
         return (
           <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+            <LoadingLogo className="h-6 w-6 text-stone-500" />
           </div>
         );
       }
@@ -2466,7 +2433,7 @@ export default function Notes() {
             data-testid="button-export-note-editor"
           >
             {exportingNoteId === noteId ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <LoadingLogo className="h-4 w-4" />
             ) : (
               <CloudUpload className="h-4 w-4" />
             )}
@@ -2489,7 +2456,7 @@ export default function Notes() {
       </div>
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+          <LoadingLogo className="h-6 w-6 text-stone-500" />
         </div>
       ) : (
         <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
@@ -2832,7 +2799,7 @@ export default function Notes() {
             >
               {createFolderMutation.isPending ||
               updateFolderMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <LoadingLogo className="h-4 w-4 mr-2" />
               ) : null}
               {editingFolder ? "Save" : "Create"}
             </Button>
@@ -2947,7 +2914,7 @@ export default function Notes() {
                   data-testid="button-add-share"
                 >
                   {shareNoteMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <LoadingLogo className="h-4 w-4" />
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
@@ -3043,7 +3010,7 @@ export default function Notes() {
           <div className="py-4">
             {entityLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                <LoadingLogo className="h-6 w-6 text-amber-500" />
               </div>
             ) : entityData ? (
               <div className="space-y-4">
@@ -3386,7 +3353,7 @@ export default function Notes() {
           <div className="py-4">
             {driveFilesLoading ? (
               <div className="flex flex-col items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-400 mb-2" />
+                <LoadingLogo className="h-8 w-8 text-blue-400 mb-2" />
                 <p className="text-stone-400">Loading your Google Docs...</p>
               </div>
             ) : driveFiles.length === 0 ? (
@@ -3456,7 +3423,7 @@ export default function Notes() {
             >
               {importFromDriveMutation.isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <LoadingLogo className="h-4 w-4 mr-2" />
                   Importing...
                 </>
               ) : (

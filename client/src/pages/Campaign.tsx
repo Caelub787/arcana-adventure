@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
@@ -8,7 +9,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
+import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6130,7 +6131,7 @@ function SandboxCharactersContent({
           data-testid="button-seed-arcana"
         >
           {seedArcanaMutation.isPending ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            <LoadingLogo className="h-4 w-4 mr-1.5" />
           ) : (
             <Sparkles className="h-4 w-4 mr-1.5" />
           )}
@@ -7289,7 +7290,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                 disabled={!newWorldName.trim() || createWorldMutation.isPending}
                 data-testid="button-create-world-submit"
               >
-                {createWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                {createWorldMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-1" /> : null}
                 Create
               </Button>
             </div>
@@ -7377,7 +7378,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                   disabled={!editWorldName.trim() || updateWorldMutation.isPending}
                   data-testid="button-save-world-settings"
                 >
-                  {updateWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  {updateWorldMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-1" /> : null}
                   Save
                 </Button>
               </div>
@@ -7401,7 +7402,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
               className="bg-red-600 hover:bg-red-700 text-white"
               data-testid="button-confirm-delete-world"
             >
-              {deleteWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              {deleteWorldMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-1" /> : null}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -10690,7 +10691,7 @@ export default function Campaign() {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 shimmer p-8 rounded-lg">
-          <Loader2 className="h-12 w-12 sm:h-8 sm:w-8 animate-spin text-amber-500 glow-amber" aria-label="Loading" />
+          <LoadingLogo className="h-12 w-12 sm:h-8 sm:w-8 text-amber-500 glow-amber" aria-label="Loading" />
           <p className="text-stone-400 text-responsive-lg">Loading campaign...</p>
         </div>
       </div>
@@ -14529,7 +14530,7 @@ export default function Campaign() {
               className="bg-amber-600 hover:bg-amber-700 text-white"
               data-testid="button-save-beacon-color"
             >
-              {updateBeaconColorMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {updateBeaconColorMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : null}
               Save Color
             </Button>
           </div>

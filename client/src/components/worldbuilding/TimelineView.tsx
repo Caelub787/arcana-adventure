@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import {
   type Entity,
   type WorldTimelineEvent,
@@ -38,7 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Clock, Calendar, ChevronRight, ChevronDown, ChevronUp, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings, Layers } from "lucide-react";
+import { Clock, Calendar, ChevronRight, ChevronDown, ChevronUp, Plus, Edit2, Trash2, Link2, Eye, EyeOff, BookOpen, Settings, Layers } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface TimelineViewProps {
@@ -369,7 +370,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16" data-testid="timeline-loading">
-        <Loader2 className="h-8 w-8 animate-spin text-stone-600" />
+        <LoadingLogo className="h-8 w-8 text-stone-600" />
       </div>
     );
   }
@@ -633,7 +634,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
               disabled={!timelineName.trim() || createTimeline.isPending || updateTimeline.isPending}
               data-testid="button-save-timeline"
             >
-              {(createTimeline.isPending || updateTimeline.isPending) && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {(createTimeline.isPending || updateTimeline.isPending) && <LoadingLogo className="h-3.5 w-3.5 mr-1.5" />}
               {editingTimeline ? "Save" : "Create"}
             </Button>
           </DialogFooter>
@@ -756,7 +757,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, select
               disabled={!eraFormName.trim() || updateTimeline.isPending}
               data-testid="button-save-era"
             >
-              {updateTimeline.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {updateTimeline.isPending && <LoadingLogo className="h-3.5 w-3.5 mr-1.5" />}
               {editingEraIdx !== null ? "Save" : "Create"}
             </Button>
           </DialogFooter>
@@ -1266,7 +1267,7 @@ function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEdi
             className="bg-amber-600 hover:bg-amber-500 text-white"
             data-testid="button-save-event"
           >
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+            {isSubmitting && <LoadingLogo className="h-3.5 w-3.5 mr-1.5" />}
             {isEditing ? "Save Changes" : "Create Event"}
           </Button>
         </DialogFooter>

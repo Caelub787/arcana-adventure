@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield, FileText, Globe } from "lucide-react";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
@@ -124,7 +125,7 @@ export default function Home() {
             <CardContent>
               {isLoading ? (
                 <div className="w-full p-6 rounded border border-stone-800 bg-stone-950/30 text-center text-stone-500 flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <LoadingLogo className="h-4 w-4" />
                   Loading favorites...
                 </div>
               ) : favorites.length === 0 ? (
