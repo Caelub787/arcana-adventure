@@ -83,6 +83,28 @@ export function attrDieType(value: number): string {
   return `d${attrValueToDieSides(value)}`;
 }
 
+// Level-up point budgets (AA V3 only) -----------------------------------------
+//
+// Attributes: 4 points at level 1, +1 every level divisible by 3.
+//   budget = 4 + floor(level / 3). Attributes cannot go negative.
+//   Species attribute bonuses are FREE and do not count against this budget.
+// Skills: 8 points at level 1, +1 per level up.
+//   budget = 8 + (level - 1). A skill can go as low as -2; negatives reclaim
+//   points that can be spent elsewhere, up to a total of 6 reclaimed.
+
+export function v3AttrPointBudget(level: number): number {
+  const lv = Math.max(1, Math.floor(level || 1));
+  return 4 + Math.floor(lv / 3);
+}
+
+export function v3SkillPointBudget(level: number): number {
+  const lv = Math.max(1, Math.floor(level || 1));
+  return 8 + (lv - 1);
+}
+
+// Maximum total points a player can reclaim by driving skills negative.
+export const V3_MAX_NEGATIVE_SKILL_POINTS = 6;
+
 // Default species jsonb shapes -------------------------------------------------
 
 export type V3AttributeBonuses = Partial<Record<V3AttributeKey, number>>;

@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, type V3AttributeKey } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, type V3AttributeKey } from "@shared/v3";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16070,6 +16070,50 @@ function V3AttrsAndSkillsTab({
   const [editing, setEditing] = React.useState(false);
   const [attrData, setAttrData] = React.useState<Record<string, number>>({});
   const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+
+  // Resolve the character's V3 species so we can exclude its (free) attribute
+  // bonuses from the player's spent-points count. Campaign species win over the
+  // shared system 'A.A. V3' species, matching the server's resolution order.
+  const { data: campaignSpeciesList = [] } = useQuery({
+    queryKey: ['campaign-species', liveCharacter.campaignId],
+    queryFn: () => api.getCampaignSpecies(liveCharacter.campaignId),
+    enabled: !!liveCharacter.campaignId,
+  });
+  const { data: v3SystemSpeciesList = [] } = useQuery({
+    queryKey: ['species', 'A.A. V3'],
+    queryFn: () => api.getSpecies('A.A. V3'),
+  });
+  const speciesAttrBonuses = React.useMemo<Record<string, number>>(() => {
+    const race = liveCharacter.race;
+    if (!race) return {};
+    let sp: any = (campaignSpeciesList as any[]).find(s => s.name === race);
+    if (!sp) sp = (v3SystemSpeciesList as any[]).find(s => s.name === race);
+    return (sp?.attributeBonuses || {}) as Record<string, number>;
+  }, [liveCharacter.race, campaignSpeciesList, v3SystemSpeciesList]);
+
+  const level = liveCharacter.level || 1;
+
+  // Attribute points: budget = 4 + floor(level/3). Species bonuses are free and
+  // excluded, so a player's spent points per attribute = stored value minus the
+  // species bonus baked into that column. Attributes cannot go negative.
+  const attrPointBudget = v3AttrPointBudget(level);
+  const attrPointsUsed = V3_ATTRIBUTES.reduce((sum, at) => {
+    const stored = editing ? (attrData[at.key] ?? 0) : ((liveCharacter[at.key] as number) || 0);
+    const bonus = Number(speciesAttrBonuses[at.key] || 0);
+    return sum + Math.max(0, stored - bonus);
+  }, 0);
+
+  // Skill points: budget = 8 + (level-1). Negatives (down to -2 per skill)
+  // reclaim points to spend elsewhere, up to a total of 6.
+  const skillBaseBudget = v3SkillPointBudget(level);
+  const skillValues = V3_SKILLS.map(s =>
+    editing ? (skillData[s.key] ?? 0) : ((liveCharacter.v3Skills?.[s.key] as number) ?? 0)
+  );
+  const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((a, v) => a + v, 0);
+  const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((a, v) => a + v, 0));
+  const skillReclaimed = Math.min(negativeSkillUsed, V3_MAX_NEGATIVE_SKILL_POINTS);
+  const skillPointBudget = skillBaseBudget + skillReclaimed;
+
   const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillPressFiredRef = React.useRef(false);
@@ -16155,11 +16199,67 @@ function V3AttrsAndSkillsTab({
           Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
         </p>
 
+        {editing && (
+          <div className="grid grid-cols-2 gap-2" data-testid="v3-point-budgets">
+            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-stone-400">Attribute Points</span>
+                <span
+                  className={
+                    attrPointsUsed === attrPointBudget
+                      ? 'text-green-400 font-semibold'
+                      : attrPointsUsed > attrPointBudget
+                        ? 'text-red-400 font-semibold'
+                        : 'text-amber-400 font-semibold'
+                  }
+                  data-testid="text-v3-attr-points"
+                >
+                  {attrPointsUsed} / {attrPointBudget}
+                  {attrPointsUsed > attrPointBudget && ' (too many)'}
+                </span>
+              </div>
+              <p className="text-[10px] text-stone-500 mt-1">Species bonuses are free. Attributes can't go below 0.</p>
+            </div>
+            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-stone-400">Skill Points</span>
+                <span
+                  className={
+                    positiveSkillUsed === skillPointBudget
+                      ? 'text-green-400 font-semibold'
+                      : positiveSkillUsed > skillPointBudget
+                        ? 'text-red-400 font-semibold'
+                        : 'text-amber-400 font-semibold'
+                  }
+                  data-testid="text-v3-skill-points"
+                >
+                  {positiveSkillUsed} / {skillPointBudget}
+                  {positiveSkillUsed > skillPointBudget && ' (too many)'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-stone-500 text-[10px]">Reclaimed from negatives</span>
+                <span
+                  className={negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
+                  data-testid="text-v3-skill-neg-points"
+                >
+                  {negativeSkillUsed} / {V3_MAX_NEGATIVE_SKILL_POINTS}
+                  {negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {V3_ATTRIBUTES.map(attr => {
             const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
             const dieType = `d${attrValueToDieSides(attrVal)}`;
+            const speciesBonus = Number(speciesAttrBonuses[attr.key] || 0);
+            // Player allocation can't go negative, so the stored value (which
+            // includes the free species bonus) can't drop below that bonus.
+            const minAttr = Math.max(0, speciesBonus);
             return (
               <Card
                 key={attr.key}
@@ -16172,19 +16272,26 @@ function V3AttrsAndSkillsTab({
                     <span className="text-[10px] text-stone-500">({attr.abbr})</span>
                   </div>
                   {editing ? (
-                    <Input
-                      type="number"
-                      min={-2}
-                      max={5}
-                      value={attrData[attr.key] ?? 0}
-                      onChange={e => {
-                        const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
-                        setAttrData({ ...attrData, [attr.key]: v });
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
-                      data-testid={`input-v3-attr-${attr.key}`}
-                    />
+                    <>
+                      <Input
+                        type="number"
+                        min={minAttr}
+                        max={5}
+                        value={attrData[attr.key] ?? 0}
+                        onChange={e => {
+                          const v = e.target.value === '' ? minAttr : Math.max(minAttr, Math.min(5, parseInt(e.target.value) || 0));
+                          setAttrData({ ...attrData, [attr.key]: v });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
+                        data-testid={`input-v3-attr-${attr.key}`}
+                      />
+                      {speciesBonus > 0 && (
+                        <p className="text-[10px] text-emerald-400/80 mt-1" data-testid={`text-v3-attr-species-${attr.key}`}>
+                          incl. +{speciesBonus} species
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <div className="mt-1" data-testid={`text-v3-attr-${attr.key}`}>
                       <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>

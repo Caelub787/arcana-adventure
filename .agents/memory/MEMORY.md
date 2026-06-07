@@ -1,2 +1,3 @@
 - [AA V3 "Knowledge" label convention](v3-knowledge-label.md) — V3 shows "Custom Skill(s)" as "Knowledge" (labels only; gate on aa-v3 system var); code identifiers unchanged.
 - [V3 craft consumable accounting](v3-craft-consumable-accounting.md) — gate-by-consumed-item eligibility must reserve inventory across the whole composition, not per-element.
+- [V3 attribute species-bonus accounting](v3-attr-species-bonus-accounting.md) — V3 species attr bonuses are baked into char columns; subtract them to recover player-allocated points for budgets.
