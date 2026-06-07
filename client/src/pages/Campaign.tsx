@@ -8601,7 +8601,7 @@ export default function Campaign() {
     const marker = buildRulerMarker(rulerShape, x, y);
     if (!marker) return;
     marker.id = `ruler-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setMyRulerMarkers(prev => [...prev, marker]);
+    setMyRulerMarkers([marker]);
     gameWs.sendRuler({ action: 'place', marker });
   };
 
@@ -10120,9 +10120,7 @@ export default function Campaign() {
           if (action === 'place' && marker) {
             setOtherRulerMarkers(prev => {
               const updated = new Map(prev);
-              const list = updated.get(userId) ? [...updated.get(userId)!] : [];
-              list.push(marker);
-              updated.set(userId, list);
+              updated.set(userId, [marker]);
               return updated;
             });
           } else if (action === 'clear') {
