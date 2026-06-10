@@ -3,3 +3,4 @@
 - [V3 attribute species-bonus accounting](v3-attr-species-bonus-accounting.md) — V3 species attr bonuses are baked into char columns; subtract them to recover player-allocated points for budgets.
 - [Client Item type is hand-written](client-item-type-handwritten.md) — client `Item` (and other entity types) live as hand-written interfaces in `client/src/lib/api.ts`, not schema-inferred; new columns need adding there too.
 - [V3 magic hotbar holds spellbook/scroll items](v3-magic-hotbar-spellbook-items.md) — V3 casts via SpellbookPanel from spellbook/scroll ITEMS; scrolls consumed via V3SpellDetailDialog onCast (success-only).
+- [World-scoped library objects](world-object-scope.md) — items/spells/char-templates tagged with nullable worldId; getters must filter worldId=X OR IS NULL or world rows leak into admin library.

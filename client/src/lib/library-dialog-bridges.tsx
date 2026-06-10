@@ -59,10 +59,14 @@ export function itemToDraft(item: ApiItem): ItemDraft {
   } as ItemDraft;
 }
 
-export function arcanaApiTransport(systemSlug: string, personal?: boolean): LibraryTransport {
+export function arcanaApiTransport(systemSlug: string, personal?: boolean, worldId?: string): LibraryTransport {
+  // World scope is governed by world access, not the personal library flag.
+  const scopePersonal = worldId ? undefined : personal;
+  const scope = worldId ? { worldId } : (personal ? { personal: true } : {});
   return {
     list: async <T,>(kind: SyncKind): Promise<{ data: T[] }> => {
-      if (kind === 'item') return { data: (await api.getSystemItems(systemSlug, undefined, personal)) as T[] };
+      if (kind === 'item') return { data: (await api.getSystemItems(systemSlug, undefined, scopePersonal, worldId)) as T[] };
+      if (kind === 'spell') return { data: (await api.getSystemSpells(systemSlug, scopePersonal, worldId)) as T[] };
       if (kind === 'roll-template') return { data: (await api.getItemTemplates(systemSlug, personal)) as T[] };
       throw new Error(`arcanaApiTransport: unsupported list kind "${kind}"`);
     },
@@ -86,6 +90,19 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean): Libr
         } as unknown as T;
         return envelope(kind, id, data);
       }
+      if (kind === 'spell') {
+        const [spell, rolls, links] = await Promise.all([
+          api.getSystemSpell(id),
+          api.getSpellRolls(id),
+          api.getSpellTemplateLinks(id),
+        ]);
+        const data = {
+          ...spell,
+          rolls,
+          templateLinks: links.templateIds,
+        } as unknown as T;
+        return envelope(kind, id, data);
+      }
       throw new Error(`arcanaApiTransport: unsupported get kind "${kind}"`);
     },
     upsert: async <T,>(kind: SyncKind, body: T & { externalId?: string; externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> => {
@@ -95,8 +112,8 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean): Libr
         const created = await api.createSystemItem({
           ...(itemFields as Partial<ApiItem>),
           system: systemSlug,
-          ...(personal ? { personal: true } : {}),
-        } as Partial<ApiItem>);
+          ...scope,
+        } as unknown as Partial<ApiItem>);
 
         // Server may auto-create rolls (e.g. Detonate when isDetonatable=true).
         // Skip drafts whose name already exists to avoid duplicates. Failure
@@ -119,6 +136,30 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean): Libr
 
         if (Array.isArray(templateLinks) && templateLinks.length > 0) {
           await api.setItemTemplateLinks(created.id, templateLinks);
+        }
+
+        return envelope(kind, created.id, created as unknown as T);
+      }
+      if (kind === 'spell') {
+        const draft = body as unknown as Record<string, unknown> & { rolls?: unknown[]; templateLinks?: string[] };
+        const { rolls = [], templateLinks, ...spellFields } = draft;
+        const created = await api.createSystemSpell({
+          ...(spellFields as Record<string, unknown>),
+          system: systemSlug,
+          ...scope,
+        } as Record<string, unknown>);
+
+        const existingRolls = await api.getSpellRolls(created.id);
+        const existingNames = new Set(existingRolls.map((r) => r.name));
+        for (const roll of rolls) {
+          const cleaned = stripFields(roll as Identified, TRANSIENT_ROLL_FIELDS);
+          if (existingNames.has(cleaned.name as string)) continue;
+          delete cleaned.id;
+          await api.createRollEntry({ ...cleaned, ownerType: 'spell', ownerId: created.id });
+        }
+
+        if (Array.isArray(templateLinks) && templateLinks.length > 0) {
+          await api.setSpellTemplateLinks(created.id, templateLinks);
         }
 
         return envelope(kind, created.id, created as unknown as T);
@@ -187,11 +228,49 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean): Libr
 
         return envelope(kind, id, updated as unknown as T);
       }
+      if (kind === 'spell') {
+        const draft = body as unknown as Record<string, unknown> & { rolls?: unknown[]; templateLinks?: string[] };
+        const { rolls, templateLinks, ...spellFields } = draft;
+        const updated = await api.updateSystemSpell(id, spellFields as Record<string, unknown>);
+
+        if (Array.isArray(rolls)) {
+          const existing = await api.getSpellRolls(id);
+          const newIds = new Set(
+            rolls.filter((r): r is typeof r & { id: string } => typeof (r as Identified).id === 'string')
+              .map((r) => (r as Identified).id as string),
+          );
+          for (const old of existing) {
+            if (!newIds.has(old.id)) await api.deleteRollEntry(old.id);
+          }
+          const existingById = new Map(existing.map((r) => [r.id, r]));
+          for (const roll of rolls) {
+            const cleaned = stripFields(roll as Identified, TRANSIENT_ROLL_FIELDS);
+            const rid = cleaned.id as string | undefined;
+            if (rid && existingById.has(rid)) {
+              const { id: _omit, ...rest } = cleaned;
+              await api.updateRollEntry(rid, rest);
+            } else {
+              delete cleaned.id;
+              await api.createRollEntry({ ...cleaned, ownerType: 'spell', ownerId: id });
+            }
+          }
+        }
+
+        if (Array.isArray(templateLinks)) {
+          await api.setSpellTemplateLinks(id, templateLinks);
+        }
+
+        return envelope(kind, id, updated as unknown as T);
+      }
       throw new Error(`arcanaApiTransport: unsupported patch kind "${kind}"`);
     },
     delete: async (kind: SyncKind, id: string) => {
       if (kind === 'item') {
         await api.deleteSystemItem(id);
+        return { ok: true as const };
+      }
+      if (kind === 'spell') {
+        await api.deleteSystemSpell(id);
         return { ok: true as const };
       }
       throw new Error(`arcanaApiTransport: unsupported delete kind "${kind}"`);

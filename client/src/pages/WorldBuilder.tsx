@@ -8,6 +8,7 @@ import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor"
 import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
+import { WorldObjectsPanel } from "@/components/worldbuilder/WorldObjectsPanel";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
 import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap, useWorldCollaborators } from "@/lib/worldbuilding-api";
@@ -56,8 +57,8 @@ function renderHomeContent(content: string) {
   });
 }
 
-type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
-type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph";
+type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects";
+type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects";
 
 interface WbTab {
   id: string;
@@ -75,6 +76,7 @@ const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementTy
   { key: "timeline", label: "Timeline", icon: Clock, description: "Dynamic timeline" },
   { key: "calendar", label: "Calendar", icon: Calendar, description: "Custom calendars" },
   { key: "graph", label: "Graph", icon: Network, description: "Relationship graph" },
+  { key: "objects", label: "Objects", icon: Package, description: "Items, spells & characters" },
 ];
 
 const TAB_TYPE_ICONS: Record<WbTabType, { icon: React.ElementType; label: string }> = {
@@ -86,6 +88,7 @@ const TAB_TYPE_ICONS: Record<WbTabType, { icon: React.ElementType; label: string
   timeline: { icon: Clock, label: "Timeline" },
   calendar: { icon: Calendar, label: "Calendar" },
   graph: { icon: Network, label: "Graph" },
+  objects: { icon: Package, label: "Objects" },
 };
 
 interface World {
@@ -256,6 +259,7 @@ export default function WorldBuilder() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState("");
+  const [newWorldSystem, setNewWorldSystem] = useState("arcana-adventure");
   const [newWorldDescription, setNewWorldDescription] = useState("");
   const [showWorldSettingsDialog, setShowWorldSettingsDialog] = useState(false);
   const [editWorldName, setEditWorldName] = useState("");
@@ -287,6 +291,12 @@ export default function WorldBuilder() {
   }, [worlds, selectedWorldId]);
 
   const selectedWorld = worlds.find(w => w.id === selectedWorldId);
+
+  const { data: selectedWorldCollaborators = [] } = useWorldCollaborators(selectedWorldId || undefined);
+  const canEditWorldObjects = !!user && !!selectedWorld && (
+    selectedWorld.userId === user.id ||
+    selectedWorldCollaborators.some((c: any) => c.userId === user.id)
+  );
 
   useEffect(() => {
     if (selectedWorld) {
@@ -469,7 +479,7 @@ export default function WorldBuilder() {
   };
 
   const createWorldMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string }) => {
+    mutationFn: async (data: { name: string; description?: string; system?: string }) => {
       const res = await fetch('/api/worlds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -485,6 +495,7 @@ export default function WorldBuilder() {
       setShowCreateWorldDialog(false);
       setNewWorldName("");
       setNewWorldDescription("");
+      setNewWorldSystem("arcana-adventure");
       toast({ title: "World created" });
     },
   });
@@ -1666,6 +1677,16 @@ export default function WorldBuilder() {
                 />
               </div>
             )}
+
+            {activeSection === "objects" && selectedWorldId && (
+              <div className="flex-1 min-h-0">
+                <WorldObjectsPanel
+                  worldId={selectedWorldId}
+                  system={selectedWorld?.system}
+                  canEdit={canEditWorldObjects}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1700,6 +1721,20 @@ export default function WorldBuilder() {
               />
             </div>
             <div>
+              <Label className="text-xs text-stone-400">Game System *</Label>
+              <select
+                value={newWorldSystem}
+                onChange={(e) => setNewWorldSystem(e.target.value)}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 rounded-md text-stone-200 text-sm px-3 py-2"
+                data-testid="select-new-world-system"
+              >
+                <option value="arcana-adventure">Arcana Adventure</option>
+                <option value="aa-v2">AA V2</option>
+                <option value="aa-v3">AA V3</option>
+              </select>
+              <p className="text-[10px] text-stone-500 mt-1">Determines the rules for items, spells, and characters created in this world. Cannot be left empty.</p>
+            </div>
+            <div>
               <Label className="text-xs text-stone-400">Description</Label>
               <Textarea
                 value={newWorldDescription}
@@ -1713,8 +1748,8 @@ export default function WorldBuilder() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowCreateWorldDialog(false)} className="text-stone-400" data-testid="button-cancel-create-world">Cancel</Button>
             <Button
-              onClick={() => createWorldMutation.mutate({ name: newWorldName.trim(), description: newWorldDescription.trim() || undefined })}
-              disabled={!newWorldName.trim() || createWorldMutation.isPending}
+              onClick={() => createWorldMutation.mutate({ name: newWorldName.trim(), description: newWorldDescription.trim() || undefined, system: newWorldSystem })}
+              disabled={!newWorldName.trim() || !newWorldSystem || createWorldMutation.isPending}
               className="bg-amber-600 hover:bg-amber-500 text-white"
               data-testid="button-confirm-create-world"
             >

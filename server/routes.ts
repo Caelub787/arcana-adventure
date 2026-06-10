@@ -54,6 +54,11 @@ async function migrateEntityTypesToTags() {
   try {
     await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS custom_tags text[] DEFAULT ARRAY[]::text[]`);
     await db.execute(sql`ALTER TABLE worlds ADD COLUMN IF NOT EXISTS system text DEFAULT 'arcana-adventure'`);
+    // World-scoped functional objects (Task #120): items / spells / characters
+    // can belong to a world independent of any campaign.
+    await db.execute(sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS world_id varchar REFERENCES worlds(id) ON DELETE CASCADE`);
+    await db.execute(sql`ALTER TABLE system_spells ADD COLUMN IF NOT EXISTS world_id varchar REFERENCES worlds(id) ON DELETE CASCADE`);
+    await db.execute(sql`ALTER TABLE characters ADD COLUMN IF NOT EXISTS world_id varchar REFERENCES worlds(id) ON DELETE CASCADE`);
     
     const oldEntities = await db.select().from(entities).where(
       sql`entity_type NOT IN ('article', 'canvas')`
@@ -7094,6 +7099,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const personal = req.query.personal === '1';
+      const worldId = req.query.worldId as string | undefined;
+      if (worldId) {
+        const w = await authorizeWorldObject(req, res, worldId, { write: false });
+        if (!w) return;
+        const worldItems = await storage.getSystemItems(system, undefined, worldId);
+        return res.json(worldItems);
+      }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const items = await storage.getSystemItems(system, scope);
       res.json(items);
@@ -7105,17 +7117,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-items", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const personal = req.body.personal === true;
-      if (personal) delete req.body.personal;
-      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
-      const itemData = insertItemSchema.parse({
-        ...body,
-        isTemplate: true,
-        characterId: null,
-        campaignId: null
-      });
+      const worldId = req.body.worldId as string | undefined;
+      let itemData;
+      if (worldId) {
+        // World-scoped item (Task #120): authorize via world access, force the
+        // world's system, and bypass the personal-library ACL.
+        const w = await authorizeWorldObject(req, res, worldId, { write: true });
+        if (!w) return;
+        const { personal: _p, ...rest } = req.body;
+        itemData = insertItemSchema.parse({
+          ...rest,
+          worldId,
+          system: w.system,
+          createdByUserId: req.session.userId,
+          isTemplate: true,
+          characterId: null,
+          campaignId: null,
+        });
+      } else {
+        if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+        const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+        const personal = req.body.personal === true;
+        if (personal) delete req.body.personal;
+        const body = (isA && !personal) ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
+        itemData = insertItemSchema.parse({
+          ...body,
+          worldId: null,
+          isTemplate: true,
+          characterId: null,
+          campaignId: null
+        });
+      }
       const item = await storage.createItem(itemData);
       
       if (item.isDetonatable) {
@@ -7143,8 +7175,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "System item not found" });
       }
-      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
-      const updatedItem = await storage.updateItem(req.params.id, req.body);
+      if (item.worldId) {
+        if (!await authorizeWorldObject(req, res, item.worldId, { write: true })) return;
+      } else if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      // Never allow re-scoping a world item to a different world via PATCH.
+      const { worldId: _ignoredWorldId, ...patchBody } = req.body || {};
+      const updatedItem = await storage.updateItem(req.params.id, patchBody);
       
       if (updatedItem) {
         const existingRolls = await storage.getRollEntries('item', updatedItem.id);
@@ -7173,7 +7209,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !item.isTemplate || item.characterId || item.campaignId) {
         return res.status(404).json({ error: "System item not found" });
       }
-      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      if (item.worldId) {
+        if (!await authorizeWorldObject(req, res, item.worldId, { write: true })) return;
+      } else if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       await storage.deleteItem(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true });
@@ -10015,6 +10053,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const system = req.query.system as string | undefined;
       const personal = req.query.personal === '1';
+      const worldId = req.query.worldId as string | undefined;
+      if (worldId) {
+        const w = await authorizeWorldObject(req, res, worldId, { write: false });
+        if (!w) return;
+        const worldSpells = await storage.getSystemSpells(system, undefined, worldId);
+        return res.json(worldSpells);
+      }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const spellList = await storage.getSystemSpells(system, scope);
       res.json(spellList);
@@ -10067,11 +10112,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/spells", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const requestedSpellSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
-      const personal = req.body.personal === true;
-      if (personal) delete req.body.personal;
-      const body = (isA && !personal) ? req.body : { ...req.body, system: requestedSpellSystem, ownerUserId: req.session.userId };
+      const worldId = req.body.worldId as string | undefined;
+      let body;
+      if (worldId) {
+        // World-scoped spell (Task #120): authorize via world access, force the
+        // world's system, and bypass the personal-library ACL.
+        const w = await authorizeWorldObject(req, res, worldId, { write: true });
+        if (!w) return;
+        const { personal: _p, ...rest } = req.body;
+        body = { ...rest, worldId, system: w.system, ownerUserId: req.session.userId };
+      } else {
+        if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+        const requestedSpellSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+        const personal = req.body.personal === true;
+        if (personal) delete req.body.personal;
+        body = (isA && !personal) ? { ...req.body, worldId: null } : { ...req.body, worldId: null, system: requestedSpellSystem, ownerUserId: req.session.userId };
+      }
       const spell = await storage.createSystemSpell(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
@@ -10084,8 +10140,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const existing = await storage.getSystemSpell(req.params.id);
       if (!existing) return res.status(404).json({ error: "Spell not found" });
-      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
-      const spell = await storage.updateSystemSpell(req.params.id, req.body);
+      if ((existing as any).worldId) {
+        if (!await authorizeWorldObject(req, res, (existing as any).worldId, { write: true })) return;
+      } else if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
+      const { worldId: _ignoredWorldId, ...patchBody } = req.body || {};
+      const spell = await storage.updateSystemSpell(req.params.id, patchBody);
       if (!spell) {
         return res.status(404).json({ error: "Spell not found" });
       }
@@ -10099,7 +10158,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/spells/:id", requireAuth, async (req, res) => {
     try {
       const existing = await storage.getSystemSpell(req.params.id);
-      if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
+      if (existing && (existing as any).worldId) {
+        if (!await authorizeWorldObject(req, res, (existing as any).worldId, { write: true })) return;
+      } else if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       // Cleanup any spell-template-link rows that reference this SystemSpell
       // (the join table has no FK on spellId so we must clean it explicitly).
       await db.delete(spellTemplateLinks).where(eq(spellTemplateLinks.spellId, req.params.id));
@@ -10221,6 +10282,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
       const personal = req.query.personal === '1';
+      const worldId = req.query.worldId as string | undefined;
+      if (worldId) {
+        const w = await authorizeWorldObject(req, res, worldId, { write: false });
+        if (!w) return;
+        const worldTemplates = await storage.getCharacterTemplates(undefined, worldId);
+        return res.json(worldTemplates);
+      }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
       const templates = await storage.getCharacterTemplates(scope);
       res.json(templates);
@@ -10245,9 +10313,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/character-templates", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      const personal = req.body.personal === true;
-      if (personal) delete req.body.personal;
-      const body = (isA && !personal) ? req.body : { ...req.body, ownerUserId: req.session.userId };
+      const worldId = req.body.worldId as string | undefined;
+      let body;
+      if (worldId) {
+        // World-scoped character (Task #120): authorize via world access; the
+        // world's system is applied client-side via the character's `system`.
+        const w = await authorizeWorldObject(req, res, worldId, { write: true });
+        if (!w) return;
+        const { personal: _p, ...rest } = req.body;
+        body = { ...rest, worldId, system: w.system, ownerUserId: req.session.userId };
+      } else {
+        const personal = req.body.personal === true;
+        if (personal) delete req.body.personal;
+        body = (isA && !personal) ? { ...req.body, worldId: null } : { ...req.body, worldId: null, ownerUserId: req.session.userId };
+      }
       const template = await storage.createCharacterTemplate(body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
@@ -10260,8 +10339,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const existing = await storage.getCharacterTemplate(req.params.id);
       if (!existing) return res.status(404).json({ error: "Character template not found" });
-      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
-      const template = await storage.updateCharacterTemplate(req.params.id, req.body);
+      if ((existing as any).worldId) {
+        if (!await authorizeWorldObject(req, res, (existing as any).worldId, { write: true })) return;
+      } else if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
+      const { worldId: _ignoredWorldId, ...patchBody } = req.body || {};
+      const template = await storage.updateCharacterTemplate(req.params.id, patchBody);
       if (!template) {
         return res.status(404).json({ error: "Character template not found" });
       }
@@ -10275,7 +10357,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/character-templates/:id", requireAuth, async (req, res) => {
     try {
       const existing = await storage.getCharacterTemplate(req.params.id);
-      if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
+      if (existing && (existing as any).worldId) {
+        if (!await authorizeWorldObject(req, res, (existing as any).worldId, { write: true })) return;
+      } else if (existing && !await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteCharacterTemplate(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json({ success: true });
@@ -15172,6 +15256,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     return { allowed: false, isOwner: false };
+  }
+
+  // Task #120: authorize a world-scoped functional object (item/spell/
+  // character) and return the world's id + system. Sends a 4xx and returns
+  // null when the caller may not access it. write=true requires owner/
+  // collaborator/GM (isOwner); read access also allows campaign members.
+  async function authorizeWorldObject(
+    req: any,
+    res: any,
+    worldId: string,
+    opts: { write: boolean },
+  ): Promise<{ id: string; system: string } | null> {
+    const userId = req.session?.userId;
+    if (!userId) { res.status(401).json({ error: "Not authenticated" }); return null; }
+    const world = await storage.getWorld(worldId);
+    if (!world) { res.status(404).json({ error: "World not found" }); return null; }
+    const access = await checkWorldAccess(userId, worldId);
+    if (!access.allowed) { res.status(403).json({ error: "Not authorized for this world" }); return null; }
+    if (opts.write && !access.isOwner) { res.status(403).json({ error: "Read-only access to this world" }); return null; }
+    return { id: world.id, system: world.system || 'arcana-adventure' };
   }
 
   // ==================== CAMPAIGN LINKED WORLD ROUTE ====================

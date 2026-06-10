@@ -225,6 +225,7 @@ export const characters = pgTable("characters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references((): AnyPgColumn => worlds.id, { onDelete: "cascade" }), // World-scoped character (Task #120)
   isTemplate: boolean("is_template").notNull().default(false), // Admin character templates have this = true
   name: text("name").notNull(),
   portrait: text("portrait"),
@@ -457,6 +458,7 @@ export const items = pgTable("items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }), // Null for campaign template items
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }), // For campaign template items
+  worldId: varchar("world_id").references((): AnyPgColumn => worlds.id, { onDelete: "cascade" }), // World-scoped library item (Task #120)
   createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }), // Track which GM created this item (for GM library items)
   containerId: varchar("container_id").references((): AnyPgColumn => items.id, { onDelete: "cascade" }), // For nested inventories
   isTemplate: boolean("is_template").default(false).notNull(), // True for campaign item templates
@@ -1147,6 +1149,7 @@ export const systemSpells = pgTable("system_spells", {
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  worldId: varchar("world_id").references((): AnyPgColumn => worlds.id, { onDelete: "cascade" }), // World-scoped spell (Task #120)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

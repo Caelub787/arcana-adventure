@@ -139,7 +139,7 @@ export interface IStorage {
   deleteCharacterWithTokens(id: string): Promise<void>;
   
   // Character Template operations (admin-created character sheets)
-  getCharacterTemplates(): Promise<Character[]>;
+  getCharacterTemplates(ownerScope?: string[], worldId?: string): Promise<Character[]>;
   getCharacterTemplate(id: string): Promise<Character | undefined>;
   createCharacterTemplate(data: Partial<InsertCharacter>): Promise<Character>;
   updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character | undefined>;
@@ -193,7 +193,7 @@ export interface IStorage {
 
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
-  getSystemItems(system?: string): Promise<Item[]>;
+  getSystemItems(system?: string, ownerScope?: string[], worldId?: string): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
   getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
@@ -369,7 +369,7 @@ export interface IStorage {
   hasCharacterFeat(characterId: string, featId: string): Promise<boolean>;
 
   // System Spell operations (global spell definitions)
-  getSystemSpells(system?: string): Promise<SystemSpell[]>;
+  getSystemSpells(system?: string, ownerScope?: string[], worldId?: string): Promise<SystemSpell[]>;
   getSystemSpellSummaries(system?: string): Promise<any[]>;
   getSystemSpell(id: string): Promise<SystemSpell | undefined>;
   createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
@@ -1367,14 +1367,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Character Template operations (admin-created character sheets)
-  async getCharacterTemplates(ownerScope?: string[]): Promise<Character[]> {
+  async getCharacterTemplates(ownerScope?: string[], worldId?: string): Promise<Character[]> {
     const conditions: any[] = [eq(characters.isTemplate, true)];
-    if (ownerScope) {
-      conditions.push(
-        ownerScope.length > 0
-          ? or(sql`${characters.ownerUserId} IS NULL`, inArray(characters.ownerUserId, ownerScope))!
-          : sql`${characters.ownerUserId} IS NULL`
-      );
+    // World-scoping (Task #120): see getSystemItems for the worldId semantics.
+    if (worldId) {
+      conditions.push(eq(characters.worldId, worldId));
+    } else {
+      conditions.push(sql`${characters.worldId} IS NULL`);
+      if (ownerScope) {
+        conditions.push(
+          ownerScope.length > 0
+            ? or(sql`${characters.ownerUserId} IS NULL`, inArray(characters.ownerUserId, ownerScope))!
+            : sql`${characters.ownerUserId} IS NULL`
+        );
+      }
     }
     return await db.select()
       .from(characters)
@@ -1960,7 +1966,7 @@ export class DatabaseStorage implements IStorage {
     return item ? this.convertLegacyItemPrice(item) : undefined;
   }
 
-  async getSystemItems(system?: string, ownerScope?: string[]): Promise<Item[]> {
+  async getSystemItems(system?: string, ownerScope?: string[], worldId?: string): Promise<Item[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -1969,12 +1975,21 @@ export class DatabaseStorage implements IStorage {
       sql`${items.campaignId} IS NULL`,
     ];
     if (system) conditions.push(eq(items.system, system));
-    if (ownerScope) {
-      conditions.push(
-        ownerScope.length > 0
-          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
-          : sql`${items.createdByUserId} IS NULL`
-      );
+    // World-scoping (Task #120): when a worldId is given, return only that
+    // world's rows (ownerScope is ignored — world access is authorized at the
+    // route). Otherwise restrict to non-world rows so world objects never leak
+    // into the admin / personal library.
+    if (worldId) {
+      conditions.push(eq(items.worldId, worldId));
+    } else {
+      conditions.push(sql`${items.worldId} IS NULL`);
+      if (ownerScope) {
+        conditions.push(
+          ownerScope.length > 0
+            ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+            : sql`${items.createdByUserId} IS NULL`
+        );
+      }
     }
     const result = await db.select()
       .from(items)
@@ -2861,15 +2876,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Spell operations
-  async getSystemSpells(system?: string, ownerScope?: string[]): Promise<SystemSpell[]> {
+  async getSystemSpells(system?: string, ownerScope?: string[], worldId?: string): Promise<SystemSpell[]> {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
-    if (ownerScope) {
-      conditions.push(
-        ownerScope.length > 0
-          ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
-          : sql`${systemSpells.ownerUserId} IS NULL`
-      );
+    // World-scoping (Task #120): see getSystemItems for the worldId semantics.
+    if (worldId) {
+      conditions.push(eq(systemSpells.worldId, worldId));
+    } else {
+      conditions.push(sql`${systemSpells.worldId} IS NULL`);
+      if (ownerScope) {
+        conditions.push(
+          ownerScope.length > 0
+            ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
+            : sql`${systemSpells.ownerUserId} IS NULL`
+        );
+      }
     }
     return await db.select()
       .from(systemSpells)

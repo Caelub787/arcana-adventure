@@ -1173,11 +1173,12 @@ class ApiClient {
   }
 
   // Admin System Items
-  async getSystemItems(system?: string, campaignId?: string, personal?: boolean): Promise<Item[]> {
+  async getSystemItems(system?: string, campaignId?: string, personal?: boolean, worldId?: string): Promise<Item[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
     if (personal) qs.set('personal', '1');
+    if (worldId) qs.set('worldId', worldId);
     const s = qs.toString();
     return this.request(`/admin/system-items${s ? `?${s}` : ''}`);
   }
@@ -1513,10 +1514,11 @@ class ApiClient {
   }
 
   // Admin System Spells
-  async getSystemSpells(system?: string, personal?: boolean): Promise<SystemSpell[]> {
+  async getSystemSpells(system?: string, personal?: boolean, worldId?: string): Promise<SystemSpell[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (personal) qs.set('personal', '1');
+    if (worldId) qs.set('worldId', worldId);
     const s = qs.toString();
     return this.request(`/admin/spells${s ? `?${s}` : ''}`);
   }
@@ -1685,9 +1687,12 @@ class ApiClient {
   }
 
   // Admin Character Templates
-  async getCharacterTemplates(personal?: boolean): Promise<Character[]> {
-    const params = personal ? '?personal=1' : '';
-    return this.request(`/admin/character-templates${params}`);
+  async getCharacterTemplates(personal?: boolean, worldId?: string): Promise<Character[]> {
+    const qs = new URLSearchParams();
+    if (personal) qs.set('personal', '1');
+    if (worldId) qs.set('worldId', worldId);
+    const s = qs.toString();
+    return this.request(`/admin/character-templates${s ? `?${s}` : ''}`);
   }
 
   async getCharacterTemplate(id: string): Promise<Character> {

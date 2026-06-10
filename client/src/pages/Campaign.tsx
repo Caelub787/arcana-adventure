@@ -50,6 +50,7 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
+import { WorldObjectsPanel } from "@/components/worldbuilder/WorldObjectsPanel";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2 } from "lucide-react";
 
@@ -6413,7 +6414,7 @@ function NotesFolderBrowser({ campaignId, onSelectNote }: { campaignId: string; 
   );
 }
 
-type WorldBuilderSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
+type WorldBuilderSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects";
 
 const WORLD_BUILDER_SECTIONS: { key: WorldBuilderSection; label: string; icon: React.ElementType }[] = [
   { key: "home", label: "Home", icon: Home },
@@ -6422,6 +6423,7 @@ const WORLD_BUILDER_SECTIONS: { key: WorldBuilderSection; label: string; icon: R
   { key: "timeline", label: "Timeline", icon: Clock },
   { key: "calendar", label: "Calendar", icon: Calendar },
   { key: "graph", label: "Graph", icon: Network },
+  { key: "objects", label: "Objects", icon: Package },
 ];
 
 function renderWorldHomeContent(content: string) {
@@ -6482,7 +6484,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
   compact?: boolean;
   userId?: string;
 }) {
-  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph";
+  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects";
   interface WbTab {
     id: string;
     type: WbTabType;
@@ -6512,6 +6514,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
   const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState("");
   const [newWorldDescription, setNewWorldDescription] = useState("");
+  const [newWorldSystem, setNewWorldSystem] = useState("arcana-adventure");
   const [showWorldSettingsDialog, setShowWorldSettingsDialog] = useState(false);
   const [editWorldName, setEditWorldName] = useState("");
   const [editWorldDescription, setEditWorldDescription] = useState("");
@@ -6620,6 +6623,8 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
     ? worlds.find((w: any) => w.id === selectedWorldId)
     : linkedWorld && linkedWorld.id === selectedWorldId ? linkedWorld : null;
 
+  const canEditWorldObjects = !!isGM || (!!userId && !!selectedWorld && selectedWorld.userId === userId);
+
   useEffect(() => {
     if (selectedWorld?.homeContent !== undefined) {
       setHomeContent(selectedWorld.homeContent || "");
@@ -6658,7 +6663,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
   });
 
   const createWorldMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string }) => {
+    mutationFn: async (data: { name: string; description?: string; system?: string }) => {
       const res = await fetch('/api/worlds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6674,6 +6679,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
       setShowCreateWorldDialog(false);
       setNewWorldName("");
       setNewWorldDescription("");
+      setNewWorldSystem("arcana-adventure");
       toast({ title: "World created" });
     },
   });
@@ -6772,6 +6778,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
     timeline: { icon: Clock, label: "Timeline" },
     calendar: { icon: Calendar, label: "Calendar" },
     graph: { icon: Network, label: "Graph" },
+    objects: { icon: Package, label: "Objects" },
   };
 
   const handleNavigateCurrentTab = (sectionType: WbTabType) => {
@@ -7249,6 +7256,16 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                           />
                         </div>
                       )}
+
+                      {tab.type === "objects" && selectedWorldId && (
+                        <div className="h-full min-h-0">
+                          <WorldObjectsPanel
+                            worldId={selectedWorldId}
+                            system={selectedWorld?.system}
+                            canEdit={canEditWorldObjects}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -7274,6 +7291,20 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
               />
             </div>
             <div>
+              <Label className="text-stone-300">Game System *</Label>
+              <select
+                value={newWorldSystem}
+                onChange={(e) => setNewWorldSystem(e.target.value)}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 rounded-md text-stone-200 text-sm px-3 py-2"
+                data-testid="select-new-world-system"
+              >
+                <option value="arcana-adventure">Arcana Adventure</option>
+                <option value="aa-v2">AA V2</option>
+                <option value="aa-v3">AA V3</option>
+              </select>
+              <p className="text-[10px] text-stone-500 mt-1">Determines the rules for items, spells, and characters created in this world. Cannot be left empty.</p>
+            </div>
+            <div>
               <Label className="text-stone-300">Description (optional)</Label>
               <Textarea
                 value={newWorldDescription}
@@ -7286,8 +7317,8 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setShowCreateWorldDialog(false)}>Cancel</Button>
               <Button
-                onClick={() => createWorldMutation.mutate({ name: newWorldName, description: newWorldDescription || undefined })}
-                disabled={!newWorldName.trim() || createWorldMutation.isPending}
+                onClick={() => createWorldMutation.mutate({ name: newWorldName, description: newWorldDescription || undefined, system: newWorldSystem })}
+                disabled={!newWorldName.trim() || !newWorldSystem || createWorldMutation.isPending}
                 data-testid="button-create-world-submit"
               >
                 {createWorldMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-1" /> : null}

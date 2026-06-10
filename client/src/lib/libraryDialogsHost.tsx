@@ -50,6 +50,14 @@ export interface ArcanaApiTransportContext {
    * the in-campaign "My Library" surface.
    */
   personal?: boolean;
+  /**
+   * When set, the library surface is scoped to a single World (Task #120).
+   * List reads request `?worldId=...` and creates tag the body with
+   * `worldId` so the server stores/authorizes the row against that world
+   * instead of the personal/admin library. `personal` is ignored in this
+   * mode (world access governs read/write).
+   */
+  worldId?: string;
 }
 
 /**
@@ -65,17 +73,19 @@ export interface ArcanaApiTransportContext {
 export function createArcanaApiTransport(
   ctx: ArcanaApiTransportContext,
 ): LibraryTransport {
-  const { systemSlug, systemDisplayName, personal } = ctx;
+  const { systemSlug, systemDisplayName, personal, worldId } = ctx;
+  // In world mode the personal scope is irrelevant — world access governs it.
+  const scopePersonal = worldId ? undefined : personal;
 
   const transport: LibraryTransport = {
     async list<T>(kind: SyncKind): Promise<{ data: T[] }> {
       switch (kind) {
-        case "item":              return { data: (await api.getSystemItems(systemSlug, undefined, personal)) as T[] };
-        case "spell":             return { data: (await api.getSystemSpells(systemSlug, personal)) as T[] };
+        case "item":              return { data: (await api.getSystemItems(systemSlug, undefined, scopePersonal, worldId)) as T[] };
+        case "spell":             return { data: (await api.getSystemSpells(systemSlug, scopePersonal, worldId)) as T[] };
         case "roll-template":     return { data: (await api.getItemTemplates(systemSlug, personal)) as T[] };
         case "species":           return { data: (await api.getSystemSpecies(systemDisplayName, undefined, personal)) as T[] };
         case "feat-tree":         return { data: (await api.getFeatTrees(systemSlug, undefined, personal)) as T[] };
-        case "character-template":return { data: (await api.getCharacterTemplates(personal)) as T[] };
+        case "character-template":return { data: (await api.getCharacterTemplates(scopePersonal, worldId)) as T[] };
         case "character":         return { data: [] as T[] };
         case "class":             return notImpl("class", "list");
         default:                  return notImpl(kind, "list");
@@ -99,7 +109,7 @@ export function createArcanaApiTransport(
           return envelope("species", data as unknown as T);
         }
         case "character-template": {
-          const list = await api.getCharacterTemplates(personal);
+          const list = await api.getCharacterTemplates(scopePersonal, worldId);
           const data = list.find((c) => c.id === id);
           if (!data) throw new Error(`Character template ${id} not found`);
           return envelope("character-template", data as unknown as T);
@@ -121,11 +131,13 @@ export function createArcanaApiTransport(
     async upsert<T>(kind: SyncKind, body: T & Record<string, unknown>): Promise<SyncEnvelope<T>> {
       switch (kind) {
         case "item": {
-          const created = await api.createSystemItem({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
+          const scope = worldId ? { worldId } : (personal ? { personal: true } : {});
+          const created = await api.createSystemItem({ ...body, system: systemSlug, ...scope } as Record<string, unknown>);
           return envelope("item", created as unknown as T);
         }
         case "spell": {
-          const created = await api.createSystemSpell({ ...body, system: systemSlug, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
+          const scope = worldId ? { worldId } : (personal ? { personal: true } : {});
+          const created = await api.createSystemSpell({ ...body, system: systemSlug, ...scope } as Record<string, unknown>);
           return envelope("spell", created as unknown as T);
         }
         case "roll-template": {
@@ -141,7 +153,8 @@ export function createArcanaApiTransport(
           return envelope("feat-tree", created as unknown as T);
         }
         case "character-template": {
-          const created = await api.createCharacterTemplate({ ...body, ...(personal ? { personal: true } : {}) } as Record<string, unknown>);
+          const scope = worldId ? { worldId } : (personal ? { personal: true } : {});
+          const created = await api.createCharacterTemplate({ ...body, ...scope } as Record<string, unknown>);
           return envelope("character-template", created as unknown as T);
         }
         case "character": {
@@ -212,7 +225,7 @@ export function createArcanaApiTransport(
  * inside the component tree so the imagePicker promise resolves
  * correctly.
  */
-export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: string, personal?: boolean): {
+export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: string, personal?: boolean, worldId?: string): {
   host: HostAdapter;
   imageBrowserNode: React.ReactNode;
 } {
@@ -224,8 +237,8 @@ export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: str
   }>({ open: false });
 
   const transport = useMemo(
-    () => createArcanaApiTransport({ systemSlug, systemDisplayName, personal }),
-    [systemSlug, systemDisplayName, personal],
+    () => createArcanaApiTransport({ systemSlug, systemDisplayName, personal, worldId }),
+    [systemSlug, systemDisplayName, personal, worldId],
   );
 
   const notify = useCallback(
