@@ -28,7 +28,7 @@ import type { DialogProps } from "../types";
 
 const ITEM_TYPES = [
   "weapon", "ammunition", "armor", "consumable",
-  "utility", "container", "currency", "crafter", "spellbook",
+  "utility", "container", "currency", "crafter", "spellbook", "scroll",
 ] as const;
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
@@ -241,10 +241,11 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               </Grid2>
               <Grid3>
                 <div><Label>Item Type</Label>
-                  <Select value={draft.itemType} onValueChange={v => set({ itemType: v })} data-testid="select-item-type">
+                  <Select value={draft.itemType} onValueChange={v => set(v === "scroll" ? { itemType: v, maxSpells: 1 } : { itemType: v })} data-testid="select-item-type">
                     {ITEM_TYPES.filter(t => {
                       if (t === "crafter") return aav2;
                       if (t === "spellbook") return aav3;
+                      if (t === "scroll") return aav3;
                       return true;
                     }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
@@ -434,28 +435,34 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {aav3 && it === "spellbook" && (
-            <Section title="Spellbook">
+          {aav3 && (it === "spellbook" || it === "scroll") && (
+            <Section title={it === "scroll" ? "Scroll" : "Spellbook"}>
               <Stack gap="sm">
-                <div><Label>Max spells (0 = unlimited)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={draft.maxSpells ?? 0}
-                    onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
-                    data-testid="input-spellbook-max-spells"
-                  />
-                </div>
+                {it === "scroll" ? (
+                  <div className="ld-subtle" data-testid="text-scroll-single-spell">
+                    A scroll holds a single spell and is consumed when cast.
+                  </div>
+                ) : (
+                  <div><Label>Max spells (0 = unlimited)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.maxSpells ?? 0}
+                      onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
+                      data-testid="input-spellbook-max-spells"
+                    />
+                  </div>
+                )}
                 {host.spellbookManager ? (
                   draft.id ? (
                     <host.spellbookManager
                       itemId={draft.id}
-                      maxSpells={draft.maxSpells ?? 0}
+                      maxSpells={it === "scroll" ? 1 : (draft.maxSpells ?? 0)}
                       campaignSystem={campaignSystem ?? draft.system}
                     />
                   ) : (
                     <div className="ld-subtle" data-testid="text-spellbook-save-first">
-                      Save this spellbook first to pre-load spells into it.
+                      Save this {it === "scroll" ? "scroll" : "spellbook"} first to pre-load spells into it.
                     </div>
                   )
                 ) : null}

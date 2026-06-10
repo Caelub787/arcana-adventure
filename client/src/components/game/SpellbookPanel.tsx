@@ -19,7 +19,7 @@ import {
   v3LevelDiceNotation,
   v3LevelExtraMana,
 } from "@shared/v3spells";
-import { BookOpen, Sparkles, Send, Trash2, Wand2, Clock, Eye, Minus, Plus, Dices } from "lucide-react";
+import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices } from "lucide-react";
 
 interface SpellbookCharacter {
   id: string;
@@ -38,6 +38,7 @@ interface SpellbookPanelProps {
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
   charPanelSuffix?: string;
+  onSpellCast?: () => void;
 }
 
 // One-line description of a crafted spell's composition (core + intent + delivery).
@@ -57,11 +58,13 @@ export function V3SpellDetailDialog({
   onOpenChange,
   spell,
   castCharacter,
+  onCast,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spell: V3Spell | null;
   castCharacter?: V3CastCharacter;
+  onCast?: () => void;
 }) {
   const [level, setLevel] = useState(1);
   if (!spell) return null;
@@ -83,6 +86,7 @@ export function V3SpellDetailDialog({
     if (!castCharacter) return;
     const ok = castV3Spell(castCharacter, spell, lv);
     if (ok) {
+      onCast?.();
       setLevel(1);
       onOpenChange(false);
     }
@@ -206,6 +210,7 @@ export function SpellbookPanel({
   bringToFront,
   floatingZIndices,
   charPanelSuffix = "",
+  onSpellCast,
 }: SpellbookPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -234,32 +239,6 @@ export function SpellbookPanel({
     onError: (err: any) =>
       toast({ title: "Could not remove spell", description: err?.message || "Try again.", variant: "destructive" }),
   });
-
-  const sendToHotbar = async (spell: V3Spell) => {
-    try {
-      const hotbars = await api.getHotbars(character.id);
-      const usedSlots = new Set(
-        hotbars.filter((h) => h.hotbarType === "magic").map((h) => h.slotNumber),
-      );
-      let slot = -1;
-      for (let i = 0; i < 5; i++) {
-        if (!usedSlots.has(i)) { slot = i; break; }
-      }
-      if (slot === -1) {
-        toast({ title: "Magic hotbar is full", description: "Free up a magic slot first.", variant: "destructive" });
-        return;
-      }
-      await api.upsertHotbar(character.id, {
-        hotbarType: "magic",
-        slotNumber: slot,
-        v3SpellId: spell.id,
-      } as any);
-      queryClient.invalidateQueries({ queryKey: ["hotbars", character.id] });
-      toast({ title: "Sent to hotbar", description: `${spell.name || "Spell"} added to magic slot ${slot + 1}.` });
-    } catch (err: any) {
-      toast({ title: "Could not send to hotbar", description: err?.message || "Try again.", variant: "destructive" });
-    }
-  };
 
   if (!open || !item) return null;
 
@@ -312,7 +291,8 @@ export function SpellbookPanel({
                 return (
                   <div
                     key={spell.id}
-                    className="bg-stone-900 rounded-lg p-3 border border-stone-700"
+                    className="bg-stone-900 rounded-lg p-3 border border-stone-700 cursor-pointer hover:border-purple-600 hover:bg-stone-800/60 transition-colors"
+                    onClick={() => setDetailSpellId(spell.id)}
                     data-testid={`spellbook-spell-${spell.id}`}
                   >
                     <div className="flex items-start gap-3">
@@ -338,38 +318,19 @@ export function SpellbookPanel({
                         {spell.description && (
                           <p className="text-xs text-stone-500 mt-1 line-clamp-2">{spell.description}</p>
                         )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs text-stone-300 hover:bg-stone-800"
-                            onClick={() => setDetailSpellId(spell.id)}
-                            data-testid={`button-detail-spell-${spell.id}`}
-                          >
-                            <Eye className="h-3 w-3 mr-1" /> Details
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs border-purple-700 text-purple-300 hover:bg-purple-900/40"
-                            disabled={awaiting}
-                            onClick={() => sendToHotbar(spell)}
-                            data-testid={`button-send-hotbar-${spell.id}`}
-                          >
-                            <Send className="h-3 w-3 mr-1" /> Send to Hotbar
-                          </Button>
-                          {canEdit && (
+                        {canEdit && (
+                          <div className="flex items-center gap-2 mt-2">
                             <Button
                               size="sm"
                               variant="ghost"
                               className="h-7 text-xs text-red-400 hover:bg-red-900/30 hover:text-red-300"
-                              onClick={() => removeMutation.mutate(spell.id)}
+                              onClick={(e) => { e.stopPropagation(); removeMutation.mutate(spell.id); }}
                               data-testid={`button-remove-spell-${spell.id}`}
                             >
                               <Trash2 className="h-3 w-3 mr-1" /> Remove
                             </Button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -396,6 +357,7 @@ export function SpellbookPanel({
       onOpenChange={(o) => { if (!o) setDetailSpellId(null); }}
       spell={detailSpell}
       castCharacter={character}
+      onCast={onSpellCast}
     />
     </>
   );

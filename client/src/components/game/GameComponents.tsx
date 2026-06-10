@@ -4734,6 +4734,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     select: (spells: any[]) => spells.find((s: any) => s.id === hotbar?.v3SpellId),
   });
   const [showV3Detail, setShowV3Detail] = useState(false);
+  const [showMagicPanel, setShowMagicPanel] = useState(false);
 
   // Fetch trait data if traitId exists
   const { data: traitData } = useQuery({
@@ -5875,7 +5876,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const isSkillClickable = !!hotbar?.skillName;
   const isSpellClickable = !!spellData;
   const isTraitClickable = !!traitData;
-  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isDetonatableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
+  const isMagicItemClickable = !!itemData && campaignSystem === 'aa-v3' && (itemData.itemType === 'spellbook' || itemData.itemType === 'scroll');
+  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isDetonatableClickable || isSkillClickable || isSpellClickable || isTraitClickable || isMagicItemClickable;
 
   // Handle throwing an item (place at AOE target location or throw to targeted token)
   const handlePlaceDetonatable = async () => {
@@ -8130,9 +8132,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               onClick={
                 hotbar?.v3SpellId && v3SpellData
                   ? () => setShowV3Detail(true)
-                  : isClickable
-                    ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
-                    : undefined
+                  : isMagicItemClickable
+                    ? () => setShowMagicPanel(true)
+                    : isClickable
+                      ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
+                      : undefined
               }
               onContextMenu={(e) => e.preventDefault()}
               onPointerDown={handlePointerDown}
@@ -8542,6 +8546,33 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
       {hotbar?.v3SpellId && v3SpellData && (
         <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} castCharacter={character} />
+      )}
+
+      {isMagicItemClickable && showMagicPanel && itemData && (
+        <SpellbookPanel
+          open={showMagicPanel}
+          onClose={() => setShowMagicPanel(false)}
+          item={itemData}
+          character={character}
+          canEdit={false}
+          onSpellCast={itemData.itemType === 'scroll' ? async () => {
+            try {
+              const currentQty = itemData.quantity || 1;
+              if (currentQty <= 1) {
+                await api.deleteItem(itemData.id);
+                if (hotbar) await api.deleteHotbar(hotbar.id);
+              } else {
+                await api.updateItem(itemData.id, { quantity: currentQty - 1 });
+              }
+              queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+              queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+              queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+            } catch (err) {
+              console.error('Failed to consume scroll:', err);
+            }
+            setShowMagicPanel(false);
+          } : undefined}
+        />
       )}
 
     </>
@@ -12706,7 +12737,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         weapons: ['weapon'],
         consumables: ['consumable'],
         utility: ['utility', 'container'],
-        armor: ['armor']
+        armor: ['armor'],
+        magic: ['spellbook', 'scroll']
       };
       
       // Special handling for armor hotbar - enforce matching slot
@@ -13182,30 +13214,55 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Tap or drag spells to equip them.
+            {isAAV3 ? 'Tap or drag spellbooks and scrolls to equip them.' : 'Tap or drag spells to equip them.'}
           </p>
-          
-          {canEdit && spells.length > 0 && (
-            <div className="pt-4 border-t border-stone-700 mt-4">
-              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag spells to equip:</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                {spells.map((spell: any) => (
-                  <div
-                    key={spell.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, { type: 'spell', id: spell.id, name: spell.name })}
-                    onClick={() => openEquipPicker('magic', { type: 'spell', id: spell.id, name: spell.name }, spell.name)}
-                    className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
-                    data-testid={`drag-spell-${spell.id}`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-purple-400 truncate">{spell.name}</span>
-                      {spell.manaCost > 0 && <span className="text-violet-400 text-[10px]">{spell.manaCost}M</span>}
+
+          {isAAV3 ? (
+            canEdit && items.filter((it: any) => it.itemType === 'spellbook' || it.itemType === 'scroll').length > 0 && (
+              <div className="pt-4 border-t border-stone-700 mt-4">
+                <Label className="text-xs text-stone-400 mb-2 block">Tap or drag spellbooks/scrolls to equip:</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                  {items.filter((it: any) => it.itemType === 'spellbook' || it.itemType === 'scroll').map((item: any) => (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                      onClick={() => openEquipPicker('magic', { type: 'item', item, itemId: item.id }, item.name)}
+                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target"
+                      data-testid={`drag-magic-item-${item.id}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-purple-400 truncate">{item.name}</span>
+                        <span className="text-stone-500 text-[10px] uppercase">{item.itemType === 'scroll' ? 'Scroll' : 'Book'}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )
+          ) : (
+            canEdit && spells.length > 0 && (
+              <div className="pt-4 border-t border-stone-700 mt-4">
+                <Label className="text-xs text-stone-400 mb-2 block">Tap or drag spells to equip:</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                  {spells.map((spell: any) => (
+                    <div
+                      key={spell.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, { type: 'spell', id: spell.id, name: spell.name })}
+                      onClick={() => openEquipPicker('magic', { type: 'spell', id: spell.id, name: spell.name }, spell.name)}
+                      className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
+                      data-testid={`drag-spell-${spell.id}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-purple-400 truncate">{spell.name}</span>
+                        {spell.manaCost > 0 && <span className="text-violet-400 text-[10px]">{spell.manaCost}M</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           )}
         </CardContent>
       </Card>
@@ -14840,7 +14897,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     : {};
 
   const openItemDetail = () => {
-    if (isAAV3 && item.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(item); return; }
+    if (isAAV3 && (item.itemType === 'spellbook' || item.itemType === 'scroll') && onOpenSpellbook) { onOpenSpellbook(item); return; }
     setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
   };
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -15131,7 +15188,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 key={stackedItem.id}
                 className={`p-2 bg-stone-800 border ${stackedItemRarityClass} rounded cursor-pointer hover:bg-stone-750 transition-colors`}
                 onDoubleClick={() => {
-                  if (isAAV3 && stackedItem.itemType === 'spellbook' && onOpenSpellbook) { onOpenSpellbook(stackedItem); return; }
+                  if (isAAV3 && (stackedItem.itemType === 'spellbook' || stackedItem.itemType === 'scroll') && onOpenSpellbook) { onOpenSpellbook(stackedItem); return; }
                   setSelectedItem(stackedItem);
                   setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`);
                 }}
@@ -20735,6 +20792,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <SelectItem value="consumable">Consumables</SelectItem>
                       <SelectItem value="utility">Utilities</SelectItem>
                       <SelectItem value="container">Containers</SelectItem>
+                      <SelectItem value="currency">Currency</SelectItem>
+                      <SelectItem value="spellbook">Spellbooks</SelectItem>
+                      <SelectItem value="scroll">Scrolls</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -22560,6 +22620,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           bringToFront={bringToFront}
           floatingZIndices={floatingZIndices}
           charPanelSuffix={charPanelSuffix}
+          onSpellCast={selectedSpellbook.itemType === 'scroll' ? () => {
+            const qty = selectedSpellbook.quantity ?? 1;
+            if (qty > 1) {
+              updateItemMutation.mutate({ id: selectedSpellbook.id, data: { quantity: qty - 1 } });
+            } else {
+              deleteItemMutation.mutate(selectedSpellbook.id);
+            }
+            setShowSpellbook(false);
+          } : undefined}
         />
       )}
 
@@ -24514,7 +24583,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     setTemplateRarityFilter('all');
   };
 
-  const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency', ...(campaignSystem === 'aa-v3' ? ['spellbook'] : [])];
+  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({

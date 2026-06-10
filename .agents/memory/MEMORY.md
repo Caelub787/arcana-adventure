@@ -2,3 +2,4 @@
 - [V3 craft consumable accounting](v3-craft-consumable-accounting.md) — gate-by-consumed-item eligibility must reserve inventory across the whole composition, not per-element.
 - [V3 attribute species-bonus accounting](v3-attr-species-bonus-accounting.md) — V3 species attr bonuses are baked into char columns; subtract them to recover player-allocated points for budgets.
 - [Client Item type is hand-written](client-item-type-handwritten.md) — client `Item` (and other entity types) live as hand-written interfaces in `client/src/lib/api.ts`, not schema-inferred; new columns need adding there too.
+- [V3 magic hotbar holds spellbook/scroll items](v3-magic-hotbar-spellbook-items.md) — V3 casts via SpellbookPanel from spellbook/scroll ITEMS; scrolls consumed via V3SpellDetailDialog onCast (success-only).

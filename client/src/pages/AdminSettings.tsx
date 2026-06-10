@@ -2892,11 +2892,14 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="weapon">Weapons</SelectItem>
+              <SelectItem value="ammunition">Ammunition</SelectItem>
               <SelectItem value="armor">Armor</SelectItem>
               <SelectItem value="consumable">Consumables</SelectItem>
               <SelectItem value="utility">Utilities</SelectItem>
               <SelectItem value="container">Containers</SelectItem>
               <SelectItem value="currency">Currency</SelectItem>
+              <SelectItem value="spellbook">Spellbooks</SelectItem>
+              <SelectItem value="scroll">Scrolls</SelectItem>
             </SelectContent>
           </Select>
         </div>
