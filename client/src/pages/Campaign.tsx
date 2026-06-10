@@ -51,8 +51,9 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { WorldObjectsPanel } from "@/components/worldbuilder/WorldObjectsPanel";
+import { WorldRealmCanvas } from "@/components/worldbuilder/WorldRealmCanvas";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2 } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2, Layout as LayoutIcon } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6414,7 +6415,7 @@ function NotesFolderBrowser({ campaignId, onSelectNote }: { campaignId: string; 
   );
 }
 
-type WorldBuilderSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects";
+type WorldBuilderSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects" | "realm";
 
 const WORLD_BUILDER_SECTIONS: { key: WorldBuilderSection; label: string; icon: React.ElementType }[] = [
   { key: "home", label: "Home", icon: Home },
@@ -6424,6 +6425,7 @@ const WORLD_BUILDER_SECTIONS: { key: WorldBuilderSection; label: string; icon: R
   { key: "calendar", label: "Calendar", icon: Calendar },
   { key: "graph", label: "Graph", icon: Network },
   { key: "objects", label: "Objects", icon: Package },
+  { key: "realm", label: "Realm", icon: LayoutIcon },
 ];
 
 function renderWorldHomeContent(content: string) {
@@ -6484,7 +6486,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
   compact?: boolean;
   userId?: string;
 }) {
-  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects";
+  type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects" | "realm";
   interface WbTab {
     id: string;
     type: WbTabType;
@@ -6779,6 +6781,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
     calendar: { icon: Calendar, label: "Calendar" },
     graph: { icon: Network, label: "Graph" },
     objects: { icon: Package, label: "Objects" },
+    realm: { icon: LayoutIcon, label: "Realm" },
   };
 
   const handleNavigateCurrentTab = (sectionType: WbTabType) => {
@@ -7263,6 +7266,17 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                             worldId={selectedWorldId}
                             system={selectedWorld?.system}
                             canEdit={canEditWorldObjects}
+                          />
+                        </div>
+                      )}
+
+                      {tab.type === "realm" && selectedWorldId && (
+                        <div className="h-full min-h-0">
+                          <WorldRealmCanvas
+                            worldId={selectedWorldId}
+                            system={selectedWorld?.system}
+                            canEdit={canEditWorldObjects}
+                            onOpenArticle={(entityId) => handleOpenEntityInCurrentTab(entityId)}
                           />
                         </div>
                       )}

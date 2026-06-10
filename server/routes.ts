@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -15610,6 +15610,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to get world entities:", e);
       res.status(500).json({ error: "Failed to get entities" });
+    }
+  });
+
+  // ==================== CANVAS REALMS (spatial node placement) ====================
+  app.get("/api/worlds/:worldId/canvas-nodes", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+      const nodes = await storage.getWorldCanvasNodes(req.params.worldId);
+      res.json(nodes);
+    } catch (e) {
+      console.error("Failed to get canvas nodes:", e);
+      res.status(500).json({ error: "Failed to get canvas nodes" });
+    }
+  });
+
+  app.put("/api/worlds/:worldId/canvas-nodes", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+      if (!access.isOwner) return res.status(403).json({ error: "Read-only access to this world" });
+      const parsed = insertWorldCanvasNodeSchema.safeParse({ ...req.body, worldId: req.params.worldId });
+      if (!parsed.success) return res.status(400).json({ error: "Invalid canvas node", details: parsed.error.flatten() });
+      const saved = await storage.upsertWorldCanvasNode(parsed.data);
+      res.json(saved);
+    } catch (e) {
+      console.error("Failed to save canvas node:", e);
+      res.status(500).json({ error: "Failed to save canvas node" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/canvas-nodes/:refType/:refId", requireAuth, async (req, res) => {
+    try {
+      const access = await checkWorldAccess(req.session.userId!, req.params.worldId);
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized" });
+      if (!access.isOwner) return res.status(403).json({ error: "Read-only access to this world" });
+      await storage.deleteWorldCanvasNode(req.params.worldId, req.params.refType, req.params.refId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete canvas node:", e);
+      res.status(500).json({ error: "Failed to delete canvas node" });
     }
   });
 

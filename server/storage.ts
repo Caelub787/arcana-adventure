@@ -72,6 +72,7 @@ import {
   type CharacterClass, type InsertCharacterClass,
   type CharacterClassSkill, type InsertCharacterClassSkill,
   type WorldCollaborator, type InsertWorldCollaborator,
+  type WorldCanvasNode, type InsertWorldCanvasNode,
   type EntityAccess, type InsertEntityAccess,
   type CraftRecipe, type InsertCraftRecipe,
   type CraftRecipeIngredient, type InsertCraftRecipeIngredient,
@@ -81,7 +82,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
@@ -638,6 +639,10 @@ export interface IStorage {
   createWorld(world: InsertWorld): Promise<World>;
   updateWorld(id: string, data: Partial<World>): Promise<World | undefined>;
   deleteWorld(id: string): Promise<void>;
+
+  getWorldCanvasNodes(worldId: string): Promise<WorldCanvasNode[]>;
+  upsertWorldCanvasNode(node: InsertWorldCanvasNode): Promise<WorldCanvasNode>;
+  deleteWorldCanvasNode(worldId: string, refType: string, refId: string): Promise<void>;
 
   getWorldCollaborators(worldId: string): Promise<WorldCollaborator[]>;
   addWorldCollaborator(worldId: string, userId: string, role?: string): Promise<WorldCollaborator>;
@@ -4582,6 +4587,41 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorld(id: string): Promise<void> {
     await db.delete(worlds).where(eq(worlds.id, id));
+  }
+
+  async getWorldCanvasNodes(worldId: string): Promise<WorldCanvasNode[]> {
+    return await db.select().from(worldCanvasNodes).where(eq(worldCanvasNodes.worldId, worldId));
+  }
+
+  async upsertWorldCanvasNode(node: InsertWorldCanvasNode): Promise<WorldCanvasNode> {
+    const [saved] = await db
+      .insert(worldCanvasNodes)
+      .values(node)
+      .onConflictDoUpdate({
+        target: [worldCanvasNodes.worldId, worldCanvasNodes.refType, worldCanvasNodes.refId],
+        set: {
+          x: node.x,
+          y: node.y,
+          width: node.width,
+          height: node.height,
+          z: node.z,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return saved;
+  }
+
+  async deleteWorldCanvasNode(worldId: string, refType: string, refId: string): Promise<void> {
+    await db
+      .delete(worldCanvasNodes)
+      .where(
+        and(
+          eq(worldCanvasNodes.worldId, worldId),
+          eq(worldCanvasNodes.refType, refType),
+          eq(worldCanvasNodes.refId, refId),
+        ),
+      );
   }
 
   async getWorldCollaborators(worldId: string): Promise<WorldCollaborator[]> {

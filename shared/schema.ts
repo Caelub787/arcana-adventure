@@ -1811,6 +1811,34 @@ export const insertEntityLinkSchema = createInsertSchema(entityLinks).omit({
 export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
 export type EntityLink = typeof entityLinks.$inferSelect;
 
+// Canvas Realms: persisted spatial placement (position/size/z-order) of a world's
+// nodes on the infinite worldbuilding canvas. A node references either a wiki
+// entity or a world-scoped functional object (item / spell / character).
+export const worldCanvasNodes = pgTable("world_canvas_nodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  worldId: varchar("world_id").notNull().references(() => worlds.id, { onDelete: "cascade" }),
+  refType: text("ref_type").notNull(), // "entity" | "item" | "spell" | "character"
+  refId: varchar("ref_id").notNull(),
+  x: real("x").notNull().default(0),
+  y: real("y").notNull().default(0),
+  width: real("width").notNull().default(280),
+  height: real("height").notNull().default(200),
+  z: integer("z").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueWorldRef: uniqueIndex("world_canvas_nodes_world_ref_unique").on(table.worldId, table.refType, table.refId),
+}));
+
+export const insertWorldCanvasNodeSchema = createInsertSchema(worldCanvasNodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertWorldCanvasNode = z.infer<typeof insertWorldCanvasNodeSchema>;
+export type WorldCanvasNode = typeof worldCanvasNodes.$inferSelect;
+
 export const worldShareLinks = pgTable("world_share_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),

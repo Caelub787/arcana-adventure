@@ -155,6 +155,63 @@ export function useDeleteEntity(worldId: string | undefined) {
   });
 }
 
+export interface WorldCanvasNode {
+  id: string;
+  worldId: string;
+  refType: "entity" | "item" | "spell" | "character";
+  refId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  z: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useWorldCanvasNodes(worldId: string | undefined) {
+  return useQuery<WorldCanvasNode[]>({
+    queryKey: ["/api/worlds", worldId, "canvas-nodes"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/canvas-nodes`),
+    enabled: !!worldId,
+  });
+}
+
+export function useUpsertWorldCanvasNode(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (node: {
+      refType: string;
+      refId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      z: number;
+    }) =>
+      fetchJSON(`/api/worlds/${worldId}/canvas-nodes`, {
+        method: "PUT",
+        body: JSON.stringify(node),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "canvas-nodes"] });
+    },
+  });
+}
+
+export function useDeleteWorldCanvasNode(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ refType, refId }: { refType: string; refId: string }) =>
+      fetchJSON(`/api/worlds/${worldId}/canvas-nodes/${refType}/${refId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "canvas-nodes"] });
+    },
+  });
+}
+
 export function useCreateEntityLink(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

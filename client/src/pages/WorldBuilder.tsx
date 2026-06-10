@@ -9,6 +9,7 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldObjectsPanel } from "@/components/worldbuilder/WorldObjectsPanel";
+import { WorldRealmCanvas } from "@/components/worldbuilder/WorldRealmCanvas";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
 import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap, useWorldCollaborators } from "@/lib/worldbuilding-api";
@@ -57,8 +58,8 @@ function renderHomeContent(content: string) {
   });
 }
 
-type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects";
-type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects";
+type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph" | "objects" | "realm";
+type WbTabType = "home" | "encyclopedia" | "article" | "maps" | "map-edit" | "timeline" | "calendar" | "graph" | "objects" | "realm";
 
 interface WbTab {
   id: string;
@@ -77,6 +78,7 @@ const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementTy
   { key: "calendar", label: "Calendar", icon: Calendar, description: "Custom calendars" },
   { key: "graph", label: "Graph", icon: Network, description: "Relationship graph" },
   { key: "objects", label: "Objects", icon: Package, description: "Items, spells & characters" },
+  { key: "realm", label: "Realm", icon: Layout, description: "Spatial canvas workspace" },
 ];
 
 const TAB_TYPE_ICONS: Record<WbTabType, { icon: React.ElementType; label: string }> = {
@@ -89,6 +91,7 @@ const TAB_TYPE_ICONS: Record<WbTabType, { icon: React.ElementType; label: string
   calendar: { icon: Calendar, label: "Calendar" },
   graph: { icon: Network, label: "Graph" },
   objects: { icon: Package, label: "Objects" },
+  realm: { icon: Layout, label: "Realm" },
 };
 
 interface World {
@@ -1684,6 +1687,17 @@ export default function WorldBuilder() {
                   worldId={selectedWorldId}
                   system={selectedWorld?.system}
                   canEdit={canEditWorldObjects}
+                />
+              </div>
+            )}
+
+            {activeSection === "realm" && selectedWorldId && (
+              <div className="flex-1 min-h-0">
+                <WorldRealmCanvas
+                  worldId={selectedWorldId}
+                  system={selectedWorld?.system}
+                  canEdit={canEditWorldObjects}
+                  onOpenArticle={handleSelectEntity}
                 />
               </div>
             )}
