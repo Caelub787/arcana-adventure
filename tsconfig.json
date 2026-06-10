@@ -3,8 +3,7 @@
     "client/src/**/*",
     "shared/**/*",
     "server/**/*",
-    "packages/library-dialogs/src/**/*",
-    "packages/aa-sync-sdk/index.ts"
+    "packages/library-dialogs/src/**/*"
   ],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
@@ -25,8 +24,7 @@
       "@/*": ["./client/src/*"],
       "@shared/*": ["./shared/*"],
       "@arcana/library-dialogs": ["./packages/library-dialogs/src/index.ts"],
-      "@arcana/library-dialogs/theme.css": ["./packages/library-dialogs/src/theme.css"],
-      "@arcana/aa-sync-sdk": ["./packages/aa-sync-sdk/index.ts"]
+      "@arcana/library-dialogs/theme.css": ["./packages/library-dialogs/src/theme.css"]
     }
   }
 }

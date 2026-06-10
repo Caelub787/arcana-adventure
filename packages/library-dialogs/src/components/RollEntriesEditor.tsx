@@ -2,9 +2,9 @@
  * Draft-mode RollEntriesEditor.
  *
  * Operates entirely on a local draft array passed in via `value`/`onChange`.
- * The parent dialog bundles the draft into the sync upsert payload — there
- * are NO live REST calls per-roll, which matches CanvasRealms' transport
- * model and the children-aware /api/sync/v1 contract.
+ * The parent dialog bundles the draft into the transport upsert payload —
+ * there are NO live REST calls per-roll, which matches the host's
+ * children-aware bundled-write transport model.
  *
  * The data shape produced here is byte-identical to Arcana's `roll_entries`
  * row shape (see shared/schema.ts:1435), so a roll created here round-trips

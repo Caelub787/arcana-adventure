@@ -44,14 +44,11 @@ const host = useMemo(
 
 ## Why a session adapter
 
-Arcana authenticates via `express-session` cookies; the package's
-default transport (`ArcanaSyncClient` from `@arcana/aa-sync-sdk`) only
-accepts OAuth bearer tokens. Rather than mint internal tokens (which
-would require a new backend route), we extended the package with
-`arcanaSessionHostAdapter` (added in 0.6.0), which accepts any object
-satisfying the `LibraryTransport` interface. Arcana wraps its existing
-`api.*` REST methods in such a shim and hands it in directly — no new
-routes, no token storage, no OAuth round-trip.
+Arcana authenticates via `express-session` cookies. The package ships
+`arcanaSessionHostAdapter`, which accepts any object satisfying the
+`LibraryTransport` interface. Arcana wraps its existing `api.*` REST
+methods in such a shim and hands it in directly — no new routes, no
+token storage, no OAuth round-trip.
 
 ```ts
 const arcanaApiTransport: LibraryTransport = {

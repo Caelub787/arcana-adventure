@@ -7,9 +7,8 @@
  * container / currency / crafter (AAv2 only).
  *
  * Save flow: bundles `rolls`, `craftRecipes`, and `templateLinks` into
- * a single sync upsert payload. The server's children-aware `applyChildren`
- * persists the rolls; `templateLinks` is forwarded to the existing
- * /api/sync/v1 contract for link table writes.
+ * a single transport upsert payload. The host's children-aware write path
+ * persists the rolls; `templateLinks` is forwarded for link table writes.
  *
  * Load flow: hydrates from the enriched GET response (rolls, recipes,
  * templateLinks).

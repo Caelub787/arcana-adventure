@@ -16,10 +16,7 @@
     "allowSyntheticDefaultImports": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@arcana/aa-sync-sdk": ["../aa-sync-sdk/dist/index.d.ts"]
-    }
+    "baseUrl": "."
   },
   "include": ["src/**/*"]
 }

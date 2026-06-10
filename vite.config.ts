@@ -30,7 +30,6 @@ export default defineConfig({
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
       "@arcana/library-dialogs/theme.css": path.resolve(import.meta.dirname, "packages/library-dialogs/src/theme.css"),
       "@arcana/library-dialogs": path.resolve(import.meta.dirname, "packages/library-dialogs/src/index.ts"),
-      "@arcana/aa-sync-sdk": path.resolve(import.meta.dirname, "packages/aa-sync-sdk/index.ts"),
     },
   },
   css: {

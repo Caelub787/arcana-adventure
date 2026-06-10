@@ -6,7 +6,7 @@ import {
   type ImagePickerOpts,
   type NotifyLevel,
 } from "@arcana/library-dialogs";
-import type { SyncKind, SyncEnvelope } from "@arcana/aa-sync-sdk";
+import type { SyncKind, SyncEnvelope } from "@arcana/library-dialogs";
 import "@arcana/library-dialogs/theme.css";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useToast } from "@/hooks/use-toast";

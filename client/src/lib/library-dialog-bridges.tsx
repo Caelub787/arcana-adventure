@@ -5,7 +5,7 @@ import type {
   ImagePickerOpts,
 } from '@arcana/library-dialogs';
 import type { ItemDraft } from '@arcana/library-dialogs';
-import type { SyncEnvelope, SyncKind } from '@arcana/aa-sync-sdk';
+import type { SyncEnvelope, SyncKind } from '@arcana/library-dialogs';
 import {
   Dialog,
   DialogContent,

@@ -69,12 +69,6 @@ const h = vi.hoisted(() => {
 
 vi.mock("../storage", () => ({ storage: h.storage }));
 vi.mock("../db", () => ({ db: h.db, pool: {} }));
-vi.mock("../sync", () => ({
-  registerSync: async () => {},
-  emitLibraryChange: () => {},
-  getRecentJobsSummary: async () => [],
-  retryFailedJobs: async () => 0,
-}));
 vi.mock("../email", () => ({ sendPasswordResetEmail: async () => {} }));
 vi.mock("../googleDrive", () => ({
   listFolders: async () => [],

@@ -3,25 +3,41 @@
  *
  * The HostAdapter is the single injection seam. Partner apps fill it in
  * to provide transport (any object satisfying `LibraryTransport` —
- * typically a configured `@arcana/aa-sync-sdk` client OR a host-supplied
- * shim that wraps existing in-app REST routes), notifications, an
- * optional image picker, and an optional modal slot.
+ * typically a host-supplied shim that wraps existing in-app REST routes),
+ * notifications, an optional image picker, and an optional modal slot.
  *
  * Theme is NOT carried on this object — theming is exclusively driven by
  * CSS custom properties (see `theme.css`). This keeps re-skinning a
  * one-line override on the consumer's root element.
  */
 import type { ReactNode, ComponentType } from "react";
-import type { ArcanaSyncClient, SyncKind, SyncEnvelope } from "@arcana/aa-sync-sdk";
+
+/** The library entity kinds the dialogs can read/write. */
+export type SyncKind =
+  | "item"
+  | "spell"
+  | "character"
+  | "species"
+  | "class"
+  | "feat-tree"
+  | "character-template"
+  | "roll-template"
+  | "element";
+
+/** Envelope returned by transport get/upsert/patch operations. */
+export interface SyncEnvelope<T = any> {
+  kind: SyncKind;
+  id: string;
+  externalId: string | null;
+  data: T;
+}
 
 export type NotifyLevel = "info" | "success" | "warning" | "error";
 
 /**
- * Minimum transport surface the dialogs use. `ArcanaSyncClient` already
- * satisfies this structurally, so OAuth-based mounts continue to work
- * unchanged. Hosts that prefer session-cookie auth (e.g. Arcana itself)
- * can supply a shim that wraps their existing `api.*` REST methods —
- * see `arcanaSessionHostAdapter`.
+ * Minimum transport surface the dialogs use. Hosts supply a shim that
+ * wraps their existing `api.*` REST methods (session-cookie auth) — see
+ * `arcanaSessionHostAdapter`.
  */
 export interface LibraryTransport {
   list<T = any>(kind: SyncKind): Promise<{ data: T[] }>;
@@ -60,9 +76,9 @@ export type HostModalComponent = ComponentType<HostModalProps>;
 
 export interface HostAdapter {
   /**
-   * Pre-configured transport. Typically an `ArcanaSyncClient`, but any
-   * object satisfying `LibraryTransport` works — letting hosts wire the
-   * dialogs to existing in-app REST routes via a thin shim.
+   * Pre-configured transport. Any object satisfying `LibraryTransport`
+   * works — letting hosts wire the dialogs to existing in-app REST
+   * routes via a thin shim.
    */
   transport: LibraryTransport;
 
@@ -125,4 +141,3 @@ export interface DialogProps<T = unknown> {
   campaignSystem?: string;
 }
 
-export type { ArcanaSyncClient, SyncKind, SyncEnvelope };

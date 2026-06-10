@@ -15,7 +15,6 @@ import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import AdminSettings from "@/pages/AdminSettings";
-import Account from "@/pages/Account";
 import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
@@ -177,9 +176,6 @@ function Router() {
       </Route>
       <Route path="/admin">
         {() => <ProtectedRoute component={AdminSettings} />}
-      </Route>
-      <Route path="/account">
-        {() => <ProtectedRoute component={Account} />}
       </Route>
       <Route path="/admin/security">
         {() => <ProtectedRoute component={SiteSecurity} />}

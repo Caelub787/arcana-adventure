@@ -10,7 +10,6 @@ import { db } from "./db";
 import { eq, sql, and, inArray, or, isNull } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
-import { registerSync, emitLibraryChange, getRecentJobsSummary, retryFailedJobs } from "./sync";
 import multer from "multer";
 import sharp from "sharp";
 import fs from "fs";
@@ -751,24 +750,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         client.send(messageString);
       }
     });
-
-    // Mirror admin library changes to external sync subscribers (CanvasRealms etc.).
-    // Lower-fidelity event — receivers re-pull the affected list.
-    if (message && message.type === "admin_data_changed" && typeof message.entity === "string") {
-      const entityToKind: Record<string, string> = {
-        "system-items": "item",
-        "system-spells": "spell",
-        "system-species": "species",
-        "classes": "class",
-        "feat-trees": "feat-tree",
-        "character-templates": "character-template",
-        "item-templates": "roll-template",
-        "craft-recipes": "craft-recipe",
-        "crafter-recipe-templates": "crafter-recipe-template",
-      };
-      const kind = entityToKind[message.entity] || message.entity;
-      void emitLibraryChange({ event: "library.changed", kind, action: "changed" });
-    }
   }
 
   function sendToUser(userId: string, message: any): void {
@@ -16919,97 +16900,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('[AA V2 Fix] Error correcting class points:', err);
     }
   })();
-
-  // === External sync (CanvasRealms, etc.) ===
-  await registerSync(app);
-
-  // Connected Apps — current user's authorized OAuth clients
-  app.get("/api/account/connected-apps", requireAuth, async (req: any, res) => {
-    try {
-      const userId = req.session.userId;
-      const { oauthAccessTokens, oauthRefreshTokens, oauthClients } = await import("@shared/schema");
-      // A connected app is anything with an active access OR refresh token
-      // grant. Listing only access tokens hides apps whose access token has
-      // expired but whose refresh grant is still valid (which is the normal
-      // long-lived state for an installed integration), and would make those
-      // apps un-revokable from the UI.
-      const [accessTokens, refreshTokens] = await Promise.all([
-        db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.userId, userId)),
-        db.select().from(oauthRefreshTokens).where(eq(oauthRefreshTokens.userId, userId)),
-      ]);
-      const now = Date.now();
-      const byClient = new Map<string, { clientId: string; scopes: Set<string>; lastUsedAt: Date | null; createdAt: Date; tokenCount: number }>();
-      for (const t of accessTokens) {
-        if (t.revokedAt) continue;
-        if (t.expiresAt.getTime() < now) continue;
-        const e = byClient.get(t.clientId) || { clientId: t.clientId, scopes: new Set<string>(), lastUsedAt: null, createdAt: t.createdAt, tokenCount: 0 };
-        e.tokenCount++;
-        for (const s of t.scopes || []) e.scopes.add(s);
-        if (!e.lastUsedAt || (t.lastUsedAt && t.lastUsedAt > e.lastUsedAt)) e.lastUsedAt = t.lastUsedAt;
-        if (t.createdAt < e.createdAt) e.createdAt = t.createdAt;
-        byClient.set(t.clientId, e);
-      }
-      for (const r of refreshTokens) {
-        if (r.revokedAt) continue;
-        if (r.expiresAt.getTime() < now) continue;
-        // Surface the app even if there is no current access token entry.
-        const e = byClient.get(r.clientId) || { clientId: r.clientId, scopes: new Set<string>(), lastUsedAt: null, createdAt: r.createdAt, tokenCount: 0 };
-        for (const s of r.scopes || []) e.scopes.add(s);
-        if (r.createdAt < e.createdAt) e.createdAt = r.createdAt;
-        byClient.set(r.clientId, e);
-      }
-      const clientRows = await db.select().from(oauthClients);
-      const nameByClient = new Map(clientRows.map(c => [c.clientId, c.name]));
-      const apps = Array.from(byClient.values()).map(e => ({
-        clientId: e.clientId,
-        clientName: nameByClient.get(e.clientId) || e.clientId,
-        scopes: Array.from(e.scopes),
-        lastUsedAt: e.lastUsedAt,
-        createdAt: e.createdAt,
-        tokenCount: e.tokenCount,
-      }));
-      res.json({ apps });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || String(err) });
-    }
-  });
-
-  app.post("/api/account/connected-apps/:clientId/revoke", requireAuth, async (req: any, res) => {
-    try {
-      const userId = req.session.userId;
-      const clientId = req.params.clientId;
-      const { oauthAccessTokens, oauthRefreshTokens } = await import("@shared/schema");
-      await db.update(oauthAccessTokens).set({ revokedAt: new Date() })
-        .where(and(eq(oauthAccessTokens.userId, userId), eq(oauthAccessTokens.clientId, clientId)));
-      await db.update(oauthRefreshTokens).set({ revokedAt: new Date() })
-        .where(and(eq(oauthRefreshTokens.userId, userId), eq(oauthRefreshTokens.clientId, clientId)));
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || String(err) });
-    }
-  });
-
-  // Admin-only sync status dashboard endpoints
-  // Note: webhook job lifecycle uses status='dead' for jobs that exhausted
-  // MAX_ATTEMPTS retries (a.k.a. "failed" deliveries from the operator's
-  // perspective). The response aliases `failed` → `dead` so admin tooling
-  // and external docs that say "failed" continue to work unchanged.
-  app.get("/api/admin/sync-status", requireAdmin, async (_req, res) => {
-    try {
-      const summary = await getRecentJobsSummary(50);
-      res.json(summary);
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || String(err) });
-    }
-  });
-  app.post("/api/admin/sync-status/retry", requireAdmin, async (_req, res) => {
-    try {
-      const n = await retryFailedJobs();
-      res.json({ retried: n });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || String(err) });
-    }
-  });
 
   return httpServer;
 }

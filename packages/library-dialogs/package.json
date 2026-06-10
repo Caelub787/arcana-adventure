@@ -1,7 +1,7 @@
 {
   "name": "@arcana/library-dialogs",
   "version": "0.6.0",
-  "description": "Drop-in React dialogs (Item / Spell / Character / etc.) for Arcana Adventure-compatible apps. Persistence via @arcana/aa-sync-sdk.",
+  "description": "Drop-in React dialogs (Item / Spell / Character / etc.) for Arcana Adventure-compatible apps.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,12 +25,10 @@
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0",
-    "@arcana/aa-sync-sdk": "*"
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@arcana/aa-sync-sdk": "file:../aa-sync-sdk"
+    "typescript": "^5.4.0"
   },
   "license": "MIT"
 }

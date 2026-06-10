@@ -13,13 +13,11 @@
  */
 export type {
   HostAdapter, LibraryTransport, NotifyLevel, ImagePickerOpts, HostModalProps,
-  HostModalComponent, DialogProps,
+  HostModalComponent, DialogProps, SyncKind, SyncEnvelope,
 } from "./types";
 
-export { minimalHostAdapter } from "./host/minimal";
-export type { MinimalHostOptions } from "./host/minimal";
-export { arcanaHostAdapter, arcanaSessionHostAdapter } from "./host/arcana";
-export type { ArcanaHostOptions, ArcanaSessionHostOptions } from "./host/arcana";
+export { arcanaSessionHostAdapter } from "./host/arcana";
+export type { ArcanaSessionHostOptions } from "./host/arcana";
 
 // Dialogs
 export { ItemDialog } from "./dialogs/ItemDialog";

@@ -2185,80 +2185,6 @@ export const insertSpectatorTokenSchema = createInsertSchema(spectatorTokens).om
 export type InsertSpectatorToken = z.infer<typeof insertSpectatorTokenSchema>;
 export type SpectatorToken = typeof spectatorTokens.$inferSelect;
 
-// ==================== EXTERNAL SYNC (CanvasRealms etc.) ====================
-
-export const oauthClients = pgTable("oauth_clients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  clientId: text("client_id").notNull().unique(),
-  clientSecretHash: text("client_secret_hash").notNull(),
-  name: text("name").notNull(),
-  redirectUris: text("redirect_uris").array().notNull(),
-  allowedScopes: text("allowed_scopes").array().notNull().default(sql`ARRAY['library:read','library:write','webhooks:manage']::text[]`),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type OAuthClient = typeof oauthClients.$inferSelect;
-
-export const oauthAuthorizationCodes = pgTable("oauth_authorization_codes", {
-  code: text("code").primaryKey(),
-  clientId: text("client_id").notNull(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  redirectUri: text("redirect_uri").notNull(),
-  scopes: text("scopes").array().notNull(),
-  codeChallenge: text("code_challenge"),
-  codeChallengeMethod: text("code_challenge_method"),
-  expiresAt: timestamp("expires_at").notNull(),
-  consumed: boolean("consumed").default(false).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const oauthAccessTokens = pgTable("oauth_access_tokens", {
-  token: text("token").primaryKey(),
-  clientId: text("client_id").notNull(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  scopes: text("scopes").array().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  revokedAt: timestamp("revoked_at"),
-  lastUsedAt: timestamp("last_used_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type OAuthAccessToken = typeof oauthAccessTokens.$inferSelect;
-
-export const oauthRefreshTokens = pgTable("oauth_refresh_tokens", {
-  token: text("token").primaryKey(),
-  clientId: text("client_id").notNull(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  scopes: text("scopes").array().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  revokedAt: timestamp("revoked_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const externalEntityLinks = pgTable("external_entity_links", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  integration: text("integration").notNull(),
-  externalId: text("external_id").notNull(),
-  entityKind: text("entity_kind").notNull(),
-  internalId: varchar("internal_id").notNull(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (t) => ({
-  // Scope external IDs by user so two CanvasRealms users syncing the same
-  // externalId don't collide. (integration, kind, externalId, userId) is unique.
-  uniq: uniqueIndex("ext_link_uniq").on(t.integration, t.entityKind, t.externalId, t.userId),
-}));
-export type ExternalEntityLink = typeof externalEntityLinks.$inferSelect;
-
-export const outgoingWebhooks = pgTable("outgoing_webhooks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  clientId: text("client_id").notNull(),
-  url: text("url").notNull(),
-  secret: text("secret").notNull(),
-  active: boolean("active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type OutgoingWebhook = typeof outgoingWebhooks.$inferSelect;
-
 // AA V3 crafted spells. Each craft attempt that succeeds creates a row.
 // GM authors name/description/image; admin approval marks a composition canonical.
 export const v3Spells = pgTable("v3_spells", {
@@ -2321,16 +2247,3 @@ export const insertV3ElementRequirementSchema = createInsertSchema(v3ElementRequ
 });
 export type InsertV3ElementRequirement = z.infer<typeof insertV3ElementRequirementSchema>;
 export type V3ElementRequirement = typeof v3ElementRequirements.$inferSelect;
-
-export const outboundWebhookJobs = pgTable("outbound_webhook_jobs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  webhookId: varchar("webhook_id").references(() => outgoingWebhooks.id, { onDelete: "cascade" }).notNull(),
-  payload: jsonb("payload").notNull(),
-  status: text("status").default("pending").notNull(), // pending|sending|succeeded|failed|dead
-  attempts: integer("attempts").default(0).notNull(),
-  lastError: text("last_error"),
-  nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-export type OutboundWebhookJob = typeof outboundWebhookJobs.$inferSelect;

@@ -1,26 +1,25 @@
 # @arcana/library-dialogs
 
-Drop-in React dialogs for Arcana Adventure-compatible apps (CanvasRealms et al.).
+Drop-in React dialogs for Arcana Adventure-compatible apps.
 Same fields, prompts, conditionals, and nested editors as the live Arcana UI —
-but framework-agnostic, theme-free, and persisted via the existing
-`@arcana/aa-sync-sdk`.
+but framework-agnostic, theme-free, and persisted through a host-supplied
+transport that wraps your existing REST routes.
 
 > **This release (0.6.0) ships the full library: Item, Roll-Template, Spell,
 > Character, Character-Template, Species, Feat-Tree, and Class dialogs —
 > plus the standalone `<FeatTreeCanvas>`, `<SkillTreeEditor>`, and
-> `<ClassSkillsPanel>` editors.** 0.6.0 adds the
+> `<ClassSkillsPanel>` editors.** It exposes the
 > `arcanaSessionHostAdapter` factory + `LibraryTransport` interface so
-> Arcana itself can mount the dialogs against its existing
-> session-cookie REST routes without OAuth tokens — see `MIGRATION.md`.
-> The HostAdapter contract, theming surface, and transport wiring are
-> stable; per-dialog migration in Arcana lands across follow-up tasks.
+> Arcana mounts the dialogs against its existing session-cookie REST
+> routes — see `MIGRATION.md`. The HostAdapter contract, theming
+> surface, and transport wiring are stable.
 
 ---
 
 ## Install
 
 ```bash
-npm install @arcana/library-dialogs @arcana/aa-sync-sdk
+npm install @arcana/library-dialogs
 ```
 
 React 18 is a peer dependency. No Tailwind. No Radix. No shadcn.
@@ -36,24 +35,23 @@ import "@arcana/library-dialogs/theme.css";
 
 ```tsx
 import { useState, useMemo } from "react";
-import { ItemDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+import { ItemDialog, arcanaSessionHostAdapter } from "@arcana/library-dialogs";
 
-const host = useMemo(() => minimalHostAdapter({
-  baseUrl: "https://your-arcana.example",
-  accessToken: yourOAuthBearerToken,
+const host = useMemo(() => arcanaSessionHostAdapter({
+  transport: arcanaApiTransport,                     // wraps your api.* methods
   notify: (level, msg) => myToast[level](msg),       // optional
   imagePicker: (opts) => myAssetBrowser.pick(opts),  // optional
-}), [yourOAuthBearerToken]);
+}), []);
 
 const [open, setOpen] = useState(false);
 
 return <ItemDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />;
 ```
 
-That's it — four lines. The dialog talks to `/api/sync/v1/items`, bundles its
-nested rolls + craft recipes + template links into one upsert, hydrates from
-the children-aware GET on edit, and routes notifications/image-picks back to
-your app.
+The dialog bundles its nested rolls + craft recipes + template links into one
+`transport.upsert`, hydrates from `transport.get` on edit, and routes
+notifications/image-picks back to your app. See `MIGRATION.md` for a full
+`LibraryTransport` shim that wraps existing `api.*` REST methods.
 
 ---
 
@@ -65,7 +63,7 @@ attribute (the default modal sets this on its overlay; supply it yourself if
 you use a custom `host.modal`).
 
 ```css
-.my-canvasrealms-skin {
+.my-custom-skin {
   --ld-bg:            #0d0a14;
   --ld-surface:       #1a1029;
   --ld-surface-2:     #110a1d;
@@ -83,7 +81,7 @@ you use a custom `host.modal`).
 ```
 
 ```tsx
-<div className="my-canvasrealms-skin" data-ld-root>
+<div className="my-custom-skin" data-ld-root>
   <ItemDialog ... />
 </div>
 ```
@@ -98,16 +96,14 @@ A single object the partner fills in:
 
 | Field         | Type                                                  | Required | Notes                                              |
 | ------------- | ----------------------------------------------------- | -------- | -------------------------------------------------- |
-| `transport`   | `LibraryTransport` (typically an `ArcanaSyncClient` from `@arcana/aa-sync-sdk`, or any object implementing the same `list`/`get`/`upsert`/`patch`/`delete` surface) | yes | Pre-configured. `minimalHostAdapter` builds it from an OAuth token; `arcanaSessionHostAdapter` accepts a host-supplied shim that wraps existing in-app REST methods (no token, session-cookie auth). |
+| `transport`   | `LibraryTransport` — any object implementing the `list`/`get`/`upsert`/`patch`/`delete` surface | yes | A host-supplied shim that wraps your existing in-app REST methods (session-cookie auth). |
 | `notify`      | `(level, message) => void`                            | yes      | Bridge to your toast system.                       |
 | `imagePicker` | `(opts) => Promise<{url}|null>`                       | no       | Falls back to a plain URL input.                   |
 | `modal`       | React component matching `HostModalProps`             | no       | Falls back to centered overlay (`DefaultModal`).   |
 
-Two factories ship out-of-the-box:
-
-* `minimalHostAdapter({ baseUrl, accessToken, ... })` — for partners.
-* `arcanaHostAdapter({ accessToken, notify, imagePicker, modal })` — for Arcana's
-  internal migration (task #61 of our roadmap).
+The `arcanaSessionHostAdapter({ transport, notify, imagePicker, modal })`
+factory builds the adapter from your `LibraryTransport` shim — no tokens, no
+OAuth round-trip. See `MIGRATION.md`.
 
 ---
 
@@ -230,9 +226,10 @@ Two factories ship out-of-the-box:
 
 ## Persistence model
 
-All saves bundle their nested children in one upsert against
-`/api/sync/v1/{kind}s`. The server's children-aware `applyChildren` writes
-the parent + the children in a single bundled write. **No new backend routes are required.**
+All saves bundle their nested children in one `transport.upsert(kind, …)`.
+The host's transport routes this to its existing children-aware write path,
+persisting the parent + the children in a single bundled write.
+**No new backend routes are required.**
 
 ```
 ItemDialog.handleSave
@@ -249,19 +246,14 @@ enriched payload (the server's `serializeWithChildren`).
 
 ---
 
-## Browser example
-
-A runnable smoke test lives in `examples/canvasrealms-mount/`. It mounts
-`<ItemDialog>`, `<RollTemplateDialog>`, and `<SpellDialog>` behind buttons
-against a live Arcana instance using a partner OAuth bearer token, and ships
-with a CanvasRealms-flavored skin so you can see end-to-end re-theming.
+## Usage examples
 
 ### Mounting `<SpellDialog>`
 
 ```tsx
-import { SpellDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+import { SpellDialog, arcanaSessionHostAdapter } from "@arcana/library-dialogs";
 
-const host = minimalHostAdapter({ baseUrl, accessToken });
+const host = arcanaSessionHostAdapter({ transport, notify });
 
 // Create a new spell
 <SpellDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
@@ -280,15 +272,8 @@ const host = minimalHostAdapter({ baseUrl, accessToken });
 ```
 
 Save fires `host.transport.upsert("spell", { ...spellFields, rolls, templateLinks })`.
-The server's `applyChildren` writes `roll_entries` and `spell_template_links`
+The host's transport writes `roll_entries` and `spell_template_links`
 in the same single-request bundled write — no extra round-trips.
-
-```bash
-cd examples/canvasrealms-mount
-npm install
-npm run dev
-# Then enter your Arcana base URL + OAuth token in the UI.
-```
 
 ---
 
@@ -306,10 +291,10 @@ npm run dev
 
 ```tsx
 import {
-  CharacterDialog, CharacterTemplateDialog, minimalHostAdapter,
+  CharacterDialog, CharacterTemplateDialog, arcanaSessionHostAdapter,
 } from "@arcana/library-dialogs";
 
-const host = minimalHostAdapter({ baseUrl, accessToken });
+const host = arcanaSessionHostAdapter({ transport, notify });
 
 // Player character (kind="character" — needs campaignId + userId in normal use)
 <CharacterDialog open={open} onOpenChange={setOpen} host={host} campaignSystem="aa-v2" />
@@ -332,10 +317,10 @@ round-trip identically across both UIs.
 
 ```tsx
 import {
-  SpeciesDialog, FeatTreeDialog, minimalHostAdapter,
+  SpeciesDialog, FeatTreeDialog, arcanaSessionHostAdapter,
 } from "@arcana/library-dialogs";
 
-const host = minimalHostAdapter({ baseUrl, accessToken });
+const host = arcanaSessionHostAdapter({ transport, notify });
 
 // Create a species — feat-tree picker is auto-populated from
 // host.transport.list("feat-tree")
@@ -373,9 +358,9 @@ Drop the canvas into your own multi-pane editor and bundle its output
 ### Mounting `<ClassDialog>`
 
 ```tsx
-import { ClassDialog, minimalHostAdapter } from "@arcana/library-dialogs";
+import { ClassDialog, arcanaSessionHostAdapter } from "@arcana/library-dialogs";
 
-const host = minimalHostAdapter({ baseUrl, accessToken });
+const host = arcanaSessionHostAdapter({ transport, notify });
 
 // Create a new class — embeds <SkillTreeEditor> for the graph view and
 // <ClassSkillsPanel> for the flat list view (toggle inside the dialog)
