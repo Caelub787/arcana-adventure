@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, type V3AttributeKey } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, type V3AttributeKey, type V3ArmorBoost } from "@shared/v3";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5275,11 +5275,15 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         item.itemType === 'armor' && equippedArmorIds.includes(item.id)
       );
       
-      // Calculate total damage reduction from armor matching the damage type
-      for (const armor of equippedArmor) {
-        if (damageType && armor.damageReductionType === damageType && (armor.damageReduction || 0) > 0) {
-          reduction += armor.damageReduction || 0;
-          armorName = armor.name; // Track the last armor that provided reduction
+      // Calculate total damage reduction from armor matching the damage type.
+      // AA V3 armor does not reduce damage by type (it boosts attrs/skills
+      // instead), so this loop is skipped entirely for aa-v3 campaigns.
+      if (campaignSystem !== 'aa-v3') {
+        for (const armor of equippedArmor) {
+          if (damageType && armor.damageReductionType === damageType && (armor.damageReduction || 0) > 0) {
+            reduction += armor.damageReduction || 0;
+            armorName = armor.name; // Track the last armor that provided reduction
+          }
         }
       }
       
@@ -16066,6 +16070,85 @@ function TraitEditForm({
 }
 
 // ---------------------------------------------------------------------------
+// AA V3: Armor boosts editor. Lets a GM/admin attach one or more attribute/skill
+// boosts to a piece of V3 armor (target + integer amount). Reused by the
+// in-campaign Add / Detail item dialogs.
+// ---------------------------------------------------------------------------
+function V3ArmorBoostsEditor({
+  boosts,
+  onChange,
+}: {
+  boosts: V3ArmorBoost[];
+  onChange: (next: V3ArmorBoost[]) => void;
+}) {
+  const rows = boosts.length > 0 ? boosts : [{ target: '', amount: 1 }];
+  const update = (idx: number, patch: Partial<V3ArmorBoost>) => {
+    const next = rows.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+    onChange(next);
+  };
+  const removeRow = (idx: number) => {
+    const next = rows.filter((_, i) => i !== idx);
+    onChange(next);
+  };
+  const addRow = () => onChange([...rows, { target: '', amount: 1 }]);
+  return (
+    <div className="border-t border-stone-700 pt-4">
+      <h3 className="text-sm font-bold text-stone-300 mb-1">Armor Settings</h3>
+      <p className="text-xs text-stone-500 mb-3">Equipping this armor boosts the wearer's chosen attributes or skills.</p>
+      <div className="space-y-2">
+        {rows.map((row, idx) => (
+          <div key={idx} className="flex items-end gap-2" data-testid={`row-armor-boost-${idx}`}>
+            <div className="flex-1">
+              {idx === 0 && <Label className="text-xs">Boost Target</Label>}
+              <Select value={row.target || ''} onValueChange={(v) => update(idx, { target: v })}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid={`select-armor-boost-target-${idx}`}>
+                  <SelectValue placeholder="Select attribute or skill..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {V3_BOOST_TARGETS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-24">
+              {idx === 0 && <Label className="text-xs">Amount</Label>}
+              <Input
+                type="number"
+                value={row.amount}
+                onChange={(e) => update(idx, { amount: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+                className="bg-stone-800 border-stone-700"
+                data-testid={`input-armor-boost-amount-${idx}`}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-stone-400 hover:text-red-400"
+              onClick={() => removeRow(idx)}
+              data-testid={`button-remove-armor-boost-${idx}`}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-3 border-stone-600"
+        onClick={addRow}
+        data-testid="button-add-armor-boost"
+      >
+        <Plus className="h-4 w-4 mr-1" /> Add Boost
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AA V3: Combined Attributes & Skills tab. Replaces the V2 attribute card grid
 // in V3 campaigns. Each V3 attribute is shown as a card with a die-tier badge
 // (attrValueToDieSides) and the fixed canonical skills that hang off it.
@@ -16077,12 +16160,14 @@ function V3AttrsAndSkillsTab({
   updateCharacterMutation,
   handleRoll,
   openRollPanel,
+  armorBoosts = {},
 }: {
   liveCharacter: any;
   canEditSheet: boolean;
   updateCharacterMutation: any;
   handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
   openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
+  armorBoosts?: Record<string, number>;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [attrData, setAttrData] = React.useState<Record<string, number>>({});
@@ -16272,7 +16357,9 @@ function V3AttrsAndSkillsTab({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {V3_ATTRIBUTES.map(attr => {
             const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
-            const dieType = `d${attrValueToDieSides(attrVal)}`;
+            const armorBoost = editing ? 0 : Number(armorBoosts[attr.key] || 0);
+            const effectiveAttrVal = attrVal + armorBoost;
+            const dieType = `d${attrValueToDieSides(effectiveAttrVal)}`;
             const speciesBonus = Number(speciesAttrBonuses[attr.key] || 0);
             // Player allocation can't go negative, so the stored value (which
             // includes the free species bonus) can't drop below that bonus.
@@ -16311,8 +16398,11 @@ function V3AttrsAndSkillsTab({
                     </>
                   ) : (
                     <div className="mt-1" data-testid={`text-v3-attr-${attr.key}`}>
-                      <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
+                      <span className={`text-2xl font-bold ${armorBoost > 0 ? 'text-emerald-400' : 'text-amber-500'}`}>{effectiveAttrVal >= 0 ? `+${effectiveAttrVal}` : effectiveAttrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
+                      {armorBoost > 0 && (
+                        <span className="text-[10px] text-emerald-400 ml-1" data-testid={`text-v3-attr-boost-${attr.key}`}>(+{armorBoost})</span>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -16332,8 +16422,11 @@ function V3AttrsAndSkillsTab({
             {[...V3_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = V3_ATTRIBUTES.find(a => a.key === skill.parent);
               const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
-              const dieType = `d${attrValueToDieSides(attrVal)}`;
-              const skillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+              const attrArmorBoost = editing ? 0 : Number(armorBoosts[skill.parent] || 0);
+              const dieType = `d${attrValueToDieSides(attrVal + attrArmorBoost)}`;
+              const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+              const skillArmorBoost = editing ? 0 : Number(armorBoosts[skill.key] || 0);
+              const skillVal = rawSkillVal + skillArmorBoost;
               return (
                 <div
                   key={skill.key}
@@ -16351,7 +16444,7 @@ function V3AttrsAndSkillsTab({
                     <div className="text-xs">
                       <span className="text-stone-200 group-hover:text-amber-300 font-medium">{skill.name}</span>
                       <span className="text-stone-500 ml-1">({parent?.abbr})</span>
-                      <span className="text-amber-400/70 ml-1.5">{dieType}</span>
+                      <span className={`ml-1.5 ${attrArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400/70'}`}>{dieType}</span>
                     </div>
                     <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
                   </button>
@@ -16369,8 +16462,9 @@ function V3AttrsAndSkillsTab({
                       data-testid={`input-v3-skill-${skill.key}`}
                     />
                   ) : (
-                    <span className="text-amber-400 text-xs font-semibold w-10 text-right shrink-0" data-testid={`text-v3-skill-${skill.key}`}>
+                    <span className={`text-xs font-semibold text-right shrink-0 ${skillArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400'}`} data-testid={`text-v3-skill-${skill.key}`}>
                       {skillVal >= 0 ? `+${skillVal}` : skillVal}
+                      {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
                     </span>
                   )}
                 </div>
@@ -17645,8 +17739,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     enabled: !!character.id
   });
 
-  // Calculate total DC from equipped armor
+  // Calculate total DC from equipped armor.
+  // AA V3 armor does not grant a DC bonus (it boosts attrs/skills instead),
+  // so equipped armor contributes 0 to DC in aa-v3 campaigns.
   const calculateArmorBonus = () => {
+    if (campaignSystem === 'aa-v3') return 0;
     const armorHotbars = hotbars.filter((h: any) => h.hotbarType === 'armor' && h.itemId);
     let totalArmorBonus = 0;
     armorHotbars.forEach((hotbar: any) => {
@@ -17660,6 +17757,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   const equippedArmorBonus = calculateArmorBonus();
   const totalDC = (liveCharacter.sizeBonus || 0) + (liveCharacter.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
+
+  // AA V3: fold the boosts from all equipped armor into a map keyed by
+  // attribute/skill target. Applied to the V3 Attrs & Skills tab.
+  const equippedV3ArmorBoosts = useMemo(() => {
+    const armorItemIds = hotbars
+      .filter((h: any) => h.hotbarType === 'armor' && h.itemId)
+      .map((h: any) => h.itemId);
+    const armorItems = armorItemIds
+      .map((id: string) => items.find((it: any) => it.id === id))
+      .filter(Boolean);
+    return computeV3ArmorBoosts(armorItems as any);
+  }, [hotbars, items]);
 
   // Custom skill mutations
   const addCustomSkillMutation = useMutation({
@@ -19512,6 +19621,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 updateCharacterMutation={updateCharacterMutation}
                 handleRoll={handleRoll}
                 openRollPanel={openRollPanel}
+                armorBoosts={equippedV3ArmorBoosts}
               />
             )}
             {!isAAV3 && (
@@ -24388,6 +24498,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 
 // Add Item Dialog Component
 function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '' }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string }) {
+  const isAAV3 = campaignSystem === 'aa-v3';
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
@@ -24504,6 +24615,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     canApplyEffects: boolean;
     grantsDcBonus: boolean;
     dcBonusValue: number | string;
+    v3ArmorBoosts: V3ArmorBoost[];
   }>({
     name: '',
     image: '',
@@ -24543,6 +24655,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     canApplyEffects: false,
     grantsDcBonus: false,
     dcBonusValue: 0,
+    v3ArmorBoosts: [],
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -24597,6 +24710,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
         detonateAoeRange: template.detonateAoeRange || 10,
         grantsDcBonus: template.grantsDcBonus || false,
         dcBonusValue: template.dcBonusValue || 0,
+        v3ArmorBoosts: template.v3ArmorBoosts || [],
         canApplyEffects: template.canApplyEffects || false,
         sourceTemplateId: template.id,
       };
@@ -24731,6 +24845,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
       grantsDcBonus: formData.grantsDcBonus,
       dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
+      v3ArmorBoosts: (isAAV3 && formData.itemType === 'armor')
+        ? (formData.v3ArmorBoosts || []).filter(b => b.target && Number(b.amount))
+        : [],
     };
     onSave(cleanedData);
     setFormData({
@@ -24772,6 +24889,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       canApplyEffects: false,
       grantsDcBonus: false,
       dcBonusValue: 0,
+      v3ArmorBoosts: [],
     });
   };
 
@@ -25371,6 +25489,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       </SelectContent>
                     </Select>
                   </div>
+                  {!isAAV3 && (
                   <div>
                     <Label>Armor Bonus (DC)</Label>
                     <Input 
@@ -25383,6 +25502,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       data-testid="input-armor-bonus"
                     />
                   </div>
+                  )}
+                  {!isAAV3 && (
                   <div>
                     <Label>Damage Reduction Type</Label>
                     <Select value={formData.damageReductionType || ''} onValueChange={(v) => setFormData({...formData, damageReductionType: v})}>
@@ -25407,6 +25528,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       </SelectContent>
                     </Select>
                   </div>
+                  )}
+                  {!isAAV3 && (
                   <div>
                     <Label>Damage Reduction Amount</Label>
                     <Input 
@@ -25419,7 +25542,14 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       data-testid="input-damage-reduction"
                     />
                   </div>
+                  )}
                 </div>
+                {isAAV3 && (
+                  <V3ArmorBoostsEditor
+                    boosts={formData.v3ArmorBoosts || []}
+                    onChange={(next) => setFormData({ ...formData, v3ArmorBoosts: next })}
+                  />
+                )}
               </div>
             )}
             {formData.itemType === 'container' && (
@@ -26536,6 +26666,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
   const currentData = isEditing ? editData : item;
   const canEditItem = isOwner || isGM;
   const canEditAllFields = isGM;
+  const isAAV3 = campaignSystem === 'aa-v3';
 
   if (!open || !item) return null;
   return (
@@ -26604,7 +26735,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     <Select value={currentData.itemType} onValueChange={(v) => {
                       const clearedFields: Record<string, any> = {
                         damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
-                        armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
+                        armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null, v3ArmorBoosts: [],
                         ammunitionType: null, breakChance: 10,
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
@@ -26930,6 +27061,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       <p className="text-stone-200 capitalize">{currentData.armorSlot || 'Not specified'}</p>
                     )}
                   </div>
+                  {!isAAV3 && (
                   <div>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-stone-400">Armor Bonus</Label>
@@ -26958,6 +27090,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       <p className="text-stone-200">{currentData.armorBonus >= 0 ? `+${currentData.armorBonus || 0}` : currentData.armorBonus}</p>
                     )}
                   </div>
+                  )}
+                  {!isAAV3 && (
                   <div>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-stone-400">Damage Reduction</Label>
@@ -26986,6 +27120,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       <p className="text-stone-200">{currentData.damageReduction || 0}</p>
                     )}
                   </div>
+                  )}
+                  {!isAAV3 && (
                   <div>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-stone-400">Reduction Type</Label>
@@ -27028,7 +27164,37 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       <p className="text-stone-200">{currentData.damageReductionType || 'None'}</p>
                     )}
                   </div>
+                  )}
                 </div>
+                {isAAV3 && (
+                  isEditing && canEditAllFields ? (
+                    <V3ArmorBoostsEditor
+                      boosts={(currentData.v3ArmorBoosts as V3ArmorBoost[]) || []}
+                      onChange={(next) => setEditData({ ...editData, v3ArmorBoosts: next })}
+                    />
+                  ) : (
+                    <div className="mt-2">
+                      <Label className="text-xs text-stone-400">Boosts when equipped</Label>
+                      {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || [])
+                            .filter(b => b?.target && Number(b?.amount))
+                            .map((b, i) => {
+                              const label = V3_BOOST_TARGETS.find(t => t.value === b.target)?.label ?? b.target;
+                              const amt = Math.trunc(Number(b.amount) || 0);
+                              return (
+                                <span key={i} className="px-2 py-0.5 rounded bg-emerald-900/40 border border-emerald-700 text-emerald-300 text-xs" data-testid={`text-armor-boost-${i}`}>
+                                  {label} {amt >= 0 ? `+${amt}` : amt}
+                                </span>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <p className="text-stone-500 text-sm mt-1">None</p>
+                      )}
+                    </div>
+                  )
+                )}
               </div>
             )}
 

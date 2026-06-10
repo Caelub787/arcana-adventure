@@ -33,6 +33,31 @@ const ITEM_TYPES = [
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"] as const;
+
+// AA V3 armor-boost targets. Inlined here because this package has no @shared
+// imports; mirrors V3_ATTRIBUTES + V3_SKILLS in shared/v3.ts.
+const V3_BOOST_TARGET_OPTIONS: { value: string; label: string }[] = [
+  { value: "might", label: "Might (Attribute)" },
+  { value: "finesse", label: "Finesse (Attribute)" },
+  { value: "constitution", label: "Constitution (Attribute)" },
+  { value: "will", label: "Will (Attribute)" },
+  { value: "anemos", label: "Anemos (Attribute)" },
+  { value: "intelligence", label: "Intelligence (Attribute)" },
+  { value: "acrobatics", label: "Acrobatics (Skill)" },
+  { value: "athletics", label: "Athletics (Skill)" },
+  { value: "endurance", label: "Endurance (Skill)" },
+  { value: "focus", label: "Focus (Skill)" },
+  { value: "fortitude", label: "Fortitude (Skill)" },
+  { value: "insight", label: "Insight (Skill)" },
+  { value: "investigation", label: "Investigation (Skill)" },
+  { value: "naturecraft", label: "Naturecraft (Skill)" },
+  { value: "perception", label: "Perception (Skill)" },
+  { value: "resolve", label: "Resolve (Skill)" },
+  { value: "sense", label: "Sense (Skill)" },
+  { value: "sleightOfHand", label: "Sleight of Hand (Skill)" },
+  { value: "stealth", label: "Stealth (Skill)" },
+  { value: "survival", label: "Survival (Skill)" },
+];
 const ATTRIBUTES = ["", "might", "finesse", "wit", "presence", "will", "craft"] as const;
 const AOE_SHAPES = ["", "cone", "sphere", "line", "cube", "cylinder"] as const;
 const SIZES = ["tiny", "small", "medium", "large", "huge"] as const;
@@ -72,6 +97,7 @@ export interface ItemDraft {
   damageReductionType?: string | null;
   grantsDcBonus?: boolean;
   dcBonusValue?: number | null;
+  v3ArmorBoosts?: { target: string; amount: number }[];
   rationServings?: number | null;
   isDamaging?: boolean;
   isDetonatable?: boolean;
@@ -336,25 +362,51 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     {ARMOR_SLOTS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </Select>
                 </div>
-                <div><Label>Armor Bonus</Label>
+                {!aav3 && <div><Label>Armor Bonus</Label>
                   <Input type="number" value={draft.armorBonus ?? 0} onChange={e => set({ armorBonus: optionalNum(e.target.value) ?? 0 })} />
-                </div>
-                <div><Label>Damage Reduction</Label>
+                </div>}
+                {!aav3 && <div><Label>Damage Reduction</Label>
                   <Input type="number" value={draft.damageReduction ?? 0} onChange={e => set({ damageReduction: optionalNum(e.target.value) ?? 0 })} />
-                </div>
-                <div><Label>Reduction Type</Label>
+                </div>}
+                {!aav3 && <div><Label>Reduction Type</Label>
                   <Select value={draft.damageReductionType ?? ""} onValueChange={v => set({ damageReductionType: v || null })}>
                     <SelectItem value="">—</SelectItem>
                     {damageTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
-                </div>
-                <Row><Checkbox checked={!!draft.grantsDcBonus} onCheckedChange={v => set({ grantsDcBonus: v })} /><Label>Grants DC bonus</Label></Row>
-                {draft.grantsDcBonus && (
+                </div>}
+                {!aav3 && <Row><Checkbox checked={!!draft.grantsDcBonus} onCheckedChange={v => set({ grantsDcBonus: v })} /><Label>Grants DC bonus</Label></Row>}
+                {!aav3 && draft.grantsDcBonus && (
                   <div><Label>DC bonus value</Label>
                     <Input type="number" value={draft.dcBonusValue ?? 0} onChange={e => set({ dcBonusValue: optionalNum(e.target.value) ?? 0 })} />
                   </div>
                 )}
               </Grid3>
+              {aav3 && (
+                <Stack gap="sm" style={{ marginTop: 8 }}>
+                  <Label>Boosts when equipped</Label>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>Equipping this armor boosts the wearer's chosen attributes or skills.</div>
+                  {(draft.v3ArmorBoosts && draft.v3ArmorBoosts.length > 0 ? draft.v3ArmorBoosts : [{ target: "", amount: 1 }]).map((row, idx) => {
+                    const rows = draft.v3ArmorBoosts && draft.v3ArmorBoosts.length > 0 ? draft.v3ArmorBoosts : [{ target: "", amount: 1 }];
+                    return (
+                      <Row key={idx}>
+                        <div style={{ flex: 1 }}>
+                          <Select value={row.target ?? ""} onValueChange={v => set({ v3ArmorBoosts: rows.map((r, i) => i === idx ? { ...r, target: v } : r) })}>
+                            <SelectItem value="">Select attribute or skill…</SelectItem>
+                            {V3_BOOST_TARGET_OPTIONS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                          </Select>
+                        </div>
+                        <div style={{ width: 90 }}>
+                          <Input type="number" value={row.amount ?? 1} onChange={e => set({ v3ArmorBoosts: rows.map((r, i) => i === idx ? { ...r, amount: optionalNum(e.target.value) ?? 0 } : r) })} />
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => set({ v3ArmorBoosts: rows.filter((_, i) => i !== idx) })}>✕</Button>
+                      </Row>
+                    );
+                  })}
+                  <div>
+                    <Button size="sm" variant="outline" onClick={() => set({ v3ArmorBoosts: [...(draft.v3ArmorBoosts ?? []), { target: "", amount: 1 }] })}>+ Add Boost</Button>
+                  </div>
+                </Stack>
+              )}
             </Section>
           )}
 

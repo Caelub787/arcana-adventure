@@ -502,6 +502,10 @@ export const items = pgTable("items", {
   damageReductionType: text("damage_reduction_type"), // Damage type reduced: Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound
   grantsDcBonus: boolean("grants_dc_bonus").default(false).notNull(),
   dcBonusValue: integer("dc_bonus_value").default(0),
+  // AA V3 only: armor boosts. List of {target, amount} where target is a V3
+  // attribute key or V3 skill key. Equipping the armor adds the amount to that
+  // attribute/skill. V3 armor uses this instead of armorBonus/damageReduction.
+  v3ArmorBoosts: jsonb("v3_armor_boosts").$type<{ target: string; amount: number }[]>().default(sql`'[]'::jsonb`),
   // Legacy price fields (kept for backward compatibility)
   priceCopper: integer("price_copper").default(0).notNull(),
   priceSilver: integer("price_silver").default(0).notNull(),

@@ -253,6 +253,7 @@ export interface Item {
   armorSlot?: string;
   damageReduction?: number;
   damageReductionType?: string;
+  v3ArmorBoosts?: { target: string; amount: number }[];
   isDetonatable?: boolean;
   detonateAoeShape?: string;
   detonateAoeRange?: number;

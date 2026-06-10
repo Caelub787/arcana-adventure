@@ -122,3 +122,65 @@ export interface V3SpeciesDefaultTrait {
   parentAttribute: string;
   usesPerLongRest: number;
 }
+
+// AA V3 armor boosts ----------------------------------------------------------
+//
+// In AA V3 armor no longer adds Defense Class or reduces damage by type.
+// Instead, equipping a piece of armor boosts one or more of the wearer's
+// attributes or skills. Each boost targets a single V3 attribute key OR a V3
+// skill key (the two key spaces never collide) by an integer amount.
+
+export interface V3ArmorBoost {
+  target: string; // a V3 attribute key or a V3 skill key
+  amount: number;
+}
+
+export interface V3BoostTarget {
+  value: string;
+  label: string;
+  kind: "attribute" | "skill";
+}
+
+// Picker options for the armor-boost editor: the six attributes first, then the
+// canonical skills alphabetically.
+export const V3_BOOST_TARGETS: V3BoostTarget[] = [
+  ...V3_ATTRIBUTES.map(a => ({ value: a.key, label: `${a.name} (Attribute)`, kind: "attribute" as const })),
+  ...[...V3_SKILLS]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(s => ({ value: s.key, label: `${s.name} (Skill)`, kind: "skill" as const })),
+];
+
+const V3_ATTR_KEY_SET = new Set<string>(V3_ATTRIBUTE_KEYS);
+const V3_SKILL_KEY_SET = new Set<string>(V3_SKILL_KEYS);
+
+export function isV3AttributeKey(key: string): key is V3AttributeKey {
+  return V3_ATTR_KEY_SET.has(key);
+}
+
+export function isV3SkillKey(key: string): boolean {
+  return V3_SKILL_KEY_SET.has(key);
+}
+
+export function v3BoostTargetLabel(key: string): string {
+  return V3_BOOST_TARGETS.find(t => t.value === key)?.label ?? key;
+}
+
+// Fold the boosts from a set of equipped armor items into a single map keyed by
+// the boost target (attribute key or skill key). Used by the character sheet to
+// apply boosts to die tiers / skill modifiers.
+export function computeV3ArmorBoosts(
+  equippedArmor: Array<{ v3ArmorBoosts?: V3ArmorBoost[] | null } | null | undefined>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const armor of equippedArmor) {
+    const boosts = armor?.v3ArmorBoosts;
+    if (!Array.isArray(boosts)) continue;
+    for (const b of boosts) {
+      if (!b || !b.target) continue;
+      const amt = Math.trunc(Number(b.amount) || 0);
+      if (!amt) continue;
+      out[b.target] = (out[b.target] || 0) + amt;
+    }
+  }
+  return out;
+}
