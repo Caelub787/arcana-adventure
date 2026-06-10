@@ -8600,6 +8600,8 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
   // Calculate effective max HP/Energy including feat bonuses
   const effectiveMaxHp = (character?.maxHp || 10) + featBonuses.hp;
   const effectiveMaxEnergy = (character?.maxEnergy || 10) + featBonuses.energy;
+  const effectiveMaxMana = (character?.maxMana || 0) + ((character as any)?.bonusMaxMana || 0);
+  const showManaBar = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && effectiveMaxMana > 0;
 
   // Calculate total DC from equipped armor (same logic as character sheet)
   const calculateArmorBonus = () => {
@@ -8641,13 +8643,15 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         data-collision-id="hp-dc-display"
       >
         <div className="flex flex-col gap-1">
-          {/* DC Display */}
-          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">
-            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-purple-200">
-              <span>DC</span>
-              <span>{totalDC}</span>
+          {/* DC Display - hidden in AA V3 */}
+          {campaignSystem !== 'aa-v3' && (
+            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">
+              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-purple-200">
+                <span>DC</span>
+                <span>{totalDC}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Health Bar */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
@@ -8680,6 +8684,24 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               />
             </div>
           </div>
+
+          {/* Mana Bar - AA V2 / AA V3 only, when character has a mana pool */}
+          {showManaBar && (
+            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-violet-600 relative overflow-hidden w-32 md:w-44">
+              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-violet-200">
+                <span>Mana</span>
+                <span>{Math.min(character.mana ?? 0, effectiveMaxMana)}/{effectiveMaxMana}</span>
+              </div>
+              <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-violet-700 to-violet-500"
+                  initial={false}
+                  animate={{ width: `${Math.min(100, ((character.mana ?? 0) / effectiveMaxMana) * 100)}%` }}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -19010,24 +19032,26 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </div>
 
-                {/* Defense Class (DC) Display */}
-                <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-sm text-cyan-300 flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-cyan-400" />
-                      Defense Class (DC)
-                    </Label>
-                    <span className="text-2xl font-bold text-cyan-400" data-testid="text-total-dc">
-                      {totalDC}
-                    </span>
+                {/* Defense Class (DC) Display - hidden in AA V3 */}
+                {!isAAV3 && (
+                  <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-sm text-cyan-300 flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-cyan-400" />
+                        Defense Class (DC)
+                      </Label>
+                      <span className="text-2xl font-bold text-cyan-400" data-testid="text-total-dc">
+                        {totalDC}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-2 text-xs text-stone-400 flex-wrap">
+                      <span>Size: {liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus}</span>
+                      <span>Natural: +{liveCharacter.naturalArmor || 5}</span>
+                      <span>Armor: +{equippedArmorBonus}</span>
+                      {featBonuses.dc > 0 && <span className="text-purple-400">Feats: +{featBonuses.dc}</span>}
+                    </div>
                   </div>
-                  <div className="flex gap-3 mt-2 text-xs text-stone-400 flex-wrap">
-                    <span>Size: {liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus}</span>
-                    <span>Natural: +{liveCharacter.naturalArmor || 5}</span>
-                    <span>Armor: +{equippedArmorBonus}</span>
-                    {featBonuses.dc > 0 && <span className="text-purple-400">Feats: +{featBonuses.dc}</span>}
-                  </div>
-                </div>
+                )}
 
                 {/* Info Grid - Two Columns */}
                 <div className="grid grid-cols-2 gap-3">
