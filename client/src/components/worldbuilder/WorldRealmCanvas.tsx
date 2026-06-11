@@ -6,7 +6,11 @@ import {
   useWorldCanvasNodes,
   useUpsertWorldCanvasNode,
   useDeleteWorldCanvasNode,
+  useEntityLinks,
+  useCreateEntityLink,
+  useDeleteEntityLink,
   type Entity,
+  type EntityLink,
 } from '@/lib/worldbuilding-api';
 import { ItemDialog, SpellDialog, arcanaSessionHostAdapter } from '@arcana/library-dialogs';
 import '@arcana/library-dialogs/theme.css';
@@ -33,6 +37,7 @@ import {
 import {
   Sword, Sparkles, Users, FileText, Frame, Plus, X, Search, ChevronRight, ChevronDown,
   LayoutGrid, Network, Columns2, Rows2, ZoomIn, ZoomOut, Maximize2, Loader2, ExternalLink,
+  Link2,
 } from 'lucide-react';
 import {
   newId,
@@ -124,6 +129,9 @@ export function WorldRealmCanvas({
   const { data: canvasNodes = [] } = useWorldCanvasNodes(worldId);
   const upsertNode = useUpsertWorldCanvasNode(worldId);
   const deleteNode = useDeleteWorldCanvasNode(worldId);
+  const { data: entityLinks = [] } = useEntityLinks(worldId);
+  const createLink = useCreateEntityLink(worldId);
+  const deleteLink = useDeleteEntityLink(worldId);
 
   const invalidateCharacters = () => queryClient.invalidateQueries({ queryKey: ['world-characters', worldId] });
 
@@ -204,6 +212,10 @@ export function WorldRealmCanvas({
   }, [worldId]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Live refs so global drag handlers read fresh values without re-registering listeners.
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
 
   // ---- Mode + sidebar ----
   const [mode, setMode] = useState<'canvas' | 'panes' | 'graph'>('canvas');
@@ -341,12 +353,53 @@ export function WorldRealmCanvas({
 
   // ---- Canvas drag/pan/zoom handlers ----
   const dragRef = useRef<null | {
-    kind: 'pan' | 'move' | 'resize';
+    kind: 'pan' | 'move' | 'resize' | 'link';
     key?: string;
     startX: number;
     startY: number;
     orig: Placement | { x: number; y: number };
   }>(null);
+
+  // ---- Relationship link drawing ----
+  const placedRef = useRef(placed);
+  placedRef.current = placed;
+  const entityLinksRef = useRef(entityLinks);
+  entityLinksRef.current = entityLinks;
+  // While dragging a connector, the live cursor position in world coords (for the preview line).
+  const [linkCursor, setLinkCursor] = useState<{ from: string; x: number; y: number } | null>(null);
+
+  // Convert a screen point to world (canvas) coordinates.
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const v = viewportRef.current;
+    const px = clientX - (rect?.left ?? 0);
+    const py = clientY - (rect?.top ?? 0);
+    return { x: (px - v.x) / v.scale, y: (py - v.y) / v.scale };
+  }, []);
+
+  // Find the top-most placed entity node whose window contains the given world point.
+  const entityNodeAt = useCallback((wx: number, wy: number, exclude?: string) => {
+    const pl = placedRef.current;
+    let best: string | null = null;
+    let bestZ = -Infinity;
+    for (const key of Object.keys(pl)) {
+      if (!key.startsWith('entity:') || key === exclude) continue;
+      const p = pl[key];
+      if (wx >= p.x && wx <= p.x + p.width && wy >= p.y && wy <= p.y + p.height && p.z > bestZ) {
+        bestZ = p.z;
+        best = key;
+      }
+    }
+    return best;
+  }, []);
+
+  const onLinkHandleMouseDown = (e: React.MouseEvent, key: string) => {
+    e.stopPropagation();
+    if (!canEdit) return;
+    const w = screenToWorld(e.clientX, e.clientY);
+    dragRef.current = { kind: 'link', key, startX: e.clientX, startY: e.clientY, orig: { x: w.x, y: w.y } };
+    setLinkCursor({ from: key, x: w.x, y: w.y });
+  };
 
   const onCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -395,9 +448,12 @@ export function WorldRealmCanvas({
             height: Math.max(120, o.height + dy / viewport.scale),
           },
         }));
+      } else if (d.kind === 'link') {
+        const w = screenToWorld(e.clientX, e.clientY);
+        setLinkCursor((lc) => (lc ? { ...lc, x: w.x, y: w.y } : lc));
       }
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
       const d = dragRef.current;
       dragRef.current = null;
       if (d && (d.kind === 'move' || d.kind === 'resize') && d.key) {
@@ -406,6 +462,31 @@ export function WorldRealmCanvas({
           if (prev[key]) persistPlacement(key, prev[key]);
           return prev;
         });
+      } else if (d && d.kind === 'link' && d.key) {
+        const fromKey = d.key;
+        setLinkCursor(null);
+        const w = screenToWorld(e.clientX, e.clientY);
+        const targetKey = entityNodeAt(w.x, w.y, fromKey);
+        if (targetKey) {
+          const fromId = fromKey.slice('entity:'.length);
+          const toId = targetKey.slice('entity:'.length);
+          const exists = (entityLinksRef.current as EntityLink[]).some(
+            (l) =>
+              (l.fromEntityId === fromId && l.toEntityId === toId) ||
+              (l.fromEntityId === toId && l.toEntityId === fromId),
+          );
+          if (exists) {
+            toast({ title: 'Already linked', description: 'These nodes are already connected.' });
+          } else {
+            createLink.mutate(
+              { fromEntityId: fromId, toEntityId: toId, linkType: 'related' },
+              {
+                onError: (err: any) =>
+                  toast({ title: 'Could not create link', description: String(err?.message || err), variant: 'destructive' }),
+              },
+            );
+          }
+        }
       }
     };
     window.addEventListener('mousemove', onMove);
@@ -536,6 +617,36 @@ export function WorldRealmCanvas({
   };
 
   const placedKeys = Object.keys(placed);
+
+  // Relationship edges that have both endpoints placed on the canvas.
+  const edges = useMemo(() => {
+    const out: { id: string; x1: number; y1: number; x2: number; y2: number; label?: string | null }[] = [];
+    for (const l of entityLinks as EntityLink[]) {
+      const a = placed[`entity:${l.fromEntityId}`];
+      const b = placed[`entity:${l.toEntityId}`];
+      if (!a || !b) continue;
+      out.push({
+        id: l.id,
+        x1: a.x + a.width / 2,
+        y1: a.y + a.height / 2,
+        x2: b.x + b.width / 2,
+        y2: b.y + b.height / 2,
+        label: l.label,
+      });
+    }
+    return out;
+  }, [entityLinks, placed]);
+
+  // Origin of the in-progress connector preview line.
+  const linkFromCenter = useMemo(() => {
+    if (!linkCursor) return null;
+    const p = placed[linkCursor.from];
+    if (!p) return null;
+    return { x: p.x + p.width / 2, y: p.y + p.height / 2 };
+  }, [linkCursor, placed]);
+
+  // Keep strokes a roughly constant visual weight regardless of zoom.
+  const strokeW = 2 / viewport.scale;
 
   return (
     <div className="flex h-full min-h-0" data-testid="panel-world-realm">
@@ -675,6 +786,51 @@ export function WorldRealmCanvas({
                 className="absolute top-0 left-0"
                 style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`, transformOrigin: '0 0' }}
               >
+                {/* Relationship edges (drawn behind node windows) */}
+                <svg
+                  className="absolute top-0 left-0 overflow-visible"
+                  style={{ width: 1, height: 1, zIndex: 0, pointerEvents: 'none' }}
+                  data-testid="realm-edge-layer"
+                >
+                  {edges.map((ed) => {
+                    const mx = (ed.x1 + ed.x2) / 2;
+                    const my = (ed.y1 + ed.y2) / 2;
+                    return (
+                      <g key={ed.id} data-testid={`realm-edge-${ed.id}`}>
+                        <line
+                          x1={ed.x1} y1={ed.y1} x2={ed.x2} y2={ed.y2}
+                          stroke="rgba(217,180,120,0.55)" strokeWidth={strokeW}
+                        />
+                        {ed.label ? (
+                          <text
+                            x={mx} y={my - 6 * strokeW} textAnchor="middle"
+                            fill="rgba(214,211,209,0.9)" fontSize={11 / viewport.scale}
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {ed.label}
+                          </text>
+                        ) : null}
+                        {canEdit && (
+                          <g
+                            style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                            onClick={() => deleteLink.mutate(ed.id)}
+                            data-testid={`button-delete-edge-${ed.id}`}
+                          >
+                            <circle cx={mx} cy={my} r={9 / viewport.scale} fill="rgba(28,25,23,0.9)" stroke="rgba(217,180,120,0.7)" strokeWidth={1 / viewport.scale} />
+                            <line x1={mx - 4 / viewport.scale} y1={my - 4 / viewport.scale} x2={mx + 4 / viewport.scale} y2={my + 4 / viewport.scale} stroke="rgba(248,113,113,0.95)" strokeWidth={1.5 / viewport.scale} />
+                            <line x1={mx + 4 / viewport.scale} y1={my - 4 / viewport.scale} x2={mx - 4 / viewport.scale} y2={my + 4 / viewport.scale} stroke="rgba(248,113,113,0.95)" strokeWidth={1.5 / viewport.scale} />
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })}
+                  {linkCursor && linkFromCenter && (
+                    <line
+                      x1={linkFromCenter.x} y1={linkFromCenter.y} x2={linkCursor.x} y2={linkCursor.y}
+                      stroke="rgba(217,180,120,0.9)" strokeWidth={strokeW} strokeDasharray={`${6 / viewport.scale} ${4 / viewport.scale}`}
+                    />
+                  )}
+                </svg>
                 {placedKeys.map((key) => {
                   const node = nodeMap.get(key);
                   const p = placed[key];
@@ -692,6 +848,17 @@ export function WorldRealmCanvas({
                         onDoubleClick={() => openSheet(node)}
                       >
                         <span className="text-xs text-stone-200 truncate flex-1">{node.title}</span>
+                        {canEdit && node.refType === 'entity' && (
+                          <button
+                            className="p-0.5 hover:bg-amber-500/20 rounded cursor-crosshair"
+                            onMouseDown={(e) => onLinkHandleMouseDown(e, key)}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Drag to another article/canvas to link them"
+                            data-testid={`button-link-handle-${key}`}
+                          >
+                            <Link2 className="w-3.5 h-3.5 text-amber-400" />
+                          </button>
+                        )}
                         {canEdit && (
                           <button
                             className="p-0.5 hover:bg-stone-700 rounded"
