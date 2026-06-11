@@ -13,13 +13,14 @@ interface WorldMapViewerProps {
   onEditMap?: (mapId: string) => void;
   onCreateMap?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
+  initialMapId?: string;
 }
 
-export function WorldMapViewer({ campaignId, worldId, isGM, onEditMap, onCreateMap, onNavigateToEntity }: WorldMapViewerProps) {
+export function WorldMapViewer({ campaignId, worldId, isGM, onEditMap, onCreateMap, onNavigateToEntity, initialMapId }: WorldMapViewerProps) {
   const resolvedId = worldId || campaignId;
   const { data: allMaps = [], isLoading } = useWorldMaps(resolvedId);
   const { data: entities = [] } = useEntities(resolvedId);
-  const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
+  const [selectedMapId, setSelectedMapId] = useState<string | null>(initialMapId ?? null);
   const [mapHistory, setMapHistory] = useState<string[]>([]);
 
   const visibleMaps = isGM ? allMaps : allMaps.filter(m => m.visibility !== "gm_only");

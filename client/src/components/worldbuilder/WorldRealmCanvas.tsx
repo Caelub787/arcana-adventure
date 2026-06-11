@@ -6,6 +6,7 @@ import {
   useWorldCanvasNodes,
   useUpsertWorldCanvasNode,
   useDeleteWorldCanvasNode,
+  useWorldMaps,
   useEntityLinks,
   useCreateEntityLink,
   useUpdateEntityLink,
@@ -39,7 +40,7 @@ import {
 import {
   Sword, Sparkles, Users, FileText, Frame, Plus, X, Search, ChevronRight, ChevronDown,
   LayoutGrid, Network, Columns2, Rows2, ZoomIn, ZoomOut, Maximize2, Loader2, ExternalLink,
-  Link2, Trash2,
+  Link2, Trash2, Map as MapIcon,
 } from 'lucide-react';
 import {
   newId,
@@ -50,9 +51,10 @@ import {
   type PaneLeaf,
   type PaneSplit,
 } from './paneTree';
-import { renderSectionPanel, type SectionPanelId } from './WorldSectionPanels';
+import { WorldMapViewer } from '@/components/worldbuilding/WorldMapViewer';
+import { WorldMapEditor } from '@/components/worldbuilding/WorldMapEditor';
 
-type RefType = 'entity' | 'item' | 'spell' | 'character' | 'panel';
+type RefType = 'entity' | 'item' | 'spell' | 'character' | 'map';
 
 interface RealmNode {
   key: string;
@@ -85,22 +87,14 @@ function systemDisplay(slug: 'aa-v2' | 'aa-v3' | 'arcana-adventure'): string {
 }
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof Sword; color: string }> = {
-  Sections: { label: 'Sections', icon: LayoutGrid, color: 'text-stone-300' },
   Articles: { label: 'Articles', icon: FileText, color: 'text-sky-400' },
   Canvases: { label: 'Canvases', icon: Frame, color: 'text-violet-400' },
+  Maps: { label: 'Maps', icon: MapIcon, color: 'text-teal-400' },
   Items: { label: 'Items', icon: Sword, color: 'text-amber-400' },
   Spells: { label: 'Spells', icon: Sparkles, color: 'text-fuchsia-400' },
   Characters: { label: 'Characters', icon: Users, color: 'text-emerald-400' },
 };
-const CATEGORY_ORDER = ['Sections', 'Articles', 'Canvases', 'Items', 'Spells', 'Characters'];
-
-// Old World Builder sections, now openable as windows/panes inside the canvas.
-const SECTION_PANELS: { id: SectionPanelId; title: string }[] = [
-  { id: 'encyclopedia', title: 'Encyclopedia' },
-  { id: 'maps', title: 'Maps' },
-  { id: 'timeline', title: 'Timeline' },
-  { id: 'calendar', title: 'Calendar' },
-];
+const CATEGORY_ORDER = ['Articles', 'Canvases', 'Maps', 'Items', 'Spells', 'Characters'];
 
 // Per-relationship-type edge colors so the canvas reads like a real relationship map.
 const LINK_TYPE_COLORS: Record<string, string> = {
@@ -172,6 +166,7 @@ export function WorldRealmCanvas({
     queryKey: ['world-species', display],
     queryFn: () => api.getSystemSpecies(display),
   });
+  const { data: maps = [] } = useWorldMaps(worldId);
   const { data: canvasNodes = [] } = useWorldCanvasNodes(worldId);
   const upsertNode = useUpsertWorldCanvasNode(worldId);
   const deleteNode = useDeleteWorldCanvasNode(worldId);
@@ -185,9 +180,6 @@ export function WorldRealmCanvas({
   // ---- Unified node list ----
   const nodes: RealmNode[] = useMemo(() => {
     const list: RealmNode[] = [];
-    for (const sp of SECTION_PANELS) {
-      list.push({ key: `panel:${sp.id}`, refType: 'panel', refId: sp.id, title: sp.title, category: 'Sections', raw: null });
-    }
     for (const e of entities as Entity[]) {
       const isCanvas = e.entityType === 'canvas';
       list.push({
@@ -210,36 +202,18 @@ export function WorldRealmCanvas({
     for (const ch of characters as any[]) {
       list.push({ key: `character:${ch.id}`, refType: 'character', refId: ch.id, title: ch.name || 'Character', subtitle: ch.race || ch.description, image: ch.avatar || ch.image, category: 'Characters', raw: ch });
     }
+    for (const m of maps as any[]) {
+      if (!canEdit && m.visibility === 'gm_only') continue;
+      list.push({ key: `map:${m.id}`, refType: 'map', refId: m.id, title: m.title || 'Map', subtitle: m.description, image: m.imageUrl, category: 'Maps', raw: m });
+    }
     return list;
-  }, [entities, items, spells, characters]);
+  }, [entities, items, spells, characters, maps, canEdit]);
 
   const nodeMap = useMemo(() => {
     const m = new Map<string, RealmNode>();
     for (const n of nodes) m.set(n.key, n);
     return m;
   }, [nodes]);
-
-  // ---- Panel windows (Maps/Timeline/Calendar/Encyclopedia) ----
-  // These aren't server entities, so their placement is client-only (per-user, per-world).
-  const [panelPlacements, setPanelPlacements] = useState<Record<string, Placement>>(() => {
-    try {
-      const raw = localStorage.getItem(`realm-panel-nodes-${worldId}`);
-      if (raw) return JSON.parse(raw);
-    } catch {}
-    return {};
-  });
-  const panelPlacementsRef = useRef(panelPlacements);
-  panelPlacementsRef.current = panelPlacements;
-  useEffect(() => {
-    try { localStorage.setItem(`realm-panel-nodes-${worldId}`, JSON.stringify(panelPlacements)); } catch {}
-  }, [panelPlacements, worldId]);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`realm-panel-nodes-${worldId}`);
-      setPanelPlacements(raw ? JSON.parse(raw) : {});
-    } catch { setPanelPlacements({}); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worldId]);
 
   // ---- Placement state (canvas) ----
   const [placed, setPlaced] = useState<Record<string, Placement>>({});
@@ -251,13 +225,6 @@ export function WorldRealmCanvas({
         // Preserve in-progress local placement to avoid clobbering optimistic drags.
         next[key] = prev[key] ?? { x: n.x, y: n.y, width: n.width, height: n.height, z: n.z };
       }
-      // Re-attach client-only panel windows for the current world.
-      for (const key of Object.keys(prev)) {
-        if (key.startsWith('panel:') && panelPlacementsRef.current[key]) next[key] = prev[key];
-      }
-      for (const key of Object.keys(panelPlacementsRef.current)) {
-        if (!next[key]) next[key] = panelPlacementsRef.current[key];
-      }
       return next;
     });
   }, [canvasNodes]);
@@ -265,10 +232,6 @@ export function WorldRealmCanvas({
   const maxZ = useMemo(() => Object.values(placed).reduce((m, p) => Math.max(m, p.z), 0), [placed]);
 
   const persistPlacement = useCallback((key: string, p: Placement) => {
-    if (key.startsWith('panel:')) {
-      setPanelPlacements((prev) => ({ ...prev, [key]: p }));
-      return;
-    }
     if (!canEdit) return;
     const [refType, refId] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     upsertNode.mutate({ refType, refId, x: p.x, y: p.y, width: p.width, height: p.height, z: p.z });
@@ -353,7 +316,14 @@ export function WorldRealmCanvas({
   const [viewSpell, setViewSpell] = useState<any | null>(null);
   const [viewChar, setViewChar] = useState<any | null>(null);
   const [openArticleId, setOpenArticleId] = useState<string | null>(null);
+  const [mapOverlay, setMapOverlay] = useState<{ mapId: string } | null>(null);
+  const [mapEditing, setMapEditing] = useState<string | 'new' | null>(null);
   const viewerCharacter = useMemo(() => ({ id: '', name: 'Viewer', isTemplate: true }) as any, []);
+
+  const openMap = useCallback((map: any) => {
+    setMapEditing(null);
+    setMapOverlay({ mapId: map.id });
+  }, []);
 
   // Open an article either as an in-canvas overlay (renderArticle) or via the parent callback.
   const handleOpenArticle = useCallback((entityId: string) => {
@@ -368,17 +338,16 @@ export function WorldRealmCanvas({
   }, [openArticleSignal?.nonce]);
 
   const openSheet = useCallback((node: RealmNode) => {
-    if (node.refType === 'panel') return;
     if (node.refType === 'entity') { handleOpenArticle(node.refId); return; }
+    if (node.refType === 'map') { openMap(node.raw); return; }
     if (node.refType === 'item') { canEdit ? setEditItem(node.raw) : setViewItem(node.raw); return; }
     if (node.refType === 'spell') { canEdit ? setEditSpell(node.raw) : setViewSpell(node.raw); return; }
     if (node.refType === 'character') { setViewChar(node.raw); return; }
-  }, [canEdit, handleOpenArticle]);
+  }, [canEdit, handleOpenArticle, openMap]);
 
   // ---- Add a node to the canvas ----
   const addToCanvas = useCallback((key: string, atScreen?: { x: number; y: number }) => {
-    const isPanel = key.startsWith('panel:');
-    if (!canEdit && !isPanel) return;
+    if (!canEdit) return;
     if (placed[key]) {
       // already on canvas — just bring to front
       setPlaced((prev) => {
@@ -388,8 +357,8 @@ export function WorldRealmCanvas({
       });
       return;
     }
-    const w = isPanel ? 640 : DEFAULT_W;
-    const h = isPanel ? 460 : DEFAULT_H;
+    const w = DEFAULT_W;
+    const h = DEFAULT_H;
     const rect = containerRef.current?.getBoundingClientRect();
     const cx = atScreen ? atScreen.x - (rect?.left ?? 0) : (rect?.width ?? 800) / 2;
     const cy = atScreen ? atScreen.y - (rect?.top ?? 0) : (rect?.height ?? 600) / 2;
@@ -401,11 +370,6 @@ export function WorldRealmCanvas({
   }, [canEdit, placed, maxZ, viewport, persistPlacement]);
 
   const removeFromCanvas = useCallback((key: string) => {
-    if (key.startsWith('panel:')) {
-      setPlaced((prev) => { const next = { ...prev }; delete next[key]; return next; });
-      setPanelPlacements((prev) => { const next = { ...prev }; delete next[key]; return next; });
-      return;
-    }
     if (!canEdit) return;
     setPlaced((prev) => {
       const next = { ...prev };
@@ -424,8 +388,8 @@ export function WorldRealmCanvas({
       return;
     }
     if (mode === 'canvas') {
-      // Viewers can still open panel windows and sheets even without edit rights.
-      if (node.refType === 'panel' || canEdit) addToCanvas(node.key);
+      // Editors place nodes on the canvas; viewers just open the sheet/article/map.
+      if (canEdit) addToCanvas(node.key);
       else openSheet(node);
       return;
     }
@@ -549,14 +513,14 @@ export function WorldRealmCanvas({
       persistPlacement(key, p);
       return { ...prev, [key]: p };
     });
-    if (!canEdit && !key.startsWith('panel:')) return;
+    if (!canEdit) return;
     const p = placed[key];
     dragRef.current = { kind: 'move', key, startX: e.clientX, startY: e.clientY, orig: { ...p, z: maxZ + 1 } };
   };
 
   const onResizeMouseDown = (e: React.MouseEvent, key: string) => {
     e.stopPropagation();
-    if (!canEdit && !key.startsWith('panel:')) return;
+    if (!canEdit) return;
     dragRef.current = { kind: 'resize', key, startX: e.clientX, startY: e.clientY, orig: { ...placed[key] } };
   };
 
@@ -671,13 +635,6 @@ export function WorldRealmCanvas({
 
   // ============ Render helpers ============
   const renderNodePreview = (node: RealmNode, compact: boolean) => {
-    if (node.refType === 'panel') {
-      return (
-        <div className="flex flex-col h-full min-h-0 bg-stone-950">
-          {renderSectionPanel(node.refId as SectionPanelId, { worldId, isGM: canEdit, onOpenArticle: handleOpenArticle })}
-        </div>
-      );
-    }
     const meta = CATEGORY_META[node.category];
     const Icon = meta?.icon ?? FileText;
     return (
@@ -707,7 +664,7 @@ export function WorldRealmCanvas({
             data-testid={`button-open-sheet-${node.key}`}
           >
             <ExternalLink className="w-3 h-3 mr-1" />
-            {node.refType === 'entity' ? 'Open article' : canEdit && node.refType !== 'character' ? 'Open sheet (edit)' : 'Open sheet'}
+            {node.refType === 'entity' ? 'Open article' : node.refType === 'map' ? 'Open map' : canEdit && node.refType !== 'character' ? 'Open sheet (edit)' : 'Open sheet'}
           </Button>
         </div>
       </div>
@@ -1018,7 +975,7 @@ export function WorldRealmCanvas({
                             <Link2 className="w-3.5 h-3.5 text-amber-400" />
                           </button>
                         )}
-                        {(canEdit || node.refType === 'panel') && (
+                        {canEdit && (
                           <button
                             className="p-0.5 hover:bg-stone-700 rounded"
                             onMouseDown={(e) => e.stopPropagation()}
@@ -1031,7 +988,7 @@ export function WorldRealmCanvas({
                         )}
                       </div>
                       <div className="flex-1 min-h-0">{renderNodePreview(node, true)}</div>
-                      {(canEdit || node.refType === 'panel') && (
+                      {canEdit && (
                         <div
                           className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-se-resize"
                           onMouseDown={(e) => onResizeMouseDown(e, key)}
@@ -1242,6 +1199,37 @@ export function WorldRealmCanvas({
           </div>
         );
       })()}
+
+      {/* ---- Map viewer/editor overlay ---- */}
+      {mapOverlay && (
+        <div className="fixed inset-0 z-[10000] bg-stone-950/97 flex flex-col overflow-hidden" data-testid="overlay-realm-map">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-stone-700 bg-stone-900 flex-shrink-0">
+            <span className="text-sm font-medium text-stone-200 truncate">Map</span>
+            <Button variant="outline" size="sm" onClick={() => { setMapOverlay(null); setMapEditing(null); }} data-testid="button-close-realm-map">
+              <X className="w-3.5 h-3.5 mr-1" /> Close
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {mapEditing !== null ? (
+              <WorldMapEditor
+                worldId={worldId}
+                mapId={mapEditing === 'new' ? undefined : mapEditing}
+                onBack={() => setMapEditing(null)}
+                onMapCreated={() => setMapEditing(null)}
+              />
+            ) : (
+              <WorldMapViewer
+                worldId={worldId}
+                isGM={canEdit}
+                initialMapId={mapOverlay.mapId}
+                onEditMap={canEdit ? (id) => setMapEditing(id) : undefined}
+                onCreateMap={canEdit ? () => setMapEditing('new') : undefined}
+                onNavigateToEntity={handleOpenArticle}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {imageBrowserElement}
     </div>
