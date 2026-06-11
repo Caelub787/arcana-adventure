@@ -2706,9 +2706,11 @@ export const api = new ApiClient();
 export class GameWebSocket {
   private ws: WebSocket | null = null;
   private campaignId: string | null = null;
+  private worldId: string | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private messageHandlers: Set<(data: any) => void> = new Set();
   private joinedCampaign: boolean = false;
+  private joinedWorld: boolean = false;
   private pendingMessages: Array<any> = [];
   private incognitoMode: boolean = false;
   private spectatorMode: boolean = false;
@@ -2732,6 +2734,8 @@ export class GameWebSocket {
     }
     
     this.campaignId = campaignId;
+    this.worldId = null;
+    this.joinedWorld = false;
     this.joinedCampaign = false;
     this.pendingMessages = [];
     this.incognitoMode = incognito;
@@ -2790,6 +2794,79 @@ export class GameWebSocket {
     };
   }
 
+  // connectWorld — join a world room for live world-scoped updates in the
+  // standalone /worldbuilder page (worlds with no linked campaign have no
+  // campaign room to broadcast through).
+  connectWorld(worldId: string) {
+    if (this.worldId === worldId && this.joinedWorld && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket: Already connected and joined to world:', worldId);
+      return;
+    }
+
+    // Clean up any existing connection
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.worldId = worldId;
+    this.campaignId = null;
+    this.joinedCampaign = false;
+    this.joinedWorld = false;
+    this.pendingMessages = [];
+    this.incognitoMode = false;
+    this.spectatorMode = false;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    console.log('WebSocket: Creating new connection for world:', worldId);
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      console.log('WebSocket: Connection opened, sending join_world for:', worldId);
+      this.send({ type: 'join_world', worldId });
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'joined_world' && data.worldId === this.worldId) {
+          console.log('WebSocket: Successfully joined world', this.worldId);
+          this.joinedWorld = true;
+          while (this.pendingMessages.length > 0) {
+            const msg = this.pendingMessages.shift();
+            this.send(msg);
+          }
+        }
+
+        this.messageHandlers.forEach(handler => handler(data));
+      } catch (e) {
+        console.error('WebSocket: Error parsing message:', e);
+      }
+    };
+
+    this.ws.onclose = () => {
+      console.log('WebSocket: World connection closed');
+      this.joinedWorld = false;
+      this.reconnectTimeout = setTimeout(() => {
+        if (this.worldId) {
+          console.log('WebSocket: Attempting reconnect to world:', this.worldId);
+          this.connectWorld(this.worldId);
+        }
+      }, 3000);
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  }
+
   disconnect() {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -2799,10 +2876,33 @@ export class GameWebSocket {
       this.ws = null;
     }
     this.campaignId = null;
+    this.worldId = null;
     this.joinedCampaign = false;
+    this.joinedWorld = false;
     this.pendingMessages = [];
     this.incognitoMode = false;
     this.messageHandlers.clear();
+  }
+
+  // disconnectWorld — leave the current world room and close the world
+  // connection without nuking registered message handlers (handlers are owned
+  // by React hooks that unsubscribe themselves).
+  disconnectWorld() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      if (this.worldId && this.ws.readyState === WebSocket.OPEN) {
+        this.send({ type: 'leave_world', worldId: this.worldId });
+      }
+      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.close();
+      this.ws = null;
+    }
+    this.worldId = null;
+    this.joinedWorld = false;
+    this.pendingMessages = [];
   }
   
   isIncognito(): boolean {

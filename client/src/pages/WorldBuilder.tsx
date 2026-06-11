@@ -13,6 +13,7 @@ import { WorldRealmCanvas } from "@/components/worldbuilder/WorldRealmCanvas";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
 import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, TAG_COLORS, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline, useDeleteTimeline, useDeleteWorldMap, useWorldCollaborators } from "@/lib/worldbuilding-api";
+import { gameWs } from "@/lib/api";
 import { PREDEFINED_TAGS } from "@shared/schema";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -539,6 +540,15 @@ export default function WorldBuilder() {
   });
 
   useWorldbuildingSync(selectedWorldId);
+
+  // Standalone /worldbuilder has no campaign room, so join a world-scoped room
+  // to receive live world content updates (relationship lines, entities, etc.).
+  useEffect(() => {
+    if (!selectedWorldId) return;
+    gameWs.connectWorld(selectedWorldId);
+    return () => { gameWs.disconnectWorld(); };
+  }, [selectedWorldId]);
+
   const { data: entities = [], isLoading: entitiesLoading } = useEntities(selectedWorldId || undefined);
   const { data: links = [] } = useEntityLinks(selectedWorldId || undefined);
   const { data: timelines = [], isLoading: timelinesLoading } = useTimelines(selectedWorldId || undefined);

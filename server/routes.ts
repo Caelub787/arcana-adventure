@@ -332,6 +332,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
 
+  // Map to track world rooms (for standalone /worldbuilder collaboration with
+  // no linked campaign — gives world-scoped broadcasts a place to land).
+  const worldRooms = new Map<string, Set<any>>();
+
   // Token-move persistence debouncer. Live drags can fire up to ~20 messages
   // per second per token — running the full validation pipeline (~10 DB
   // reads + 1 write) on every message floods Neon serverless and eventually
@@ -739,6 +743,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         client.send(messageString);
       }
     });
+  }
+
+  /**
+   * broadcastToWorld - Broadcast to ALL connected users in a world room
+   *
+   * Used for world-scoped content (entities, relationship links, maps,
+   * calendars, timelines) so collaborators viewing the same standalone world
+   * in /worldbuilder (no linked campaign) get live updates.
+   */
+  function broadcastToWorld(worldId: string, message: any): void {
+    const room = worldRooms.get(worldId);
+    if (!room || room.size === 0) return;
+
+    const messageString = JSON.stringify(message);
+
+    room.forEach((client) => {
+      if (client.readyState === 1) { // OPEN
+        client.send(messageString);
+      }
+    });
+  }
+
+  /**
+   * broadcastWorldContent - Broadcast a world-scoped update to everyone who
+   * needs it: the per-world room (standalone /worldbuilder viewers) and, when
+   * the world is linked to a campaign, that campaign's room (campaign-embedded
+   * wiki viewers). A given client only joins one of these, so no duplicates.
+   */
+  function broadcastWorldContent(world: { id: string; campaignId?: string | null }, message: any): void {
+    broadcastToWorld(world.id, message);
+    if (world.campaignId) broadcastToCampaign(world.campaignId, message);
   }
 
   /**
@@ -1160,6 +1195,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
               campaignId,
               spectators: getSpectatorList(campaignId),
             }));
+          }
+        }
+
+        // join_world — used by the standalone /worldbuilder page so that
+        // collaborators viewing a world with NO linked campaign still receive
+        // live world-scoped updates (relationship lines, entities, maps, etc.).
+        if (message.type === "join_world" && message.worldId) {
+          const worldId = message.worldId;
+          const access = await checkWorldAccess(authenticatedUserId, worldId);
+          if (!access.allowed) {
+            ws.send(JSON.stringify({ type: "error", message: "Not authorized for this world" }));
+            return;
+          }
+
+          if (!(ws as any).joinedWorlds) (ws as any).joinedWorlds = new Set<string>();
+          (ws as any).joinedWorlds.add(worldId);
+
+          if (!worldRooms.has(worldId)) worldRooms.set(worldId, new Set());
+          worldRooms.get(worldId)!.add(ws);
+
+          ws.send(JSON.stringify({ type: "joined_world", worldId }));
+          console.log(`[WebSocket] User ${username} joined world ${worldId}`);
+        }
+
+        // leave_world — explicit departure (e.g. switching worlds in the
+        // standalone /worldbuilder page) so a socket isn't left in stale rooms.
+        if (message.type === "leave_world" && message.worldId) {
+          const worldId = message.worldId;
+          (ws as any).joinedWorlds?.delete(worldId);
+          const room = worldRooms.get(worldId);
+          if (room) {
+            room.delete(ws);
+            if (room.size === 0) worldRooms.delete(worldId);
           }
         }
 
@@ -2393,7 +2461,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       });
-      
+
+      // Remove from all world rooms (standalone /worldbuilder collaboration).
+      const joinedWorlds = (ws as any).joinedWorlds || new Set<string>();
+      joinedWorlds.forEach((worldId: string) => {
+        const room = worldRooms.get(worldId);
+        if (room) {
+          room.delete(ws);
+          if (room.size === 0) worldRooms.delete(worldId);
+        }
+      });
+
       // Remove from all note rooms and broadcast presence update
       const joinedNotes = (ws as any).joinedNotes || new Set<string>();
       const disconnectedUserId = (ws as any).userId;
@@ -15951,6 +16029,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertEntitySchema.parse({ ...req.body, worldId: req.params.worldId, createdBy: req.session.userId });
       const entity = await storage.createEntity(parsed);
+      broadcastWorldContent(world, { type: "entity_created", entity });
       res.status(201).json(entity);
     } catch (e) {
       console.error("Failed to create world entity:", e);
@@ -15971,9 +16050,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!entityAccess || entityAccess.accessLevel !== 'edit') return res.status(403).json({ error: "Not authorized to edit this entity" });
         const { articleContent, description, displayName, image, tags } = req.body;
         const entity = await storage.updateEntity(req.params.entityId, { articleContent, description, displayName, image, tags });
+        broadcastWorldContent(world, { type: "entity_updated", entity });
         return res.json(entity);
       }
       const entity = await storage.updateEntity(req.params.entityId, req.body);
+      broadcastWorldContent(world, { type: "entity_updated", entity });
       res.json(entity);
     } catch (e) {
       console.error("Failed to update world entity:", e);
@@ -15990,6 +16071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getEntity(req.params.entityId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
       await storage.softDeleteEntity(req.params.entityId);
+      broadcastWorldContent(world, { type: "entity_deleted", entityId: req.params.entityId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world entity:", e);
@@ -16005,6 +16087,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const entity = await storage.restoreEntity(req.params.entityId);
       if (!entity) return res.status(404).json({ error: "Entity not found" });
+      broadcastWorldContent(world, { type: "entity_restored", entity });
       res.json(entity);
     } catch (e) {
       console.error("Failed to restore world entity:", e);
@@ -16058,7 +16141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertEntityLinkSchema.parse({ ...req.body, worldId: req.params.worldId });
       const link = await storage.createEntityLink(parsed);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_created", link });
+      broadcastWorldContent(world, { type: "entity_link_created", link });
       res.status(201).json(link);
     } catch (e) {
       console.error("Failed to create world entity link:", e);
@@ -16075,7 +16158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       const link = await storage.updateEntityLink(req.params.linkId, req.body);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_updated", link });
+      broadcastWorldContent(world, { type: "entity_link_updated", link });
       res.json(link);
     } catch (e) {
       console.error("Failed to update world entity link:", e);
@@ -16092,7 +16175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       await storage.deleteEntityLink(req.params.linkId);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_deleted", linkId: req.params.linkId });
+      broadcastWorldContent(world, { type: "entity_link_deleted", linkId: req.params.linkId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world entity link:", e);
@@ -16197,6 +16280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldMapSchema.parse({ ...req.body, worldId: req.params.worldId });
       const map = await storage.createWorldMap(parsed);
+      broadcastWorldContent(world, { type: "world_map_created", map });
       res.status(201).json(map);
     } catch (e) {
       console.error("Failed to create world map:", e);
@@ -16213,6 +16297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldMap(req.params.mapId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       const map = await storage.updateWorldMap(req.params.mapId, req.body);
+      broadcastWorldContent(world, { type: "world_map_updated", map });
       res.json(map);
     } catch (e) {
       console.error("Failed to update world map:", e);
@@ -16229,6 +16314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldMap(req.params.mapId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       await storage.deleteWorldMap(req.params.mapId);
+      broadcastWorldContent(world, { type: "world_map_deleted", mapId: req.params.mapId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world map:", e);
@@ -16262,6 +16348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
       const parsed = insertWorldMapPinSchema.parse({ ...req.body, mapId: req.params.mapId });
       const pin = await storage.createWorldMapPin(parsed);
+      broadcastWorldContent(world, { type: "world_map_pin_created", pin, mapId: req.params.mapId });
       res.status(201).json(pin);
     } catch (e) {
       console.error("Failed to create world map pin:", e);
@@ -16278,6 +16365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldMapPin(req.params.pinId);
       if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
       const pin = await storage.updateWorldMapPin(req.params.pinId, req.body);
+      broadcastWorldContent(world, { type: "world_map_pin_updated", pin, mapId: req.params.mapId });
       res.json(pin);
     } catch (e) {
       console.error("Failed to update world map pin:", e);
@@ -16294,6 +16382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldMapPin(req.params.pinId);
       if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
       await storage.deleteWorldMapPin(req.params.pinId);
+      broadcastWorldContent(world, { type: "world_map_pin_deleted", pinId: req.params.pinId, mapId: req.params.mapId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world map pin:", e);
@@ -16336,6 +16425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldCalendarSchema.parse({ ...req.body, worldId: req.params.worldId });
       const calendar = await storage.createWorldCalendar(parsed);
+      broadcastWorldContent(world, { type: "world_calendar_created", calendar });
       res.status(201).json(calendar);
     } catch (e) {
       console.error("Failed to create world calendar:", e);
@@ -16352,6 +16442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldCalendar(req.params.calendarId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
       const calendar = await storage.updateWorldCalendar(req.params.calendarId, req.body);
+      broadcastWorldContent(world, { type: "world_calendar_updated", calendar });
       res.json(calendar);
     } catch (e) {
       console.error("Failed to update world calendar:", e);
@@ -16368,6 +16459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldCalendar(req.params.calendarId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
       await storage.deleteWorldCalendar(req.params.calendarId);
+      broadcastWorldContent(world, { type: "world_calendar_deleted", calendarId: req.params.calendarId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world calendar:", e);
@@ -16410,6 +16502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldTimelineEventSchema.parse({ ...req.body, worldId: req.params.worldId });
       const event = await storage.createWorldTimelineEvent(parsed);
+      broadcastWorldContent(world, { type: "world_timeline_event_created", event });
       res.status(201).json(event);
     } catch (e) {
       console.error("Failed to create world timeline event:", e);
@@ -16426,6 +16519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldTimelineEvent(req.params.eventId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
       const event = await storage.updateWorldTimelineEvent(req.params.eventId, req.body);
+      broadcastWorldContent(world, { type: "world_timeline_event_updated", event });
       res.json(event);
     } catch (e) {
       console.error("Failed to update world timeline event:", e);
@@ -16442,6 +16536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorldTimelineEvent(req.params.eventId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
       await storage.deleteWorldTimelineEvent(req.params.eventId);
+      broadcastWorldContent(world, { type: "world_timeline_event_deleted", eventId: req.params.eventId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world timeline event:", e);
@@ -16471,6 +16566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldCalendarSyncSchema.parse({ ...req.body, worldId: req.params.worldId });
       const sync = await storage.createCalendarSync(parsed);
+      broadcastWorldContent(world, { type: "calendar_sync_created", sync });
       res.status(201).json(sync);
     } catch (e) {
       console.error("Failed to create calendar sync:", e);
@@ -16487,6 +16583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getCalendarSync(req.params.syncId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar sync not found" });
       await storage.deleteCalendarSync(req.params.syncId);
+      broadcastWorldContent(world, { type: "calendar_sync_deleted", syncId: req.params.syncId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete calendar sync:", e);
@@ -16515,7 +16612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertWorldTimelineSchema.parse({ ...req.body, worldId: req.params.worldId });
       const timeline = await storage.createTimeline(parsed);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_created", timeline });
+      broadcastWorldContent(world, { type: "world_timeline_created", timeline });
       res.status(201).json(timeline);
     } catch (e) {
       console.error("Failed to create timeline:", e);
@@ -16532,7 +16629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getTimeline(req.params.timelineId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
       const timeline = await storage.updateTimeline(req.params.timelineId, req.body);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_updated", timeline });
+      broadcastWorldContent(world, { type: "world_timeline_updated", timeline });
       res.json(timeline);
     } catch (e) {
       console.error("Failed to update timeline:", e);
@@ -16549,7 +16646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getTimeline(req.params.timelineId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
       await storage.deleteTimeline(req.params.timelineId);
-      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_deleted", timelineId: req.params.timelineId });
+      broadcastWorldContent(world, { type: "world_timeline_deleted", timelineId: req.params.timelineId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete timeline:", e);
