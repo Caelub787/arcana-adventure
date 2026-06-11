@@ -9,6 +9,14 @@ The home-grown World Builder (standalone `/worldbuilder` page + campaign-embedde
 `WorldBuilderContent`) was replaced by a port of the standalone Canvas Realms app.
 Clerk auth was swapped for host session auth (`req.session.userId`).
 
+The old WB component dirs (`client/src/components/worldbuilder/*` and most of
+`client/src/components/worldbuilding/*`) are now DELETED. The ONLY survivor is
+`client/src/components/worldbuilding/WikiArticleEditor.tsx`, still imported by
+`Campaign.tsx` + `notes/CampaignNotesPanel.tsx` (it depends only on
+`@/lib/worldbuilding-api`, not on other WB components). The `lib/worldbuilding-api.ts`
+hooks + server world/entity routes/tables were intentionally left in place (data tables
+not dropped without confirmation).
+
 - Standalone entry: `/worldbuilder` redirects to `/app` (CR routes). CR API mounted at `/api`.
 - CR module lives in `client/src/canvasrealms/**` (alias `@cr`) and `server/canvasrealms/**`;
   CR tables in `shared/cr-schema.ts`; `@workspace/db` is a host shim.
