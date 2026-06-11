@@ -18,7 +18,7 @@ import AdminSettings from "@/pages/AdminSettings";
 import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
-import WorldBuilder from "@/pages/WorldBuilder";
+import CanvasRealmsApp from "@/pages/CanvasRealmsApp";
 import SharedWorldView from "@/pages/SharedWorldView";
 import Spectate from "@/pages/Spectate";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
@@ -155,6 +155,14 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+function RedirectTo({ path }: { path: string }) {
+  const [, setLocation] = useLocation();
+  React.useEffect(() => {
+    setLocation(path, { replace: true });
+  }, [path, setLocation]);
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
@@ -190,7 +198,16 @@ function Router() {
         {() => <ProtectedRoute component={Join} />}
       </Route>
       <Route path="/worldbuilder">
-        {() => <ProtectedRoute component={WorldBuilder} />}
+        {() => <RedirectTo path="/app" />}
+      </Route>
+      <Route path="/app/realm/:realmId/node/:nodeId">
+        {() => <ProtectedRoute component={CanvasRealmsApp} />}
+      </Route>
+      <Route path="/app/realm/:realmId">
+        {() => <ProtectedRoute component={CanvasRealmsApp} />}
+      </Route>
+      <Route path="/app">
+        {() => <ProtectedRoute component={CanvasRealmsApp} />}
       </Route>
       <Route path="/spectate/:token" component={Spectate} />
       <Route path="/world/:token" component={SharedWorldView} />

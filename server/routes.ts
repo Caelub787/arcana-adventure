@@ -8,8 +8,11 @@ import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
 import { db } from "./db";
 import { eq, sql, and, inArray, or, isNull } from "drizzle-orm";
+import { realmsTable } from "@shared/cr-schema";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
+import { registerCanvasRealmsRoutes } from "./canvasrealms";
+import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
 import fs from "fs";
@@ -320,14 +323,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   });
-  
+
+  // NOTE: Canvas Realms HTTP routers are mounted at the very END of
+  // registerRoutes (just before `return httpServer`) so that host routes —
+  // including PUBLIC ones like /api/register, /api/login, /api/forgot-password
+  // and share links — take precedence in the shared /api namespace. The CR
+  // combined router applies `requireAuth` with no path filter, so mounting it
+  // early would 401 every unauthenticated host /api request before its handler
+  // runs. CR owns distinct paths (/api/realms, /api/nodes, ...) that the host
+  // never defines, so end-mounting is conflict-free.
+
   // Get session middleware from app
   const sessionMiddleware = (app as any)._router.stack.find(
     (layer: any) => layer.name === 'session'
   )?.handle;
   
-  // WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  // WebSocket server for real-time updates. Created in noServer mode so a
+  // single httpServer 'upgrade' dispatcher can route between the host's /ws
+  // channel and Canvas Realms' /api/realtime/:realmId Yjs channel. A
+  // path-bound ws server would 400-abort the other channel's upgrades (and
+  // Vite HMR's), so we dispatch by pathname and stay "polite" — unknown
+  // paths (e.g. the Vite HMR 'vite-hmr' upgrade) are left for other listeners.
+  const wss = new WebSocketServer({ noServer: true });
+
+  // Initialize Canvas Realms realtime (Yjs) ws server with host session auth.
+  initCanvasRealtime(sessionMiddleware);
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    const pathname = (req.url || "").split("?")[0];
+    if (pathname.startsWith("/api/realtime/")) {
+      handleRealtimeUpgrade(req, socket, head);
+      return;
+    }
+    if (pathname === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+      return;
+    }
+    // Not ours — leave the socket for Vite HMR / other upgrade listeners.
+  });
   
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
@@ -15482,6 +15517,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get-or-create the ported Canvas Realms realm that backs a campaign's World
+  // Builder. The realm reuses the host campaign id as its id so resolveRealmRole
+  // (CR auth) can bridge access from campaign membership without an explicit CR
+  // collaborator row. The GM provisions it on first open; members then inherit
+  // viewer/editor access.
+  app.post("/api/campaigns/:campaignId/realm", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const userId = req.session.userId!;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, userId);
+      const isGM = await hasGmAccess(userId, campaignId, campaign.gmUserId, req);
+      if (!isMember && !isGM) {
+        return res.status(403).json({ error: "Not a campaign member" });
+      }
+
+      const [existing] = await db
+        .select()
+        .from(realmsTable)
+        .where(eq(realmsTable.id, campaignId));
+      if (existing) {
+        return res.json({ id: existing.id, name: existing.name, slug: existing.slug });
+      }
+
+      // Only a GM/assistant GM may provision the realm the first time.
+      if (!isGM) {
+        return res
+          .status(403)
+          .json({ error: "World Builder not set up for this campaign yet" });
+      }
+      const [row] = await db
+        .insert(realmsTable)
+        .values({
+          id: campaignId,
+          name: campaign.name || "Campaign World",
+          slug: `campaign-${campaignId}`,
+          ownerUserId: campaign.gmUserId,
+        })
+        .returning();
+      res.status(201).json({ id: row.id, name: row.name, slug: row.slug });
+    } catch (e) {
+      console.error("Failed to get-or-create realm for campaign:", e);
+      res
+        .status(500)
+        .json({ error: "Failed to open World Builder for this campaign" });
+    }
+  });
+
   // Verify a world object's world is linked to a campaign and the systems match.
   // Returns an error string when blocked, or null when allowed.
   async function checkWorldImportEligibility(
@@ -17370,6 +17454,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('[AA V2 Fix] Error correcting class points:', err);
     }
   })();
+
+  // Canvas Realms (ported World Builder) HTTP routers — mounted LAST so host
+  // routes win in the shared /api namespace (see note near the top of
+  // registerRoutes). CR owns distinct paths (/api/realms, /api/nodes, etc.).
+  registerCanvasRealmsRoutes(app);
 
   return httpServer;
 }

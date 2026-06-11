@@ -23,8 +23,13 @@
     "paths": {
       "@/*": ["./client/src/*"],
       "@shared/*": ["./shared/*"],
+      "@arcana/aa-sync-sdk": ["./packages/aa-sync-sdk/index.ts"],
       "@arcana/library-dialogs": ["./packages/library-dialogs/src/index.ts"],
-      "@arcana/library-dialogs/theme.css": ["./packages/library-dialogs/src/theme.css"]
+      "@arcana/library-dialogs/theme.css": ["./packages/library-dialogs/src/theme.css"],
+      "@cr/*": ["./client/src/canvasrealms/*"],
+      "@workspace/api-zod": ["./client/src/canvasrealms/_pkg/api-zod/src/index.ts"],
+      "@workspace/api-client-react": ["./client/src/canvasrealms/_pkg/api-client-react/src/index.ts"],
+      "@workspace/db": ["./server/canvasrealms/db.ts"]
     }
   }
 }

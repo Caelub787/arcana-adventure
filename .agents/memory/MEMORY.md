@@ -1,1 +1,2 @@
 - [TypeScript build baseline](tsc-baseline.md) — repo never type-checks clean (Vite/esbuild builds); judge a change by tsc error-count delta, not absolute.
+- [Canvas Realms World Builder port](cr-worldbuilder-port.md) — CR replaces the WB; campaign embed keys its CR realm by campaignId (not a host world), access bridged via checkCampaignAccessShared.
