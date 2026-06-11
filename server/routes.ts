@@ -16058,6 +16058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!_waccess.allowed || !_waccess.isOwner) return res.status(403).json({ error: "Not authorized" });
       const parsed = insertEntityLinkSchema.parse({ ...req.body, worldId: req.params.worldId });
       const link = await storage.createEntityLink(parsed);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_created", link });
       res.status(201).json(link);
     } catch (e) {
       console.error("Failed to create world entity link:", e);
@@ -16074,6 +16075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       const link = await storage.updateEntityLink(req.params.linkId, req.body);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_updated", link });
       res.json(link);
     } catch (e) {
       console.error("Failed to update world entity link:", e);
@@ -16090,6 +16092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getEntityLink(req.params.linkId);
       if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
       await storage.deleteEntityLink(req.params.linkId);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "entity_link_deleted", linkId: req.params.linkId });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete world entity link:", e);
