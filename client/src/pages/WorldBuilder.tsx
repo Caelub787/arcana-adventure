@@ -229,6 +229,32 @@ function WorldCollaboratorsSection({ worldId }: { worldId: string }) {
   );
 }
 
+// Live-collaboration presence for standalone worlds.
+type WorldPresence = {
+  userId: string;
+  username: string;
+  cursor?: { x: number; y: number } | null;
+  section?: string;
+  lastActive: number;
+};
+
+// Deterministic, readable color from a userId so each collaborator keeps a
+// stable cursor/avatar color across clients without server coordination.
+const PRESENCE_COLORS = [
+  "#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#a855f7",
+  "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4",
+];
+function presenceColor(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+  }
+  return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+}
+
+// Sections where rendering live cursors is meaningful (shared spatial canvases).
+const CURSOR_SECTIONS = new Set(["graph", "realm"]);
+
 export default function WorldBuilder() {
   const [, setLocation] = useLocation();
   const { user, logout } = useAuth();
@@ -277,6 +303,9 @@ export default function WorldBuilder() {
   const [homeContentDraft, setHomeContentDraft] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
   const [homeEditorMode, setHomeEditorMode] = useState<"preview" | "edit">("preview");
+  const [worldPresence, setWorldPresence] = useState<WorldPresence[]>([]);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  const lastCursorSentRef = useRef<number>(0);
 
   const { data: worlds = [], isLoading: worldsLoading } = useQuery<World[]>({
     queryKey: ['/api/worlds'],
@@ -545,9 +574,89 @@ export default function WorldBuilder() {
   // to receive live world content updates (relationship lines, entities, etc.).
   useEffect(() => {
     if (!selectedWorldId) return;
+    setWorldPresence([]);
     gameWs.connectWorld(selectedWorldId);
-    return () => { gameWs.disconnectWorld(); };
+    return () => { gameWs.disconnectWorld(); setWorldPresence([]); };
   }, [selectedWorldId]);
+
+  // Live collaboration: track other connected users (avatars) and their live
+  // cursor positions in the standalone world room.
+  useEffect(() => {
+    if (!selectedWorldId || !user) return;
+
+    const handle = (data: any) => {
+      if (data.worldId !== selectedWorldId) return;
+      switch (data.type) {
+        case "joined_world":
+          setWorldPresence(
+            (data.presence || []).filter((p: WorldPresence) => p.userId !== user.id)
+          );
+          break;
+        case "world_presence_update":
+          if (data.action === "joined") {
+            setWorldPresence((prev) => {
+              if (data.userId === user.id || prev.some((p) => p.userId === data.userId)) return prev;
+              return [...prev, { userId: data.userId, username: data.username, lastActive: Date.now() }];
+            });
+          } else if (data.action === "left") {
+            setWorldPresence((prev) => prev.filter((p) => p.userId !== data.userId));
+          }
+          break;
+        case "world_cursor":
+          if (data.userId === user.id) return;
+          setWorldPresence((prev) => {
+            const existing = prev.find((p) => p.userId === data.userId);
+            if (!existing) {
+              return [...prev, {
+                userId: data.userId,
+                username: data.username,
+                cursor: data.cursor,
+                section: data.section,
+                lastActive: Date.now(),
+              }];
+            }
+            return prev.map((p) =>
+              p.userId === data.userId
+                ? { ...p, cursor: data.cursor, section: data.section, lastActive: Date.now() }
+                : p
+            );
+          });
+          break;
+      }
+    };
+
+    const unsub = gameWs.onMessage(handle);
+    return () => { unsub(); };
+  }, [selectedWorldId, user?.id]);
+
+  // Broadcast our cursor position (normalized within the content area) while
+  // hovering shared spatial surfaces (Graph / Realm canvas), throttled to keep
+  // WebSocket traffic light.
+  const handleContentPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!CURSOR_SECTIONS.has(activeSection)) return;
+    const el = contentAreaRef.current;
+    if (!el) return;
+    const now = Date.now();
+    if (now - lastCursorSentRef.current < 50) return;
+    lastCursorSentRef.current = now;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    gameWs.sendWorldCursor({ x, y }, activeSection);
+  }, [activeSection]);
+
+  const handleContentPointerLeave = useCallback(() => {
+    if (!CURSOR_SECTIONS.has(activeSection)) return;
+    gameWs.sendWorldCursor(null, activeSection);
+  }, [activeSection]);
+
+  // Clear our broadcast cursor when leaving a cursor-enabled section.
+  useEffect(() => {
+    if (!CURSOR_SECTIONS.has(activeSection)) {
+      gameWs.sendWorldCursor(null, activeSection);
+    }
+  }, [activeSection]);
 
   const { data: entities = [], isLoading: entitiesLoading } = useEntities(selectedWorldId || undefined);
   const { data: links = [] } = useEntityLinks(selectedWorldId || undefined);
@@ -1077,6 +1186,35 @@ export default function WorldBuilder() {
             )}
           </div>
           <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
+            {selectedWorldId && worldPresence.length > 0 && (
+              <div className="flex items-center -space-x-1.5 mr-1" data-testid="world-presence-indicators">
+                {worldPresence.slice(0, 4).map((p, i) => (
+                  <div
+                    key={p.userId}
+                    className="relative group"
+                    style={{ zIndex: worldPresence.length - i }}
+                    data-testid={`presence-avatar-${p.userId}`}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-stone-900 border-2 border-stone-900"
+                      style={{ backgroundColor: presenceColor(p.userId) }}
+                      title={p.username}
+                    >
+                      {p.username.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-stone-900" />
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 bg-stone-900 border border-stone-700 rounded text-xs text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      {p.username}
+                    </div>
+                  </div>
+                ))}
+                {worldPresence.length > 4 && (
+                  <div className="w-7 h-7 rounded-full bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-300 border-2 border-stone-900">
+                    +{worldPresence.length - 4}
+                  </div>
+                )}
+              </div>
+            )}
             {selectedWorldId && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -1199,7 +1337,12 @@ export default function WorldBuilder() {
             </div>
           )}
 
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <div
+            ref={contentAreaRef}
+            className="flex-1 flex flex-col overflow-hidden min-w-0 relative"
+            onPointerMove={handleContentPointerMove}
+            onPointerLeave={handleContentPointerLeave}
+          >
             <div className="border-b border-stone-700 bg-stone-900/80 shrink-0 min-h-[30px]">
               <div className="flex items-center overflow-x-auto">
                 {wbTabs.length === 0 && (
@@ -1711,6 +1854,31 @@ export default function WorldBuilder() {
                 />
               </div>
             )}
+
+            {/* Live collaborator cursors (Graph / Realm canvas) */}
+            {CURSOR_SECTIONS.has(activeSection) && worldPresence
+              .filter((p) => p.cursor && p.section === activeSection)
+              .map((p) => {
+                const color = presenceColor(p.userId);
+                return (
+                  <div
+                    key={`cursor-${p.userId}`}
+                    className="pointer-events-none absolute z-40 transition-[left,top] duration-75 ease-linear"
+                    style={{ left: `${p.cursor!.x * 100}%`, top: `${p.cursor!.y * 100}%` }}
+                    data-testid={`cursor-collaborator-${p.userId}`}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="drop-shadow">
+                      <path d="M1 1L6.5 15L8.5 9L14.5 7L1 1Z" fill={color} stroke="#0c0a09" strokeWidth="1" />
+                    </svg>
+                    <span
+                      className="ml-3 -mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium text-stone-900 whitespace-nowrap"
+                      style={{ backgroundColor: color }}
+                    >
+                      {p.username}
+                    </span>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}

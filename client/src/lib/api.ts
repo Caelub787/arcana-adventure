@@ -2904,6 +2904,15 @@ export class GameWebSocket {
     this.joinedWorld = false;
     this.pendingMessages = [];
   }
+
+  // sendWorldCursor — broadcast this user's live cursor position (normalized
+  // {x, y} within the active section) so standalone-world collaborators can
+  // render each other's cursors in the Canvas/Graph editors. Passing a null
+  // cursor signals the pointer has left the collaborative surface.
+  sendWorldCursor(cursor: { x: number; y: number } | null, section?: string) {
+    if (!this.worldId || !this.joinedWorld) return;
+    this.send({ type: 'world_cursor', worldId: this.worldId, cursor, section });
+  }
   
   isIncognito(): boolean {
     return this.incognitoMode;

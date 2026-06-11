@@ -336,6 +336,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // no linked campaign — gives world-scoped broadcasts a place to land).
   const worldRooms = new Map<string, Set<any>>();
 
+  // Per-world presence: who is currently viewing a standalone world and where
+  // their cursor is (so collaborators see each other's avatars + live cursors
+  // in the /worldbuilder Canvas/Graph editors). Keyed by worldId → userId.
+  const worldPresence = new Map<string, Map<string, { username: string; cursor?: any; section?: string; lastActive: number }>>();
+
   // Token-move persistence debouncer. Live drags can fire up to ~20 messages
   // per second per token — running the full validation pipeline (~10 DB
   // reads + 1 write) on every message floods Neon serverless and eventually
@@ -760,6 +765,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     room.forEach((client) => {
       if (client.readyState === 1) { // OPEN
+        client.send(messageString);
+      }
+    });
+  }
+
+  /**
+   * broadcastToWorldExcept - Broadcast to all connected users in a world room
+   * EXCEPT the given socket. Used for presence/cursor updates so the sender
+   * doesn't echo their own movements back to themselves.
+   */
+  function broadcastToWorldExcept(worldId: string, exclude: any, message: any): void {
+    const room = worldRooms.get(worldId);
+    if (!room || room.size === 0) return;
+
+    const messageString = JSON.stringify(message);
+
+    room.forEach((client) => {
+      if (client !== exclude && client.readyState === 1) { // OPEN
         client.send(messageString);
       }
     });
@@ -1215,7 +1238,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!worldRooms.has(worldId)) worldRooms.set(worldId, new Set());
           worldRooms.get(worldId)!.add(ws);
 
-          ws.send(JSON.stringify({ type: "joined_world", worldId }));
+          // Register presence so collaborators see each other's avatars.
+          if (!worldPresence.has(worldId)) worldPresence.set(worldId, new Map());
+          const presenceMap = worldPresence.get(worldId)!;
+          presenceMap.set(authenticatedUserId, {
+            username,
+            cursor: null,
+            section: undefined,
+            lastActive: Date.now(),
+          });
+
+          // Send the current presence list (everyone in the room) to the joiner.
+          const presenceList = Array.from(presenceMap.entries()).map(([userId, data]) => ({
+            userId,
+            username: data.username,
+            cursor: data.cursor,
+            section: data.section,
+            lastActive: data.lastActive,
+          }));
+          ws.send(JSON.stringify({ type: "joined_world", worldId, presence: presenceList }));
+
+          // Tell everyone else a new collaborator joined.
+          broadcastToWorldExcept(worldId, ws, {
+            type: "world_presence_update",
+            worldId,
+            userId: authenticatedUserId,
+            username,
+            action: "joined",
+          });
+
           console.log(`[WebSocket] User ${username} joined world ${worldId}`);
         }
 
@@ -1229,6 +1280,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
             room.delete(ws);
             if (room.size === 0) worldRooms.delete(worldId);
           }
+          // Drop presence and notify remaining collaborators.
+          const presenceMap = worldPresence.get(worldId);
+          if (presenceMap) {
+            presenceMap.delete(authenticatedUserId);
+            if (presenceMap.size === 0) worldPresence.delete(worldId);
+          }
+          broadcastToWorldExcept(worldId, ws, {
+            type: "world_presence_update",
+            worldId,
+            userId: authenticatedUserId,
+            username,
+            action: "left",
+          });
+        }
+
+        // world_cursor — live cursor position broadcast for standalone-world
+        // collaboration (Canvas/Graph editors in /worldbuilder). The cursor is
+        // a normalized {x, y} within the active section plus the section name so
+        // viewers only render cursors of collaborators on the same view.
+        if (message.type === "world_cursor" && message.worldId) {
+          const worldId = message.worldId;
+          const room = worldRooms.get(worldId);
+          if (!room || !room.has(ws)) return;
+
+          const presenceMap = worldPresence.get(worldId);
+          if (presenceMap) {
+            const presence = presenceMap.get(authenticatedUserId);
+            if (presence) {
+              presence.cursor = message.cursor ?? null;
+              presence.section = message.section;
+              presence.lastActive = Date.now();
+            }
+          }
+
+          broadcastToWorldExcept(worldId, ws, {
+            type: "world_cursor",
+            worldId,
+            userId: authenticatedUserId,
+            username,
+            cursor: message.cursor ?? null,
+            section: message.section,
+          });
         }
 
         // Spectator (or follower) explicitly asks for the host's current
@@ -2462,7 +2555,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
-      // Remove from all world rooms (standalone /worldbuilder collaboration).
+      const disconnectedUserId = (ws as any).userId;
+      const disconnectedUsername = (ws as any).username;
+
+      // Remove from all world rooms (standalone /worldbuilder collaboration)
+      // and drop presence, notifying remaining collaborators.
       const joinedWorlds = (ws as any).joinedWorlds || new Set<string>();
       joinedWorlds.forEach((worldId: string) => {
         const room = worldRooms.get(worldId);
@@ -2470,12 +2567,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           room.delete(ws);
           if (room.size === 0) worldRooms.delete(worldId);
         }
+        const presenceMap = worldPresence.get(worldId);
+        if (presenceMap) {
+          presenceMap.delete(disconnectedUserId);
+          if (presenceMap.size === 0) worldPresence.delete(worldId);
+        }
+        broadcastToWorldExcept(worldId, ws, {
+          type: "world_presence_update",
+          worldId,
+          userId: disconnectedUserId,
+          username: disconnectedUsername,
+          action: "left",
+        });
       });
 
       // Remove from all note rooms and broadcast presence update
       const joinedNotes = (ws as any).joinedNotes || new Set<string>();
-      const disconnectedUserId = (ws as any).userId;
-      const disconnectedUsername = (ws as any).username;
       
       joinedNotes.forEach((noteId: string) => {
         const noteRoom = noteRooms.get(noteId);
