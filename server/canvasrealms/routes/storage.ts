@@ -97,12 +97,12 @@ router.put(
 router.get("/storage/objects/*", async (req: Request, res: Response) => {
   try {
     const wildcardPath = (req.params as Record<string, string>)[0] || "";
-    const { filePath, contentType, size } =
+    const { file, contentType, size } =
       await objectStorageService.resolveObject(`/objects/${wildcardPath}`);
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Length", String(size));
     res.setHeader("Cache-Control", "private, max-age=3600");
-    objectStorageService.createReadStream(filePath).pipe(res);
+    objectStorageService.createReadStream(file).pipe(res);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       res.status(404).json({ error: "Object not found" });
@@ -122,12 +122,12 @@ router.get("/storage/objects/*", async (req: Request, res: Response) => {
 router.get("/storage/public-objects/*", async (req: Request, res: Response) => {
   try {
     const wildcardPath = (req.params as Record<string, string>)[0] || "";
-    const { filePath, contentType, size } =
+    const { file, contentType, size } =
       await objectStorageService.resolveObject(`/objects/${wildcardPath}`);
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Length", String(size));
     res.setHeader("Cache-Control", "public, max-age=3600");
-    objectStorageService.createReadStream(filePath).pipe(res);
+    objectStorageService.createReadStream(file).pipe(res);
   } catch {
     res.status(404).json({ error: "File not found" });
   }

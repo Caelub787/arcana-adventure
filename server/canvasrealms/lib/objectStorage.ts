@@ -1,17 +1,21 @@
-// Local-filesystem object storage adapter.
+// Object-storage-backed adapter for Canvas Realms uploads.
 //
 // The standalone Canvas Realms app used Replit's GCS-backed object storage via
-// the sidecar (PUBLIC_OBJECT_SEARCH_PATHS / PRIVATE_OBJECT_DIR). The host app
-// has no provisioned bucket, so this adapter stores uploaded files on the local
-// filesystem under `cr-uploads/` and serves them back through the same
-// `/api/storage/objects/...` routes. The public method surface mirrors what the
-// storage router needs (newUpload / writeUpload / resolveObject / read stream).
+// the sidecar (PUBLIC_OBJECT_SEARCH_PATHS / PRIVATE_OBJECT_DIR). Earlier the host
+// app had no provisioned bucket, so uploads were stored on the local filesystem
+// under `cr-uploads/` — but local files are ephemeral on deploy and would be lost
+// on redeploy/scale. This adapter now persists uploads in the provisioned bucket
+// (durable across redeploys) while keeping the exact same public method surface
+// the storage router relies on (newUpload / writeUpload / resolveObject / read
+// stream) and the same `/objects/uploads/<uuid>` object paths, so neither the
+// routes nor the client upload code need to change.
 
-import { promises as fs, createReadStream, type ReadStream } from "fs";
-import path from "path";
+import { type File } from "@google-cloud/storage";
 import { randomUUID } from "crypto";
+import { objectStorageClient } from "../../replit_integrations/object_storage";
 
-const STORAGE_ROOT = path.resolve(process.cwd(), "cr-uploads");
+// Uploads live under this prefix inside the bucket's private object directory.
+const UPLOAD_PREFIX = "cr-uploads";
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -21,19 +25,51 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
-// Resolve a stored relative path against STORAGE_ROOT, rejecting any path that
-// escapes the root (defense against `../` traversal in the wildcard route).
-function safeJoin(rel: string): string {
-  const normalized = rel.startsWith("/") ? rel : `/${rel}`;
-  const target = path.resolve(STORAGE_ROOT, `.${normalized}`);
-  if (target !== STORAGE_ROOT && !target.startsWith(STORAGE_ROOT + path.sep)) {
+function getPrivateObjectDir(): string {
+  const dir = process.env.PRIVATE_OBJECT_DIR || "";
+  if (!dir) {
+    throw new Error(
+      "PRIVATE_OBJECT_DIR not set. Create a bucket in the 'Object Storage' " +
+        "tool and set the PRIVATE_OBJECT_DIR env var.",
+    );
+  }
+  return dir;
+}
+
+// Split a "/<bucket>/<object...>" path into its bucket name and object name.
+function parseObjectPath(fullPath: string): {
+  bucketName: string;
+  objectName: string;
+} {
+  const normalized = fullPath.startsWith("/") ? fullPath : `/${fullPath}`;
+  const parts = normalized.split("/");
+  if (parts.length < 3) {
+    throw new Error("Invalid path: must contain at least a bucket name");
+  }
+  const bucketName = parts[1];
+  const objectName = parts.slice(2).join("/");
+  return { bucketName, objectName };
+}
+
+// Resolve a stored relative path ("uploads/<uuid>") to a GCS File handle,
+// rejecting any path that escapes the upload prefix (defense against `../`
+// traversal coming in through the wildcard GET route).
+function fileForRelPath(rel: string): File {
+  const clean = rel.replace(/^\/+/, "");
+  if (clean.split("/").some((segment) => segment === "" || segment === "..")) {
     throw new ObjectNotFoundError();
   }
-  return target;
+  let dir = getPrivateObjectDir();
+  if (!dir.endsWith("/")) {
+    dir = `${dir}/`;
+  }
+  const fullPath = `${dir}${UPLOAD_PREFIX}/${clean}`;
+  const { bucketName, objectName } = parseObjectPath(fullPath);
+  return objectStorageClient.bucket(bucketName).file(objectName);
 }
 
 export interface ResolvedObject {
-  filePath: string;
+  file: File;
   contentType: string;
   size: number;
 }
@@ -52,47 +88,35 @@ export class ObjectStorageService {
     data: Buffer,
     contentType: string,
   ): Promise<void> {
-    const dir = path.join(STORAGE_ROOT, "uploads");
-    await fs.mkdir(dir, { recursive: true });
-    const file = path.join(dir, uploadId);
-    await fs.writeFile(file, data);
-    await fs.writeFile(
-      `${file}.meta`,
-      JSON.stringify({ contentType, size: data.length }),
-    );
+    const file = fileForRelPath(`uploads/${uploadId}`);
+    await file.save(data, {
+      contentType,
+      metadata: { contentType },
+      resumable: false,
+    });
   }
 
-  // Map an objectPath ("/objects/uploads/<uuid>") to a file on disk plus its
-  // stored content type. Throws ObjectNotFoundError when missing.
+  // Map an objectPath ("/objects/uploads/<uuid>") to a GCS File plus its stored
+  // content type and size. Throws ObjectNotFoundError when missing.
   async resolveObject(objectPath: string): Promise<ResolvedObject> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
     }
     const rel = objectPath.slice("/objects/".length);
-    const filePath = safeJoin(rel);
-    let size: number;
-    try {
-      const stat = await fs.stat(filePath);
-      size = stat.size;
-    } catch {
+    const file = fileForRelPath(rel);
+    const [exists] = await file.exists();
+    if (!exists) {
       throw new ObjectNotFoundError();
     }
-    let contentType = "application/octet-stream";
-    try {
-      const meta = JSON.parse(await fs.readFile(`${filePath}.meta`, "utf8"));
-      if (meta && typeof meta.contentType === "string") {
-        contentType = meta.contentType;
-      }
-      if (meta && typeof meta.size === "number") {
-        size = meta.size;
-      }
-    } catch {
-      // Missing/corrupt sidecar metadata is non-fatal; fall back to defaults.
-    }
-    return { filePath, contentType, size };
+    const [metadata] = await file.getMetadata();
+    const contentType =
+      (metadata.contentType as string | undefined) ||
+      "application/octet-stream";
+    const size = Number(metadata.size ?? 0);
+    return { file, contentType, size };
   }
 
-  createReadStream(filePath: string): ReadStream {
-    return createReadStream(filePath);
+  createReadStream(file: File): NodeJS.ReadableStream {
+    return file.createReadStream();
   }
 }

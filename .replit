@@ -55,7 +55,7 @@ isValidation = true
 
 [agent]
 mockupState = "FULLSTACK"
-integrations = ["resend:1.0.0", "google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
+integrations = ["resend:1.0.0", "google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_object_storage:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
