@@ -147,6 +147,9 @@ export interface IStorage {
   deleteCharacterTemplate(id: string): Promise<void>;
   copyTemplateToCompany(templateId: string, campaignId: string, userId: string): Promise<Character>;
   importCharacterToCampaign(characterId: string, targetCampaignId: string, targetUserId: string | null): Promise<Character>;
+  importWorldItemToCharacter(worldItemId: string, characterId: string, userId: string): Promise<Item>;
+  importWorldSpellToCharacter(worldSpellId: string, characterId: string): Promise<Spell>;
+  importWorldCharacterToCampaign(worldCharacterId: string, campaignId: string, userId: string): Promise<Character>;
 
   // Character Template Folder operations
   getCharacterTemplateFolders(): Promise<CharacterTemplateFolder[]>;
@@ -1693,6 +1696,288 @@ export class DatabaseStorage implements IStorage {
       );
     }
     
+    return newChar;
+  }
+
+  // Copy all roll entries from one owner (item/spell) to another, producing
+  // standalone (unlinked) copies. Strips identity + provenance so the copies
+  // are fully independent of any template.
+  private async copyRollEntriesToOwner(ownerType: 'item' | 'spell', sourceOwnerId: string, newOwnerId: string): Promise<void> {
+    const rolls = await this.getRollEntries(ownerType, sourceOwnerId);
+    if (rolls.length === 0) return;
+    const toInsert = rolls.map((r) => {
+      const {
+        id: _id, ownerId: _oid, ownerType: _ot,
+        fromTemplateRollId: _ftr, isOverridden: _io,
+        createdAt: _ca, updatedAt: _ua, ...rest
+      } = r as any;
+      return { ...rest, ownerType, ownerId: newOwnerId };
+    });
+    await this.createRollEntriesBulk(toInsert as InsertRollEntry[]);
+  }
+
+  // Import a world-scoped library item into a character's inventory as a fully
+  // independent copy (rolls included, no template link). Enforces system match.
+  async importWorldItemToCharacter(worldItemId: string, characterId: string, userId: string): Promise<Item> {
+    const src = await this.getItem(worldItemId);
+    if (!src || !src.worldId) {
+      throw new Error('World item not found');
+    }
+    const character = await this.getCharacter(characterId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+    if (character.campaignId) {
+      const campaign = await this.getCampaign(character.campaignId);
+      if (campaign && src.system && (campaign as any).system && src.system !== (campaign as any).system) {
+        throw new Error('System mismatch');
+      }
+    }
+    const {
+      id: _id, characterId: _c, containerId: _cn, worldId: _w, campaignId: _cp,
+      isTemplate: _t, isLiveTemplate: _lt, templateItemId: _ti, createdByUserId: _cu,
+      ...rest
+    } = src as any;
+    const newItem = await this.createItem({
+      ...rest,
+      characterId,
+      containerId: null,
+      worldId: null,
+      campaignId: null,
+      isTemplate: false,
+      isLiveTemplate: false,
+      templateItemId: null,
+      createdByUserId: userId,
+    } as any);
+    await this.copyRollEntriesToOwner('item', worldItemId, newItem.id);
+    // Clone any pre-loaded V3 spellbook spells so a granted spellbook arrives populated.
+    if (newItem.itemType === 'spellbook') {
+      try {
+        const sourceSpells = await this.getV3SpellsForSpellbook(worldItemId);
+        for (const s of sourceSpells) {
+          await this.createV3Spell({
+            campaignId: character.campaignId || null,
+            spellbookItemId: newItem.id,
+            composition: s.composition,
+            compositionHash: s.compositionHash,
+            name: s.name,
+            description: s.description,
+            image: s.image,
+            manaCost: s.manaCost,
+            craftDc: s.craftDc,
+            createdByUserId: userId,
+            createdByCharacterId: characterId,
+            authoredByUserId: s.authoredByUserId,
+            status: s.status === 'awaiting_gm' ? 'ready' : s.status,
+            isCanonical: false,
+            flagged: s.flagged,
+          } as any);
+        }
+      } catch (e) {
+        console.error('Failed to clone spellbook spells on world import:', e);
+      }
+    }
+    return newItem;
+  }
+
+  // Import a world-scoped library spell into a character's spellbook as a fully
+  // independent copy. Maps the system_spells shape onto the spells table and
+  // copies any roll entries. Enforces system match.
+  async importWorldSpellToCharacter(worldSpellId: string, characterId: string): Promise<Spell> {
+    const src = await this.getSystemSpell(worldSpellId);
+    if (!src || !src.worldId) {
+      throw new Error('World spell not found');
+    }
+    const character = await this.getCharacter(characterId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+    if (character.campaignId) {
+      const campaign = await this.getCampaign(character.campaignId);
+      if (campaign && src.system && (campaign as any).system && src.system !== (campaign as any).system) {
+        throw new Error('System mismatch');
+      }
+    }
+    let aoeValue: string | null = null;
+    if (src.isAoe && src.aoeShape && src.aoeRange) {
+      aoeValue = `${src.aoeShape}:${src.aoeRange}`;
+    } else if (src.aoe) {
+      aoeValue = src.aoe;
+    }
+    const newSpell = await this.createSpell({
+      characterId,
+      name: src.name,
+      description: src.description,
+      image: src.icon,
+      level: src.level ?? 0,
+      school: src.school,
+      damage: src.damageDice,
+      damageDice: src.damageDice,
+      healingDice: src.healingDice,
+      damageType: src.damageType,
+      range: src.rangeNum,
+      rangeNum: src.rangeNum,
+      aoe: aoeValue,
+      castingTime: src.castingTime,
+      duration: src.duration,
+      mod: src.mod ?? 0,
+      attribute: src.attribute,
+      energyCost: src.energyCost,
+      manaCost: src.manaCost,
+      isAoe: src.isAoe,
+      aoeRange: src.aoeRange,
+      aoeShape: src.aoeShape,
+      isAttack: src.isAttack,
+      gainEnergy: src.gainEnergy,
+      passesThroughWalls: src.passesThroughWalls,
+      requiresSave: src.requiresSave,
+      saveAttribute: src.saveAttribute,
+      saveDc: src.saveDc,
+      saveSuccessEffect: src.saveSuccessEffect,
+    } as any);
+    await this.copyRollEntriesToOwner('spell', worldSpellId, newSpell.id);
+    return newSpell;
+  }
+
+  // Import a world-scoped character template into a campaign's roster as a fully
+  // functional, independent campaign character (deep-copies items, spells,
+  // hotbars, custom skills, traits, and all roll entries). Enforces system match.
+  async importWorldCharacterToCampaign(worldCharacterId: string, campaignId: string, userId: string): Promise<Character> {
+    const template = await this.getCharacterTemplate(worldCharacterId);
+    if (!template || !template.worldId) {
+      throw new Error('World character not found');
+    }
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) {
+      throw new Error('Campaign not found');
+    }
+    // Characters carry no system column; use the source world's system.
+    const sourceWorld = await this.getWorld(template.worldId);
+    const sourceSystem = (sourceWorld as any)?.system;
+    if (sourceSystem && (campaign as any).system && sourceSystem !== (campaign as any).system) {
+      throw new Error('System mismatch');
+    }
+    const {
+      id: _id, createdAt: _ca, isTemplate: _t, folderId: _f,
+      worldId: _w, campaignId: _cid, userId: _uid, ...templateData
+    } = template as any;
+    const [newChar] = await db.insert(characters)
+      .values({
+        ...templateData,
+        campaignId,
+        userId,
+        isTemplate: false,
+        worldId: null,
+        folderId: null,
+      })
+      .returning();
+
+    const itemIdMap = new Map<string, string>();
+    const spellIdMap = new Map<string, string>();
+
+    const templateItems = await this.getItemsByCharacter(worldCharacterId);
+    if (templateItems.length > 0) {
+      const newItems = await db.insert(items).values(
+        templateItems.map(item => {
+          const { id: _oldId, characterId: _c, containerId: _cntId, worldId: _wi, templateItemId: _tii, ...itemData } = item as any;
+          return { ...itemData, characterId: newChar.id, containerId: null, worldId: null, templateItemId: null };
+        })
+      ).returning();
+      templateItems.forEach((oldItem, i) => itemIdMap.set(oldItem.id, newItems[i].id));
+      const containerUpdates = templateItems.filter(item => item.containerId);
+      if (containerUpdates.length > 0) {
+        await Promise.all(containerUpdates.map(item => {
+          const newItemId = itemIdMap.get(item.id);
+          const newContainerId = itemIdMap.get(item.containerId!);
+          if (newItemId && newContainerId) {
+            return db.update(items).set({ containerId: newContainerId }).where(eq(items.id, newItemId));
+          }
+        }));
+      }
+      for (const item of templateItems) {
+        const newItemId = itemIdMap.get(item.id);
+        if (!newItemId) continue;
+        await this.copyRollEntriesToOwner('item', item.id, newItemId);
+        // Clone V3 spellbook spells so an imported spellbook arrives populated.
+        if ((item as any).itemType === 'spellbook') {
+          try {
+            const sourceSpells = await this.getV3SpellsForSpellbook(item.id);
+            for (const s of sourceSpells) {
+              await this.createV3Spell({
+                campaignId,
+                spellbookItemId: newItemId,
+                composition: s.composition,
+                compositionHash: s.compositionHash,
+                name: s.name,
+                description: s.description,
+                image: s.image,
+                manaCost: s.manaCost,
+                craftDc: s.craftDc,
+                createdByUserId: userId,
+                createdByCharacterId: newChar.id,
+                authoredByUserId: s.authoredByUserId,
+                status: s.status === 'awaiting_gm' ? 'ready' : s.status,
+                isCanonical: false,
+                flagged: s.flagged,
+              } as any);
+            }
+          } catch (e) {
+            console.error('Failed to clone spellbook spells on world character import:', e);
+          }
+        }
+      }
+    }
+
+    const templateSpells = await this.getSpellsByCharacter(worldCharacterId);
+    if (templateSpells.length > 0) {
+      const newSpells = await db.insert(spells).values(
+        templateSpells.map(spell => {
+          const { id: _oldId, characterId: _c, templateSpellId: _tsi, ...spellData } = spell as any;
+          return { ...spellData, characterId: newChar.id, templateSpellId: null };
+        })
+      ).returning();
+      templateSpells.forEach((oldSpell, i) => spellIdMap.set(oldSpell.id, newSpells[i].id));
+      for (const spell of templateSpells) {
+        const newSpellId = spellIdMap.get(spell.id);
+        if (newSpellId) await this.copyRollEntriesToOwner('spell', spell.id, newSpellId);
+      }
+    }
+
+    const templateHotbars = await this.getHotbarsByCharacter(worldCharacterId);
+    if (templateHotbars.length > 0) {
+      await db.insert(hotbars).values(
+        templateHotbars.map(hotbar => {
+          const { id: _hid, characterId: _c, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar as any;
+          return {
+            ...hotbarData,
+            characterId: newChar.id,
+            itemId: oldItemId ? itemIdMap.get(oldItemId) || null : null,
+            spellId: oldSpellId ? spellIdMap.get(oldSpellId) || null : null,
+          };
+        })
+      );
+    }
+
+    const customSkillsList = await this.getCharacterCustomSkills(worldCharacterId);
+    if (customSkillsList.length > 0) {
+      await db.insert(characterCustomSkills).values(
+        customSkillsList.map(skill => {
+          const { id: _sid, characterId: _c, ...skillData } = skill as any;
+          return { ...skillData, characterId: newChar.id };
+        })
+      );
+    }
+
+    const traitsList = await this.getCharacterTraits(worldCharacterId);
+    if (traitsList.length > 0) {
+      await db.insert(characterTraits).values(
+        traitsList.map(trait => {
+          const { id: _tid, characterId: _c, ...traitData } = trait as any;
+          return { ...traitData, characterId: newChar.id };
+        })
+      );
+    }
+
     return newChar;
   }
 

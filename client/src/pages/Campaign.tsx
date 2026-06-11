@@ -6528,6 +6528,14 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
 
   const { data: linkedWorld, isLoading: linkedWorldLoading } = useLinkedWorld(campaignId);
 
+  // Campaign system gates whether world objects can be imported (must match the
+  // world's system). Server enforces it too; this just hides the import UI.
+  const { data: wbCampaign } = useQuery<any>({
+    queryKey: ['/api/campaigns', campaignId],
+    queryFn: () => api.getCampaign(campaignId),
+    enabled: !!campaignId,
+  });
+
   const { data: worlds = [], isLoading: worldsLoading } = useQuery<any[]>({
     queryKey: ['/api/worlds'],
     queryFn: async () => {
@@ -7266,6 +7274,10 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                             worldId={selectedWorldId}
                             system={selectedWorld?.system}
                             canEdit={canEditWorldObjects}
+                            campaignId={campaignId}
+                            campaignSystem={wbCampaign?.system}
+                            campaignCharacters={(characters || []).map((c: any) => ({ id: c.id, name: c.name }))}
+                            canImportCharacters={isGM}
                           />
                         </div>
                       )}

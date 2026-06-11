@@ -838,6 +838,28 @@ class ApiClient {
     });
   }
 
+  // Import a world-scoped library object into a campaign (independent copy).
+  async importWorldItem(campaignId: string, worldItemId: string, characterId: string): Promise<Item> {
+    return this.request(`/campaigns/${campaignId}/import-world-item`, {
+      method: 'POST',
+      body: JSON.stringify({ worldItemId, characterId }),
+    });
+  }
+
+  async importWorldSpell(campaignId: string, worldSpellId: string, characterId: string): Promise<Spell> {
+    return this.request(`/campaigns/${campaignId}/import-world-spell`, {
+      method: 'POST',
+      body: JSON.stringify({ worldSpellId, characterId }),
+    });
+  }
+
+  async importWorldCharacter(campaignId: string, worldCharacterId: string): Promise<Character> {
+    return this.request(`/campaigns/${campaignId}/import-world-character`, {
+      method: 'POST',
+      body: JSON.stringify({ worldCharacterId }),
+    });
+  }
+
   // Rest actions
   async shortRest(characterId: string, skipFood?: boolean): Promise<{
     success: boolean;

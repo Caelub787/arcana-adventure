@@ -23,9 +23,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Sword, Sparkles, Users, Plus, Eye, Pencil, Loader2 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Sword, Sparkles, Users, Plus, Eye, Pencil, Loader2, Download } from 'lucide-react';
 
 type ObjTab = 'items' | 'spells' | 'characters';
+
+type CampaignCharacterRef = { id: string; name: string };
 
 function systemSlugFromWorld(system: string | null | undefined): 'aa-v2' | 'aa-v3' | 'arcana-adventure' {
   if (system === 'aa-v2') return 'aa-v2';
@@ -43,16 +52,79 @@ export function WorldObjectsPanel({
   worldId,
   system,
   canEdit,
+  campaignId,
+  campaignSystem,
+  campaignCharacters,
+  canImportCharacters,
 }: {
   worldId: string;
   system: string | null | undefined;
   canEdit: boolean;
+  campaignId?: string;
+  campaignSystem?: string | null;
+  campaignCharacters?: CampaignCharacterRef[];
+  canImportCharacters?: boolean;
 }) {
   const slug = systemSlugFromWorld(system);
   const display = systemDisplayFromSlug(slug);
   const queryClient = useQueryClient();
 
+  // Campaign-import context: only available when this panel is embedded inside a
+  // campaign whose linked world shares the same game system.
+  const inCampaign = !!campaignId;
+  const systemMatches = !campaignSystem || campaignSystem === slug;
+  const canImport = inCampaign && systemMatches;
+  const roster = campaignCharacters || [];
+
   const [tab, setTab] = useState<ObjTab>('items');
+
+  // ---- Import-to-campaign state ----
+  const [importObj, setImportObj] = useState<{ kind: 'item' | 'spell'; row: any } | null>(null);
+  const [importTargetId, setImportTargetId] = useState<string>('');
+  const [importing, setImporting] = useState(false);
+
+  const handleImportItemOrSpell = async () => {
+    if (!importObj || !campaignId || !importTargetId || importing) return;
+    setImporting(true);
+    try {
+      if (importObj.kind === 'item') {
+        await api.importWorldItem(campaignId, importObj.row.id, importTargetId);
+      } else {
+        await api.importWorldSpell(campaignId, importObj.row.id, importTargetId);
+      }
+      queryClient.invalidateQueries({ queryKey: ['items', importTargetId] });
+      queryClient.invalidateQueries({ queryKey: ['spells', importTargetId] });
+      toast({
+        title: 'Imported',
+        description: `"${importObj.row.name || 'Object'}" was added to the campaign.`,
+      });
+      setImportObj(null);
+      setImportTargetId('');
+    } catch (e: any) {
+      toast({ title: 'Import failed', description: e?.message || 'Could not import object', variant: 'destructive' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportCharacter = async (row: any) => {
+    if (!campaignId || importing) return;
+    setImporting(true);
+    try {
+      await api.importWorldCharacter(campaignId, row.id);
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      toast({ title: 'Imported', description: `"${row.name || 'Character'}" was added to the roster.` });
+    } catch (e: any) {
+      toast({ title: 'Import failed', description: e?.message || 'Could not import character', variant: 'destructive' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const openImport = (kind: 'item' | 'spell', row: any) => {
+    setImportObj({ kind, row });
+    setImportTargetId(roster.length === 1 ? roster[0].id : '');
+  };
 
   // ---- Queries ----
   const { data: items = [], isLoading: itemsLoading } = useQuery({
@@ -141,6 +213,7 @@ export function WorldObjectsPanel({
     emptyLabel: string,
     onOpen: (row: any) => void,
     testPrefix: string,
+    importKind?: 'item' | 'spell' | 'character',
   ) => {
     if (loading) {
       return (
@@ -152,31 +225,60 @@ export function WorldObjectsPanel({
     if (rows.length === 0) {
       return <div className="py-12 text-center text-sm text-stone-500">{emptyLabel}</div>;
     }
+    // Import button shows only when embedded in a matching-system campaign.
+    // Characters require GM rights (canImportCharacters); items/spells need a
+    // target character in the roster.
+    const showImport =
+      !!importKind && canImport &&
+      (importKind === 'character'
+        ? !!canImportCharacters
+        : roster.length > 0);
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {rows.map((row) => (
-          <button
+          <div
             key={row.id}
-            onClick={() => onOpen(row)}
-            className="flex items-center gap-3 text-left bg-stone-800/60 hover:bg-stone-700/60 border border-stone-700 rounded-md px-3 py-2 transition-colors"
+            className="flex items-center gap-2 bg-stone-800/60 hover:bg-stone-700/60 border border-stone-700 rounded-md pr-1.5 transition-colors"
             data-testid={`card-${testPrefix}-${row.id}`}
           >
-            {row.icon ? (
-              <img src={row.icon} alt="" className="w-9 h-9 rounded object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-9 h-9 rounded bg-stone-700 flex items-center justify-center flex-shrink-0">
-                {canEdit ? <Pencil className="w-4 h-4 text-stone-400" /> : <Eye className="w-4 h-4 text-stone-400" />}
+            <button
+              onClick={() => onOpen(row)}
+              className="flex items-center gap-3 text-left px-3 py-2 flex-1 min-w-0"
+            >
+              {row.icon ? (
+                <img src={row.icon} alt="" className="w-9 h-9 rounded object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded bg-stone-700 flex items-center justify-center flex-shrink-0">
+                  {canEdit ? <Pencil className="w-4 h-4 text-stone-400" /> : <Eye className="w-4 h-4 text-stone-400" />}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="text-sm text-stone-200 truncate" data-testid={`text-${testPrefix}-name-${row.id}`}>
+                  {row.name || 'Untitled'}
+                </div>
+                {row.description ? (
+                  <div className="text-xs text-stone-500 truncate">{row.description}</div>
+                ) : null}
               </div>
+            </button>
+            {showImport && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 flex-shrink-0 text-amber-400 hover:text-amber-300"
+                title="Import into campaign"
+                disabled={importing}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (importKind === 'character') handleImportCharacter(row);
+                  else openImport(importKind, row);
+                }}
+                data-testid={`button-import-${testPrefix}-${row.id}`}
+              >
+                <Download className="w-4 h-4" />
+              </Button>
             )}
-            <div className="min-w-0">
-              <div className="text-sm text-stone-200 truncate" data-testid={`text-${testPrefix}-name-${row.id}`}>
-                {row.name || 'Untitled'}
-              </div>
-              {row.description ? (
-                <div className="text-xs text-stone-500 truncate">{row.description}</div>
-              ) : null}
-            </div>
-          </button>
+          </div>
         ))}
       </div>
     );
@@ -239,11 +341,11 @@ export function WorldObjectsPanel({
         )}
 
         {tab === 'items' &&
-          renderList(items, itemsLoading, 'No items yet.', (row) => (canEdit ? setEditItem(row) : setViewItem(row)), 'world-item')}
+          renderList(items, itemsLoading, 'No items yet.', (row) => (canEdit ? setEditItem(row) : setViewItem(row)), 'world-item', 'item')}
         {tab === 'spells' &&
-          renderList(spells, spellsLoading, 'No spells yet.', (row) => (canEdit ? setEditSpell(row) : setViewSpell(row)), 'world-spell')}
+          renderList(spells, spellsLoading, 'No spells yet.', (row) => (canEdit ? setEditSpell(row) : setViewSpell(row)), 'world-spell', 'spell')}
         {tab === 'characters' &&
-          renderList(characters, charactersLoading, 'No characters yet.', (row) => setViewChar(row), 'world-character')}
+          renderList(characters, charactersLoading, 'No characters yet.', (row) => setViewChar(row), 'world-character', 'character')}
       </div>
 
       {/* ---- Item create / edit (real editor) ---- */}
@@ -407,6 +509,41 @@ export function WorldObjectsPanel({
             />
           </div>
         </div>
+      )}
+
+      {/* ---- Import item/spell into campaign: pick target character ---- */}
+      {importObj && (
+        <Dialog open={!!importObj} onOpenChange={(open) => { if (!open) { setImportObj(null); setImportTargetId(''); } }}>
+          <DialogContent className="max-w-sm" data-testid="dialog-import-world-object">
+            <DialogHeader>
+              <DialogTitle>Import "{importObj.row.name || 'Object'}"</DialogTitle>
+              <DialogDescription>
+                Add a copy of this {importObj.kind} to a character in this campaign. The copy is independent of the world object.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label>Target character</Label>
+              <Select value={importTargetId} onValueChange={setImportTargetId}>
+                <SelectTrigger data-testid="select-import-target-character">
+                  <SelectValue placeholder="Choose a character" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roster.map((c) => (
+                    <SelectItem key={c.id} value={c.id} data-testid={`option-import-character-${c.id}`}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setImportObj(null); setImportTargetId(''); }} data-testid="button-cancel-import">Cancel</Button>
+              <Button onClick={handleImportItemOrSpell} disabled={!importTargetId || importing} data-testid="button-confirm-import">
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Import'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {imageBrowserElement}

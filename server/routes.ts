@@ -15297,6 +15297,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Verify a world object's world is linked to a campaign and the systems match.
+  // Returns an error string when blocked, or null when allowed.
+  async function checkWorldImportEligibility(
+    campaignId: string,
+    objectWorldId: string | null | undefined,
+    objectSystem: string | null | undefined,
+  ): Promise<string | null> {
+    if (!objectWorldId) return "This object is not a world object";
+    const campaign = await storage.getCampaign(campaignId);
+    if (!campaign) return "Campaign not found";
+    const linkedWorlds = await storage.getWorldsByCampaign(campaignId);
+    const world = linkedWorlds.find((w) => w.id === objectWorldId);
+    if (!world) {
+      return "That world is not linked to this campaign";
+    }
+    const campaignSystem = (campaign as any).system;
+    // Objects (items/spells) carry their own system; characters do not, so fall
+    // back to the world's system for those.
+    const objSystem = objectSystem || (world as any).system;
+    if (objSystem && campaignSystem && objSystem !== campaignSystem) {
+      return "System mismatch: this object cannot be used in this campaign";
+    }
+    return null;
+  }
+
+  // Import a world item into a character's inventory (independent copy).
+  app.post("/api/campaigns/:campaignId/import-world-item", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { worldItemId, characterId } = req.body || {};
+      if (!worldItemId || !characterId) {
+        return res.status(400).json({ error: "worldItemId and characterId are required" });
+      }
+      const access = await checkCharacterAccess(characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isOwner && !access.isGM && !access.trustedSelf && !userIsAdmin) {
+        return res.status(403).json({ error: "Only the character owner or GM can add items" });
+      }
+      if (access.character.campaignId !== campaignId) {
+        return res.status(400).json({ error: "Character is not in this campaign" });
+      }
+      const source = await storage.getItem(worldItemId);
+      if (!source) return res.status(404).json({ error: "World item not found" });
+      const block = await checkWorldImportEligibility(campaignId, source.worldId, source.system);
+      if (block) return res.status(400).json({ error: block });
+
+      const item = await storage.importWorldItemToCharacter(worldItemId, characterId, req.session.userId!);
+      broadcastToCampaign(campaignId, { type: "character_updated", characterId });
+      res.json(item);
+    } catch (err: any) {
+      console.error('Error importing world item:', err);
+      res.status(400).json({ error: err?.message || "Failed to import world item" });
+    }
+  });
+
+  // Import a world spell into a character's spellbook (independent copy).
+  app.post("/api/campaigns/:campaignId/import-world-spell", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { worldSpellId, characterId } = req.body || {};
+      if (!worldSpellId || !characterId) {
+        return res.status(400).json({ error: "worldSpellId and characterId are required" });
+      }
+      const access = await checkCharacterAccess(characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isOwner && !access.isGM && !userIsAdmin) {
+        return res.status(403).json({ error: "Only the character owner or GM can add spells" });
+      }
+      if (access.character.campaignId !== campaignId) {
+        return res.status(400).json({ error: "Character is not in this campaign" });
+      }
+      const source = await storage.getSystemSpell(worldSpellId);
+      if (!source) return res.status(404).json({ error: "World spell not found" });
+      const block = await checkWorldImportEligibility(campaignId, source.worldId, source.system);
+      if (block) return res.status(400).json({ error: block });
+
+      const spell = await storage.importWorldSpellToCharacter(worldSpellId, characterId);
+      broadcastToCampaign(campaignId, { type: "character_updated", characterId });
+      res.json(spell);
+    } catch (err: any) {
+      console.error('Error importing world spell:', err);
+      res.status(400).json({ error: err?.message || "Failed to import world spell" });
+    }
+  });
+
+  // Import a world character template into the campaign roster (GM only).
+  app.post("/api/campaigns/:campaignId/import-world-character", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { worldCharacterId } = req.body || {};
+      const userId = req.session.userId!;
+      if (!worldCharacterId) {
+        return res.status(400).json({ error: "worldCharacterId is required" });
+      }
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGm = await isGmForRequest(req, userId, campaignId);
+      if (!isGm) {
+        return res.status(403).json({ error: "Only GMs can add characters from world objects" });
+      }
+      const source = await storage.getCharacterTemplate(worldCharacterId);
+      if (!source) return res.status(404).json({ error: "World character not found" });
+      const block = await checkWorldImportEligibility(campaignId, source.worldId, (source as any).system);
+      if (block) return res.status(400).json({ error: block });
+
+      const character = await storage.importWorldCharacterToCampaign(worldCharacterId, campaignId, userId);
+      broadcastToCampaign(campaignId, { type: "character_created", character });
+      res.json(character);
+    } catch (err: any) {
+      console.error('Error importing world character:', err);
+      res.status(400).json({ error: err?.message || "Failed to import world character" });
+    }
+  });
+
   // ==================== WORLD CRUD ROUTES ====================
 
   app.get("/api/worlds", requireAuth, async (req, res) => {
