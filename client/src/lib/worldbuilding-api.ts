@@ -226,6 +226,20 @@ export function useCreateEntityLink(worldId: string | undefined) {
   });
 }
 
+export function useUpdateEntityLink(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, ...data }: { linkId: string } & Partial<EntityLink>) =>
+      fetchJSON(`/api/worlds/${worldId}/entity-links/${linkId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entity-links"] });
+    },
+  });
+}
+
 export function useDeleteEntityLink(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

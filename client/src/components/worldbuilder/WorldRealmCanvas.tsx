@@ -8,7 +8,9 @@ import {
   useDeleteWorldCanvasNode,
   useEntityLinks,
   useCreateEntityLink,
+  useUpdateEntityLink,
   useDeleteEntityLink,
+  LINK_TYPE_LABELS,
   type Entity,
   type EntityLink,
 } from '@/lib/worldbuilding-api';
@@ -37,7 +39,7 @@ import {
 import {
   Sword, Sparkles, Users, FileText, Frame, Plus, X, Search, ChevronRight, ChevronDown,
   LayoutGrid, Network, Columns2, Rows2, ZoomIn, ZoomOut, Maximize2, Loader2, ExternalLink,
-  Link2,
+  Link2, Trash2,
 } from 'lucide-react';
 import {
   newId,
@@ -90,6 +92,34 @@ const CATEGORY_META: Record<string, { label: string; icon: typeof Sword; color: 
 };
 const CATEGORY_ORDER = ['Articles', 'Canvases', 'Items', 'Spells', 'Characters'];
 
+// Per-relationship-type edge colors so the canvas reads like a real relationship map.
+const LINK_TYPE_COLORS: Record<string, string> = {
+  ally: '#4ade80',
+  enemy: '#f87171',
+  rivals: '#fb923c',
+  member_of: '#60a5fa',
+  located_in: '#38bdf8',
+  found_at: '#38bdf8',
+  related_to: '#d9b478',
+  related: '#d9b478',
+  related_quest: '#a78bfa',
+  quest_target: '#f472b6',
+  quest_giver: '#c084fc',
+  owns: '#fbbf24',
+  controls: '#facc15',
+  parent_of: '#34d399',
+  child_of: '#2dd4bf',
+  employs: '#818cf8',
+  guards: '#fcd34d',
+  trades_with: '#22d3ee',
+  worships: '#e879f9',
+  mentor_of: '#a3e635',
+  student_of: '#bef264',
+  found_from: '#5eead4',
+  custom: '#d6d3d1',
+};
+const DEFAULT_LINK_COLOR = 'rgba(217,180,120,0.85)';
+
 const DEFAULT_W = 280;
 const DEFAULT_H = 200;
 
@@ -131,6 +161,7 @@ export function WorldRealmCanvas({
   const deleteNode = useDeleteWorldCanvasNode(worldId);
   const { data: entityLinks = [] } = useEntityLinks(worldId);
   const createLink = useCreateEntityLink(worldId);
+  const updateLink = useUpdateEntityLink(worldId);
   const deleteLink = useDeleteEntityLink(worldId);
 
   const invalidateCharacters = () => queryClient.invalidateQueries({ queryKey: ['world-characters', worldId] });
@@ -368,6 +399,38 @@ export function WorldRealmCanvas({
   // While dragging a connector, the live cursor position in world coords (for the preview line).
   const [linkCursor, setLinkCursor] = useState<{ from: string; x: number; y: number } | null>(null);
 
+  // ---- Relationship link editor ----
+  const [editLink, setEditLink] = useState<EntityLink | null>(null);
+  const [editLinkType, setEditLinkType] = useState('related_to');
+  const [editLinkLabel, setEditLinkLabel] = useState('');
+
+  const openLinkEditor = useCallback((linkId: string) => {
+    if (!canEdit) return;
+    const l = (entityLinksRef.current as EntityLink[]).find((x) => x.id === linkId);
+    if (!l) return;
+    setEditLink(l);
+    setEditLinkType(l.linkType || 'related_to');
+    setEditLinkLabel(l.label || '');
+  }, [canEdit]);
+
+  const saveLinkEditor = useCallback(() => {
+    if (!editLink) return;
+    updateLink.mutate(
+      { linkId: editLink.id, linkType: editLinkType, label: editLinkLabel.trim() || null },
+      {
+        onError: (err: any) =>
+          toast({ title: 'Could not update link', description: String(err?.message || err), variant: 'destructive' }),
+      },
+    );
+    setEditLink(null);
+  }, [editLink, editLinkType, editLinkLabel, updateLink]);
+
+  const deleteLinkFromEditor = useCallback(() => {
+    if (!editLink) return;
+    deleteLink.mutate(editLink.id);
+    setEditLink(null);
+  }, [editLink, deleteLink]);
+
   // Convert a screen point to world (canvas) coordinates.
   const screenToWorld = useCallback((clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -479,7 +542,7 @@ export function WorldRealmCanvas({
             toast({ title: 'Already linked', description: 'These nodes are already connected.' });
           } else {
             createLink.mutate(
-              { fromEntityId: fromId, toEntityId: toId, linkType: 'related' },
+              { fromEntityId: fromId, toEntityId: toId, linkType: 'related_to' },
               {
                 onError: (err: any) =>
                   toast({ title: 'Could not create link', description: String(err?.message || err), variant: 'destructive' }),
@@ -620,7 +683,7 @@ export function WorldRealmCanvas({
 
   // Relationship edges that have both endpoints placed on the canvas.
   const edges = useMemo(() => {
-    const out: { id: string; x1: number; y1: number; x2: number; y2: number; label?: string | null }[] = [];
+    const out: { id: string; x1: number; y1: number; x2: number; y2: number; label?: string | null; linkType: string; color: string }[] = [];
     for (const l of entityLinks as EntityLink[]) {
       const a = placed[`entity:${l.fromEntityId}`];
       const b = placed[`entity:${l.toEntityId}`];
@@ -632,6 +695,8 @@ export function WorldRealmCanvas({
         x2: b.x + b.width / 2,
         y2: b.y + b.height / 2,
         label: l.label,
+        linkType: l.linkType,
+        color: LINK_TYPE_COLORS[l.linkType] ?? DEFAULT_LINK_COLOR,
       });
     }
     return out;
@@ -795,30 +860,44 @@ export function WorldRealmCanvas({
                   {edges.map((ed) => {
                     const mx = (ed.x1 + ed.x2) / 2;
                     const my = (ed.y1 + ed.y2) / 2;
+                    const typeLabel = LINK_TYPE_LABELS[ed.linkType] || ed.linkType;
                     return (
                       <g key={ed.id} data-testid={`realm-edge-${ed.id}`}>
                         <line
                           x1={ed.x1} y1={ed.y1} x2={ed.x2} y2={ed.y2}
-                          stroke="rgba(217,180,120,0.55)" strokeWidth={strokeW}
+                          stroke={ed.color} strokeWidth={strokeW}
                         />
-                        {ed.label ? (
+                        {canEdit && (
+                          // Wide invisible hit-line so the edge is easy to click to edit.
+                          <line
+                            x1={ed.x1} y1={ed.y1} x2={ed.x2} y2={ed.y2}
+                            stroke="transparent" strokeWidth={Math.max(12 / viewport.scale, strokeW * 4)}
+                            style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                            onClick={() => openLinkEditor(ed.id)}
+                            data-testid={`edge-hit-${ed.id}`}
+                          >
+                            <title>Click to edit relationship</title>
+                          </line>
+                        )}
+                        {ed.label || typeLabel ? (
                           <text
-                            x={mx} y={my - 6 * strokeW} textAnchor="middle"
-                            fill="rgba(214,211,209,0.9)" fontSize={11 / viewport.scale}
+                            x={mx} y={my - 8 / viewport.scale} textAnchor="middle"
+                            fill={ed.label ? 'rgba(231,229,228,0.95)' : 'rgba(168,162,158,0.85)'}
+                            fontSize={11 / viewport.scale}
                             style={{ pointerEvents: 'none' }}
                           >
-                            {ed.label}
+                            {ed.label || typeLabel}
                           </text>
                         ) : null}
                         {canEdit && (
                           <g
                             style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                            onClick={() => deleteLink.mutate(ed.id)}
-                            data-testid={`button-delete-edge-${ed.id}`}
+                            onClick={() => openLinkEditor(ed.id)}
+                            data-testid={`button-edit-edge-${ed.id}`}
                           >
-                            <circle cx={mx} cy={my} r={9 / viewport.scale} fill="rgba(28,25,23,0.9)" stroke="rgba(217,180,120,0.7)" strokeWidth={1 / viewport.scale} />
-                            <line x1={mx - 4 / viewport.scale} y1={my - 4 / viewport.scale} x2={mx + 4 / viewport.scale} y2={my + 4 / viewport.scale} stroke="rgba(248,113,113,0.95)" strokeWidth={1.5 / viewport.scale} />
-                            <line x1={mx + 4 / viewport.scale} y1={my - 4 / viewport.scale} x2={mx - 4 / viewport.scale} y2={my + 4 / viewport.scale} stroke="rgba(248,113,113,0.95)" strokeWidth={1.5 / viewport.scale} />
+                            <title>Edit relationship</title>
+                            <circle cx={mx} cy={my} r={9 / viewport.scale} fill="rgba(28,25,23,0.92)" stroke={ed.color} strokeWidth={1.5 / viewport.scale} />
+                            <circle cx={mx} cy={my} r={3 / viewport.scale} fill={ed.color} />
                           </g>
                         )}
                       </g>
@@ -1008,6 +1087,62 @@ export function WorldRealmCanvas({
             />
           </div>
         </div>
+      )}
+
+      {/* ---- Relationship link editor ---- */}
+      {editLink && (
+        <Dialog open={!!editLink} onOpenChange={(open) => { if (!open) setEditLink(null); }}>
+          <DialogContent className="max-w-sm" data-testid="dialog-edit-link">
+            <DialogHeader>
+              <DialogTitle>Edit relationship</DialogTitle>
+              <DialogDescription>Name this connection and pick what kind of relationship it is.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-stone-400">Relationship type</label>
+                <select
+                  value={editLinkType}
+                  onChange={(e) => setEditLinkType(e.target.value)}
+                  className="w-full bg-stone-900 border border-stone-700 text-stone-200 text-sm rounded px-2 py-2"
+                  data-testid="select-link-type"
+                >
+                  {!LINK_TYPE_LABELS[editLinkType] && (
+                    <option value={editLinkType}>{editLinkType}</option>
+                  )}
+                  {Object.entries(LINK_TYPE_LABELS).map(([key, lbl]) => (
+                    <option key={key} value={key}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-stone-400">Label (optional)</label>
+                <Input
+                  value={editLinkLabel}
+                  onChange={(e) => setEditLinkLabel(e.target.value)}
+                  placeholder='e.g. "rules over", "ally of"'
+                  className="bg-stone-900 border-stone-700 text-sm"
+                  data-testid="input-link-label"
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveLinkEditor(); }}
+                />
+              </div>
+            </div>
+            <DialogFooter className="flex sm:justify-between gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                onClick={deleteLinkFromEditor}
+                data-testid="button-delete-link"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditLink(null)} data-testid="button-cancel-link">Cancel</Button>
+                <Button size="sm" onClick={saveLinkEditor} data-testid="button-save-link">Save</Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {imageBrowserElement}
