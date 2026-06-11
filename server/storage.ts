@@ -1716,6 +1716,29 @@ export class DatabaseStorage implements IStorage {
     await this.createRollEntriesBulk(toInsert as InsertRollEntry[]);
   }
 
+  // Copy all crafter recipes attached to a source item onto a new item as
+  // fully standalone copies. Strips identity + template provenance
+  // (parentTemplateId / fromTemplateRecipeId) so the imported crafter makes a
+  // clean break from any recipe-template link inheritance — mirroring the
+  // roll-template clean-break decision in copyRollEntriesToOwner. Ingredient
+  // and outcome item references are preserved as-is (they point at library/
+  // admin items that still exist). AA V2 crafter items only.
+  private async copyCraftRecipesToItem(sourceItemId: string, newItemId: string): Promise<void> {
+    const recipes = await this.getCraftRecipesByItem(sourceItemId);
+    if (recipes.length === 0) return;
+    for (const r of recipes) {
+      const {
+        id: _id, parentItemId: _pi, parentTemplateId: _pt,
+        fromTemplateRecipeId: _ftr, ingredients, outcomes, ...rest
+      } = r as any;
+      await this.createCraftRecipe(
+        { ...rest, parentItemId: newItemId, parentTemplateId: null, fromTemplateRecipeId: null } as any,
+        ingredients.map(({ id: _i, recipeId: _r, ...x }: any) => x),
+        outcomes.map(({ id: _i, recipeId: _r, ...x }: any) => x),
+      );
+    }
+  }
+
   // Import a world-scoped library item into a character's inventory as a fully
   // independent copy (rolls included, no template link). Enforces system match.
   async importWorldItemToCharacter(worldItemId: string, characterId: string, userId: string): Promise<Item> {
@@ -1750,6 +1773,14 @@ export class DatabaseStorage implements IStorage {
       createdByUserId: userId,
     } as any);
     await this.copyRollEntriesToOwner('item', worldItemId, newItem.id);
+    // Carry crafter recipes so an imported crafter arrives ready to craft.
+    if (newItem.itemType === 'crafter') {
+      try {
+        await this.copyCraftRecipesToItem(worldItemId, newItem.id);
+      } catch (e) {
+        console.error('Failed to clone crafter recipes on world item import:', e);
+      }
+    }
     // Clone any pre-loaded V3 spellbook spells so a granted spellbook arrives populated.
     if (newItem.itemType === 'spellbook') {
       try {
@@ -1898,6 +1929,14 @@ export class DatabaseStorage implements IStorage {
         const newItemId = itemIdMap.get(item.id);
         if (!newItemId) continue;
         await this.copyRollEntriesToOwner('item', item.id, newItemId);
+        // Carry crafter recipes so an imported crafter NPC can still craft.
+        if ((item as any).itemType === 'crafter') {
+          try {
+            await this.copyCraftRecipesToItem(item.id, newItemId);
+          } catch (e) {
+            console.error('Failed to clone crafter recipes on world character import:', e);
+          }
+        }
         // Clone V3 spellbook spells so an imported spellbook arrives populated.
         if ((item as any).itemType === 'spellbook') {
           try {
