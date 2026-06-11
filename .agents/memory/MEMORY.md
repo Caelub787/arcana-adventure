@@ -1,7 +1,1 @@
-- [AA V3 "Knowledge" label convention](v3-knowledge-label.md) — V3 shows "Custom Skill(s)" as "Knowledge" (labels only; gate on aa-v3 system var); code identifiers unchanged.
-- [V3 craft consumable accounting](v3-craft-consumable-accounting.md) — gate-by-consumed-item eligibility must reserve inventory across the whole composition, not per-element.
-- [V3 attribute species-bonus accounting](v3-attr-species-bonus-accounting.md) — V3 species attr bonuses are baked into char columns; subtract them to recover player-allocated points for budgets.
-- [Client Item type is hand-written](client-item-type-handwritten.md) — client `Item` (and other entity types) live as hand-written interfaces in `client/src/lib/api.ts`, not schema-inferred; new columns need adding there too.
-- [V3 magic hotbar holds spellbook/scroll items](v3-magic-hotbar-spellbook-items.md) — V3 casts via SpellbookPanel from spellbook/scroll ITEMS; scrolls consumed via V3SpellDetailDialog onCast (success-only).
-- [World-scoped library objects](world-object-scope.md) — items/spells/char-templates tagged with nullable worldId; getters must filter worldId=X OR IS NULL or world rows leak into admin library.
-- [Characters have no system column](character-no-system-column.md) — gate character system logic via campaign.system or world.system, never character.system (undefined).
+- [TypeScript build baseline](tsc-baseline.md) — repo never type-checks clean (Vite/esbuild builds); judge a change by tsc error-count delta, not absolute.

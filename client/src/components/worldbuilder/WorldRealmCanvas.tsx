@@ -50,8 +50,9 @@ import {
   type PaneLeaf,
   type PaneSplit,
 } from './paneTree';
+import { renderSectionPanel, type SectionPanelId } from './WorldSectionPanels';
 
-type RefType = 'entity' | 'item' | 'spell' | 'character';
+type RefType = 'entity' | 'item' | 'spell' | 'character' | 'panel';
 
 interface RealmNode {
   key: string;
@@ -84,13 +85,22 @@ function systemDisplay(slug: 'aa-v2' | 'aa-v3' | 'arcana-adventure'): string {
 }
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof Sword; color: string }> = {
+  Sections: { label: 'Sections', icon: LayoutGrid, color: 'text-stone-300' },
   Articles: { label: 'Articles', icon: FileText, color: 'text-sky-400' },
   Canvases: { label: 'Canvases', icon: Frame, color: 'text-violet-400' },
   Items: { label: 'Items', icon: Sword, color: 'text-amber-400' },
   Spells: { label: 'Spells', icon: Sparkles, color: 'text-fuchsia-400' },
   Characters: { label: 'Characters', icon: Users, color: 'text-emerald-400' },
 };
-const CATEGORY_ORDER = ['Articles', 'Canvases', 'Items', 'Spells', 'Characters'];
+const CATEGORY_ORDER = ['Sections', 'Articles', 'Canvases', 'Items', 'Spells', 'Characters'];
+
+// Old World Builder sections, now openable as windows/panes inside the canvas.
+const SECTION_PANELS: { id: SectionPanelId; title: string }[] = [
+  { id: 'encyclopedia', title: 'Encyclopedia' },
+  { id: 'maps', title: 'Maps' },
+  { id: 'timeline', title: 'Timeline' },
+  { id: 'calendar', title: 'Calendar' },
+];
 
 // Per-relationship-type edge colors so the canvas reads like a real relationship map.
 const LINK_TYPE_COLORS: Record<string, string> = {
@@ -128,11 +138,17 @@ export function WorldRealmCanvas({
   system,
   canEdit,
   onOpenArticle,
+  renderArticle,
+  openArticleSignal,
 }: {
   worldId: string;
   system: string | null | undefined;
   canEdit: boolean;
   onOpenArticle?: (entityId: string) => void;
+  /** When provided, articles open in a full overlay inside the canvas instead of via onOpenArticle. */
+  renderArticle?: (entity: Entity, opts: { onClose: () => void; openArticle: (entityId: string) => void }) => React.ReactNode;
+  /** Imperative request to open an article overlay from outside (e.g. global search). Bump `nonce` to re-trigger. */
+  openArticleSignal?: { entityId: string; nonce: number } | null;
 }) {
   const slug = systemSlug(system);
   const display = systemDisplay(slug);
@@ -169,6 +185,9 @@ export function WorldRealmCanvas({
   // ---- Unified node list ----
   const nodes: RealmNode[] = useMemo(() => {
     const list: RealmNode[] = [];
+    for (const sp of SECTION_PANELS) {
+      list.push({ key: `panel:${sp.id}`, refType: 'panel', refId: sp.id, title: sp.title, category: 'Sections', raw: null });
+    }
     for (const e of entities as Entity[]) {
       const isCanvas = e.entityType === 'canvas';
       list.push({
@@ -200,6 +219,28 @@ export function WorldRealmCanvas({
     return m;
   }, [nodes]);
 
+  // ---- Panel windows (Maps/Timeline/Calendar/Encyclopedia) ----
+  // These aren't server entities, so their placement is client-only (per-user, per-world).
+  const [panelPlacements, setPanelPlacements] = useState<Record<string, Placement>>(() => {
+    try {
+      const raw = localStorage.getItem(`realm-panel-nodes-${worldId}`);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  });
+  const panelPlacementsRef = useRef(panelPlacements);
+  panelPlacementsRef.current = panelPlacements;
+  useEffect(() => {
+    try { localStorage.setItem(`realm-panel-nodes-${worldId}`, JSON.stringify(panelPlacements)); } catch {}
+  }, [panelPlacements, worldId]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`realm-panel-nodes-${worldId}`);
+      setPanelPlacements(raw ? JSON.parse(raw) : {});
+    } catch { setPanelPlacements({}); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldId]);
+
   // ---- Placement state (canvas) ----
   const [placed, setPlaced] = useState<Record<string, Placement>>({});
   useEffect(() => {
@@ -210,6 +251,13 @@ export function WorldRealmCanvas({
         // Preserve in-progress local placement to avoid clobbering optimistic drags.
         next[key] = prev[key] ?? { x: n.x, y: n.y, width: n.width, height: n.height, z: n.z };
       }
+      // Re-attach client-only panel windows for the current world.
+      for (const key of Object.keys(prev)) {
+        if (key.startsWith('panel:') && panelPlacementsRef.current[key]) next[key] = prev[key];
+      }
+      for (const key of Object.keys(panelPlacementsRef.current)) {
+        if (!next[key]) next[key] = panelPlacementsRef.current[key];
+      }
       return next;
     });
   }, [canvasNodes]);
@@ -217,6 +265,10 @@ export function WorldRealmCanvas({
   const maxZ = useMemo(() => Object.values(placed).reduce((m, p) => Math.max(m, p.z), 0), [placed]);
 
   const persistPlacement = useCallback((key: string, p: Placement) => {
+    if (key.startsWith('panel:')) {
+      setPanelPlacements((prev) => ({ ...prev, [key]: p }));
+      return;
+    }
     if (!canEdit) return;
     const [refType, refId] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     upsertNode.mutate({ refType, refId, x: p.x, y: p.y, width: p.width, height: p.height, z: p.z });
@@ -300,21 +352,33 @@ export function WorldRealmCanvas({
   const [editSpell, setEditSpell] = useState<any | null>(null);
   const [viewSpell, setViewSpell] = useState<any | null>(null);
   const [viewChar, setViewChar] = useState<any | null>(null);
+  const [openArticleId, setOpenArticleId] = useState<string | null>(null);
   const viewerCharacter = useMemo(() => ({ id: '', name: 'Viewer', isTemplate: true }) as any, []);
 
+  // Open an article either as an in-canvas overlay (renderArticle) or via the parent callback.
+  const handleOpenArticle = useCallback((entityId: string) => {
+    if (renderArticle) { setOpenArticleId(entityId); return; }
+    onOpenArticle?.(entityId);
+  }, [renderArticle, onOpenArticle]);
+
+  // External (e.g. global search) request to open an article overlay.
+  useEffect(() => {
+    if (openArticleSignal?.entityId) handleOpenArticle(openArticleSignal.entityId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openArticleSignal?.nonce]);
+
   const openSheet = useCallback((node: RealmNode) => {
-    if (node.refType === 'entity') {
-      if (onOpenArticle) onOpenArticle(node.refId);
-      return;
-    }
+    if (node.refType === 'panel') return;
+    if (node.refType === 'entity') { handleOpenArticle(node.refId); return; }
     if (node.refType === 'item') { canEdit ? setEditItem(node.raw) : setViewItem(node.raw); return; }
     if (node.refType === 'spell') { canEdit ? setEditSpell(node.raw) : setViewSpell(node.raw); return; }
     if (node.refType === 'character') { setViewChar(node.raw); return; }
-  }, [canEdit, onOpenArticle]);
+  }, [canEdit, handleOpenArticle]);
 
   // ---- Add a node to the canvas ----
   const addToCanvas = useCallback((key: string, atScreen?: { x: number; y: number }) => {
-    if (!canEdit) return;
+    const isPanel = key.startsWith('panel:');
+    if (!canEdit && !isPanel) return;
     if (placed[key]) {
       // already on canvas — just bring to front
       setPlaced((prev) => {
@@ -324,17 +388,24 @@ export function WorldRealmCanvas({
       });
       return;
     }
+    const w = isPanel ? 640 : DEFAULT_W;
+    const h = isPanel ? 460 : DEFAULT_H;
     const rect = containerRef.current?.getBoundingClientRect();
     const cx = atScreen ? atScreen.x - (rect?.left ?? 0) : (rect?.width ?? 800) / 2;
     const cy = atScreen ? atScreen.y - (rect?.top ?? 0) : (rect?.height ?? 600) / 2;
-    const worldX = (cx - viewport.x) / viewport.scale - DEFAULT_W / 2;
-    const worldY = (cy - viewport.y) / viewport.scale - DEFAULT_H / 2;
-    const p: Placement = { x: worldX, y: worldY, width: DEFAULT_W, height: DEFAULT_H, z: maxZ + 1 };
+    const worldX = (cx - viewport.x) / viewport.scale - w / 2;
+    const worldY = (cy - viewport.y) / viewport.scale - h / 2;
+    const p: Placement = { x: worldX, y: worldY, width: w, height: h, z: maxZ + 1 };
     setPlaced((prev) => ({ ...prev, [key]: p }));
     persistPlacement(key, p);
   }, [canEdit, placed, maxZ, viewport, persistPlacement]);
 
   const removeFromCanvas = useCallback((key: string) => {
+    if (key.startsWith('panel:')) {
+      setPlaced((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      setPanelPlacements((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      return;
+    }
     if (!canEdit) return;
     setPlaced((prev) => {
       const next = { ...prev };
@@ -353,11 +424,13 @@ export function WorldRealmCanvas({
       return;
     }
     if (mode === 'canvas') {
-      addToCanvas(node.key);
+      // Viewers can still open panel windows and sheets even without edit rights.
+      if (node.refType === 'panel' || canEdit) addToCanvas(node.key);
+      else openSheet(node);
       return;
     }
     openSheet(node);
-  }, [mode, activePaneId, addToCanvas, openSheet]);
+  }, [mode, activePaneId, addToCanvas, openSheet, canEdit]);
 
   // ---- Grouped sidebar ----
   const grouped = useMemo(() => {
@@ -476,14 +549,14 @@ export function WorldRealmCanvas({
       persistPlacement(key, p);
       return { ...prev, [key]: p };
     });
-    if (!canEdit) return;
+    if (!canEdit && !key.startsWith('panel:')) return;
     const p = placed[key];
     dragRef.current = { kind: 'move', key, startX: e.clientX, startY: e.clientY, orig: { ...p, z: maxZ + 1 } };
   };
 
   const onResizeMouseDown = (e: React.MouseEvent, key: string) => {
     e.stopPropagation();
-    if (!canEdit) return;
+    if (!canEdit && !key.startsWith('panel:')) return;
     dragRef.current = { kind: 'resize', key, startX: e.clientX, startY: e.clientY, orig: { ...placed[key] } };
   };
 
@@ -598,6 +671,13 @@ export function WorldRealmCanvas({
 
   // ============ Render helpers ============
   const renderNodePreview = (node: RealmNode, compact: boolean) => {
+    if (node.refType === 'panel') {
+      return (
+        <div className="flex flex-col h-full min-h-0 bg-stone-950">
+          {renderSectionPanel(node.refId as SectionPanelId, { worldId, isGM: canEdit, onOpenArticle: handleOpenArticle })}
+        </div>
+      );
+    }
     const meta = CATEGORY_META[node.category];
     const Icon = meta?.icon ?? FileText;
     return (
@@ -938,7 +1018,7 @@ export function WorldRealmCanvas({
                             <Link2 className="w-3.5 h-3.5 text-amber-400" />
                           </button>
                         )}
-                        {canEdit && (
+                        {(canEdit || node.refType === 'panel') && (
                           <button
                             className="p-0.5 hover:bg-stone-700 rounded"
                             onMouseDown={(e) => e.stopPropagation()}
@@ -951,7 +1031,7 @@ export function WorldRealmCanvas({
                         )}
                       </div>
                       <div className="flex-1 min-h-0">{renderNodePreview(node, true)}</div>
-                      {canEdit && (
+                      {(canEdit || node.refType === 'panel') && (
                         <div
                           className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-se-resize"
                           onMouseDown={(e) => onResizeMouseDown(e, key)}
@@ -1144,6 +1224,24 @@ export function WorldRealmCanvas({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ---- Article reader/editor overlay ---- */}
+      {openArticleId && renderArticle && (() => {
+        const ent = (entities as Entity[]).find((e) => e.id === openArticleId);
+        if (!ent) return null;
+        const close = () => setOpenArticleId(null);
+        return (
+          <div className="fixed inset-0 z-[10000] bg-stone-950/97 flex flex-col overflow-hidden" data-testid="overlay-realm-article">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-stone-700 bg-stone-900 flex-shrink-0">
+              <span className="text-sm font-medium text-stone-200 truncate">{ent.displayName || 'Article'}</span>
+              <Button variant="outline" size="sm" onClick={close} data-testid="button-close-realm-article">
+                <X className="w-3.5 h-3.5 mr-1" /> Close
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto">{renderArticle(ent, { onClose: close, openArticle: handleOpenArticle })}</div>
+          </div>
+        );
+      })()}
 
       {imageBrowserElement}
     </div>

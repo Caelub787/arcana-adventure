@@ -6509,6 +6509,7 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
   const [wbContextMenu, setWbContextMenu] = useState<{ x: number; y: number; entityId: string; entityName: string } | null>(null);
   const wbContextMenuRef = React.useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [canvasArticleSignal, setCanvasArticleSignal] = useState<{ entityId: string; nonce: number } | null>(null);
   const [homeContent, setHomeContent] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
   const [homeEditing, setHomeEditing] = useState(false);
@@ -6831,17 +6832,17 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
     }
   };
 
-  // Listen for global-search "open entity" requests and forward to new-tab opener.
+  // Listen for global-search "open entity" requests and open them in the canvas overlay.
   React.useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail) return;
       if (detail.campaignId && detail.campaignId !== campaignId) return;
-      if (detail.entityId) handleOpenEntityInNewTab(detail.entityId, detail.title);
+      if (detail.entityId) setCanvasArticleSignal({ entityId: detail.entityId, nonce: Date.now() });
     };
     window.addEventListener('campaign-open-wiki-entity', handler);
     return () => window.removeEventListener('campaign-open-wiki-entity', handler);
-  }, [wbTabs, campaignId]);
+  }, [campaignId]);
 
   const handleOpenEntityInCurrentTab = (entityId: string, title?: string) => {
     const resolvedTitle = title || getEntityTitle(entityId);
@@ -6918,26 +6919,6 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
         ) : (
           <span className="text-xs text-stone-300 px-2 py-1.5 mr-1 font-medium truncate shrink-0">{selectedWorld?.name || "World Wiki"}</span>
         )}
-        {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => {
-          const sectionTabType = key as WbTabType;
-          const isActiveSection = wbTabs.find(t => t.id === activeWbTabId)?.type === sectionTabType ||
-            (key === "encyclopedia" && wbTabs.find(t => t.id === activeWbTabId)?.type === "article");
-          return (
-            <button
-              key={key}
-              onClick={() => handleNavigateCurrentTab(sectionTabType)}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
-                isActiveSection
-                  ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
-                  : "text-stone-400 hover:text-stone-200 hover:bg-stone-700"
-              }`}
-              data-testid={`worldbuilder-tab-${key}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {!compact && label}
-            </button>
-          );
-        })}
         {isGM && (
           <div className="ml-auto flex items-center gap-1 shrink-0">
             <button
@@ -6960,57 +6941,6 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
             )}
           </div>
         )}
-      </div>
-
-      <div className="border-b border-stone-700 bg-stone-900/80 shrink-0 min-h-[30px]">
-          <div className="flex items-center overflow-x-auto">
-            {wbTabs.length === 0 && (
-              <span className="text-[10px] text-stone-600 px-3 py-1.5 italic">No tabs open</span>
-            )}
-            {wbTabs.map((tab) => {
-              const isActive = tab.id === activeWbTabId;
-              const tabMeta = TAB_TYPE_ICONS[tab.type] || TAB_TYPE_ICONS.article;
-              const TabIcon = tabMeta.icon;
-              return (
-                <div
-                  key={tab.id}
-                  role="tab"
-                  tabIndex={0}
-                  onClick={() => handleSwitchWbTab(tab.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitchWbTab(tab.id); }}}
-                  className={`group flex items-center gap-1.5 px-3 py-1.5 flex-shrink-0 text-xs max-w-[200px] border-r border-stone-800 cursor-pointer select-none ${
-                    isActive
-                      ? "bg-stone-800 text-amber-400 border-b-2 border-b-amber-500"
-                      : "bg-stone-900/50 text-stone-400 hover:bg-stone-800/70 hover:text-stone-300 border-b-2 border-b-transparent"
-                  } transition-all duration-150`}
-                  data-testid={`wb-tab-${tab.id}`}
-                >
-                  <TabIcon className={`flex-shrink-0 h-3 w-3 ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
-                  <span className="truncate flex-1 text-left">{tab.title || tabMeta.label}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCloseWbTab(tab.id);
-                    }}
-                    className={`flex-shrink-0 p-0.5 rounded hover:bg-stone-700 transition-colors ${
-                      isActive ? 'text-stone-400 hover:text-stone-200' : 'text-stone-500 hover:text-stone-300 opacity-0 group-hover:opacity-100'
-                    }`}
-                    data-testid={`wb-tab-close-${tab.id}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              );
-            })}
-            <button
-              onClick={handleAddNewTab}
-              className="flex-shrink-0 p-1.5 text-stone-500 hover:text-amber-400 hover:bg-stone-800 rounded transition-colors mx-0.5"
-              title="Open new tab"
-              data-testid="wb-tab-add"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative">
@@ -7042,260 +6972,23 @@ const WorldBuilderContent = React.memo(function WorldBuilderContent({
                   </>
                 )}
               </div>
-            ) : wbTabs.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-stone-500">
-                <div className="text-center">
-                  <Globe className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">Open a section above to get started</p>
-                </div>
-              </div>
             ) : (
-              <>
-                {wbTabs.map((tab) => {
-                  const isActive = tab.id === activeWbTabId;
-                  return (
-                    <div
-                      key={tab.id}
-                      className="absolute inset-0 overflow-hidden"
-                      style={{ display: isActive ? 'block' : 'none' }}
-                    >
-                      {tab.type === "home" && (
-                        <div className="h-full overflow-y-auto p-6">
-                          <div className="mb-6">
-                            <h2 className="text-2xl font-bold text-amber-400 font-display">{selectedWorld?.name || "World"}</h2>
-                            {selectedWorld?.description && <p className="text-stone-400 text-sm mt-1">{selectedWorld.description}</p>}
-                          </div>
-                          {isGM && !homeEditing && (
-                            <div className="flex justify-end mb-4">
-                              <Button size="sm" variant="outline" onClick={() => setHomeEditing(true)} data-testid="edit-home-btn">
-                                <Pencil className="h-3 w-3 mr-1" /> Edit
-                              </Button>
-                            </div>
-                          )}
-                          {homeEditing ? (
-                            <div className="space-y-3">
-                              <textarea
-                                value={homeContent}
-                                onChange={(e) => { setHomeContent(e.target.value); setHomeContentDirty(true); }}
-                                className="w-full min-h-[300px] p-3 bg-stone-800 border border-stone-700 rounded text-stone-200 text-sm font-mono"
-                                placeholder="Write your world's home page content here... (Markdown supported)"
-                                data-testid="home-content-editor"
-                              />
-                              <div className="flex items-center gap-2">
-                                <Button size="sm" onClick={saveHomeContent} data-testid="save-home-btn">Save</Button>
-                                <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(selectedWorld?.homeContent || ""); setHomeContentDirty(false); }}>Cancel</Button>
-                                {homeContentDirty && <span className="text-xs text-amber-500/70 italic">Unsaved changes</span>}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="prose prose-invert max-w-none">
-                              {homeContent ? renderWorldHomeContent(homeContent) : (
-                                <p className="text-stone-500 italic">No home content yet.{isGM ? " Click Edit to add content." : ""}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {tab.type === "encyclopedia" && (
-                        <div className="h-full overflow-y-auto">
-                          <WorldbuilderPanel
-                            worldId={selectedWorldId}
-                            isGM={isGM}
-                            characters={characters}
-                            onOpenEntity={(entityId, title) => handleOpenEntityInCurrentTab(entityId, title)}
-                            onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
-                            onEntityContextMenu={handleWbEntityContextMenu}
-                            skipSync
-                            onEntityCreated={(id, name) => handleOpenEntityInCurrentTab(id, name)}
-                            gridView
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "article" && tab.entityId && (
-                        <div className="flex h-full overflow-hidden">
-                          <div className={`${wbSidebarCollapsed ? 'w-10' : 'w-56'} flex-shrink-0 border-r border-stone-700 overflow-hidden transition-all duration-200 flex flex-col`}>
-                            {wbSidebarCollapsed ? (
-                              <div className="flex flex-col items-center pt-2">
-                                <button
-                                  onClick={() => setWbSidebarCollapsed(false)}
-                                  className="h-8 w-8 flex items-center justify-center rounded-md text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 transition-colors"
-                                  data-testid="button-expand-wb-sidebar"
-                                  title="Expand article list"
-                                >
-                                  <ChevronRight className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => { setWbSidebarCollapsed(false); }}
-                                  className="h-8 w-8 flex items-center justify-center rounded-md text-stone-500 hover:text-stone-300 hover:bg-stone-800/60 transition-colors mt-1"
-                                  title="Articles"
-                                  data-testid="button-wb-sidebar-articles-icon"
-                                >
-                                  <BookOpen className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center justify-end px-1 py-1 border-b border-stone-800/60">
-                                  <button
-                                    onClick={() => setWbSidebarCollapsed(true)}
-                                    className="h-6 w-6 flex items-center justify-center rounded text-stone-500 hover:text-stone-300 hover:bg-stone-800/60 transition-colors"
-                                    data-testid="button-collapse-wb-sidebar"
-                                    title="Collapse sidebar"
-                                  >
-                                    <ChevronLeft className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                                <div className="flex-1 overflow-hidden">
-                                  <WorldbuilderPanel
-                                    worldId={selectedWorldId}
-                                    isGM={isGM}
-                                    characters={characters}
-                                    skipSync
-                                    onOpenEntity={(entityId, title) => {
-                                      const resolvedTitle = title || getEntityTitle(entityId);
-                                      setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId, title: resolvedTitle } : t));
-                                      setSelectedEntityId(entityId);
-                                      setWbSidebarCollapsed(true);
-                                    }}
-                                    onOpenEntityNewTab={(entityId, title) => handleOpenEntityInNewTab(entityId, title)}
-                                    onEntityContextMenu={handleWbEntityContextMenu}
-                                    onEntityCreated={(id, name) => { const resolvedTitle = name || "Article"; setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, type: "article", entityId: id, title: resolvedTitle } : t)); setSelectedEntityId(id); setWbSidebarCollapsed(true); }}
-                                  />
-                                </div>
-                              </>
-                            )}
-                          </div>
-                          <div className="flex-1 overflow-hidden min-w-0 flex">
-                            <div className="flex-1 overflow-y-auto min-w-0">
-                              {(() => {
-                                const articleEntity = entities.find(e => e.id === tab.entityId);
-                                if (!articleEntity) return (
-                                  <div className="flex items-center justify-center h-full">
-                                    <div className="animate-pulse space-y-3 p-6 w-full max-w-md">
-                                      <div className="h-6 bg-stone-800 rounded w-3/4" />
-                                      <div className="h-4 bg-stone-800 rounded w-1/2" />
-                                      <div className="h-32 bg-stone-800 rounded" />
-                                    </div>
-                                  </div>
-                                );
-                                return (
-                                  <WikiArticleWithAccess
-                                    entity={articleEntity}
-                                    worldId={selectedWorldId}
-                                    campaignId={campaignId}
-                                    isGM={isGM}
-                                    userId={userId}
-                                    onWikiLinkClick={(type, id) => {
-                                      if (type === "entity") {
-                                        const title = getEntityTitle(id);
-                                        setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, entityId: id, title } : t));
-                                        setSelectedEntityId(id);
-                                      }
-                                    }}
-                                  />
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {tab.type === "maps" && (
-                        <div className="h-full">
-                          <WorldMapViewer
-                            worldId={selectedWorldId}
-                            isGM={isGM}
-                            onEditMap={isGM ? (mapId) => {
-                              const existingEditTab = wbTabs.find(t => t.type === "map-edit" && t.mapId === mapId);
-                              if (existingEditTab) {
-                                setActiveWbTabId(existingEditTab.id);
-                              } else {
-                                const newTabId = makeTabId();
-                                setWbTabs(prev => [...prev, { id: newTabId, type: "map-edit", title: "Map Editor", mapId }]);
-                                setActiveWbTabId(newTabId);
-                              }
-                            } : undefined}
-                            onCreateMap={isGM ? () => {
-                              const newTabId = makeTabId();
-                              setWbTabs(prev => [...prev, { id: newTabId, type: "map-edit", title: "New Map", mapId: null }]);
-                              setActiveWbTabId(newTabId);
-                            } : undefined}
-                            onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "map-edit" && (
-                        <div className="h-full">
-                          <WorldMapEditor
-                            worldId={selectedWorldId}
-                            mapId={tab.mapId || undefined}
-                            onBack={() => handleCloseWbTab(tab.id)}
-                            onMapCreated={(newId) => { setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, mapId: newId, title: "Map Editor" } : t)); }}
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "timeline" && (
-                        <div className="h-full overflow-y-auto">
-                          <TimelineView
-                            worldId={selectedWorldId}
-                            isGM={isGM}
-                            onSelectEntity={handleSelectEntity}
-                            selectedTimelineId={tab.selectedTimelineId || null}
-                            onSelectTimeline={(timelineId) => {
-                              setWbTabs(prev => prev.map(t => t.id === tab.id ? { ...t, selectedTimelineId: timelineId } : t));
-                            }}
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "calendar" && (
-                        <div className="h-full overflow-hidden">
-                          <WorldCalendar worldId={selectedWorldId} isGM={isGM} />
-                        </div>
-                      )}
-
-                      {tab.type === "graph" && selectedWorldId && (
-                        <div className="h-full">
-                          <RelationshipGraph
-                            worldId={selectedWorldId}
-                            onSelectEntity={handleSelectEntity}
-                            selectedEntityId={selectedEntityId}
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "objects" && selectedWorldId && (
-                        <div className="h-full min-h-0">
-                          <WorldObjectsPanel
-                            worldId={selectedWorldId}
-                            system={selectedWorld?.system}
-                            canEdit={canEditWorldObjects}
-                            campaignId={campaignId}
-                            campaignSystem={wbCampaign?.system}
-                            campaignCharacters={(characters || []).map((c: any) => ({ id: c.id, name: c.name }))}
-                            canImportCharacters={isGM}
-                          />
-                        </div>
-                      )}
-
-                      {tab.type === "realm" && selectedWorldId && (
-                        <div className="h-full min-h-0">
-                          <WorldRealmCanvas
-                            worldId={selectedWorldId}
-                            system={selectedWorld?.system}
-                            canEdit={canEditWorldObjects}
-                            onOpenArticle={(entityId) => handleOpenEntityInCurrentTab(entityId)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </>
+              <WorldRealmCanvas
+                worldId={selectedWorldId}
+                system={selectedWorld?.system}
+                canEdit={canEditWorldObjects}
+                openArticleSignal={canvasArticleSignal}
+                renderArticle={(ent, { openArticle }) => (
+                  <WikiArticleWithAccess
+                    entity={ent}
+                    worldId={selectedWorldId}
+                    campaignId={campaignId}
+                    isGM={isGM}
+                    userId={userId}
+                    onWikiLinkClick={(type, id) => { if (type === "entity") openArticle(id); }}
+                  />
+                )}
+              />
             )}
       </div>
     </div>
