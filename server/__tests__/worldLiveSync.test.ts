@@ -38,6 +38,22 @@ const h = vi.hoisted(() => {
     createEntityLink: fn(),
     updateEntityLink: fn(),
     deleteEntityLink: fn(),
+    getWorldMap: fn(),
+    createWorldMap: fn(),
+    updateWorldMap: fn(),
+    deleteWorldMap: fn(),
+    getWorldMapPin: fn(),
+    createWorldMapPin: fn(),
+    updateWorldMapPin: fn(),
+    deleteWorldMapPin: fn(),
+    getWorldCalendar: fn(),
+    createWorldCalendar: fn(),
+    updateWorldCalendar: fn(),
+    deleteWorldCalendar: fn(),
+    getWorldTimelineEvent: fn(),
+    createWorldTimelineEvent: fn(),
+    updateWorldTimelineEvent: fn(),
+    deleteWorldTimelineEvent: fn(),
     deleteExpiredSpectatorTokens: fn(),
   };
   const adminUserIds = new Set<string>();
@@ -374,6 +390,349 @@ describe("standalone world live sync — entity-link broadcasts", () => {
       await silent;
     } finally {
       closeAll(wsOwner, wsOther);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The broadcastWorldContent contract is shared by many world-scoped routes, not
+// just entity-links. These suites lock in that maps, map pins, calendars, and
+// timeline events all fan their create/update/delete events out to every client
+// joined to the same standalone world — so a future route reverting to a
+// campaign-only broadcast would break standalone-world collaboration loudly.
+// ---------------------------------------------------------------------------
+describe("standalone world live sync — world map broadcasts", () => {
+  const worldId = "worldMap";
+  const owner = "ownerMap";
+  const collaborator = "collabMap";
+
+  function joinBoth() {
+    mockStandaloneWorld(worldId, owner);
+    h.storage.isWorldCollaborator.mockImplementation(
+      async (_wid: string, uid: string) => uid === collaborator,
+    );
+    return Promise.all([
+      connectAndJoinWorld(owner, worldId),
+      connectAndJoinWorld(collaborator, worldId),
+    ]);
+  }
+
+  it("broadcasts world_map_created to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      const map = { id: "map1", worldId, title: "Atlas" };
+      h.storage.createWorldMap.mockResolvedValue(map);
+
+      const gotA = waitForMessage(wsA, "world_map_created");
+      const gotB = waitForMessage(wsB, "world_map_created");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps`, {
+        method: "POST",
+        user: owner,
+        body: { title: "Atlas" },
+      });
+      expect(res.status).toBe(201);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.map.id).toBe("map1");
+      expect(msgB.map.id).toBe("map1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_map_updated to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldMap.mockResolvedValue({ id: "map1", worldId });
+      h.storage.updateWorldMap.mockResolvedValue({ id: "map1", worldId, title: "Renamed" });
+
+      const gotA = waitForMessage(wsA, "world_map_updated");
+      const gotB = waitForMessage(wsB, "world_map_updated");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps/map1`, {
+        method: "PATCH",
+        user: owner,
+        body: { title: "Renamed" },
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.map.title).toBe("Renamed");
+      expect(msgB.map.title).toBe("Renamed");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_map_deleted to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldMap.mockResolvedValue({ id: "map1", worldId });
+      h.storage.deleteWorldMap.mockResolvedValue(undefined);
+
+      const gotA = waitForMessage(wsA, "world_map_deleted");
+      const gotB = waitForMessage(wsB, "world_map_deleted");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps/map1`, {
+        method: "DELETE",
+        user: owner,
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.mapId).toBe("map1");
+      expect(msgB.mapId).toBe("map1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_map_pin_created to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldMap.mockResolvedValue({ id: "map1", worldId });
+      h.storage.createWorldMapPin.mockResolvedValue({ id: "pin1", mapId: "map1", x: 10, y: 20 });
+
+      const gotA = waitForMessage(wsA, "world_map_pin_created");
+      const gotB = waitForMessage(wsB, "world_map_pin_created");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps/map1/pins`, {
+        method: "POST",
+        user: owner,
+        body: { x: 10, y: 20 },
+      });
+      expect(res.status).toBe(201);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.pin.id).toBe("pin1");
+      expect(msgA.mapId).toBe("map1");
+      expect(msgB.pin.id).toBe("pin1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_map_pin_updated to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldMapPin.mockResolvedValue({ id: "pin1", mapId: "map1" });
+      h.storage.updateWorldMapPin.mockResolvedValue({ id: "pin1", mapId: "map1", label: "Capital" });
+
+      const gotA = waitForMessage(wsA, "world_map_pin_updated");
+      const gotB = waitForMessage(wsB, "world_map_pin_updated");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps/map1/pins/pin1`, {
+        method: "PATCH",
+        user: owner,
+        body: { label: "Capital" },
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.pin.label).toBe("Capital");
+      expect(msgA.mapId).toBe("map1");
+      expect(msgB.pin.label).toBe("Capital");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_map_pin_deleted to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldMapPin.mockResolvedValue({ id: "pin1", mapId: "map1" });
+      h.storage.deleteWorldMapPin.mockResolvedValue(undefined);
+
+      const gotA = waitForMessage(wsA, "world_map_pin_deleted");
+      const gotB = waitForMessage(wsB, "world_map_pin_deleted");
+
+      const res = await api(`/api/worlds/${worldId}/world-maps/map1/pins/pin1`, {
+        method: "DELETE",
+        user: owner,
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.pinId).toBe("pin1");
+      expect(msgA.mapId).toBe("map1");
+      expect(msgB.pinId).toBe("pin1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+});
+
+describe("standalone world live sync — calendar broadcasts", () => {
+  const worldId = "worldCal";
+  const owner = "ownerCal";
+  const collaborator = "collabCal";
+
+  function joinBoth() {
+    mockStandaloneWorld(worldId, owner);
+    h.storage.isWorldCollaborator.mockImplementation(
+      async (_wid: string, uid: string) => uid === collaborator,
+    );
+    return Promise.all([
+      connectAndJoinWorld(owner, worldId),
+      connectAndJoinWorld(collaborator, worldId),
+    ]);
+  }
+
+  it("broadcasts world_calendar_created to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.createWorldCalendar.mockResolvedValue({ id: "cal1", worldId, name: "Harptos" });
+
+      const gotA = waitForMessage(wsA, "world_calendar_created");
+      const gotB = waitForMessage(wsB, "world_calendar_created");
+
+      const res = await api(`/api/worlds/${worldId}/calendars`, {
+        method: "POST",
+        user: owner,
+        body: { name: "Harptos" },
+      });
+      expect(res.status).toBe(201);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.calendar.id).toBe("cal1");
+      expect(msgB.calendar.id).toBe("cal1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_calendar_updated to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldCalendar.mockResolvedValue({ id: "cal1", worldId });
+      h.storage.updateWorldCalendar.mockResolvedValue({ id: "cal1", worldId, currentYear: 1492 });
+
+      const gotA = waitForMessage(wsA, "world_calendar_updated");
+      const gotB = waitForMessage(wsB, "world_calendar_updated");
+
+      const res = await api(`/api/worlds/${worldId}/calendars/cal1`, {
+        method: "PATCH",
+        user: owner,
+        body: { currentYear: 1492 },
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.calendar.currentYear).toBe(1492);
+      expect(msgB.calendar.currentYear).toBe(1492);
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_calendar_deleted to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldCalendar.mockResolvedValue({ id: "cal1", worldId });
+      h.storage.deleteWorldCalendar.mockResolvedValue(undefined);
+
+      const gotA = waitForMessage(wsA, "world_calendar_deleted");
+      const gotB = waitForMessage(wsB, "world_calendar_deleted");
+
+      const res = await api(`/api/worlds/${worldId}/calendars/cal1`, {
+        method: "DELETE",
+        user: owner,
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.calendarId).toBe("cal1");
+      expect(msgB.calendarId).toBe("cal1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+});
+
+describe("standalone world live sync — timeline event broadcasts", () => {
+  const worldId = "worldTl";
+  const owner = "ownerTl";
+  const collaborator = "collabTl";
+
+  function joinBoth() {
+    mockStandaloneWorld(worldId, owner);
+    h.storage.isWorldCollaborator.mockImplementation(
+      async (_wid: string, uid: string) => uid === collaborator,
+    );
+    return Promise.all([
+      connectAndJoinWorld(owner, worldId),
+      connectAndJoinWorld(collaborator, worldId),
+    ]);
+  }
+
+  it("broadcasts world_timeline_event_created to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.createWorldTimelineEvent.mockResolvedValue({ id: "ev1", worldId, title: "Founding" });
+
+      const gotA = waitForMessage(wsA, "world_timeline_event_created");
+      const gotB = waitForMessage(wsB, "world_timeline_event_created");
+
+      const res = await api(`/api/worlds/${worldId}/timeline-events`, {
+        method: "POST",
+        user: owner,
+        body: { title: "Founding" },
+      });
+      expect(res.status).toBe(201);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.event.id).toBe("ev1");
+      expect(msgB.event.id).toBe("ev1");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_timeline_event_updated to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldTimelineEvent.mockResolvedValue({ id: "ev1", worldId });
+      h.storage.updateWorldTimelineEvent.mockResolvedValue({ id: "ev1", worldId, title: "The Sundering" });
+
+      const gotA = waitForMessage(wsA, "world_timeline_event_updated");
+      const gotB = waitForMessage(wsB, "world_timeline_event_updated");
+
+      const res = await api(`/api/worlds/${worldId}/timeline-events/ev1`, {
+        method: "PATCH",
+        user: owner,
+        body: { title: "The Sundering" },
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.event.title).toBe("The Sundering");
+      expect(msgB.event.title).toBe("The Sundering");
+    } finally {
+      closeAll(wsA, wsB);
+    }
+  });
+
+  it("broadcasts world_timeline_event_deleted to all clients in the world room", async () => {
+    const [wsA, wsB] = await joinBoth();
+    try {
+      h.storage.getWorldTimelineEvent.mockResolvedValue({ id: "ev1", worldId });
+      h.storage.deleteWorldTimelineEvent.mockResolvedValue(undefined);
+
+      const gotA = waitForMessage(wsA, "world_timeline_event_deleted");
+      const gotB = waitForMessage(wsB, "world_timeline_event_deleted");
+
+      const res = await api(`/api/worlds/${worldId}/timeline-events/ev1`, {
+        method: "DELETE",
+        user: owner,
+      });
+      expect(res.status).toBe(200);
+
+      const [msgA, msgB] = await Promise.all([gotA, gotB]);
+      expect(msgA.eventId).toBe("ev1");
+      expect(msgB.eventId).toBe("ev1");
+    } finally {
+      closeAll(wsA, wsB);
     }
   });
 });
