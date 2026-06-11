@@ -33,6 +33,7 @@ const h = vi.hoisted(() => {
     getWorld: fn(),
     isWorldCollaborator: fn(),
     getCampaign: fn(),
+    getCampaignMembership: fn(),
     isCampaignMember: fn(),
     getEntityLink: fn(),
     createEntityLink: fn(),
@@ -136,6 +137,7 @@ beforeEach(() => {
   // No campaign linkage by default; collaboration only via owner/collaborator.
   h.storage.isWorldCollaborator.mockResolvedValue(false);
   h.storage.isCampaignMember.mockResolvedValue(false);
+  h.storage.getCampaignMembership.mockResolvedValue(null);
 });
 
 function api(pathName: string, opts: { method?: string; user?: string; body?: any } = {}) {
@@ -197,6 +199,53 @@ function connectAndJoinWorld(user: string, worldId: string): Promise<WebSocket> 
   });
 }
 
+// Connect a real WebSocket client and join a campaign room, resolving once the
+// server confirms with `joined_campaign`, so the client will receive
+// campaign-scoped broadcasts (the campaign-embedded wiki path).
+function connectAndJoinCampaign(user: string, campaignId: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${baseUrl.replace("http", "ws")}/ws`, {
+      headers: { "x-test-user": user },
+    });
+    const timeout = setTimeout(() => reject(new Error("WS join_campaign timed out")), 8000);
+    ws.on("open", () => {
+      ws.send(JSON.stringify({ type: "join_campaign", campaignId }));
+    });
+    ws.on("message", (data) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "joined_campaign" && msg.campaignId === campaignId) {
+        clearTimeout(timeout);
+        resolve(ws);
+      }
+      if (msg.type === "error") {
+        clearTimeout(timeout);
+        reject(new Error(msg.message || "join_campaign error"));
+      }
+    });
+    ws.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+}
+
+// Count how many messages of a given type arrive within a window. Used to prove
+// a single client receives a broadcast exactly once (no duplicate delivery).
+function countMessages(ws: WebSocket, type: string, ms = 600): Promise<number> {
+  return new Promise((resolve) => {
+    let count = 0;
+    const onMsg = (data: WebSocket.RawData) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === type) count += 1;
+    };
+    ws.on("message", onMsg);
+    setTimeout(() => {
+      ws.off("message", onMsg);
+      resolve(count);
+    }, ms);
+  });
+}
+
 // Wait for the next message of a given type on an open socket.
 function waitForMessage(ws: WebSocket, type: string, ms = 8000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -250,6 +299,26 @@ function mockStandaloneWorld(worldId: string, owner: string) {
     userId: owner,
     campaignId: null,
     system: "arcana-adventure",
+  });
+}
+
+// A world owned by `owner` that is linked to a campaign run by `gm`.
+function mockCampaignLinkedWorld(
+  worldId: string,
+  owner: string,
+  campaignId: string,
+  gm: string,
+) {
+  h.storage.getWorld.mockResolvedValue({
+    id: worldId,
+    userId: owner,
+    campaignId,
+    system: "aa-v2",
+  });
+  h.storage.getCampaign.mockResolvedValue({
+    id: campaignId,
+    gmUserId: gm,
+    system: "aa-v2",
   });
 }
 
@@ -847,6 +916,95 @@ describe("standalone world live sync — join_world authorization", () => {
       await silent;
     } finally {
       closeAll(ws);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dual fan-out: a world linked to a campaign (world.campaignId set) must
+// broadcast entity-link updates to BOTH the per-world room (standalone
+// /worldbuilder viewers, joined via join_world) AND the campaign room
+// (campaign-embedded wiki viewers, joined via join_campaign). Task #146 only
+// covered the standalone (campaignId=null) leg; this guards the campaign leg of
+// broadcastWorldContent so the AA V2 unified-wiki live sync can't silently
+// regress.
+// ---------------------------------------------------------------------------
+describe("campaign-linked world live sync — dual fan-out", () => {
+  const worldId = "worldC";
+  const owner = "ownerC";
+  const campaignId = "campC";
+  // The campaign GM is also the world owner here, so they can post entity-link
+  // changes (world isOwner) and join the campaign room (campaign GM).
+  const gm = owner;
+  const player = "playerC";
+
+  it("delivers entity_link_created to BOTH a join_world and a join_campaign viewer", async () => {
+    mockCampaignLinkedWorld(worldId, owner, campaignId, gm);
+    // Standalone viewer reaches the world via collaborator access.
+    h.storage.isWorldCollaborator.mockImplementation(
+      async (_wid: string, uid: string) => uid === "wcollab",
+    );
+    // Campaign-embedded viewer is a campaign member (and, via world.campaignId,
+    // a member with read access to the world too).
+    h.storage.getCampaignMembership.mockImplementation(
+      async (uid: string) => (uid === player ? { role: "player" } : null),
+    );
+    h.storage.isCampaignMember.mockImplementation(
+      async (_cid: string, uid: string) => uid === player,
+    );
+
+    const wsWorld = await connectAndJoinWorld("wcollab", worldId);
+    const wsCampaign = await connectAndJoinCampaign(player, campaignId);
+    try {
+      const link = { id: "linkC", worldId, fromEntityId: "e1", toEntityId: "e2", linkType: "ally" };
+      h.storage.createEntityLink.mockResolvedValue(link);
+
+      const gotWorld = waitForMessage(wsWorld, "entity_link_created");
+      const gotCampaign = waitForMessage(wsCampaign, "entity_link_created");
+
+      const res = await api(`/api/worlds/${worldId}/entity-links`, {
+        method: "POST",
+        user: owner,
+        body: { fromEntityId: "e1", toEntityId: "e2", linkType: "ally" },
+      });
+      expect(res.status).toBe(201);
+
+      const [msgWorld, msgCampaign] = await Promise.all([gotWorld, gotCampaign]);
+      expect(msgWorld.link.id).toBe("linkC");
+      expect(msgCampaign.link.id).toBe("linkC");
+    } finally {
+      closeAll(wsWorld, wsCampaign);
+    }
+  });
+
+  it("delivers entity_link_created EXACTLY ONCE to a campaign-only viewer (no duplicate)", async () => {
+    mockCampaignLinkedWorld(worldId, owner, campaignId, gm);
+    h.storage.getCampaignMembership.mockImplementation(
+      async (uid: string) => (uid === player ? { role: "player" } : null),
+    );
+
+    // Only one client, joined to the campaign room alone. Since each client
+    // joins exactly one room, the dual fan-out must not double-deliver.
+    const wsCampaign = await connectAndJoinCampaign(player, campaignId);
+    try {
+      h.storage.createEntityLink.mockResolvedValue({
+        id: "linkC",
+        worldId,
+        fromEntityId: "e1",
+        toEntityId: "e2",
+        linkType: "ally",
+      });
+
+      const counted = countMessages(wsCampaign, "entity_link_created");
+      const res = await api(`/api/worlds/${worldId}/entity-links`, {
+        method: "POST",
+        user: owner,
+        body: { fromEntityId: "e1", toEntityId: "e2", linkType: "ally" },
+      });
+      expect(res.status).toBe(201);
+      expect(await counted).toBe(1);
+    } finally {
+      closeAll(wsCampaign);
     }
   });
 });
