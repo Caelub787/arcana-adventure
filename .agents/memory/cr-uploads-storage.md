@@ -24,3 +24,8 @@ to keep node images and realm art.
 - Shared GCS client comes from `server/replit_integrations/object_storage`
   (App Storage blueprint). Requires PRIVATE_OBJECT_DIR /
   PUBLIC_OBJECT_SEARCH_PATHS env vars (set when the bucket is provisioned).
+- Regression test `server/canvasrealms/routes/storage.test.ts` mocks the GCS
+  client with an in-memory bucket and exercises request-url -> PUT -> GET plus
+  404-on-missing and `..`/empty-segment traversal rejection. The bytes
+  round-trip (not the real bucket) is what's asserted; a header comment in that
+  file documents the real-redeploy manual check.
