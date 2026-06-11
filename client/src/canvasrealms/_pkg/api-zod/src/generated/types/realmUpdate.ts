@@ -12,7 +12,7 @@ export interface RealmUpdate {
   description?: string;
   accent?: string;
   /**
-   * Selected Arcana system; only 'aa-v2' is currently valid.
+   * Selected Arcana system, e.g. 'aa-v2'.
    * @nullable
    */
   arcanaSystem?: string | null;

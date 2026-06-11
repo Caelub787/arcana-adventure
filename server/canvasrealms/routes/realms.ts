@@ -88,6 +88,7 @@ router.post("/realms", async (req, res): Promise<void> => {
       name: parsed.data.name,
       description: parsed.data.description,
       accent: parsed.data.accent,
+      arcanaSystem: parsed.data.arcanaSystem ?? "aa-v2",
       slug,
       ownerUserId: userId,
     })

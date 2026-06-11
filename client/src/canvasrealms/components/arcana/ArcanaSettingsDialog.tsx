@@ -4,6 +4,7 @@ import {
   useGetRealm,
   useGetArcanaAuthorizeUrl,
   useUnlinkArcana,
+  useUpdateRealm,
   getGetRealmQueryKey,
   getListRealmsQueryKey,
 } from "@workspace/api-client-react";
@@ -16,7 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@cr/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@cr/components/ui/select";
 import { Button } from "@cr/components/ui/button";
+import { ARCANA_SYSTEM_OPTIONS } from "@cr/lib/arcanaSystems";
 import { toast } from "sonner";
 
 interface Props {
@@ -38,8 +47,24 @@ export function ArcanaSettingsDialog({ realmId, open, onOpenChange }: Props) {
     query: { enabled: !!needsAuth, queryKey: ["arcana-authorize", realmId] },
   });
   const unlink = useUnlinkArcana();
+  const updateRealm = useUpdateRealm();
 
   const [linking, setLinking] = useState(false);
+
+  const handleSystemChange = (next: string) => {
+    if (!realm || next === (realm.arcanaSystem || "aa-v2")) return;
+    updateRealm.mutate(
+      { realmId, data: { arcanaSystem: next } },
+      {
+        onSuccess: () => {
+          void refetch();
+          queryClient.invalidateQueries({ queryKey: getListRealmsQueryKey() });
+          toast.success("System updated");
+        },
+        onError: () => toast.error("Couldn't update system — try again."),
+      },
+    );
+  };
 
   // Listen for the postMessage from the OAuth popup so we can close it and
   // refresh state without forcing a full reload.
@@ -110,9 +135,6 @@ export function ArcanaSettingsDialog({ realmId, open, onOpenChange }: Props) {
               <div className="text-foreground">
                 {realm.arcanaUserDisplay || "Arcana account"}
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                System: {realm.arcanaSystem || "aa-v2"}
-              </div>
               {realm.arcanaHost && (
                 <a
                   href={realm.arcanaHost}
@@ -131,6 +153,32 @@ export function ArcanaSettingsDialog({ realmId, open, onOpenChange }: Props) {
             write your library and manage webhook subscriptions for this realm.
           </div>
         )}
+
+        <div className="space-y-1.5 pt-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            Game system
+          </label>
+          <Select
+            value={realm?.arcanaSystem || "aa-v2"}
+            onValueChange={handleSystemChange}
+            disabled={!realm || updateRealm.isPending}
+          >
+            <SelectTrigger data-testid="select-realm-system-settings">
+              <SelectValue placeholder="Select a system" />
+            </SelectTrigger>
+            <SelectContent>
+              {ARCANA_SYSTEM_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Determines which stat sheets characters, items, and other game
+            objects use in this realm.
+          </p>
+        </div>
 
         <DialogFooter>
           {realm?.arcanaLinked ? (

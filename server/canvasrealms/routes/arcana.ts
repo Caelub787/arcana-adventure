@@ -176,7 +176,6 @@ publicArcanaRouter.get("/arcana/callback", async (req, res) => {
         arcanaTokenExpiresAt: new Date(Date.now() + (tokens.expires_in || 3600) * 1000),
         arcanaUserId,
         arcanaUserDisplay,
-        arcanaSystem: "aa-v2",
         arcanaWebhookId: webhookId,
         arcanaWebhookSecret: webhookSecret ? encryptToken(webhookSecret) : null,
       })
@@ -332,6 +331,35 @@ function parseKind(req: Request, res: Parameters<Parameters<typeof router.get>[2
   return kind as SyncKind;
 }
 
+// The species table on Arcana keys its system off a human-readable display
+// label, not the slug. Every other library kind uses the raw slug.
+const SPECIES_SYSTEM_LABELS: Record<string, string> = {
+  "arcana-adventure": "Arcana Adventure",
+  "aa-v2": "A.A. V2",
+  "aa-v3": "A.A. V3",
+};
+
+// Force every entity written through a realm to carry that realm's chosen
+// Arcana system, so V1/V3 realms can't accidentally persist `aa-v2` just
+// because a dialog seeded that default. Legacy realms with no system fall
+// back to "aa-v2".
+async function applyRealmSystem(
+  realmId: string,
+  kind: SyncKind,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const [row] = await db
+    .select({ system: realmsTable.arcanaSystem })
+    .from(realmsTable)
+    .where(eq(realmsTable.id, realmId));
+  const slug = row?.system ?? "aa-v2";
+  if (kind === "species") {
+    body["systemName"] = SPECIES_SYSTEM_LABELS[slug] ?? slug;
+  } else {
+    body["system"] = slug;
+  }
+}
+
 router.get(
   "/realms/:realmId/arcana/library/:kind",
   requireRealmAccess("viewer"),
@@ -372,10 +400,10 @@ router.post(
   async (req, res) => {
     const kind = parseKind(req, res);
     if (!kind) return;
+    const realmId = req.params["realmId"] as string;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    await withRealmClient(req.params["realmId"] as string, res, (c) =>
-      c.upsert(kind, body),
-    );
+    await applyRealmSystem(realmId, kind, body);
+    await withRealmClient(realmId, res, (c) => c.upsert(kind, body));
   },
 );
 
@@ -385,8 +413,10 @@ router.patch(
   async (req, res) => {
     const kind = parseKind(req, res);
     if (!kind) return;
+    const realmId = req.params["realmId"] as string;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    await withRealmClient(req.params["realmId"] as string, res, (c) =>
+    await applyRealmSystem(realmId, kind, body);
+    await withRealmClient(realmId, res, (c) =>
       c.patch(kind, req.params["id"] as string, body),
     );
   },

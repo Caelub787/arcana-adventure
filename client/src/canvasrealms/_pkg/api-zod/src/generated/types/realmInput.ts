@@ -11,4 +11,9 @@ export interface RealmInput {
   name: string;
   description?: string;
   accent?: string;
+  /**
+   * Selected Arcana system, e.g. 'aa-v2'.
+   * @nullable
+   */
+  arcanaSystem?: string | null;
 }

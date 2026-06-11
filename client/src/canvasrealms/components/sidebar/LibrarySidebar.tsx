@@ -131,6 +131,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@cr/components/ui/dialog";
+import { ARCANA_SYSTEM_OPTIONS } from "@cr/lib/arcanaSystems";
 import { ArcanaSettingsDialog } from "@cr/components/arcana/ArcanaSettingsDialog";
 import { ShareDialog } from "@cr/components/layout/ShareDialog";
 import { NodeAvatar } from "@cr/components/workspace/NodeAvatar";
@@ -279,6 +280,7 @@ export function LibrarySidebar() {
   const [newRealmOpen, setNewRealmOpen] = useState(false);
   const [newRealmName, setNewRealmName] = useState("");
   const [newRealmError, setNewRealmError] = useState<string | null>(null);
+  const [newRealmSystem, setNewRealmSystem] = useState<string>("aa-v2");
   const [arcanaDialogRealmId, setArcanaDialogRealmId] = useState<string | null>(null);
   const [shareDialogRealmId, setShareDialogRealmId] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -670,6 +672,7 @@ export function LibrarySidebar() {
     if (createRealm.isPending) return;
     setNewRealmName("New Realm");
     setNewRealmError(null);
+    setNewRealmSystem("aa-v2");
     setNewRealmOpen(true);
   };
 
@@ -681,7 +684,7 @@ export function LibrarySidebar() {
     }
     if (createRealm.isPending) return;
     createRealm.mutate(
-      { data: { name: next } },
+      { data: { name: next, arcanaSystem: newRealmSystem } },
       {
         onSuccess: (res) => {
           queryClient.invalidateQueries({ queryKey: getListRealmsQueryKey() });
@@ -2519,6 +2522,30 @@ export function LibrarySidebar() {
             {newRealmError && (
               <p className="text-xs text-destructive">{newRealmError}</p>
             )}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Game system
+              </label>
+              <Select
+                value={newRealmSystem}
+                onValueChange={(v) => setNewRealmSystem(v)}
+              >
+                <SelectTrigger data-testid="select-realm-system">
+                  <SelectValue placeholder="Select a system" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ARCANA_SYSTEM_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Controls which stat sheets characters, items, and other game
+                objects use in this realm.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button

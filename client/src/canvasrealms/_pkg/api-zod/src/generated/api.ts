@@ -67,6 +67,10 @@ export const CreateRealmBody = zod.object({
   name: zod.string().min(1),
   description: zod.string().optional(),
   accent: zod.string().optional(),
+  arcanaSystem: zod
+    .enum(["arcana-adventure", "aa-v2", "aa-v3"])
+    .nullish()
+    .describe("Selected Arcana system, e.g. 'aa-v2'."),
 });
 
 export const GetRealmParams = zod.object({
@@ -105,9 +109,9 @@ export const UpdateRealmBody = zod.object({
   description: zod.string().optional(),
   accent: zod.string().optional(),
   arcanaSystem: zod
-    .string()
+    .enum(["arcana-adventure", "aa-v2", "aa-v3"])
     .nullish()
-    .describe("Selected Arcana system; only 'aa-v2' is currently valid."),
+    .describe("Selected Arcana system, e.g. 'aa-v2'."),
 });
 
 export const UpdateRealmResponse = zod.object({

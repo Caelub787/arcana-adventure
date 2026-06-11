@@ -17,6 +17,7 @@ import { Loader2, Plus, ArrowLeft, RefreshCw, Pencil, Trash2 } from "lucide-reac
 import { Button } from "@cr/components/ui/button";
 import { useGetRealm, getGetRealmQueryKey } from "@workspace/api-client-react";
 import { createArcanaLibraryTransport } from "@cr/lib/arcanaLibraryTransport";
+import { ARCANA_SYSTEM_OPTIONS } from "@cr/lib/arcanaSystems";
 
 interface KindTab {
   kind: SyncKind;
@@ -49,6 +50,12 @@ export function ArcanaLibraryPage() {
   });
   const arcanaLinked = !!(realm as unknown as { arcanaLinked?: boolean })
     ?.arcanaLinked;
+  const realmSystem =
+    (realm as unknown as { arcanaSystem?: string | null })?.arcanaSystem ||
+    "aa-v2";
+  const realmSystemLabel =
+    ARCANA_SYSTEM_OPTIONS.find((o) => o.value === realmSystem)?.label ??
+    realmSystem;
 
   const [activeKind, setActiveKind] = useState<SyncKind>("item");
   const [editing, setEditing] = useState<LibraryRow | null>(null);
@@ -248,6 +255,8 @@ export function ArcanaLibraryPage() {
               open={creating}
               onOpenChange={(o: boolean) => !o && setCreating(false)}
               host={host}
+              campaignSystem={realmSystem}
+              systemName={realmSystemLabel}
               onSaved={onSaved}
             />
           )}
@@ -257,6 +266,8 @@ export function ArcanaLibraryPage() {
               open={!!editing}
               onOpenChange={(o: boolean) => !o && setEditing(null)}
               host={host}
+              campaignSystem={realmSystem}
+              systemName={realmSystemLabel}
               initialValue={{ ...(editing.data ?? {}), id: editing.id }}
               onSaved={onSaved}
             />
