@@ -13,6 +13,7 @@ export default defineConfig({
     include: [
       "shared/**/*.test.ts",
       "server/**/*.test.ts",
+      "client/**/*.test.ts",
     ],
     testTimeout: 15000,
     hookTimeout: 15000,
