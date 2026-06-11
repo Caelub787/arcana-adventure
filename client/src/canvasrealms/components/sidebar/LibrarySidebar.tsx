@@ -19,6 +19,7 @@ import {
   getListNodesQueryKey,
   getListFoldersQueryKey,
   getGetRealmSummaryQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
 import type { NodeKind } from "@workspace/api-zod";
 import type { Folder } from "@workspace/api-client-react";
@@ -32,7 +33,7 @@ import {
   hasArcanaKind,
   getCategoryIdForKind,
 } from "@cr/lib/nodeKinds";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Drawer as VaulDrawer } from "vaul";
 import { ScrollArea } from "@cr/components/ui/scroll-area";
 import { Button } from "@cr/components/ui/button";
@@ -86,6 +87,7 @@ import {
   MoveRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Lock,
 } from "lucide-react";
 import {
   LIBRARY_MAX_WIDTH,
@@ -282,6 +284,7 @@ export function LibrarySidebar() {
   const [newRealmError, setNewRealmError] = useState<string | null>(null);
   const [newRealmSystem, setNewRealmSystem] = useState<string>("aa-v2");
   const [arcanaDialogRealmId, setArcanaDialogRealmId] = useState<string | null>(null);
+  const [campaignLinkRealmId, setCampaignLinkRealmId] = useState<string | null>(null);
   const [shareDialogRealmId, setShareDialogRealmId] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -1386,6 +1389,12 @@ export function LibrarySidebar() {
             <div className="flex-1 min-w-0 text-left">
               <div className="flex items-center gap-1">
                 <span className="truncate flex-1">{node.title}</span>
+                {(node as unknown as { isPrivate?: boolean }).isPrivate && (
+                  <Lock
+                    className="w-3 h-3 text-amber-500 flex-shrink-0"
+                    aria-label="Private node"
+                  />
+                )}
                 {node.key && (
                   <span
                     className="font-mono text-[10px] text-muted-foreground/70 flex-shrink-0"
@@ -2099,6 +2108,10 @@ export function LibrarySidebar() {
                         setOpenMenuId(null);
                         setArcanaDialogRealmId(realm.id);
                       }}
+                      onLinkCampaign={() => {
+                        setOpenMenuId(null);
+                        setCampaignLinkRealmId(realm.id);
+                      }}
                     />
                   )}
                 </div>
@@ -2788,6 +2801,16 @@ export function LibrarySidebar() {
         />
       )}
 
+      {campaignLinkRealmId && (
+        <CampaignLinkDialog
+          realmId={campaignLinkRealmId}
+          open={!!campaignLinkRealmId}
+          onOpenChange={(o) => {
+            if (!o) setCampaignLinkRealmId(null);
+          }}
+        />
+      )}
+
       {kindPickerPos && canEdit && activeRealmId && (
         <div
           ref={kindPickerRef}
@@ -2885,6 +2908,105 @@ export function LibrarySidebar() {
   );
 }
 
+function CampaignLinkDialog({
+  realmId,
+  open,
+  onOpenChange,
+}: {
+  realmId: string;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const NONE = "__none__";
+
+  type CampaignLink = {
+    linkedCampaignId: string | null;
+    campaigns: { id: string; name: string }[];
+  };
+  const { data, isLoading } = useQuery<CampaignLink>({
+    queryKey: ["cr-campaign-link", realmId],
+    queryFn: () =>
+      customFetch<CampaignLink>(`/api/realms/${realmId}/campaign-link`, {
+        responseType: "json",
+      }),
+    enabled: open && !!realmId,
+  });
+
+  const [selected, setSelected] = useState<string>(NONE);
+  useEffect(() => {
+    if (data) setSelected(data.linkedCampaignId ?? NONE);
+  }, [data]);
+
+  const save = useMutation({
+    mutationFn: (campaignId: string | null) =>
+      customFetch(`/api/realms/${realmId}/campaign-link`, {
+        method: "PUT",
+        body: JSON.stringify({ campaignId }),
+        responseType: "json",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cr-campaign-link", realmId] });
+      queryClient.invalidateQueries({ queryKey: getListRealmsQueryKey() });
+      toast.success("Campaign link updated");
+      onOpenChange(false);
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "Failed to update link");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Link realm to a campaign</DialogTitle>
+          <DialogDescription>
+            Linking shares this realm read-only with every member of the chosen
+            campaign. They'll see it in their realm list.
+          </DialogDescription>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="py-6 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (data?.campaigns ?? []).length === 0 ? (
+          <div className="py-4 text-sm text-muted-foreground">
+            You don't run any campaigns to link this realm to.
+          </div>
+        ) : (
+          <div className="py-2">
+            <Select value={selected} onValueChange={setSelected}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a campaign" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Not linked</SelectItem>
+                {(data?.campaigns ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={save.isPending || isLoading}
+            onClick={() => save.mutate(selected === NONE ? null : selected)}
+          >
+            {save.isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RealmRowMenu({
   open,
   onOpenChange,
@@ -2894,6 +3016,7 @@ function RealmRowMenu({
   onDelete,
   arcanaLinked,
   onArcanaSync,
+  onLinkCampaign,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -2903,6 +3026,7 @@ function RealmRowMenu({
   onDelete: () => void;
   arcanaLinked: boolean;
   onArcanaSync: () => void;
+  onLinkCampaign: () => void;
 }) {
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -2937,6 +3061,9 @@ function RealmRowMenu({
                 <Link2 className="w-3.5 h-3.5 mr-2 opacity-70" />
               )}
               {arcanaLinked ? "Arcana sync (linked)" : "Connect Arcana sync"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onLinkCampaign}>
+              <Users className="w-3.5 h-3.5 mr-2 opacity-70" /> Link to campaign
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

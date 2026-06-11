@@ -1,7 +1,14 @@
 import { Router, type IRouter } from "express";
 import { randomBytes } from "node:crypto";
-import { eq, desc, sql, and } from "drizzle-orm";
-import { db, nodesTable, foldersTable } from "@workspace/db";
+import { eq, desc, sql, and, isNotNull } from "drizzle-orm";
+import {
+  db,
+  nodesTable,
+  foldersTable,
+  realmsTable,
+  realmCollaboratorsTable,
+  nodeEditGrantsTable,
+} from "@workspace/db";
 import {
   ListNodesParams,
   ListNodesResponse,
@@ -22,9 +29,13 @@ import {
 import {
   requireRealmAccess,
   requireRealmAccessByNode,
+  requireNodeWriteAccess,
   resolveRealmRole,
   roleAtLeast,
+  getGrantedNodeIds,
+  userHasNodeGrant,
 } from "../middlewares/auth";
+import { storage } from "../../storage";
 import {
   bumpInvalidation,
   ensureNodeWatched,
@@ -85,6 +96,26 @@ async function folderBelongsToRealm(
   return !!row && row.realmId === realmId;
 }
 
+/**
+ * Hide private nodes from realm viewers. Owners/editors see everything; a
+ * viewer sees a private node only when they hold an explicit per-node edit
+ * grant. Non-private nodes are always returned.
+ */
+async function filterPrivateForViewer<T extends { id: string; isPrivate: boolean }>(
+  rows: T[],
+  role: string | undefined,
+  realmId: string,
+  userId: string | undefined,
+): Promise<T[]> {
+  if (role && role !== "viewer") return rows;
+  if (!rows.some((r) => r.isPrivate)) return rows;
+  const granted =
+    userId !== undefined
+      ? await getGrantedNodeIds(realmId, userId)
+      : new Set<string>();
+  return rows.filter((r) => !r.isPrivate || granted.has(r.id));
+}
+
 router.get(
   "/realms/:realmId/nodes",
   requireRealmAccess("viewer"),
@@ -99,7 +130,13 @@ router.get(
       .from(nodesTable)
       .where(eq(nodesTable.realmId, params.data.realmId))
       .orderBy(nodesTable.createdAt);
-    res.json(ListNodesResponse.parse(rows));
+    const visible = await filterPrivateForViewer(
+      rows,
+      req.realmRole,
+      params.data.realmId,
+      req.userId,
+    );
+    res.json(ListNodesResponse.parse(visible));
   },
 );
 
@@ -181,6 +218,7 @@ router.post(
         folderId: parsed.data.folderId ?? null,
         imageUrl: parsed.data.imageUrl ?? null,
         blocks: parsed.data.blocks ?? [],
+        isPrivate: parsed.data.isPrivate ?? false,
       })
       .returning();
     ensureNodeWatched(
@@ -216,13 +254,25 @@ router.get(
       res.status(404).json({ error: "Node not found" });
       return;
     }
+    // A private node must not be opened directly by a realm viewer unless they
+    // hold an explicit per-node edit grant. Return 404 (not 403) so its very
+    // existence isn't leaked.
+    if (
+      row.isPrivate &&
+      req.realmRole === "viewer" &&
+      req.userId &&
+      !(await userHasNodeGrant(row.id, req.userId))
+    ) {
+      res.status(404).json({ error: "Node not found" });
+      return;
+    }
     res.json(GetNodeResponse.parse(row));
   },
 );
 
 router.patch(
   "/nodes/:nodeId",
-  requireRealmAccessByNode("editor"),
+  requireNodeWriteAccess(),
   async (req, res): Promise<void> => {
     const params = UpdateNodeParams.safeParse(req.params);
     if (!params.success) {
@@ -233,6 +283,12 @@ router.patch(
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
+    }
+    // A viewer editing via a per-node grant may only change content fields —
+    // never the privacy flag and never move the node to another realm.
+    if (req.nodeEditGranted) {
+      delete (parsed.data as Record<string, unknown>).isPrivate;
+      delete (parsed.data as Record<string, unknown>).realmId;
     }
     const [existingNode] = await db
       .select({ realmId: nodesTable.realmId })
@@ -579,8 +635,16 @@ router.get(
       .from(nodesTable)
       .where(eq(nodesTable.realmId, params.data.realmId))
       .orderBy(desc(nodesTable.updatedAt))
-      .limit(8);
-    res.json(ListRecentNodesResponse.parse(rows));
+      .limit(40);
+    const visible = (
+      await filterPrivateForViewer(
+        rows,
+        req.realmRole,
+        params.data.realmId,
+        req.userId,
+      )
+    ).slice(0, 8);
+    res.json(ListRecentNodesResponse.parse(visible));
   },
 );
 
@@ -593,6 +657,35 @@ router.get(
       res.status(400).json({ error: params.error.message });
       return;
     }
+    // Viewers must not see tag counts that include private nodes they can't
+    // access, so for them we count in JS over the visibility-filtered set.
+    if (req.realmRole === "viewer") {
+      const nodeRows = await db
+        .select({
+          id: nodesTable.id,
+          tags: nodesTable.tags,
+          isPrivate: nodesTable.isPrivate,
+        })
+        .from(nodesTable)
+        .where(eq(nodesTable.realmId, params.data.realmId));
+      const visible = await filterPrivateForViewer(
+        nodeRows,
+        req.realmRole,
+        params.data.realmId,
+        req.userId,
+      );
+      const counts = new Map<string, number>();
+      for (const n of visible) {
+        for (const tag of n.tags ?? []) {
+          counts.set(tag, (counts.get(tag) ?? 0) + 1);
+        }
+      }
+      const result = Array.from(counts.entries())
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count);
+      res.json(ListTagCountsResponse.parse(result));
+      return;
+    }
     const rows = await db
       .select({
         tag: sql<string>`unnest(${nodesTable.tags})`.as("tag"),
@@ -603,6 +696,168 @@ router.get(
       .groupBy(sql`tag`)
       .orderBy(sql`count desc`);
     res.json(ListTagCountsResponse.parse(rows));
+  },
+);
+
+/**
+ * Resolve the set of users who can be granted per-node edit access on a realm:
+ * campaign players (when the realm is the campaign's auto-realm or is linked to
+ * a campaign) plus accepted viewer collaborators. Owners/editors/GMs are
+ * excluded since they already have write access.
+ */
+async function getGrantCandidates(
+  realmId: string,
+): Promise<Array<{ userId: string; name: string; source: string }>> {
+  const [realm] = await db
+    .select({
+      id: realmsTable.id,
+      linkedCampaignId: realmsTable.linkedCampaignId,
+    })
+    .from(realmsTable)
+    .where(eq(realmsTable.id, realmId));
+  const map = new Map<string, { userId: string; name: string; source: string }>();
+  const campaignId = realm?.linkedCampaignId ?? realm?.id;
+  if (campaignId) {
+    try {
+      const members = await storage.getCampaignMembers(campaignId);
+      for (const m of members) {
+        if (m.role === "player" && m.userId) {
+          map.set(m.userId, {
+            userId: m.userId,
+            name: m.username ?? m.userId,
+            source: "player",
+          });
+        }
+      }
+    } catch {
+      // campaignId wasn't a real campaign — no campaign-based candidates.
+    }
+  }
+  const collabs = await db
+    .select({
+      userId: realmCollaboratorsTable.userId,
+      invitedEmail: realmCollaboratorsTable.invitedEmail,
+    })
+    .from(realmCollaboratorsTable)
+    .where(
+      and(
+        eq(realmCollaboratorsTable.realmId, realmId),
+        eq(realmCollaboratorsTable.role, "viewer"),
+        isNotNull(realmCollaboratorsTable.acceptedAt),
+        isNotNull(realmCollaboratorsTable.userId),
+      ),
+    );
+  for (const c of collabs) {
+    if (!c.userId) continue;
+    if (map.has(c.userId)) continue;
+    const u = await storage.getUser(c.userId);
+    map.set(c.userId, {
+      userId: c.userId,
+      name: u?.username ?? c.invitedEmail ?? c.userId,
+      source: "collaborator",
+    });
+  }
+  return Array.from(map.values());
+}
+
+// List users who may be granted per-node edit access on this realm.
+router.get(
+  "/realms/:realmId/grant-candidates",
+  requireRealmAccess("editor"),
+  async (req, res): Promise<void> => {
+    const realmId = req.params.realmId;
+    if (!realmId) {
+      res.status(400).json({ error: "Missing realmId" });
+      return;
+    }
+    res.json(await getGrantCandidates(realmId));
+  },
+);
+
+// List the per-node edit grants on a node (with display names).
+router.get(
+  "/nodes/:nodeId/grants",
+  requireRealmAccessByNode("editor"),
+  async (req, res): Promise<void> => {
+    const nodeId = req.params.nodeId;
+    const grants = await db
+      .select({ userId: nodeEditGrantsTable.userId })
+      .from(nodeEditGrantsTable)
+      .where(eq(nodeEditGrantsTable.nodeId, nodeId));
+    const withNames = await Promise.all(
+      grants.map(async (g) => {
+        const u = await storage.getUser(g.userId);
+        return { userId: g.userId, name: u?.username ?? g.userId };
+      }),
+    );
+    res.json(withNames);
+  },
+);
+
+// Grant a user per-node edit access (idempotent).
+router.put(
+  "/nodes/:nodeId/grants/:userId",
+  requireRealmAccessByNode("editor"),
+  async (req, res): Promise<void> => {
+    const { nodeId, userId } = req.params;
+    const target = await storage.getUser(userId);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    await db
+      .insert(nodeEditGrantsTable)
+      .values({ nodeId, userId })
+      .onConflictDoNothing();
+    res.status(201).json({ nodeId, userId });
+  },
+);
+
+// Revoke a user's per-node edit access.
+router.delete(
+  "/nodes/:nodeId/grants/:userId",
+  requireRealmAccessByNode("editor"),
+  async (req, res): Promise<void> => {
+    const { nodeId, userId } = req.params;
+    await db
+      .delete(nodeEditGrantsTable)
+      .where(
+        and(
+          eq(nodeEditGrantsTable.nodeId, nodeId),
+          eq(nodeEditGrantsTable.userId, userId),
+        ),
+      );
+    res.sendStatus(204);
+  },
+);
+
+// Report the caller's effective access to a single node (used by the client to
+// gate inline editing / privacy & grant controls).
+router.get(
+  "/nodes/:nodeId/my-access",
+  requireRealmAccessByNode("viewer"),
+  async (req, res): Promise<void> => {
+    const nodeId = req.params.nodeId;
+    const userId = req.userId!;
+    const role = req.realmRole!;
+    const [row] = await db
+      .select({ isPrivate: nodesTable.isPrivate })
+      .from(nodesTable)
+      .where(eq(nodesTable.id, nodeId));
+    if (!row) {
+      res.status(404).json({ error: "Node not found" });
+      return;
+    }
+    const canManage = roleAtLeast(role, "editor");
+    const granted = canManage ? false : await userHasNodeGrant(nodeId, userId);
+    res.json({
+      role,
+      isPrivate: row.isPrivate,
+      canManage,
+      canEdit: canManage || granted,
+      canView: canManage || !row.isPrivate || granted,
+      granted,
+    });
   },
 );
 

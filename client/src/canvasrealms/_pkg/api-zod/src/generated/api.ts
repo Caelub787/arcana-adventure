@@ -278,6 +278,11 @@ export const ListNodesResponseItem = zod.object({
     .describe(
       "Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds).",
     ),
+  isPrivate: zod
+    .boolean()
+    .describe(
+      "When true, this node is hidden from realm viewers unless they have an explicit edit grant.",
+    ),
   folderId: zod
     .string()
     .nullish()
@@ -408,6 +413,7 @@ export const CreateNodeBody = zod.object({
     .optional(),
   arcanaStats: zod.record(zod.string(), zod.unknown()).nullish(),
   arcanaSync: zod.boolean().optional(),
+  isPrivate: zod.boolean().optional(),
   folderId: zod.string().nullish(),
 });
 
@@ -548,6 +554,11 @@ export const GetNodeResponse = zod.object({
     .describe(
       "Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds).",
     ),
+  isPrivate: zod
+    .boolean()
+    .describe(
+      "When true, this node is hidden from realm viewers unless they have an explicit edit grant.",
+    ),
   folderId: zod
     .string()
     .nullish()
@@ -677,6 +688,7 @@ export const UpdateNodeBody = zod.object({
     .optional(),
   arcanaStats: zod.record(zod.string(), zod.unknown()).nullish(),
   arcanaSync: zod.boolean().optional(),
+  isPrivate: zod.boolean().optional(),
   folderId: zod.string().nullish(),
   realmId: zod
     .string()
@@ -818,6 +830,11 @@ export const UpdateNodeResponse = zod.object({
     .optional()
     .describe(
       "Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds).",
+    ),
+  isPrivate: zod
+    .boolean()
+    .describe(
+      "When true, this node is hidden from realm viewers unless they have an explicit edit grant.",
     ),
   folderId: zod
     .string()
@@ -1174,6 +1191,11 @@ export const ListRecentNodesResponseItem = zod.object({
     .optional()
     .describe(
       "Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds).",
+    ),
+  isPrivate: zod
+    .boolean()
+    .describe(
+      "When true, this node is hidden from realm viewers unless they have an explicit edit grant.",
     ),
   folderId: zod
     .string()

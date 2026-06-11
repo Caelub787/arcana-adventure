@@ -35,6 +35,11 @@ export const realmsTable = pgTable(
     arcanaWebhookSecret: text("arcana_webhook_secret"),
     wikiDraft: jsonb("wiki_draft"),
     wikiPublishedSnapshotId: uuid("wiki_published_snapshot_id"),
+    // When set, this (standalone) realm is shared with the given host campaign:
+    // all members of that campaign inherit read-only (viewer) access to it via
+    // the campaign bridge in resolveRealmRole, in addition to the campaign's
+    // auto-provisioned realm (whose id == campaignId).
+    linkedCampaignId: text("linked_campaign_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -47,6 +52,9 @@ export const realmsTable = pgTable(
     ownerIdx: index("realms_owner_user_id_idx").on(t.ownerUserId),
     arcanaWebhookIdx: index("realms_arcana_webhook_id_idx").on(
       t.arcanaWebhookId,
+    ),
+    linkedCampaignIdx: index("realms_linked_campaign_id_idx").on(
+      t.linkedCampaignId,
     ),
   }),
 );
@@ -150,6 +158,10 @@ export const nodesTable = pgTable(
     blocks: jsonb("blocks").$type<unknown[]>().notNull().default([]),
     arcanaStats: jsonb("arcana_stats"),
     arcanaSync: boolean("arcana_sync").notNull().default(true),
+    // When true, this node is hidden from realm viewers (read-only members /
+    // campaign-bridged players). Owners/editors always see it; an individual
+    // viewer with an explicit edit grant (nodeEditGrantsTable) also sees it.
+    isPrivate: boolean("is_private").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -166,6 +178,33 @@ export const nodesTable = pgTable(
 );
 
 export type Node = typeof nodesTable.$inferSelect;
+
+// Per-node, per-user edit grants. Lets a realm viewer (read-only member or a
+// campaign-bridged player) edit the content of specific nodes they've been
+// granted, without elevating them to realm-wide editor. Grants also reveal a
+// node to a viewer even when it is marked private.
+export const nodeEditGrantsTable = pgTable(
+  "node_edit_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => nodesTable.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    nodeUserIdx: uniqueIndex("node_edit_grants_node_user_idx").on(
+      t.nodeId,
+      t.userId,
+    ),
+    userIdx: index("node_edit_grants_user_idx").on(t.userId),
+  }),
+);
+
+export type NodeEditGrant = typeof nodeEditGrantsTable.$inferSelect;
 
 export const relationshipsTable = pgTable("relationships", {
   id: uuid("id").primaryKey().defaultRandom(),

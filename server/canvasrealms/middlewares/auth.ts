@@ -1,6 +1,12 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { db, realmsTable, realmCollaboratorsTable } from "@workspace/db";
+import {
+  db,
+  realmsTable,
+  realmCollaboratorsTable,
+  nodesTable,
+  nodeEditGrantsTable,
+} from "@workspace/db";
 import { logger } from "../lib/logger";
 import {
   checkWorldAccessShared,
@@ -15,6 +21,11 @@ declare global {
     interface Request {
       userId?: string;
       realmRole?: RealmRole;
+      // Set by requireNodeWriteAccess when a realm *viewer* is allowed to write
+      // a specific node only because they hold an explicit per-node edit grant
+      // (not realm-wide editor access). Routes use this to restrict what such a
+      // user may change (content only — never privacy or realm-move).
+      nodeEditGranted?: boolean;
       log: typeof logger;
     }
   }
@@ -44,7 +55,10 @@ export async function resolveRealmRole(
   userId: string,
 ): Promise<RealmRole | null> {
   const [realm] = await db
-    .select({ ownerUserId: realmsTable.ownerUserId })
+    .select({
+      ownerUserId: realmsTable.ownerUserId,
+      linkedCampaignId: realmsTable.linkedCampaignId,
+    })
     .from(realmsTable)
     .where(eq(realmsTable.id, realmId));
   if (!realm) return null;
@@ -63,6 +77,17 @@ export async function resolveRealmRole(
       ),
     );
   if (collab) return collab.role as RealmRole;
+  // Shared-world bridge: a standalone realm linked to a host campaign grants
+  // read-only (viewer) access to every member of that campaign — including the
+  // campaign's GM, unless they are the realm owner (handled above). This lets a
+  // GM share one of their own worlds with their players.
+  if (realm.linkedCampaignId) {
+    const linkedAccess = await checkCampaignAccessShared(
+      userId,
+      realm.linkedCampaignId,
+    );
+    if (linkedAccess.allowed) return "viewer";
+  }
   // Host bridge: the campaign-embedded World Builder realm reuses the host
   // campaign id as the realm id, so campaign GMs/players inherit access from
   // campaign membership without an explicit CR collaborator row. Full-authority
@@ -163,6 +188,99 @@ export function requireRealmAccessByNode(
       next();
     } catch (err) {
       logger.error({ err }, "requireRealmAccessByNode failed");
+      res.status(500).json({ error: "Authorization failed" });
+    }
+  };
+}
+
+/**
+ * Returns true if `userId` has an explicit per-node edit grant on `nodeId`.
+ */
+export async function userHasNodeGrant(
+  nodeId: string,
+  userId: string,
+): Promise<boolean> {
+  const [grant] = await db
+    .select({ id: nodeEditGrantsTable.id })
+    .from(nodeEditGrantsTable)
+    .where(
+      and(
+        eq(nodeEditGrantsTable.nodeId, nodeId),
+        eq(nodeEditGrantsTable.userId, userId),
+      ),
+    );
+  return !!grant;
+}
+
+/**
+ * Returns the set of node ids in `realmId` that `userId` holds an edit grant
+ * for. Used to reveal private nodes (and enable inline editing) for granted
+ * viewers when listing a realm's nodes.
+ */
+export async function getGrantedNodeIds(
+  realmId: string,
+  userId: string,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({ nodeId: nodeEditGrantsTable.nodeId })
+    .from(nodeEditGrantsTable)
+    .innerJoin(nodesTable, eq(nodesTable.id, nodeEditGrantsTable.nodeId))
+    .where(
+      and(
+        eq(nodesTable.realmId, realmId),
+        eq(nodeEditGrantsTable.userId, userId),
+      ),
+    );
+  return new Set(rows.map((r) => r.nodeId));
+}
+
+/**
+ * Write-access middleware for a single node. Realm editors/owners always pass.
+ * A realm *viewer* passes only when they hold an explicit per-node edit grant,
+ * in which case `req.nodeEditGranted` is set so the route can restrict the
+ * write to content fields (never privacy / realm-move). Everyone else gets 403.
+ */
+export function requireNodeWriteAccess(paramName = "nodeId"): RequestHandler {
+  return async (req, res, next) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const nodeId = req.params[paramName];
+    if (!nodeId) {
+      res.status(400).json({ error: `Missing ${paramName}` });
+      return;
+    }
+    try {
+      const [node] = await db
+        .select({ realmId: nodesTable.realmId })
+        .from(nodesTable)
+        .where(eq(nodesTable.id, nodeId));
+      if (!node) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const role = await resolveRealmRole(node.realmId, userId);
+      if (!role) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (roleAtLeast(role, "editor")) {
+        req.realmRole = role;
+        next();
+        return;
+      }
+      // Viewer: allowed only with an explicit per-node edit grant.
+      if (await userHasNodeGrant(nodeId, userId)) {
+        req.realmRole = role;
+        req.nodeEditGranted = true;
+        next();
+        return;
+      }
+      res.status(403).json({ error: "Forbidden" });
+    } catch (err) {
+      logger.error({ err }, "requireNodeWriteAccess failed");
       res.status(500).json({ error: "Authorization failed" });
     }
   };

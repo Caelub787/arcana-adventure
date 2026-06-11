@@ -1,3 +1,4 @@
 - [TypeScript build baseline](tsc-baseline.md) — repo never type-checks clean (Vite/esbuild builds); judge a change by tsc error-count delta, not absolute.
 - [Canvas Realms World Builder port](cr-worldbuilder-port.md) — CR replaces the WB; campaign embed keys its CR realm by campaignId (not a host world), access bridged via checkCampaignAccessShared.
 - [Canvas Realms uploads storage](cr-uploads-storage.md) — CR uploads are backed by Replit object storage (GCS), not local disk; keep the request-url->PUT->GET route surface stable.
+- [CR new endpoints + node access + migrations](cr-new-endpoints-client.md) — call new CR routes via customFetch (Orval not regenerated); response .parse() strips unknown fields; node privacy/grant model; hand-write idempotent SQL migrations (generate is broken).

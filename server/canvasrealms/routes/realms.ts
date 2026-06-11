@@ -19,9 +19,15 @@ import {
   GetRealmSummaryParams,
   GetRealmSummaryResponse,
 } from "@workspace/api-zod";
-import { requireRealmAccess } from "../middlewares/auth";
+import {
+  requireRealmAccess,
+  getGrantedNodeIds,
+} from "../middlewares/auth";
 import { bumpInvalidation } from "../realtime/doc-registry";
 import { toRealmDto } from "../lib/realm-dto";
+import { storage } from "../../storage";
+import { checkCampaignAccessShared } from "../../worldAccess";
+import { inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -54,7 +60,25 @@ router.get("/realms", async (req, res): Promise<void> => {
         isNotNull(realmCollaboratorsTable.acceptedAt),
       ),
     );
-  const all = [...owned, ...shared.map((s) => s.realm)];
+  // Realms linked to a campaign the user belongs to (read-only viewer bridge):
+  // the GM links one of their standalone realms to a campaign so every member
+  // sees it in their realm list.
+  let linked: (typeof realmsTable.$inferSelect)[] = [];
+  try {
+    const campaigns = await storage.getUserCampaigns(userId);
+    const campaignIds = [...campaigns.created, ...campaigns.joined]
+      .map((c) => c.id)
+      .filter((id): id is string => typeof id === "string");
+    if (campaignIds.length > 0) {
+      linked = await db
+        .select()
+        .from(realmsTable)
+        .where(inArray(realmsTable.linkedCampaignId, campaignIds));
+    }
+  } catch {
+    // getUserCampaigns failed (no campaigns) — no linked realms to add.
+  }
+  const all = [...owned, ...shared.map((s) => s.realm), ...linked];
   // De-dupe (just in case) and sort by updatedAt desc.
   const seen = new Set<string>();
   const uniq = all
@@ -182,10 +206,17 @@ router.get(
       return;
     }
     const realmId = params.data.realmId;
-    const nodes = await db
+    let nodes = await db
       .select()
       .from(nodesTable)
       .where(eq(nodesTable.realmId, realmId));
+    // Viewers must not see counts that include private nodes they can't access.
+    if (req.realmRole === "viewer" && nodes.some((n) => n.isPrivate)) {
+      const granted = req.userId
+        ? await getGrantedNodeIds(realmId, req.userId)
+        : new Set<string>();
+      nodes = nodes.filter((n) => !n.isPrivate || granted.has(n.id));
+    }
     const rels = await db
       .select()
       .from(relationshipsTable)
@@ -207,6 +238,70 @@ router.get(
       lastUpdated: lastUpdated ? lastUpdated.toISOString() : null,
     };
     res.json(GetRealmSummaryResponse.parse(out));
+  },
+);
+
+// Get the realm's campaign link plus the GM's linkable campaigns. Owner-only:
+// only the realm owner (a GM) may link their standalone realm to a campaign.
+router.get(
+  "/realms/:realmId/campaign-link",
+  requireRealmAccess("owner"),
+  async (req, res): Promise<void> => {
+    const realmId = req.params.realmId;
+    const userId = req.userId!;
+    const [realm] = await db
+      .select({ linkedCampaignId: realmsTable.linkedCampaignId })
+      .from(realmsTable)
+      .where(eq(realmsTable.id, realmId));
+    if (!realm) {
+      res.status(404).json({ error: "Realm not found" });
+      return;
+    }
+    const campaigns = await storage.getUserCampaigns(userId);
+    // Only campaigns where the user has GM authority can be linked.
+    const linkable = campaigns.created.map((c: any) => ({
+      id: c.id as string,
+      name: c.name as string,
+    }));
+    res.json({
+      linkedCampaignId: realm.linkedCampaignId ?? null,
+      campaigns: linkable,
+    });
+  },
+);
+
+// Set or clear the realm's campaign link. Owner-only, and the target campaign
+// must be one the caller GMs.
+router.put(
+  "/realms/:realmId/campaign-link",
+  requireRealmAccess("owner"),
+  async (req, res): Promise<void> => {
+    const realmId = req.params.realmId;
+    const userId = req.userId!;
+    const campaignId = req.body?.campaignId ?? null;
+    if (campaignId !== null) {
+      if (typeof campaignId !== "string") {
+        res.status(400).json({ error: "campaignId must be a string or null" });
+        return;
+      }
+      const access = await checkCampaignAccessShared(userId, campaignId);
+      if (!access.isOwner) {
+        res
+          .status(403)
+          .json({ error: "You must be the GM of that campaign to link it" });
+        return;
+      }
+    }
+    const [row] = await db
+      .update(realmsTable)
+      .set({ linkedCampaignId: campaignId })
+      .where(eq(realmsTable.id, realmId))
+      .returning({ linkedCampaignId: realmsTable.linkedCampaignId });
+    if (!row) {
+      res.status(404).json({ error: "Realm not found" });
+      return;
+    }
+    res.json({ linkedCampaignId: row.linkedCampaignId ?? null });
   },
 );
 

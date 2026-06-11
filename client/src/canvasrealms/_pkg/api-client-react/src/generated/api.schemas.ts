@@ -283,6 +283,8 @@ export interface Node {
   arcanaStats?: NodeArcanaStats;
   /** Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds). */
   arcanaSync?: boolean;
+  /** When true, this node is hidden from realm viewers unless they have an explicit edit grant. */
+  isPrivate: boolean;
   /**
    * ID of the library folder this node lives in. Null means it sits at the realm root.
    * @nullable
@@ -322,6 +324,7 @@ export interface NodeInput {
   /** @nullable */
   arcanaStats?: NodeInputArcanaStats;
   arcanaSync?: boolean;
+  isPrivate?: boolean;
   /** @nullable */
   folderId?: string | null;
 }
@@ -356,6 +359,7 @@ export interface NodeUpdate {
   /** @nullable */
   arcanaStats?: NodeUpdateArcanaStats;
   arcanaSync?: boolean;
+  isPrivate?: boolean;
   /** @nullable */
   folderId?: string | null;
   /** Move this node to a different realm. Caller must have editor access on the target realm. If folderId is not also provided it will be cleared. */

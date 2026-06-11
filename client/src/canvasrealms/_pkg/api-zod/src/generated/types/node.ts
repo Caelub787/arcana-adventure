@@ -43,6 +43,8 @@ export interface Node {
   arcanaStats?: NodeArcanaStats;
   /** Whether changes to this node should be synced to Arcana Adventure (only meaningful for Arcana-mappable kinds). */
   arcanaSync?: boolean;
+  /** When true, this node is hidden from realm viewers unless they have an explicit edit grant. */
+  isPrivate: boolean;
   /**
    * ID of the library folder this node lives in. Null means it sits at the realm root.
    * @nullable

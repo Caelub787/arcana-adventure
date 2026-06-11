@@ -35,6 +35,7 @@ export interface NodeUpdate {
   /** @nullable */
   arcanaStats?: NodeUpdateArcanaStats;
   arcanaSync?: boolean;
+  isPrivate?: boolean;
   /** @nullable */
   folderId?: string | null;
   /** Move this node to a different realm. Caller must have editor access on the target realm. If folderId is not also provided it will be cleared. */

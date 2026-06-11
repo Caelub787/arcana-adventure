@@ -8,12 +8,18 @@ import {
   getGetNodeQueryKey,
   getListNodesQueryKey,
   getListRelationshipsQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
-import { X, Minus, Maximize2, Minimize2, StickyNote, Square, Bold, Italic, Heading2, Link as LinkIcon, List, Code, Sparkles, Loader2, Check } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, StickyNote, Square, Bold, Italic, Heading2, Link as LinkIcon, List, Code, Sparkles, Loader2, Check, Lock, Unlock, Users } from "lucide-react";
 import { useAppStore } from "@cr/lib/store";
 import { useRealmRole } from "@cr/lib/useRealmRole";
 import { Button } from "@cr/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@cr/components/ui/popover";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { diffWordsWithSpace, diffLines, type Change } from "diff";
 import { useNodeYText, useRealtime } from "@cr/lib/realtime";
@@ -143,8 +149,33 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
   const node = data.node as Node;
   const onClose = (data as { onClose?: () => void }).onClose;
   const { activeRealmId, focusedNodeIdFullscreen, toggleFocusedNode } = useAppStore();
-  const { canEdit } = useRealmRole(activeRealmId);
-  const readOnly = !canEdit;
+  const { canEdit, isEditor } = useRealmRole(activeRealmId);
+
+  // Per-node effective access: editors can always edit; a realm *viewer* may be
+  // editing through a per-node grant, so we OR in the server's verdict.
+  type NodeAccess = {
+    role: string;
+    isPrivate: boolean;
+    canManage: boolean;
+    canEdit: boolean;
+    canView: boolean;
+    granted: boolean;
+  };
+  const { data: nodeAccess } = useQuery<NodeAccess>({
+    queryKey: ["cr-node-access", node.id],
+    queryFn: () =>
+      customFetch<NodeAccess>(`/api/nodes/${node.id}/my-access`, {
+        responseType: "json",
+      }),
+    enabled: !!node.id,
+  });
+  const canManageAccess = nodeAccess?.canManage ?? isEditor;
+  const readOnly = !(canEdit || nodeAccess?.canEdit);
+  // A realm *viewer* editing through a per-node grant cannot persist body via
+  // the realtime (Yjs) channel — the WS layer rejects all viewer writes since
+  // the doc is realm-scoped. For those users we must flush content via REST
+  // instead of relying on realtime persistence.
+  const restBodyPersist = !canEdit && !!nodeAccess?.canEdit;
   const isNodeFocused = focusedNodeIdFullscreen === node.id;
   const closeNode = (_id: string) => onClose?.();
   const updateNode = useUpdateNode();
@@ -166,6 +197,62 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
     },
     [yText, realtime],
   );
+
+  const isPrivate = nodeAccess?.isPrivate ?? node.isPrivate ?? false;
+  const [grantsOpen, setGrantsOpen] = useState(false);
+
+  type GrantRow = { userId: string; name: string };
+  type CandidateRow = { userId: string; name: string; source: string };
+  const { data: grantRows } = useQuery<GrantRow[]>({
+    queryKey: ["cr-node-grants", node.id],
+    queryFn: () =>
+      customFetch<GrantRow[]>(`/api/nodes/${node.id}/grants`, {
+        responseType: "json",
+      }),
+    enabled: !!node.id && grantsOpen && canManageAccess,
+  });
+  const { data: candidateRows } = useQuery<CandidateRow[]>({
+    queryKey: ["cr-grant-candidates", activeRealmId],
+    queryFn: () =>
+      customFetch<CandidateRow[]>(
+        `/api/realms/${activeRealmId}/grant-candidates`,
+        { responseType: "json" },
+      ),
+    enabled: !!activeRealmId && grantsOpen && canManageAccess,
+  });
+
+  const togglePrivacy = useMutation({
+    mutationFn: () =>
+      customFetch(`/api/nodes/${node.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isPrivate: !isPrivate }),
+        responseType: "json",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cr-node-access", node.id] });
+      queryClient.invalidateQueries({ queryKey: getGetNodeQueryKey(node.id) });
+      if (activeRealmId) {
+        queryClient.invalidateQueries({
+          queryKey: getListNodesQueryKey(activeRealmId),
+        });
+      }
+    },
+  });
+
+  const grantedSet = useMemo(
+    () => new Set((grantRows ?? []).map((g) => g.userId)),
+    [grantRows],
+  );
+  const toggleGrant = useMutation({
+    mutationFn: ({ userId, grant }: { userId: string; grant: boolean }) =>
+      customFetch(`/api/nodes/${node.id}/grants/${userId}`, {
+        method: grant ? "PUT" : "DELETE",
+        responseType: grant ? "json" : "text",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cr-node-grants", node.id] });
+    },
+  });
 
   const { data: realmNodes } = useListNodes(activeRealmId || "", {
     query: {
@@ -496,7 +583,7 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
   useEffect(() => {
     if (initializedForId.current !== id) return;
     const timer = setTimeout(() => {
-      if (yText) {
+      if (yText && !restBodyPersist) {
         // Realtime persists body — only flush title via REST.
         if (title !== lastSaved.current.title) {
           mutateFnRef.current({ nodeId: id, data: { title } });
@@ -504,13 +591,15 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
         }
         return;
       }
+      // No realtime (yText absent) OR a granted viewer whose realtime body
+      // writes are rejected — persist both title and content via REST.
       if (title !== lastSaved.current.title || content !== lastSaved.current.content) {
         saveNode(title, content);
         lastSaved.current = { title, content };
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [title, content, id, saveNode, yText]);
+  }, [title, content, id, saveNode, yText, restBodyPersist]);
 
   // Bind window textarea(s) <-> Y.Text. Re-run when the node id flips
   // (component is reused across nodes via React Flow node memoization).
@@ -676,6 +765,87 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
           )}
         </div>
         <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
+          {isPrivate && !canManageAccess && (
+            <span title="Private node" className="px-0.5">
+              <Lock className="h-3 w-3 text-amber-500" />
+            </span>
+          )}
+          {canManageAccess && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => togglePrivacy.mutate()}
+              disabled={togglePrivacy.isPending}
+              title={isPrivate ? "Private — click to make visible" : "Visible — click to make private"}
+              aria-label={isPrivate ? "Make node visible" : "Make node private"}
+            >
+              {isPrivate ? (
+                <Lock className="h-3 w-3 text-amber-500" />
+              ) : (
+                <Unlock className="h-3 w-3" />
+              )}
+            </Button>
+          )}
+          {canManageAccess && (
+            <Popover open={grantsOpen} onOpenChange={setGrantsOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Manage edit access"
+                  aria-label="Manage edit access"
+                >
+                  <Users className="h-3 w-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-64 p-3 nodrag"
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-xs font-medium mb-1">Edit access</div>
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  Grant specific viewers permission to edit this node.
+                </p>
+                {(candidateRows ?? []).length === 0 ? (
+                  <div className="text-[11px] text-muted-foreground py-1">
+                    No players or viewers to grant.
+                  </div>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {(candidateRows ?? []).map((c) => {
+                      const granted = grantedSet.has(c.userId);
+                      return (
+                        <label
+                          key={c.userId}
+                          className="flex items-center gap-2 text-xs cursor-pointer rounded px-1 py-0.5 hover:bg-muted/50"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5"
+                            checked={granted}
+                            disabled={toggleGrant.isPending}
+                            onChange={(e) =>
+                              toggleGrant.mutate({
+                                userId: c.userId,
+                                grant: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className="truncate flex-1">{c.name}</span>
+                          <span className="text-[9px] uppercase text-muted-foreground">
+                            {c.source}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={toggleMode}>
             <StickyNote className="h-3 w-3" />
           </Button>

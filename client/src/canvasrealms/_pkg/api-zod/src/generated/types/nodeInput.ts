@@ -35,6 +35,7 @@ export interface NodeInput {
   /** @nullable */
   arcanaStats?: NodeInputArcanaStats;
   arcanaSync?: boolean;
+  isPrivate?: boolean;
   /** @nullable */
   folderId?: string | null;
 }
