@@ -33,6 +33,8 @@ export interface Realm {
    * @nullable
    */
   arcanaHost?: string | null;
+  /** True when this realm surfaces only because a GM linked it to a campaign the caller belongs to (read-only viewer bridge). */
+  campaignShared?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -2088,6 +2088,19 @@ export function LibrarySidebar() {
                     >
                       <Globe className="w-4 h-4 mr-2 opacity-70 flex-shrink-0" />
                       <span className="truncate">{realm.name}</span>
+                      {(realm as unknown as { campaignShared?: boolean })
+                        .campaignShared && (
+                        <span
+                          data-testid={`badge-shared-realm-${realm.id}`}
+                          title="Shared by your GM — view only"
+                          className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-500 ring-1 ring-amber-500/30 flex-shrink-0"
+                        >
+                          <Lock className="w-2.5 h-2.5" />
+                          <span className="whitespace-nowrap">
+                            Shared · view only
+                          </span>
+                        </span>
+                      )}
                     </button>
                   )}
                   {isActive && (isOwner || isEditor || isViewer) && (

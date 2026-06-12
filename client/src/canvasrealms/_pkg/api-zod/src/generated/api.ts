@@ -58,6 +58,12 @@ export const ListRealmsResponseItem = zod.object({
     .string()
     .nullish()
     .describe("Arcana host base URL the realm is linked to."),
+  campaignShared: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when this realm surfaces only because a GM linked it to a campaign the caller belongs to (read-only viewer bridge).",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });

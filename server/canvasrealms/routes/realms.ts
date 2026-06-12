@@ -78,13 +78,28 @@ router.get("/realms", async (req, res): Promise<void> => {
   } catch {
     // getUserCampaigns failed (no campaigns) — no linked realms to add.
   }
+  // A realm is "shared by your GM" (read-only) only when the caller reaches it
+  // SOLELY through the campaign-link bridge — not as owner, not as collaborator.
+  const ownedOrCollabIds = new Set<string>([
+    ...owned.map((r) => r.id),
+    ...shared.map((s) => s.realm.id),
+  ]);
+  const campaignSharedIds = new Set<string>(
+    linked.filter((r) => !ownedOrCollabIds.has(r.id)).map((r) => r.id),
+  );
   const all = [...owned, ...shared.map((s) => s.realm), ...linked];
   // De-dupe (just in case) and sort by updatedAt desc.
   const seen = new Set<string>();
   const uniq = all
     .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
     .sort((a, b) => +b.updatedAt - +a.updatedAt);
-  res.json(ListRealmsResponse.parse(uniq.map(toRealmDto)));
+  res.json(
+    ListRealmsResponse.parse(
+      uniq.map((r) =>
+        toRealmDto(r, { campaignShared: campaignSharedIds.has(r.id) }),
+      ),
+    ),
+  );
 });
 
 router.post("/realms", async (req, res): Promise<void> => {
