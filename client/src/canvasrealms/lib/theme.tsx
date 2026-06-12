@@ -26,7 +26,7 @@ function readStored(): ThemePref {
   if (typeof window === "undefined") return "system";
   const v = window.localStorage.getItem(STORAGE_KEY);
   if (v === "light" || v === "dark" || v === "system") return v;
-  return "system";
+  return "dark";
 }
 
 function systemPrefersDark(): boolean {

@@ -66,51 +66,55 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE */
+/* Arcana Adventure dark-fantasy palette.
+   Mirrors the host theme in client/src/index.css (arcane purple, dark slate,
+   parchment/amber text). The host app is dark-only, so BOTH :root and .dark
+   resolve to the same palette — Canvas Realms reads as the same product
+   whether or not the .dark class is present (standalone or campaign-embedded). */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
 
-  --background: 220 20% 97%;
-  --foreground: 220 40% 10%;
-  --border: 220 20% 85%;
-  --card: 0 0% 100%;
-  --card-foreground: 220 40% 10%;
-  --card-border: 220 20% 90%;
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 220 40% 10%;
-  --sidebar-border: 220 20% 85%;
-  --sidebar-primary: 220 80% 50%;
+  --background: 240 10% 10%;
+  --foreground: 40 20% 90%;
+  --border: 240 10% 25%;
+  --card: 240 12% 14%;
+  --card-foreground: 40 20% 90%;
+  --card-border: 240 10% 25%;
+  --sidebar: 240 11% 12%;
+  --sidebar-foreground: 40 20% 90%;
+  --sidebar-border: 240 10% 25%;
+  --sidebar-primary: 260 60% 60%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 20% 90%;
-  --sidebar-accent-foreground: 220 40% 10%;
-  --sidebar-ring: 220 80% 50%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 40% 10%;
-  --popover-border: 220 20% 85%;
-  --primary: 220 80% 50%;
+  --sidebar-accent: 240 10% 20%;
+  --sidebar-accent-foreground: 40 20% 90%;
+  --sidebar-ring: 260 60% 60%;
+  --popover: 240 12% 14%;
+  --popover-foreground: 40 20% 90%;
+  --popover-border: 240 10% 25%;
+  --primary: 260 60% 60%; /* Arcane purple */
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 20% 90%;
-  --secondary-foreground: 220 40% 10%;
-  --muted: 220 20% 90%;
-  --muted-foreground: 220 15% 40%;
-  --accent: 190 80% 45%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-  --input: 220 20% 85%;
-  --ring: 220 80% 50%;
-  --chart-1: 190 80% 45%;
-  --chart-2: 220 80% 50%;
-  --chart-3: 280 80% 50%;
-  --chart-4: 340 80% 50%;
-  --chart-5: 40 80% 50%;
+  --secondary: 35 30% 20%; /* Dark wood / leather */
+  --secondary-foreground: 35 40% 80%;
+  --muted: 240 10% 20%;
+  --muted-foreground: 240 10% 60%;
+  --accent: 190 70% 40%; /* Magic blue glow */
+  --accent-foreground: 190 90% 90%;
+  --destructive: 0 60% 40%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 240 10% 20%;
+  --ring: 260 60% 60%;
+  --chart-1: 260 60% 60%; /* Purple */
+  --chart-2: 190 70% 50%; /* Blue */
+  --chart-3: 40 80% 60%;  /* Amber */
+  --chart-4: 0 60% 55%;   /* Red */
+  --chart-5: 150 45% 55%; /* Green */
 
-  --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: Georgia, serif;
+  --app-font-sans: 'Source Sans 3', sans-serif;
+  --app-font-serif: 'Cinzel', Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem;
 }
@@ -122,42 +126,42 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  /* Deep ink-blue / violet / teal theme */
-  --background: 230 30% 6%;
-  --foreground: 220 20% 90%;
-  --border: 230 25% 15%;
-  --card: 230 25% 9%;
-  --card-foreground: 220 20% 90%;
-  --card-border: 230 25% 18%;
-  --sidebar: 230 30% 6%;
-  --sidebar-foreground: 220 20% 90%;
-  --sidebar-border: 230 25% 15%;
-  --sidebar-primary: 190 80% 60%; /* Teal */
-  --sidebar-primary-foreground: 230 30% 6%;
-  --sidebar-accent: 230 25% 15%;
-  --sidebar-accent-foreground: 220 20% 90%;
-  --sidebar-ring: 190 80% 60%;
-  --popover: 230 25% 9%;
-  --popover-foreground: 220 20% 90%;
-  --popover-border: 230 25% 18%;
-  --primary: 190 80% 60%; /* Teal */
-  --primary-foreground: 230 30% 6%;
-  --secondary: 230 25% 15%;
-  --secondary-foreground: 220 20% 90%;
-  --muted: 230 25% 15%;
-  --muted-foreground: 220 15% 60%;
-  --accent: 30 90% 60%; /* Warm amber */
-  --accent-foreground: 230 30% 6%;
-  --destructive: 0 70% 50%;
-  --destructive-foreground: 220 20% 90%;
-  
-  --input: 230 25% 20%;
-  --ring: 190 80% 60%;
-  --chart-1: 190 80% 60%;
-  --chart-2: 260 60% 65%; /* Violet */
-  --chart-3: 30 90% 60%; /* Amber */
-  --chart-4: 340 70% 65%;
-  --chart-5: 160 60% 60%;
+  /* Arcana Adventure dark-fantasy palette (matches host :root) */
+  --background: 240 10% 10%;
+  --foreground: 40 20% 90%;
+  --border: 240 10% 25%;
+  --card: 240 12% 14%;
+  --card-foreground: 40 20% 90%;
+  --card-border: 240 10% 25%;
+  --sidebar: 240 11% 12%;
+  --sidebar-foreground: 40 20% 90%;
+  --sidebar-border: 240 10% 25%;
+  --sidebar-primary: 260 60% 60%; /* Arcane purple */
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 10% 20%;
+  --sidebar-accent-foreground: 40 20% 90%;
+  --sidebar-ring: 260 60% 60%;
+  --popover: 240 12% 14%;
+  --popover-foreground: 40 20% 90%;
+  --popover-border: 240 10% 25%;
+  --primary: 260 60% 60%; /* Arcane purple */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 35 30% 20%; /* Dark wood / leather */
+  --secondary-foreground: 35 40% 80%;
+  --muted: 240 10% 20%;
+  --muted-foreground: 240 10% 60%;
+  --accent: 190 70% 40%; /* Magic blue glow */
+  --accent-foreground: 190 90% 90%;
+  --destructive: 0 60% 40%;
+  --destructive-foreground: 0 0% 98%;
+
+  --input: 240 10% 20%;
+  --ring: 260 60% 60%;
+  --chart-1: 260 60% 60%; /* Purple */
+  --chart-2: 190 70% 50%; /* Blue */
+  --chart-3: 40 80% 60%;  /* Amber */
+  --chart-4: 0 60% 55%;   /* Red */
+  --chart-5: 150 45% 55%; /* Green */
 }
 
 @layer base {

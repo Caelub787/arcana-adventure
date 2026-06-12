@@ -515,11 +515,11 @@ export function MainLayout({ embeddedRealmId }: { embeddedRealmId?: string } = {
     <MaybeRealmDocProvider
       realmId={realmNotFound || nodeNotFound ? null : activeRealmId}
     >
-      <div className={`flex ${embedded ? "h-full" : "h-[100dvh]"} w-full overflow-hidden bg-background text-foreground safe-pl safe-pr`}>
+      <div className={`flex ${embedded ? "h-full isolate" : "h-[100dvh]"} w-full overflow-hidden bg-background text-foreground safe-pl safe-pr`}>
         <LibrarySidebar />
         <main className="flex-1 flex flex-col relative min-w-0">
           <TopBar />
-          <div className="flex-1 relative">
+          <div className="flex-1 relative overflow-hidden min-h-0 min-w-0">
             {realmNotFound ? (
               <RealmNotFound />
             ) : nodeNotFound ? (
