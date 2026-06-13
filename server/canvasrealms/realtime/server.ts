@@ -16,12 +16,49 @@ const MESSAGE_AWARENESS = 1;
  * realm role doesn't permit mutations (e.g. viewer). The client surfaces this
  * as a toast / read-only badge. */
 const MESSAGE_DENIED = 2;
+/** Sent server -> a specific client when a GM grants them per-node edit
+ * access. The client surfaces this as a toast and refreshes its per-node
+ * access query so editing unlocks live (no refresh). Frame layout:
+ * [MESSAGE_GRANT, nodeId, nodeTitle]. */
+const MESSAGE_GRANT = 3;
 
 function makeDeniedFrame(reason: string): Uint8Array {
   const enc = encoding.createEncoder();
   encoding.writeVarUint(enc, MESSAGE_DENIED);
   encoding.writeVarString(enc, reason);
   return encoding.toUint8Array(enc);
+}
+
+function makeGrantFrame(nodeId: string, nodeTitle: string): Uint8Array {
+  const enc = encoding.createEncoder();
+  encoding.writeVarUint(enc, MESSAGE_GRANT);
+  encoding.writeVarString(enc, nodeId);
+  encoding.writeVarString(enc, nodeTitle);
+  return encoding.toUint8Array(enc);
+}
+
+/**
+ * Notify a specific user, connected to the given realm, that they've just been
+ * granted per-node edit access. No-op if that user has no live connection to
+ * the realm (they'll discover the grant via their next page load / access
+ * query). Returns the number of sockets the notification reached.
+ */
+export function notifyNodeGrant(
+  realmId: string,
+  userId: string,
+  nodeId: string,
+  nodeTitle: string,
+): number {
+  const set = docClients.get(realmId);
+  if (!set) return 0;
+  const frame = makeGrantFrame(nodeId, nodeTitle);
+  let sent = 0;
+  for (const c of set) {
+    if (c.userId !== userId) continue;
+    send(c.ws, frame);
+    sent++;
+  }
+  return sent;
 }
 
 const PATH_RE = /^\/api\/realtime\/([^/?]+)/;

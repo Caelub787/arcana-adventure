@@ -33,6 +33,7 @@ import {
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const MESSAGE_DENIED = 2;
+const MESSAGE_GRANT = 3;
 
 const COLOR_PALETTE = [
   "#7c5cff",
@@ -324,6 +325,25 @@ export function RealmDocProvider({ realmId, children }: ProviderProps) {
                   reason === "viewer-cannot-write"
                     ? "Your role on this realm does not allow live edits."
                     : reason,
+              });
+            }
+          } else if (messageType === MESSAGE_GRANT) {
+            // A GM just granted us per-node edit access. Toast it and refresh
+            // the per-node access query so the editing UI unlocks live.
+            let grantNodeId = "";
+            let grantNodeTitle = "";
+            try {
+              grantNodeId = decoding.readVarString(decoder);
+              grantNodeTitle = decoding.readVarString(decoder);
+            } catch {}
+            toast.success("Edit access granted", {
+              description: grantNodeTitle
+                ? `You can now edit "${grantNodeTitle}".`
+                : "You can now edit a page in this world.",
+            });
+            if (grantNodeId) {
+              queryClient.invalidateQueries({
+                queryKey: ["cr-node-access", grantNodeId],
               });
             }
           }

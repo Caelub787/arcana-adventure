@@ -42,6 +42,7 @@ import {
   syncBlocksWatched,
   dropNode,
 } from "../realtime/doc-registry";
+import { notifyNodeGrant } from "../realtime/server";
 import { isArcanaKind, pushNodeToArcana, loadRealmCreds, buildClient } from "../lib/arcana";
 import { logger } from "../lib/logger";
 import type { SyncKind } from "@arcana/aa-sync-sdk";
@@ -805,10 +806,25 @@ router.put(
       res.status(404).json({ error: "User not found" });
       return;
     }
-    await db
+    const inserted = await db
       .insert(nodeEditGrantsTable)
       .values({ nodeId, userId })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: nodeEditGrantsTable.id });
+    // Only notify on a brand-new grant (idempotent re-grants stay quiet).
+    if (inserted.length > 0) {
+      const [node] = await db
+        .select({ realmId: nodesTable.realmId, title: nodesTable.title })
+        .from(nodesTable)
+        .where(eq(nodesTable.id, nodeId));
+      if (node) {
+        try {
+          notifyNodeGrant(node.realmId, userId, nodeId, node.title);
+        } catch (err) {
+          logger.warn({ err }, "notifyNodeGrant failed");
+        }
+      }
+    }
     res.status(201).json({ nodeId, userId });
   },
 );
