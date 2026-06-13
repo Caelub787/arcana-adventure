@@ -183,7 +183,7 @@ export default function Home() {
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900/30 text-emerald-500 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                     <Globe className="h-6 w-6" />
                   </div>
-                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-emerald-400">World Builder</CardTitle>
+                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-emerald-400">Canvas Realms</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">Build your world with entities, relationships, and lore.</p>
