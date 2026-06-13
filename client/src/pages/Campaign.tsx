@@ -10757,7 +10757,7 @@ export default function Campaign() {
       ))}
 
       {/* Floating World Builder */}
-      {!spectatorMode && !isAAV2 && floatingWorldBuilderOpen && effectiveCampaignId && (
+      {!spectatorMode && (!isAAV2 || isAAV3) && floatingWorldBuilderOpen && effectiveCampaignId && (
         <FloatingWorldBuilder
           campaignId={effectiveCampaignId}
           isGM={role === 'gm'}
@@ -12660,7 +12660,7 @@ export default function Campaign() {
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
                 {activeSidePanel === 'notes' && 'Notes'}
-                {activeSidePanel === 'world' && !isAAV2 && 'World'}
+                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && 'World'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
@@ -12683,7 +12683,7 @@ export default function Campaign() {
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                 )}
-                {activeSidePanel === 'world' && !isAAV2 && (
+                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && (
                   <Button
                     variant="ghost"
                     size="icon"

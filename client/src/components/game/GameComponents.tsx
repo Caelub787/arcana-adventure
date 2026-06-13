@@ -9969,12 +9969,13 @@ function CampaignRealmSelector({ campaignId }: { campaignId: string }) {
     mutationFn: async (realmId: string | null) => {
       // Only one world points at a campaign — unlink the previous one first.
       if (linkedRealm?.id && linkedRealm.id !== realmId) {
-        await fetch(`/api/realms/${linkedRealm.id}/campaign-link`, {
+        const unlinkRes = await fetch(`/api/realms/${linkedRealm.id}/campaign-link`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ campaignId: null }),
         });
+        if (!unlinkRes.ok) throw new Error('Failed to unlink previous world');
       }
       if (realmId) {
         const res = await fetch(`/api/realms/${realmId}/campaign-link`, {
