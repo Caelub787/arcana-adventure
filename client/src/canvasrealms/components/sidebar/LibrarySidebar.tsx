@@ -259,6 +259,17 @@ export function LibrarySidebar() {
     },
   });
 
+  // In a campaign-linked (shared) world a plain viewer (player) only ever sees
+  // their OWN personal folder among owned folders — the server hides everyone
+  // else's. So any visible folder carrying an ownerUserId is the caller's, and
+  // they may author private nodes inside it even without full edit rights.
+  const myFolderId =
+    (folders ?? []).find(
+      (f) => (f as unknown as { ownerUserId?: string | null }).ownerUserId,
+    )?.id ?? null;
+  const canCreateInFolder = (folderId: string | null | undefined) =>
+    canEdit || (isViewer && !!folderId && folderId === myFolderId);
+
   const createRealm = useCreateRealm();
   const updateRealm = useUpdateRealm();
   const deleteRealm = useDeleteRealm();
@@ -497,8 +508,9 @@ export function LibrarySidebar() {
     meta: { kind: string; color: string; label: string },
     fromArcana: boolean,
   ) => {
-    if (!activeRealmId || !canEdit) return;
+    if (!activeRealmId) return;
     const targetFolderId = kindPickerFolderId;
+    if (!canCreateInFolder(targetFolderId)) return;
     setNewNodeMenuOpen(false);
     setKindPickerPos(null);
     setKindPickerFolderId(null);
@@ -1608,8 +1620,9 @@ export function LibrarySidebar() {
                     <span className="truncate flex-1">{f.name}</span>
                   </button>
                 )}
-                {canEdit && (
+                {(canEdit || (isViewer && f.id === myFolderId)) && (
                   <FolderRowMenu
+                    viewerOnly={!canEdit}
                     open={openMenuId === rowKey}
                     onOpenChange={(o) =>
                       setOpenMenuId(o ? rowKey : null)
@@ -2824,7 +2837,7 @@ export function LibrarySidebar() {
         />
       )}
 
-      {kindPickerPos && canEdit && activeRealmId && (
+      {kindPickerPos && (canEdit || isViewer) && activeRealmId && (
         <div
           ref={kindPickerRef}
           role="menu"
@@ -3422,6 +3435,7 @@ function FolderRowMenu({
   onDelete,
   onStartSelect,
   onStartSelectWithContents,
+  viewerOnly = false,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -3431,6 +3445,9 @@ function FolderRowMenu({
   onDelete: () => void;
   onStartSelect: () => void;
   onStartSelectWithContents: () => void;
+  // A plain viewer (player) authoring in their own personal folder only gets the
+  // "Create node" action — no rename/delete/subfolder/select.
+  viewerOnly?: boolean;
 }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   return (
@@ -3462,26 +3479,30 @@ function FolderRowMenu({
         >
           <Plus className="w-3.5 h-3.5 mr-2 opacity-70" /> Create node
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onNewSubfolder}>
-          <FolderPlus className="w-3.5 h-3.5 mr-2 opacity-70" /> New subfolder
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onRename}>
-          <Pencil className="w-3.5 h-3.5 mr-2 opacity-70" /> Rename
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onStartSelect}>
-          <CheckSquare className="w-3.5 h-3.5 mr-2 opacity-70" /> Select folder
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onStartSelectWithContents}>
-          <ListChecks className="w-3.5 h-3.5 mr-2 opacity-70" /> Select with contents
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={onDelete}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash2 className="w-3.5 h-3.5 mr-2 opacity-70" /> Delete folder
-        </DropdownMenuItem>
+        {!viewerOnly && (
+          <>
+            <DropdownMenuItem onSelect={onNewSubfolder}>
+              <FolderPlus className="w-3.5 h-3.5 mr-2 opacity-70" /> New subfolder
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onRename}>
+              <Pencil className="w-3.5 h-3.5 mr-2 opacity-70" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onStartSelect}>
+              <CheckSquare className="w-3.5 h-3.5 mr-2 opacity-70" /> Select folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onStartSelectWithContents}>
+              <ListChecks className="w-3.5 h-3.5 mr-2 opacity-70" /> Select with contents
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-2 opacity-70" /> Delete folder
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

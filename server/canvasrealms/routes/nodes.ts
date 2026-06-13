@@ -143,7 +143,7 @@ router.get(
 
 router.post(
   "/realms/:realmId/nodes",
-  requireRealmAccess("editor"),
+  requireRealmAccess("viewer"),
   async (req, res): Promise<void> => {
     const params = CreateNodeParams.safeParse(req.params);
     if (!params.success) {
@@ -166,6 +166,41 @@ router.post(
         .json({ error: "folderId must belong to this realm" });
       return;
     }
+    // Resolve who may create here and what privacy the new node gets. Viewer
+    // authoring (and private-by-default) only applies in campaign-linked
+    // (shared) realms; everywhere else legacy editor-only semantics hold.
+    const isEditorOrAbove = roleAtLeast(req.realmRole ?? "viewer", "editor");
+    const [realm] = await db
+      .select({ linkedCampaignId: realmsTable.linkedCampaignId })
+      .from(realmsTable)
+      .where(eq(realmsTable.id, params.data.realmId));
+    const isLinkedRealm = !!realm?.linkedCampaignId;
+    let forcePrivate = false;
+    if (!isEditorOrAbove) {
+      // A plain viewer (a campaign player) may create a node ONLY in a
+      // campaign-linked realm, and ONLY inside their own personal folder. The
+      // node is forced private and auto-granted to them so it stays visible to
+      // its author (and the GM) but hidden from other players.
+      if (!isLinkedRealm || !parsed.data.folderId) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const [folder] = await db
+        .select({ ownerUserId: foldersTable.ownerUserId })
+        .from(foldersTable)
+        .where(eq(foldersTable.id, parsed.data.folderId));
+      if (!folder || folder.ownerUserId !== req.userId) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      forcePrivate = true;
+    }
+    // In a campaign-linked (shared) realm, editor/owner-created nodes default to
+    // private so the GM explicitly chooses what to reveal to players. They can
+    // still override by passing isPrivate explicitly.
+    const nodeIsPrivate = forcePrivate
+      ? true
+      : (parsed.data.isPrivate ?? isLinkedRealm);
     // Resolve a unique key for this node within the realm. If the caller
     // supplied an explicit `key`, validate it; otherwise auto-generate.
     let nodeKey: string;
@@ -219,9 +254,18 @@ router.post(
         folderId: parsed.data.folderId ?? null,
         imageUrl: parsed.data.imageUrl ?? null,
         blocks: parsed.data.blocks ?? [],
-        isPrivate: parsed.data.isPrivate ?? false,
+        isPrivate: nodeIsPrivate,
       })
       .returning();
+    // A viewer who authored this node in their personal folder gets an explicit
+    // per-node edit grant so they can keep editing (and seeing) their own
+    // private node.
+    if (forcePrivate && req.userId) {
+      await db
+        .insert(nodeEditGrantsTable)
+        .values({ nodeId: row.id, userId: req.userId })
+        .onConflictDoNothing();
+    }
     ensureNodeWatched(
       row.realmId,
       row.id,
@@ -544,12 +588,36 @@ router.patch(
 
 router.delete(
   "/nodes/:nodeId",
-  requireRealmAccessByNode("editor"),
+  requireRealmAccessByNode("viewer"),
   async (req, res): Promise<void> => {
     const params = DeleteNodeParams.safeParse(req.params);
     if (!params.success) {
       res.status(400).json({ error: params.error.message });
       return;
+    }
+    // Editors/owners may delete any node. A plain viewer may delete only their
+    // OWN node: a private node they hold an edit grant for that lives in a
+    // personal folder they own.
+    if (!roleAtLeast(req.realmRole ?? "viewer", "editor")) {
+      const userId = req.userId;
+      const [node] = await db
+        .select({ isPrivate: nodesTable.isPrivate, folderId: nodesTable.folderId })
+        .from(nodesTable)
+        .where(eq(nodesTable.id, params.data.nodeId));
+      let allowed = false;
+      if (node && node.isPrivate && node.folderId && userId) {
+        const [folder] = await db
+          .select({ ownerUserId: foldersTable.ownerUserId })
+          .from(foldersTable)
+          .where(eq(foldersTable.id, node.folderId));
+        allowed =
+          folder?.ownerUserId === userId &&
+          (await userHasNodeGrant(params.data.nodeId, userId));
+      }
+      if (!allowed) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
     }
     const [row] = await db
       .delete(nodesTable)

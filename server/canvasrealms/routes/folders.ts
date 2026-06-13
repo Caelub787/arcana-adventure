@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
-import { db, foldersTable, nodesTable } from "@workspace/db";
+import { db, foldersTable, nodesTable, realmsTable } from "@workspace/db";
 import {
   ListFoldersParams,
   ListFoldersResponse,
@@ -18,6 +18,7 @@ import {
   roleAtLeast,
 } from "../middlewares/auth";
 import { bumpInvalidation } from "../realtime/doc-registry";
+import { storage } from "../../storage";
 
 const router: IRouter = Router();
 
@@ -35,7 +36,95 @@ router.get(
       .from(foldersTable)
       .where(eq(foldersTable.realmId, params.data.realmId))
       .orderBy(foldersTable.sortIndex, foldersTable.createdAt);
-    res.json(ListFoldersResponse.parse(rows));
+    // Personal folders (ownerUserId set) are visible only to their owner and to
+    // realm editors/owners (the GM). A plain viewer never sees another player's
+    // personal folder.
+    const isEditorOrAbove = roleAtLeast(req.realmRole ?? "viewer", "editor");
+    const visible = isEditorOrAbove
+      ? rows
+      : rows.filter(
+          (r) => !r.ownerUserId || r.ownerUserId === req.userId,
+        );
+    res.json(ListFoldersResponse.parse(visible));
+  },
+);
+
+// Get-or-create the caller's personal folder inside a (shared) realm. Only a
+// realm *viewer* (a campaign player bridged in via linkedCampaignId) gets one;
+// owners/editors see everything already, so this is a no-op returning null for
+// them. The folder is owned by the caller (ownerUserId) so the list route hides
+// it from other players while keeping it visible to the GM.
+router.post(
+  "/realms/:realmId/my-folder",
+  requireRealmAccess("viewer"),
+  async (req, res): Promise<void> => {
+    const realmId = req.params.realmId;
+    const userId = req.userId!;
+    if (roleAtLeast(req.realmRole ?? "viewer", "editor")) {
+      res.json(null);
+      return;
+    }
+    // Personal folders only exist in campaign-linked (shared) realms. In any
+    // other realm a viewer stays strictly read-only — never give them a folder.
+    const [realm] = await db
+      .select({ linkedCampaignId: realmsTable.linkedCampaignId })
+      .from(realmsTable)
+      .where(eq(realmsTable.id, realmId));
+    if (!realm?.linkedCampaignId) {
+      res.json(null);
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(foldersTable)
+      .where(
+        and(
+          eq(foldersTable.realmId, realmId),
+          eq(foldersTable.ownerUserId, userId),
+        ),
+      );
+    if (existing) {
+      res.json(UpdateFolderResponse.parse(existing));
+      return;
+    }
+    let folderName = "My Folder";
+    try {
+      const user = await storage.getUser(userId);
+      if (user?.name) folderName = `${user.name}'s Folder`;
+    } catch {
+      // fall back to the generic name
+    }
+    let row;
+    try {
+      [row] = await db
+        .insert(foldersTable)
+        .values({
+          realmId,
+          name: folderName,
+          parentFolderId: null,
+          sortIndex: 0,
+          ownerUserId: userId,
+        })
+        .returning();
+    } catch {
+      // A concurrent /my-folder call won the race (unique index on
+      // realm_id + owner_user_id). Return the folder it created.
+      [row] = await db
+        .select()
+        .from(foldersTable)
+        .where(
+          and(
+            eq(foldersTable.realmId, realmId),
+            eq(foldersTable.ownerUserId, userId),
+          ),
+        );
+    }
+    if (!row) {
+      res.status(500).json({ error: "Failed to create personal folder" });
+      return;
+    }
+    bumpInvalidation(row.realmId, "folders");
+    res.status(201).json(UpdateFolderResponse.parse(row));
   },
 );
 

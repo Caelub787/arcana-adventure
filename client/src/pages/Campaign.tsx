@@ -6468,8 +6468,8 @@ function WikiArticleWithAccess({ entity, worldId, campaignId, isGM, userId, onWi
 
 // Campaign-embedded World Builder = the ported Canvas Realms canvas, scoped to
 // a per-campaign CR realm. Replaces the old home-grown campaign World Builder.
-function CampaignWorldBuilder({ campaignId }: { campaignId: string }) {
-  return <EmbeddedWorldBuilder campaignId={campaignId} />;
+function CampaignWorldBuilder({ campaignId, v3 = false }: { campaignId: string; v3?: boolean }) {
+  return <EmbeddedWorldBuilder campaignId={campaignId} v3={v3} />;
 }
 
 function FloatingWorldBuilder({
@@ -6482,6 +6482,7 @@ function FloatingWorldBuilder({
   onBringToFront,
   panelKey,
   userId,
+  v3 = false,
 }: {
   campaignId: string;
   isGM: boolean;
@@ -6492,6 +6493,7 @@ function FloatingWorldBuilder({
   onBringToFront?: () => void;
   panelKey?: string;
   userId?: string;
+  v3?: boolean;
 }) {
   if (!open) return null;
   return (
@@ -6506,7 +6508,7 @@ function FloatingWorldBuilder({
       minWidth={600}
       minHeight={400}
     >
-      <CampaignWorldBuilder campaignId={campaignId} />
+      <CampaignWorldBuilder campaignId={campaignId} v3={v3} />
     </FloatingPanel>
   );
 }
@@ -7157,6 +7159,9 @@ export default function Campaign() {
 
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
+  // AA V3 swaps the Notes panel for the Canvas Realms ("World") panel and opens
+  // the GM-linked shared world instead of the per-campaign auto-realm.
+  const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
 
   const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
   const { data: campaignLinkedWorld } = useLinkedWorld(effectiveCampaignId);
@@ -10084,6 +10089,7 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          {!isAAV3 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10119,8 +10125,9 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          )}
 
-          {!isAAV2 && showWorldButton && (
+          {(!isAAV2 || isAAV3) && showWorldButton && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -12775,7 +12782,7 @@ export default function Campaign() {
                   )}
                 </div>
               )}
-              {activeSidePanel === 'notes' && effectiveCampaignId && (
+              {activeSidePanel === 'notes' && !isAAV3 && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
                   <CampaignNotesPanel
                     campaignId={effectiveCampaignId}
@@ -12795,9 +12802,9 @@ export default function Campaign() {
                   />
                 </div>
               )}
-              {activeSidePanel === 'world' && !isAAV2 && effectiveCampaignId && (
+              {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
-                  <CampaignWorldBuilder campaignId={effectiveCampaignId} />
+                  <CampaignWorldBuilder campaignId={effectiveCampaignId} v3={isAAV3} />
                 </div>
               )}
               {activeSidePanel === 'settings' && effectiveCampaignId && (

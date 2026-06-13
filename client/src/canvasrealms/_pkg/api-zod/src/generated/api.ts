@@ -1227,6 +1227,7 @@ export const ListFoldersResponseItem = zod.object({
     .describe("Parent folder ID; null for top-level folders."),
   name: zod.string(),
   sortIndex: zod.number(),
+  ownerUserId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -1267,6 +1268,7 @@ export const UpdateFolderResponse = zod.object({
     .describe("Parent folder ID; null for top-level folders."),
   name: zod.string(),
   sortIndex: zod.number(),
+  ownerUserId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });

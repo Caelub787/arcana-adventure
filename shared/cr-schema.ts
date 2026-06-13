@@ -113,6 +113,10 @@ export const foldersTable = pgTable(
     ),
     name: text("name").notNull(),
     sortIndex: doublePrecision("sort_index").notNull().default(0),
+    // When set, this folder is a player's personal folder inside a
+    // campaign-linked (shared) realm. Only that user (plus realm owner/editors,
+    // i.e. the GM) can see or write inside it. Null = a normal shared folder.
+    ownerUserId: text("owner_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -126,6 +130,12 @@ export const foldersTable = pgTable(
       t.realmId,
       t.parentFolderId,
     ),
+    ownerIdx: index("folders_owner_user_id_idx").on(t.ownerUserId),
+    // At most one personal folder per (realm, user). Partial so normal shared
+    // folders (ownerUserId IS NULL) are unconstrained.
+    ownerPerRealmUniq: uniqueIndex("folders_realm_owner_user_id_uniq")
+      .on(t.realmId, t.ownerUserId)
+      .where(sql`${t.ownerUserId} IS NOT NULL`),
   }),
 );
 

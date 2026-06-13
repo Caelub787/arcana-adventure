@@ -16,6 +16,11 @@ export interface Folder {
   parentFolderId?: string | null;
   name: string;
   sortIndex: number;
+  /**
+   * Owner of a player's personal folder in a campaign-linked realm; null for normal folders.
+   * @nullable
+   */
+  ownerUserId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

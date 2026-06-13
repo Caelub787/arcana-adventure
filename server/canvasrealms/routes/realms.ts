@@ -320,4 +320,27 @@ router.put(
   },
 );
 
+// Resolve the CR realm a GM has linked to a campaign, from the campaign's side.
+// Returns the realm DTO the caller can access (campaign members + the realm
+// owner), or null when none is linked. Used by the V3 campaign-embedded World
+// Builder to open the shared world instead of the per-campaign auto-realm.
+router.get(
+  "/campaigns/:campaignId/linked-realm",
+  async (req, res): Promise<void> => {
+    const userId = req.userId!;
+    const campaignId = req.params.campaignId;
+    const access = await checkCampaignAccessShared(userId, campaignId);
+    if (!access.allowed) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const [realm] = await db
+      .select()
+      .from(realmsTable)
+      .where(eq(realmsTable.linkedCampaignId, campaignId))
+      .orderBy(desc(realmsTable.updatedAt));
+    res.json(realm ? GetRealmResponse.parse(toRealmDto(realm)) : null);
+  },
+);
+
 export default router;
