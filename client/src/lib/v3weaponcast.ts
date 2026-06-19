@@ -1,4 +1,5 @@
-import { gameWs } from "@/lib/api";
+import { gameWs, api } from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { v3LevelDice } from "@shared/v3spells";
 import { v3WeaponBaseAttackEnergy } from "@shared/v3weapons";
@@ -52,6 +53,27 @@ function attrValue(character: V3WeaponCastCharacter, key: V3AttributeKey): numbe
   return Math.floor(Number(v) || 0);
 }
 
+/**
+ * Deduct energy reliably regardless of live-session state. When the player is
+ * joined to a live battle session, the deduction flows through the combat
+ * channel (so other clients see it and the server persists it). When NOT joined
+ * — e.g. rolling a weapon attack straight from inventory outside an active
+ * session — the WS message would be queued/dropped, so we persist the new
+ * energy total directly via the character API as a fallback (mirroring the
+ * no-roll branch of executeRoll).
+ */
+function deductEnergy(characterId: string, have: number, cost: number, charName: string): void {
+  if (cost <= 0) return;
+  if (gameWs.isJoinedToCampaign()) {
+    gameWs.sendCombatEnergy(characterId, cost, charName, false);
+    return;
+  }
+  api
+    .updateCharacter(characterId, { energy: have - cost })
+    .then(() => queryClient.invalidateQueries({ queryKey: ["character", characterId] }))
+    .catch((err) => console.error("Failed to deduct weapon energy:", err));
+}
+
 function notEnoughEnergy(charName: string, label: string, need: number, have: number): void {
   triggerRollNotification({
     type: "system",
@@ -97,9 +119,7 @@ export function castV3WeaponBaseAttack(
     calculationBreakdown: `${notation}${rollsText} = ${total}`,
   });
 
-  if (energyCost > 0) {
-    gameWs.sendCombatEnergy(character.id, energyCost, charName, false);
-  }
+  deductEnergy(character.id, have, energyCost, charName);
   return true;
 }
 
@@ -156,8 +176,6 @@ export function castV3Technique(
     calculationBreakdown: breakdown,
   });
 
-  if (energyCost > 0) {
-    gameWs.sendCombatEnergy(character.id, energyCost, charName, false);
-  }
+  deductEnergy(character.id, have, energyCost, charName);
   return true;
 }
