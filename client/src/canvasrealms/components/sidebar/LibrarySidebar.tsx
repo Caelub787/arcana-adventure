@@ -88,6 +88,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Lock,
+  ArrowLeft,
 } from "lucide-react";
 import {
   LIBRARY_MAX_WIDTH,
@@ -217,7 +218,7 @@ function NodePresenceAvatars({ nodeId }: { nodeId: string }) {
   );
 }
 
-export function LibrarySidebar() {
+export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}) {
   const {
     activeRealmId,
     openInFocused,
@@ -1987,9 +1988,24 @@ export function LibrarySidebar() {
     <>
         <div className="p-4 border-b border-sidebar-border">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-bold text-sidebar-foreground/50 uppercase tracking-wider">
-              Realms
-            </h2>
+            <div className="flex items-center gap-1 min-w-0">
+              {!embedded && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 flex-shrink-0"
+                  title="Back to menu"
+                  aria-label="Back to menu"
+                  data-testid="button-canvasrealms-back"
+                  onClick={() => setLocation("/")}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+              )}
+              <h2 className="text-xs font-bold text-sidebar-foreground/50 uppercase tracking-wider">
+                Realms
+              </h2>
+            </div>
             <div className="flex items-center gap-1">
               <Button
                 data-guide="new-realm"

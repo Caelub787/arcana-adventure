@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { useAppStore } from "@cr/lib/store";
 import { useRealmRole } from "@cr/lib/useRealmRole";
 import { ChangeUsernameDialog } from "@cr/components/layout/ChangeUsernameDialog";
@@ -23,7 +22,6 @@ import {
 import {
   Network,
   Globe,
-  ArrowLeft,
   LayoutPanelLeft,
   Menu,
   Sparkles,
@@ -47,7 +45,7 @@ import {
 } from "@cr/components/workspace/MentionSuggestionsStrip";
 import { toast } from "sonner";
 
-export function TopBar({ embedded = false }: { embedded?: boolean } = {}) {
+export function TopBar() {
   const {
     activeRealmId,
     viewMode,
@@ -55,7 +53,6 @@ export function TopBar({ embedded = false }: { embedded?: boolean } = {}) {
     setLibraryOpen,
     setCompassOpen,
   } = useAppStore();
-  const [, setLocation] = useLocation();
   const { data: realm } = useGetRealm(activeRealmId || "", {
     query: {
       enabled: !!activeRealmId,
@@ -68,19 +65,6 @@ export function TopBar({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <header className="absolute top-0 left-0 right-0 h-topbar z-40 flex items-center justify-between px-2 sm:px-4 bg-background/50 backdrop-blur-xl border-b border-border/50 pt-[env(safe-area-inset-top)]">
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
-        {!embedded && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 flex-shrink-0"
-            title="Back to menu"
-            aria-label="Back to menu"
-            data-testid="button-canvasrealms-back"
-            onClick={() => setLocation("/")}
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </Button>
-        )}
         <Button
           data-guide="library-toggle"
           variant="ghost"
