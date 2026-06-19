@@ -4,6 +4,7 @@ import express from "express";
 
 import {
   v3RuneSlotCount,
+  aggregateRuneStatEffects,
   aggregateRuneWeaponDamageLevelBonus,
   v3RuneStatTargetLabel,
 } from "@shared/v3";
@@ -66,6 +67,84 @@ describe("aggregateRuneWeaponDamageLevelBonus", () => {
     expect(aggregateRuneWeaponDamageLevelBonus(null)).toBe(0);
     expect(aggregateRuneWeaponDamageLevelBonus(undefined)).toBe(0);
     expect(aggregateRuneWeaponDamageLevelBonus([])).toBe(0);
+  });
+});
+
+describe("aggregateRuneStatEffects", () => {
+  it("sums the same target across multiple runes", () => {
+    expect(
+      aggregateRuneStatEffects([
+        { statEffects: [{ target: "mod", amount: 2 }] },
+        { statEffects: [{ target: "mod", amount: 3 }] },
+        { statEffects: [{ target: "mod", amount: 1 }] },
+      ]),
+    ).toEqual({ mod: 6 });
+  });
+
+  it("keeps different targets separate and sums them independently", () => {
+    expect(
+      aggregateRuneStatEffects([
+        {
+          statEffects: [
+            { target: "mod", amount: 2 },
+            { target: "carryCapacity", amount: 10 },
+          ],
+        },
+        {
+          statEffects: [
+            { target: "mod", amount: 1 },
+            { target: "damageReduction", amount: 4 },
+            { target: "carryCapacity", amount: 5 },
+          ],
+        },
+      ]),
+    ).toEqual({ mod: 3, carryCapacity: 15, damageReduction: 4 });
+  });
+
+  it("truncates fractional amounts toward zero before summing", () => {
+    expect(
+      aggregateRuneStatEffects([
+        { statEffects: [{ target: "mod", amount: 2.9 }] },
+        { statEffects: [{ target: "mod", amount: -1.9 }] },
+      ]),
+    ).toEqual({ mod: 1 }); // trunc(2.9)=2 + trunc(-1.9)=-1
+  });
+
+  it("skips entries with a missing/zero amount or a missing target", () => {
+    expect(
+      aggregateRuneStatEffects([
+        {
+          statEffects: [
+            { target: "mod", amount: 5 },
+            { target: "mod", amount: 0 },
+            { target: "mod" } as any,
+            { target: "mod", amount: NaN as any },
+            { amount: 7 } as any,
+            { target: "", amount: 3 },
+          ],
+        },
+      ]),
+    ).toEqual({ mod: 5 });
+  });
+
+  it("ignores runes whose statEffects is missing or not an array", () => {
+    expect(
+      aggregateRuneStatEffects([
+        { statEffects: [{ target: "mod", amount: 2 }] },
+        {},
+        { statEffects: null },
+        { statEffects: "nope" as any },
+        null,
+        undefined,
+      ]),
+    ).toEqual({ mod: 2 });
+  });
+
+  it("returns an empty map for null / non-array input", () => {
+    expect(aggregateRuneStatEffects(null)).toEqual({});
+    expect(aggregateRuneStatEffects(undefined)).toEqual({});
+    expect(aggregateRuneStatEffects("nope" as any)).toEqual({});
+    expect(aggregateRuneStatEffects([])).toEqual({});
   });
 });
 
