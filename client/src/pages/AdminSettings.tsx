@@ -2941,8 +2941,286 @@ function V3TechniqueGroupsView({ systemSlug }: { systemSlug: string }) {
   );
 }
 
+function DashCard({
+  onClick,
+  testId,
+  icon: Icon,
+  title,
+  description,
+  hoverBorder = 'hover:border-amber-600',
+  iconBg = 'bg-amber-700/20',
+  iconColor = 'text-amber-500',
+  titleColor = 'text-amber-500',
+  descColor = 'text-stone-400',
+}: {
+  onClick: () => void;
+  testId: string;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  hoverBorder?: string;
+  iconBg?: string;
+  iconColor?: string;
+  titleColor?: string;
+  descColor?: string;
+}) {
+  return (
+    <Card
+      className={`bg-stone-900 border-stone-700 cursor-pointer ${hoverBorder} transition-colors`}
+      onClick={onClick}
+      data-testid={testId}
+    >
+      <CardHeader>
+        <div className={`h-12 w-12 rounded-lg ${iconBg} flex items-center justify-center mb-2`}>
+          <Icon className={`h-6 w-6 ${iconColor}`} />
+        </div>
+        <CardTitle className={titleColor}>{title}</CardTitle>
+        <CardDescription className={descColor}>{description}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function DashSection({
+  title,
+  icon: Icon,
+  color,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section data-testid={`dash-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
+      <div className={`flex items-center gap-2 mb-3 ${color}`}>
+        <Icon className="h-4 w-4" />
+        <h3 className="text-sm font-semibold uppercase tracking-wide">{title}</h3>
+        <div className="flex-1 h-px bg-stone-800 ml-2" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{children}</div>
+    </section>
+  );
+}
+
 function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+
+  if (systemSlug === 'aa-v3') {
+    return (
+      <div className="space-y-8" data-testid="dashboard-v3">
+        {isAdmin && (
+          <DashSection title="Spells & Magic" icon={Wand2} color="text-violet-400">
+            <DashCard
+              onClick={() => onNavigate('v3-spells')}
+              testId="card-v3-spells"
+              icon={Wand2}
+              title="Crafted Spells"
+              description="Review player-crafted V3 spells and approve a canonical name, description, and image per composition"
+              hoverBorder="hover:border-violet-600"
+              iconBg="bg-violet-700/20"
+              iconColor="text-violet-500"
+              titleColor="text-violet-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('element-requirements')}
+              testId="card-element-requirements"
+              icon={Lock}
+              title="Element Requirements"
+              description="Gate which spell elements players may craft with — require a Knowledge or item (optionally consumed) per element"
+              hoverBorder="hover:border-violet-600"
+              iconBg="bg-violet-700/20"
+              iconColor="text-violet-500"
+              titleColor="text-violet-500"
+            />
+          </DashSection>
+        )}
+
+        {isAdmin && (
+          <DashSection title="Weapons & Techniques" icon={Sword} color="text-rose-400">
+            <DashCard
+              onClick={() => onNavigate('techniques')}
+              testId="card-techniques"
+              icon={Sword}
+              title="Techniques"
+              description="Define weapon techniques — energy cost, unlock requirements, and a base-damage or skill-check roll"
+              hoverBorder="hover:border-rose-600"
+              iconBg="bg-rose-700/20"
+              iconColor="text-rose-500"
+              titleColor="text-rose-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('technique-groups')}
+              testId="card-technique-groups"
+              icon={Layers}
+              title="Weapon Techniques"
+              description="Group techniques together, then assign a group to a weapon so its wielder can use them"
+              hoverBorder="hover:border-rose-600"
+              iconBg="bg-rose-700/20"
+              iconColor="text-rose-500"
+              titleColor="text-rose-500"
+            />
+          </DashSection>
+        )}
+
+        <DashSection title="Species & Progression" icon={Users} color="text-emerald-400">
+          <DashCard
+            onClick={() => onNavigate('species')}
+            testId="card-system-species"
+            icon={Users}
+            title="System Species"
+            description="Define playable races and species with their unique traits and abilities"
+            hoverBorder="hover:border-emerald-600"
+            iconBg="bg-emerald-700/20"
+            iconColor="text-emerald-500"
+            titleColor="text-emerald-500"
+          />
+          {isAdmin && (
+            <DashCard
+              onClick={() => onNavigate('feat-trees')}
+              testId="card-feat-trees"
+              icon={GitBranch}
+              title="Skill Trees"
+              description="Create and manage skill trees for species and classes"
+              hoverBorder="hover:border-emerald-600"
+              iconBg="bg-emerald-700/20"
+              iconColor="text-emerald-500"
+              titleColor="text-emerald-500"
+            />
+          )}
+          {isAdmin && (
+            <DashCard
+              onClick={() => onNavigate('classes')}
+              testId="card-classes"
+              icon={Layers}
+              title="Classes"
+              description="Create and manage character classes with skill trees"
+              hoverBorder="hover:border-emerald-600"
+              iconBg="bg-emerald-700/20"
+              iconColor="text-emerald-500"
+              titleColor="text-emerald-500"
+            />
+          )}
+        </DashSection>
+
+        <DashSection title="Items & Templates" icon={Package} color="text-amber-400">
+          <DashCard
+            onClick={() => onNavigate('items')}
+            testId="card-system-items"
+            icon={Package}
+            title="System Items"
+            description="Manage weapons, armor, consumables, and other items available across all campaigns"
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+          <DashCard
+            onClick={() => onNavigate('item-templates')}
+            testId="card-item-templates"
+            icon={Layers}
+            title="Roll Templates"
+            description="Create live roll templates whose roll edits propagate to every linked item and spell, even on character sheets"
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+          <DashCard
+            onClick={() => onNavigate('crafter-recipe-templates')}
+            testId="card-crafter-recipe-templates"
+            icon={Hammer}
+            title="Crafter Recipe Templates"
+            description="Build shared recipe lists and link them to crafter items. Edits propagate to every linked crafter automatically."
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+        </DashSection>
+
+        {isAdmin && (
+          <DashSection title="Characters & Mechanics" icon={User} color="text-cyan-400">
+            <DashCard
+              onClick={() => onNavigate('skills')}
+              testId="card-system-skills"
+              icon={BookOpen}
+              title="Knowledge"
+              description="Create knowledge that can be added to character sheets"
+              hoverBorder="hover:border-cyan-600"
+              iconBg="bg-cyan-700/20"
+              iconColor="text-cyan-500"
+              titleColor="text-cyan-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('traits')}
+              testId="card-system-traits"
+              icon={Star}
+              title="Traits"
+              description="Create traits with limited uses that reset on long rest"
+              hoverBorder="hover:border-cyan-600"
+              iconBg="bg-cyan-700/20"
+              iconColor="text-cyan-500"
+              titleColor="text-cyan-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('token-effects')}
+              testId="card-token-effects"
+              icon={Flame}
+              title="Token Effects"
+              description="Define status effects like poison, burning, or stun that can be applied to tokens in combat"
+              hoverBorder="hover:border-cyan-600"
+              iconBg="bg-cyan-700/20"
+              iconColor="text-cyan-500"
+              titleColor="text-cyan-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('characters')}
+              testId="card-character-templates"
+              icon={User}
+              title="Character Templates"
+              description="Create reusable character templates for quick character creation"
+              hoverBorder="hover:border-cyan-600"
+              iconBg="bg-cyan-700/20"
+              iconColor="text-cyan-500"
+              titleColor="text-cyan-500"
+            />
+          </DashSection>
+        )}
+
+        {isAdmin && (
+          <DashSection title="Archives" icon={Archive} color="text-stone-400">
+            <DashCard
+              onClick={() => onNavigate('archived-items')}
+              testId="card-archived-items"
+              icon={Archive}
+              title="Archived Items"
+              description="View and restore archived items that are no longer active"
+              hoverBorder="hover:border-stone-500"
+              iconBg="bg-stone-700/20"
+              iconColor="text-stone-400"
+              titleColor="text-stone-400"
+              descColor="text-stone-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('archived-spells')}
+              testId="card-archived-spells"
+              icon={Archive}
+              title="Archived Spells"
+              description="View and restore archived spells that are no longer active"
+              hoverBorder="hover:border-stone-500"
+              iconBg="bg-stone-700/20"
+              iconColor="text-stone-400"
+              titleColor="text-stone-400"
+              descColor="text-stone-500"
+            />
+          </DashSection>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card 
@@ -3022,78 +3300,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <CardTitle className="text-blue-500">System Spells</CardTitle>
           <CardDescription className="text-stone-400">
             Define spells that can be learned or granted through feats
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      )}
-
-      {isAdmin && systemSlug === 'aa-v3' && (
-      <Card
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('v3-spells')}
-        data-testid="card-v3-spells"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-violet-700/20 flex items-center justify-center mb-2">
-            <Wand2 className="h-6 w-6 text-violet-500" />
-          </div>
-          <CardTitle className="text-violet-500">Crafted Spells</CardTitle>
-          <CardDescription className="text-stone-400">
-            Review player-crafted V3 spells and approve a canonical name, description, and image per composition
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      )}
-
-      {isAdmin && systemSlug === 'aa-v3' && (
-      <Card
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('element-requirements')}
-        data-testid="card-element-requirements"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
-            <Lock className="h-6 w-6 text-amber-500" />
-          </div>
-          <CardTitle className="text-amber-500">Element Requirements</CardTitle>
-          <CardDescription className="text-stone-400">
-            Gate which spell elements players may craft with — require a Knowledge or item (optionally consumed) per element
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      )}
-
-      {isAdmin && systemSlug === 'aa-v3' && (
-      <Card
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('techniques')}
-        data-testid="card-techniques"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
-            <Sword className="h-6 w-6 text-rose-500" />
-          </div>
-          <CardTitle className="text-rose-500">Techniques</CardTitle>
-          <CardDescription className="text-stone-400">
-            Define weapon techniques — energy cost, unlock requirements, and a base-damage or skill-check roll
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      )}
-
-      {isAdmin && systemSlug === 'aa-v3' && (
-      <Card
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('technique-groups')}
-        data-testid="card-technique-groups"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
-            <Layers className="h-6 w-6 text-rose-500" />
-          </div>
-          <CardTitle className="text-rose-500">Weapon Techniques</CardTitle>
-          <CardDescription className="text-stone-400">
-            Group techniques together, then assign a group to a weapon so its wielder can use them
           </CardDescription>
         </CardHeader>
       </Card>
