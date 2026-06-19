@@ -2312,6 +2312,136 @@ function V3SpellsApprovalView() {
   );
 }
 
+// Searchable picker for OPEN-ENDED admin lists (Knowledge, items, techniques,
+// technique groups). "Open-ended" = the admin can create more of these at any
+// time, so a dropdown/checkbox list would grow without bound. This mirrors the
+// "add item to a character sheet" search panel. Fixed lists (the 14 V3 skills,
+// 17 elements, 6 attributes, item types, rarities) stay as dropdowns.
+function AdminSearchPicker({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyText,
+  testId,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  emptyText?: string;
+  testId: string;
+}) {
+  const [search, setSearch] = useState('');
+  const selected = options.find((o) => o.value === value);
+  const trimmed = search.trim().toLowerCase();
+  const filtered = !trimmed
+    ? []
+    : options.filter((o) => o.label.toLowerCase().includes(trimmed)).slice(0, 30);
+  return (
+    <div className="space-y-1">
+      {selected && (
+        <div className="flex items-center justify-between gap-2 rounded border border-stone-700 bg-stone-950/40 px-2 py-1.5 text-xs" data-testid={`selected-${testId}`}>
+          <span className="text-stone-200 truncate">{selected.label}</span>
+          <Button type="button" size="icon" variant="ghost" className="h-5 w-5 text-stone-400 hover:text-red-400" onClick={() => onChange('')} data-testid={`button-clear-${testId}`}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {options.length === 0 ? (
+        <p className="text-xs text-stone-500 italic px-1 py-1" data-testid={`empty-${testId}`}>{emptyText ?? 'Nothing to choose yet.'}</p>
+      ) : (
+        <>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
+            <Input className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
+          </div>
+          {trimmed && (
+            <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
+              {filtered.length === 0 ? (
+                <p className="text-xs text-stone-500 p-2 italic">No matches</p>
+              ) : (
+                filtered.map((o) => (
+                  <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onChange(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
+                    {o.label}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Multi-select variant of AdminSearchPicker: selected items show as a removable
+// list, and the search field adds more from the same open-ended pool.
+function AdminSearchMultiPicker({
+  options,
+  selectedIds,
+  onAdd,
+  onRemove,
+  placeholder,
+  emptyText,
+  testId,
+}: {
+  options: { value: string; label: string }[];
+  selectedIds: string[];
+  onAdd: (v: string) => void;
+  onRemove: (v: string) => void;
+  placeholder?: string;
+  emptyText?: string;
+  testId: string;
+}) {
+  const [search, setSearch] = useState('');
+  const selSet = new Set(selectedIds);
+  const selectedOptions = options.filter((o) => selSet.has(o.value));
+  const trimmed = search.trim().toLowerCase();
+  const filtered = !trimmed
+    ? []
+    : options.filter((o) => !selSet.has(o.value) && o.label.toLowerCase().includes(trimmed)).slice(0, 30);
+  return (
+    <div className="space-y-1.5">
+      {selectedOptions.length > 0 && (
+        <div className="space-y-1" data-testid={`selected-list-${testId}`}>
+          {selectedOptions.map((o) => (
+            <div key={o.value} className="flex items-center justify-between gap-2 rounded border border-stone-700 bg-stone-950/40 px-2 py-1 text-xs">
+              <span className="text-stone-200 truncate">{o.label}</span>
+              <Button type="button" size="icon" variant="ghost" className="h-5 w-5 text-stone-400 hover:text-red-400" onClick={() => onRemove(o.value)} data-testid={`button-remove-${testId}-${o.value}`}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {options.length === 0 ? (
+        <p className="text-xs text-stone-500 italic px-1 py-1" data-testid={`empty-${testId}`}>{emptyText ?? 'Nothing to choose yet.'}</p>
+      ) : (
+        <>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
+            <Input className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
+          </div>
+          {trimmed && (
+            <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
+              {filtered.length === 0 ? (
+                <p className="text-xs text-stone-500 p-2 italic">No matches</p>
+              ) : (
+                filtered.map((o) => (
+                  <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onAdd(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
+                    {o.label}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
   const queryClient = useQueryClient();
   const [element, setElement] = useState<string>(V3_ELEMENTS[0]?.key ?? '');
@@ -2417,25 +2547,27 @@ function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
           {conditionType === 'knowledge' ? (
             <div className="space-y-1">
               <Label className="text-xs text-stone-400">Required Knowledge</Label>
-              <Select value={knowledgeName} onValueChange={setKnowledgeName}>
-                <SelectTrigger data-testid="select-req-knowledge"><SelectValue placeholder="Select Knowledge" /></SelectTrigger>
-                <SelectContent>
-                  {(knowledgeOptions as any[]).length === 0 && <div className="px-2 py-1.5 text-xs text-stone-500">No Knowledge defined yet.</div>}
-                  {(knowledgeOptions as any[]).map((k) => <SelectItem key={k.id} value={k.name}>{k.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AdminSearchPicker
+                options={(knowledgeOptions as any[]).map((k) => ({ value: k.name, label: k.name }))}
+                value={knowledgeName}
+                onChange={setKnowledgeName}
+                placeholder="Search Knowledge…"
+                emptyText="No Knowledge defined yet."
+                testId="req-knowledge"
+              />
             </div>
           ) : (
             <div className="space-y-2">
               <div className="space-y-1">
                 <Label className="text-xs text-stone-400">Required Item</Label>
-                <Select value={itemId} onValueChange={setItemId}>
-                  <SelectTrigger data-testid="select-req-item"><SelectValue placeholder="Select Item" /></SelectTrigger>
-                  <SelectContent>
-                    {(itemOptions as any[]).length === 0 && <div className="px-2 py-1.5 text-xs text-stone-500">No items defined yet.</div>}
-                    {(itemOptions as any[]).map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <AdminSearchPicker
+                  options={(itemOptions as any[]).map((it) => ({ value: it.id, label: it.name }))}
+                  value={itemId}
+                  onChange={setItemId}
+                  placeholder="Search items…"
+                  emptyText="No items defined yet."
+                  testId="req-item"
+                />
               </div>
               <label className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
                 <Checkbox checked={consumed} onCheckedChange={(c) => setConsumed(!!c)} data-testid="checkbox-req-consumed" />
@@ -2764,7 +2896,7 @@ function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
                   ))}
                 </div>
               )}
-              <div className="flex gap-2 items-end">
+              <div className="space-y-2">
                 <div className="w-28 space-y-1">
                   <Label className="text-[10px] text-stone-500">Type</Label>
                   <Select value={condType} onValueChange={(v) => setCondType(v as 'knowledge' | 'item')}>
@@ -2776,24 +2908,28 @@ function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
                   </Select>
                 </div>
                 {condType === 'knowledge' ? (
-                  <div className="flex-1 space-y-1">
+                  <div className="space-y-1">
                     <Label className="text-[10px] text-stone-500">Knowledge</Label>
-                    <Select value={condKnowledge} onValueChange={setCondKnowledge}>
-                      <SelectTrigger className="h-8" data-testid="select-cond-knowledge"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        {(knowledgeOptions as any[]).map((k) => <SelectItem key={k.id} value={k.name}>{k.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <AdminSearchPicker
+                      options={(knowledgeOptions as any[]).map((k) => ({ value: k.name, label: k.name }))}
+                      value={condKnowledge}
+                      onChange={setCondKnowledge}
+                      placeholder="Search Knowledge…"
+                      emptyText="No Knowledge defined yet."
+                      testId="cond-knowledge"
+                    />
                   </div>
                 ) : (
-                  <div className="flex-1 space-y-1">
+                  <div className="space-y-1">
                     <Label className="text-[10px] text-stone-500">Item</Label>
-                    <Select value={condItemId} onValueChange={setCondItemId}>
-                      <SelectTrigger className="h-8" data-testid="select-cond-item"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        {(itemOptions as any[]).map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <AdminSearchPicker
+                      options={(itemOptions as any[]).map((it) => ({ value: it.id, label: it.name }))}
+                      value={condItemId}
+                      onChange={setCondItemId}
+                      placeholder="Search items…"
+                      emptyText="No items defined yet."
+                      testId="cond-item"
+                    />
                   </div>
                 )}
                 <Button size="sm" variant="outline" onClick={addCondition} data-testid="button-add-condition">Add</Button>
@@ -2891,7 +3027,6 @@ function V3TechniqueGroupsView({ systemSlug }: { systemSlug: string }) {
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {groups.map((g) => {
-            const memberIds = new Set(g.techniqueIds);
             return (
               <Card key={g.id} className="bg-stone-900 border-stone-700" data-testid={`card-group-${g.id}`}>
                 <CardHeader className="pb-2">
@@ -2918,19 +3053,15 @@ function V3TechniqueGroupsView({ systemSlug }: { systemSlug: string }) {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-1.5 pt-0">
-                  {techniques.length === 0 ? (
-                    <p className="text-xs text-stone-500">No techniques defined yet.</p>
-                  ) : (
-                    techniques.map((t) => (
-                      <label key={t.id} className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer" data-testid={`row-group-member-${g.id}-${t.id}`}>
-                        <Checkbox
-                          checked={memberIds.has(t.id)}
-                          onCheckedChange={(c) => toggleMemberMutation.mutate({ groupId: g.id, techniqueId: t.id, member: !!c })}
-                        />
-                        {t.name}
-                      </label>
-                    ))
-                  )}
+                  <AdminSearchMultiPicker
+                    options={(techniques as any[]).map((t) => ({ value: t.id, label: t.name }))}
+                    selectedIds={g.techniqueIds}
+                    onAdd={(id) => toggleMemberMutation.mutate({ groupId: g.id, techniqueId: id, member: true })}
+                    onRemove={(id) => toggleMemberMutation.mutate({ groupId: g.id, techniqueId: id, member: false })}
+                    placeholder="Search techniques…"
+                    emptyText="No techniques defined yet."
+                    testId={`group-member-${g.id}`}
+                  />
                 </CardContent>
               </Card>
             );

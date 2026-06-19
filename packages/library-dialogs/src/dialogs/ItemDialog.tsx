@@ -62,6 +62,63 @@ const ATTRIBUTES = ["", "might", "finesse", "wit", "presence", "will", "craft"] 
 const AOE_SHAPES = ["", "cone", "sphere", "line", "cube", "cylinder"] as const;
 const SIZES = ["tiny", "small", "medium", "large", "huge"] as const;
 
+// Searchable multi-select for OPEN-ENDED lists (e.g. technique groups, which the
+// admin can create more of at any time). Mirrors the "add item to a character
+// sheet" search panel rather than an unbounded checkbox list. Selected entries
+// show as a removable list; the search field adds more from the same pool.
+function SearchMultiSelect({
+  options,
+  selectedIds,
+  onToggle,
+  placeholder,
+  emptyText,
+  testIdPrefix,
+}: {
+  options: { id: string; name: string }[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  placeholder?: string;
+  emptyText?: string;
+  testIdPrefix: string;
+}) {
+  const [search, setSearch] = React.useState("");
+  const selSet = new Set(selectedIds);
+  const selected = options.filter((o) => selSet.has(o.id));
+  const trimmed = search.trim().toLowerCase();
+  const filtered = !trimmed
+    ? []
+    : options.filter((o) => !selSet.has(o.id) && o.name.toLowerCase().includes(trimmed)).slice(0, 30);
+  if (options.length === 0) {
+    return <div className="ld-subtle" data-testid={`text-no-${testIdPrefix}`}>{emptyText}</div>;
+  }
+  return (
+    <Stack gap="sm">
+      {selected.length > 0 && (
+        <Stack gap="sm">
+          {selected.map((o) => (
+            <Row key={o.id}>
+              <div style={{ flex: 1 }}>{o.name}</div>
+              <Button size="sm" variant="ghost" onClick={() => onToggle(o.id)} data-testid={`button-remove-${testIdPrefix}-${o.id}`}>✕</Button>
+            </Row>
+          ))}
+        </Stack>
+      )}
+      <Input value={search} placeholder={placeholder ?? "Search…"} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testIdPrefix}-search`} />
+      {trimmed && (
+        <Stack gap="sm">
+          {filtered.length === 0 ? (
+            <div className="ld-subtle">No matches</div>
+          ) : (
+            filtered.map((o) => (
+              <Button key={o.id} size="sm" variant="outline" onClick={() => onToggle(o.id)} data-testid={`button-add-${testIdPrefix}-${o.id}`}>+ {o.name}</Button>
+            ))
+          )}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
 export interface ItemDraft {
   id?: string;
   externalId?: string;
@@ -370,24 +427,14 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               {aav3 && it === "weapon" && host.techniqueGroups && (
                 <div style={{ marginTop: 8 }}>
                   <Label>Technique Groups</Label>
-                  {techniqueGroups.length === 0 ? (
-                    <div className="ld-subtle" data-testid="text-no-technique-groups">
-                      No technique groups defined yet.
-                    </div>
-                  ) : (
-                    <Stack gap="sm">
-                      {techniqueGroups.map(g => (
-                        <Row key={g.id}>
-                          <Checkbox
-                            checked={(draft.v3TechniqueGroupIds ?? []).includes(g.id)}
-                            onCheckedChange={() => toggleTechniqueGroup(g.id)}
-                            data-testid={`checkbox-technique-group-${g.id}`}
-                          />
-                          <Label>{g.name}</Label>
-                        </Row>
-                      ))}
-                    </Stack>
-                  )}
+                  <SearchMultiSelect
+                    options={techniqueGroups}
+                    selectedIds={draft.v3TechniqueGroupIds ?? []}
+                    onToggle={toggleTechniqueGroup}
+                    placeholder="Search technique groups…"
+                    emptyText="No technique groups defined yet."
+                    testIdPrefix="technique-groups"
+                  />
                 </div>
               )}
             </Section>
