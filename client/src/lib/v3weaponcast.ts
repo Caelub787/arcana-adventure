@@ -1,7 +1,11 @@
 import { gameWs, api } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { triggerRollNotification } from "@/components/game/RollNotification";
-import { v3LevelDice } from "@shared/v3spells";
+import {
+  v3LevelDice,
+  evaluateV3ElementEligibility,
+  type V3ElementCondition,
+} from "@shared/v3spells";
 import { v3WeaponBaseAttackEnergy } from "@shared/v3weapons";
 import {
   V3_SKILLS,
@@ -34,6 +38,63 @@ export interface V3CastTechnique {
   energyCost?: number | null;
   rollMode?: "base_damage" | "skill_check" | null;
   skillKey?: string | null;
+  // OR'd unlock conditions; an item condition flagged `consumed` is decremented
+  // from inventory when the technique fires (see consumeV3TechniqueItems).
+  requirements?: V3ElementCondition[] | null;
+}
+
+// A minimal inventory item shape sufficient to match + decrement a consumed
+// requirement. Mirrors the roll item-cost matching (templateItemId, then name).
+export interface V3WeaponInventoryItem {
+  id: string;
+  templateItemId?: string | null;
+  name?: string | null;
+  quantity?: number | null;
+}
+
+/**
+ * After a technique successfully fires, consume a satisfying inventory item for
+ * any item requirement flagged `consumed`. Mirrors the V3 spell element model
+ * and roll item-costs: a non-consuming path (Knowledge or a non-consumable
+ * item) is always preferred, so we only charge a consumable when it is the sole
+ * satisfying path. Decrements quantity, or deletes the item at qty 1. AA V3 only.
+ */
+export async function consumeV3TechniqueItems(
+  technique: V3CastTechnique,
+  inventory: V3WeaponInventoryItem[] | undefined,
+  knowledgeNames: string[],
+): Promise<void> {
+  const conditions = Array.isArray(technique.requirements) ? technique.requirements : [];
+  if (conditions.length === 0) return;
+  const inv = Array.isArray(inventory) ? inventory : [];
+  const elig = evaluateV3ElementEligibility(conditions, {
+    knowledgeNames: knowledgeNames || [],
+    items: inv.map((it) => ({ templateItemId: it.templateItemId, name: it.name })),
+  });
+  // Free path available (no conditions, Knowledge, or a non-consumable item):
+  // nothing to charge.
+  if (!elig.usable || elig.freeToUse) return;
+  const option = elig.consumeItem ?? elig.consumeOptions[0];
+  if (!option) return;
+  const owned = inv.find(
+    (it) =>
+      (it.quantity ?? 1) > 0 &&
+      ((!!option.itemId && !!it.templateItemId && it.templateItemId === option.itemId) ||
+        (!!option.name &&
+          !!it.name &&
+          it.name.trim().toLowerCase() === option.name.trim().toLowerCase())),
+  );
+  if (!owned) return;
+  const qty = owned.quantity ?? 1;
+  try {
+    if (qty > 1) {
+      await api.updateItem(owned.id, { quantity: qty - 1 });
+    } else {
+      await api.deleteItem(owned.id);
+    }
+  } catch (err) {
+    console.error("[techniqueItemCost] failed to consume", owned?.name, err);
+  }
 }
 
 function rollLevelDice(level: number): { total: number; rolls: number[]; notation: string } {

@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, type V3AttributeKey, type V3ArmorBoost } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
+import { castV3WeaponBaseAttack, castV3Technique, consumeV3TechniqueItems, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26283,6 +26283,7 @@ interface ItemDetailDialogProps {
 // inside the weapon ItemDetailDialog and the battlemap hotbar info panel.
 // V3-only — callers gate this behind campaignSystem === 'aa-v3'.
 function V3WeaponUsePanel({ item, character, items }: { item: any; character: any; items: any[] }) {
+  const queryClient = useQueryClient();
   const [level, setLevel] = useState(1);
   const lv = Math.max(1, Math.floor(level || 1));
 
@@ -26408,7 +26409,17 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                   type="button"
                   size="sm"
                   className="bg-amber-700 hover:bg-amber-600 text-white flex-shrink-0"
-                  onClick={() => castV3Technique(castChar, t, lv)}
+                  onClick={() => {
+                    const fired = castV3Technique(castChar, t, lv);
+                    if (!fired) return;
+                    const knowledgeNames = (customSkills ?? []).map((s: any) => s.name).filter(Boolean);
+                    void consumeV3TechniqueItems(t, items, knowledgeNames).then(() => {
+                      if (character?.id) {
+                        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+                        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+                      }
+                    });
+                  }}
                   data-testid={`button-v3-technique-${t.id}`}
                 >
                   Use
