@@ -23,6 +23,7 @@ import {
   isValidV3Composition,
   type V3SpellComposition,
 } from '@shared/v3spells';
+import { V3_SKILLS } from '@shared/v3';
 import { getEffectTypes, getEffectTypeLabel } from '@/lib/effectTypes';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -58,7 +59,7 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -265,6 +266,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         imagePicker,
         modal: ArcanaModalChrome,
         spellbookManager: SpellbookLibraryManager,
+        techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
       }),
     [itemDialogTransport, imagePicker],
   );
@@ -1013,6 +1015,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'archived-spells' ? 'Archived Spells' : 
                currentView === 'v3-spells' ? 'Crafted Spells (A.A. V3)' : 
                currentView === 'element-requirements' ? 'Element Requirements (A.A. V3)' : 
+               currentView === 'techniques' ? 'Techniques (A.A. V3)' : 
+               currentView === 'technique-groups' ? 'Weapon Techniques (A.A. V3)' : 
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1043,6 +1047,14 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
         {currentView === 'element-requirements' && (
           <V3ElementRequirementsView systemSlug={systemSlug} />
+        )}
+
+        {currentView === 'techniques' && (
+          <V3TechniquesView systemSlug={systemSlug} />
+        )}
+
+        {currentView === 'technique-groups' && (
+          <V3TechniqueGroupsView systemSlug={systemSlug} />
         )}
 
         {currentView === 'items' && (
@@ -2506,6 +2518,429 @@ function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
   );
 }
 
+// ===========================================================================
+// AA V3 Weapon Techniques (Task #180)
+// ===========================================================================
+type TechniqueDraftCondition = {
+  conditionType: 'knowledge' | 'item';
+  knowledgeName?: string | null;
+  itemId?: string | null;
+  itemName?: string | null;
+  consumed?: boolean;
+};
+
+function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const emptyDraft = {
+    id: null as string | null,
+    name: '',
+    image: null as string | null,
+    description: '',
+    energyCost: 0,
+    rollMode: 'base_damage' as 'base_damage' | 'skill_check',
+    skillKey: '' as string,
+    requirements: [] as TechniqueDraftCondition[],
+  };
+  const [draft, setDraft] = useState(emptyDraft);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
+  // Inline condition builder state
+  const [condType, setCondType] = useState<'knowledge' | 'item'>('knowledge');
+  const [condKnowledge, setCondKnowledge] = useState('');
+  const [condItemId, setCondItemId] = useState('');
+  const [condConsumed, setCondConsumed] = useState(false);
+
+  const { data: techniques = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-techniques'],
+    queryFn: () => api.getAdminV3Techniques(),
+  });
+  const { data: knowledgeOptions = [] } = useQuery({
+    queryKey: ['system-skills', 'aa-v3'],
+    queryFn: () => api.getSystemSkills('aa-v3'),
+  });
+  const { data: itemOptions = [] } = useQuery({
+    queryKey: ['admin-system-items', 'aa-v3'],
+    queryFn: () => api.getSystemItems('aa-v3'),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-techniques'] });
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = {
+        name: draft.name,
+        image: draft.image,
+        description: draft.description || null,
+        energyCost: draft.energyCost,
+        rollMode: draft.rollMode,
+        skillKey: draft.rollMode === 'skill_check' ? (draft.skillKey || null) : null,
+        requirements: draft.requirements,
+      };
+      return draft.id ? api.updateV3Technique(draft.id, payload) : api.createV3Technique(payload);
+    },
+    onSuccess: () => {
+      toast({ title: draft.id ? 'Technique updated' : 'Technique created' });
+      setDialogOpen(false);
+      setDraft(emptyDraft);
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteV3Technique(id),
+    onSuccess: () => { toast({ title: 'Technique removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const openCreate = () => { setDraft(emptyDraft); setDialogOpen(true); };
+  const openEdit = (t: any) => {
+    setDraft({
+      id: t.id,
+      name: t.name,
+      image: t.image ?? null,
+      description: t.description ?? '',
+      energyCost: t.energyCost ?? 0,
+      rollMode: t.rollMode === 'skill_check' ? 'skill_check' : 'base_damage',
+      skillKey: t.skillKey ?? '',
+      requirements: Array.isArray(t.requirements) ? t.requirements : [],
+    });
+    setDialogOpen(true);
+  };
+
+  const addCondition = () => {
+    if (condType === 'knowledge') {
+      if (!condKnowledge) return;
+      setDraft((d) => ({ ...d, requirements: [...d.requirements, { conditionType: 'knowledge', knowledgeName: condKnowledge }] }));
+      setCondKnowledge('');
+    } else {
+      if (!condItemId) return;
+      const it = (itemOptions as any[]).find((i) => i.id === condItemId);
+      setDraft((d) => ({ ...d, requirements: [...d.requirements, { conditionType: 'item', itemId: condItemId, itemName: it?.name ?? null, consumed: condConsumed }] }));
+      setCondItemId('');
+      setCondConsumed(false);
+    }
+  };
+  const removeCondition = (idx: number) => setDraft((d) => ({ ...d, requirements: d.requirements.filter((_, i) => i !== idx) }));
+
+  if (systemSlug !== 'aa-v3') {
+    return <p className="text-stone-400">Techniques are only available in the A.A. V3 system.</p>;
+  }
+
+  return (
+    <div className="space-y-4" data-testid="view-techniques">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-rose-600 hover:bg-rose-700 text-stone-950" data-testid="button-add-technique">
+          <Plus className="h-4 w-4 mr-1" /> New Technique
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : techniques.length === 0 ? (
+        <p className="text-stone-400">No techniques defined yet.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {techniques.map((t) => (
+            <Card key={t.id} className="bg-stone-900 border-stone-700" data-testid={`card-technique-${t.id}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start gap-2">
+                  {t.image ? (
+                    <img src={t.image} alt={t.name} className="h-10 w-10 rounded object-cover border border-stone-700" />
+                  ) : (
+                    <div className="h-10 w-10 rounded bg-stone-800 flex items-center justify-center"><Sword className="h-5 w-5 text-stone-500" /></div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-sm text-rose-400 truncate">{t.name}</CardTitle>
+                    <CardDescription className="text-xs text-stone-400">
+                      <span className="text-amber-400">{t.energyCost} energy</span>
+                      {' · '}
+                      {t.rollMode === 'skill_check'
+                        ? `Skill: ${V3_SKILLS.find((s) => s.key === t.skillKey)?.name ?? t.skillKey ?? '—'}`
+                        : 'Base damage'}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                {t.description && <p className="text-xs text-stone-400 line-clamp-3">{t.description}</p>}
+                {Array.isArray(t.requirements) && t.requirements.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {t.requirements.map((r, i) => (
+                      <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded ${r.conditionType === 'knowledge' ? 'bg-violet-900/40 text-violet-300' : 'bg-emerald-900/40 text-emerald-300'}`}>
+                        {r.conditionType === 'knowledge' ? r.knowledgeName : r.itemName}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-stone-500">No unlock requirements</span>
+                )}
+                <div className="flex justify-end gap-1">
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-stone-400 hover:text-amber-400" onClick={() => openEdit(t)} data-testid={`button-edit-technique-${t.id}`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-stone-400 hover:text-red-400" onClick={() => deleteMutation.mutate(t.id)} data-testid={`button-delete-technique-${t.id}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400">{draft.id ? 'Edit Technique' : 'New Technique'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              {draft.image ? (
+                <img src={draft.image} alt="" className="h-16 w-16 rounded object-cover border border-stone-700" />
+              ) : (
+                <div className="h-16 w-16 rounded bg-stone-800 flex items-center justify-center"><Sword className="h-7 w-7 text-stone-500" /></div>
+              )}
+              <div className="flex flex-col gap-1">
+                <Button variant="outline" size="sm" onClick={() => setShowImageBrowser(true)} data-testid="button-technique-image">
+                  <ImageIcon className="h-4 w-4 mr-1" /> Choose Image
+                </Button>
+                {draft.image && <Button variant="ghost" size="sm" className="text-stone-400" onClick={() => setDraft((d) => ({ ...d, image: null }))}>Remove</Button>}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} data-testid="input-technique-name" />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} rows={3} data-testid="input-technique-description" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Energy Cost</Label>
+                <Input type="number" min={0} value={draft.energyCost} onChange={(e) => setDraft((d) => ({ ...d, energyCost: Math.max(0, parseInt(e.target.value) || 0) }))} data-testid="input-technique-energy" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Roll Mode</Label>
+                <Select value={draft.rollMode} onValueChange={(v) => setDraft((d) => ({ ...d, rollMode: v as 'base_damage' | 'skill_check' }))}>
+                  <SelectTrigger data-testid="select-technique-rollmode"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="base_damage">Base Damage</SelectItem>
+                    <SelectItem value="skill_check">Skill Check</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {draft.rollMode === 'skill_check' && (
+              <div className="space-y-1">
+                <Label className="text-xs text-stone-400">Skill</Label>
+                <Select value={draft.skillKey} onValueChange={(v) => setDraft((d) => ({ ...d, skillKey: v }))}>
+                  <SelectTrigger data-testid="select-technique-skill"><SelectValue placeholder="Select Skill" /></SelectTrigger>
+                  <SelectContent>
+                    {V3_SKILLS.map((s) => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2 rounded border border-stone-700 p-3">
+              <Label className="text-xs text-stone-400">Unlock Requirements (any one unlocks)</Label>
+              {draft.requirements.length > 0 && (
+                <div className="space-y-1">
+                  {draft.requirements.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 rounded bg-stone-950/40 px-2 py-1 text-xs">
+                      <span className={r.conditionType === 'knowledge' ? 'text-violet-300' : 'text-emerald-300'}>
+                        {r.conditionType === 'knowledge' ? `Knowledge: ${r.knowledgeName}` : `Item: ${r.itemName}${r.consumed ? ' (consumed)' : ''}`}
+                      </span>
+                      <Button size="icon" variant="ghost" className="h-5 w-5 text-stone-400 hover:text-red-400" onClick={() => removeCondition(i)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
+                <div className="w-28 space-y-1">
+                  <Label className="text-[10px] text-stone-500">Type</Label>
+                  <Select value={condType} onValueChange={(v) => setCondType(v as 'knowledge' | 'item')}>
+                    <SelectTrigger className="h-8" data-testid="select-cond-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="knowledge">Knowledge</SelectItem>
+                      <SelectItem value="item">Item</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {condType === 'knowledge' ? (
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] text-stone-500">Knowledge</Label>
+                    <Select value={condKnowledge} onValueChange={setCondKnowledge}>
+                      <SelectTrigger className="h-8" data-testid="select-cond-knowledge"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        {(knowledgeOptions as any[]).map((k) => <SelectItem key={k.id} value={k.name}>{k.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] text-stone-500">Item</Label>
+                    <Select value={condItemId} onValueChange={setCondItemId}>
+                      <SelectTrigger className="h-8" data-testid="select-cond-item"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        {(itemOptions as any[]).map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <Button size="sm" variant="outline" onClick={addCondition} data-testid="button-add-condition">Add</Button>
+              </div>
+              {condType === 'item' && (
+                <label className="flex items-center gap-2 text-xs text-stone-400 cursor-pointer">
+                  <Checkbox checked={condConsumed} onCheckedChange={(c) => setCondConsumed(!!c)} /> Consume item on use
+                </label>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={!draft.name.trim() || (draft.rollMode === 'skill_check' && !draft.skillKey) || saveMutation.isPending}
+                className="bg-rose-600 hover:bg-rose-700 text-stone-950"
+                data-testid="button-save-technique"
+              >
+                {draft.id ? 'Save' : 'Create'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ImageBrowser open={showImageBrowser} onOpenChange={setShowImageBrowser} onSelect={(url) => setDraft((d) => ({ ...d, image: url }))} title="Select Technique Image" />
+    </div>
+  );
+}
+
+function V3TechniqueGroupsView({ systemSlug }: { systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-technique-groups'],
+    queryFn: () => api.getAdminV3TechniqueGroups(),
+  });
+  const { data: techniques = [] } = useQuery({
+    queryKey: ['admin-v3-techniques'],
+    queryFn: () => api.getAdminV3Techniques(),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-technique-groups'] });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.createV3TechniqueGroup({ name: newGroupName.trim() }),
+    onSuccess: () => { toast({ title: 'Group created' }); setNewGroupName(''); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const renameMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string }) => api.updateV3TechniqueGroup(vars.id, { name: vars.name }),
+    onSuccess: () => { toast({ title: 'Group renamed' }); setEditingId(null); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteV3TechniqueGroup(id),
+    onSuccess: () => { toast({ title: 'Group removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const toggleMemberMutation = useMutation({
+    mutationFn: (vars: { groupId: string; techniqueId: string; member: boolean }) =>
+      vars.member
+        ? api.addV3TechniqueGroupMember(vars.groupId, vars.techniqueId)
+        : api.removeV3TechniqueGroupMember(vars.groupId, vars.techniqueId),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  if (systemSlug !== 'aa-v3') {
+    return <p className="text-stone-400">Weapon techniques are only available in the A.A. V3 system.</p>;
+  }
+
+  return (
+    <div className="space-y-4" data-testid="view-technique-groups">
+      <Card className="bg-stone-900 border-stone-700">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-rose-400 text-base">New Group</CardTitle>
+        </CardHeader>
+        <CardContent className="flex gap-2">
+          <Input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="Group name" data-testid="input-group-name" />
+          <Button onClick={() => createMutation.mutate()} disabled={!newGroupName.trim() || createMutation.isPending} className="bg-rose-600 hover:bg-rose-700 text-stone-950" data-testid="button-add-group">
+            <Plus className="h-4 w-4 mr-1" /> Add
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : groups.length === 0 ? (
+        <p className="text-stone-400">No technique groups yet.</p>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {groups.map((g) => {
+            const memberIds = new Set(g.techniqueIds);
+            return (
+              <Card key={g.id} className="bg-stone-900 border-stone-700" data-testid={`card-group-${g.id}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    {editingId === g.id ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8" data-testid={`input-rename-group-${g.id}`} />
+                        <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-stone-950" onClick={() => renameMutation.mutate({ id: g.id, name: editName.trim() })} disabled={!editName.trim()}>Save</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <>
+                        <CardTitle className="text-sm text-rose-400">{g.name}</CardTitle>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-stone-400 hover:text-amber-400" onClick={() => { setEditingId(g.id); setEditName(g.name); }} data-testid={`button-rename-group-${g.id}`}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-stone-400 hover:text-red-400" onClick={() => deleteMutation.mutate(g.id)} data-testid={`button-delete-group-${g.id}`}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-1.5 pt-0">
+                  {techniques.length === 0 ? (
+                    <p className="text-xs text-stone-500">No techniques defined yet.</p>
+                  ) : (
+                    techniques.map((t) => (
+                      <label key={t.id} className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer" data-testid={`row-group-member-${g.id}-${t.id}`}>
+                        <Checkbox
+                          checked={memberIds.has(t.id)}
+                          onCheckedChange={(c) => toggleMemberMutation.mutate({ groupId: g.id, techniqueId: t.id, member: !!c })}
+                        />
+                        {t.name}
+                      </label>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   return (
@@ -2623,6 +3058,42 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           <CardTitle className="text-amber-500">Element Requirements</CardTitle>
           <CardDescription className="text-stone-400">
             Gate which spell elements players may craft with — require a Knowledge or item (optionally consumed) per element
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      )}
+
+      {isAdmin && systemSlug === 'aa-v3' && (
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('techniques')}
+        data-testid="card-techniques"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
+            <Sword className="h-6 w-6 text-rose-500" />
+          </div>
+          <CardTitle className="text-rose-500">Techniques</CardTitle>
+          <CardDescription className="text-stone-400">
+            Define weapon techniques — energy cost, unlock requirements, and a base-damage or skill-check roll
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      )}
+
+      {isAdmin && systemSlug === 'aa-v3' && (
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('technique-groups')}
+        data-testid="card-technique-groups"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
+            <Layers className="h-6 w-6 text-rose-500" />
+          </div>
+          <CardTitle className="text-rose-500">Weapon Techniques</CardTitle>
+          <CardDescription className="text-stone-400">
+            Group techniques together, then assign a group to a weapon so its wielder can use them
           </CardDescription>
         </CardHeader>
       </Card>

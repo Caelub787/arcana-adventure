@@ -108,6 +108,13 @@ export interface HostAdapter {
    * The package stays dependency-free; the host supplies the component.
    */
   spellbookManager?: ComponentType<{ itemId?: string; maxSpells: number; campaignSystem?: string }>;
+
+  /**
+   * Optional. Lists the AA V3 weapon technique groups an admin has defined,
+   * so the ItemDialog can offer them as assignable options on a weapon item.
+   * Absent in non-V3 hosts; the dialog simply hides the selector.
+   */
+  techniqueGroups?: () => Promise<{ id: string; name: string }[]>;
 }
 
 /** Stable prop signature shared by every dialog the package exports. */

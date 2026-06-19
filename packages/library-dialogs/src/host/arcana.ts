@@ -37,6 +37,8 @@ export interface ArcanaSessionHostOptions {
   modal?: HostModalComponent;
   /** Bridge to Arcana's spellbook pre-load manager (AA V3). */
   spellbookManager?: ComponentType<{ itemId?: string; maxSpells: number; campaignSystem?: string }>;
+  /** Bridge to Arcana's V3 technique group list (AA V3 weapons). */
+  techniqueGroups?: () => Promise<{ id: string; name: string }[]>;
 }
 
 /**
@@ -55,5 +57,6 @@ export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAd
     imagePicker: opts.imagePicker,
     modal: opts.modal,
     spellbookManager: opts.spellbookManager,
+    techniqueGroups: opts.techniqueGroups,
   };
 }

@@ -7097,6 +7097,204 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // =====================================================================
+  // AA V3 Weapon Techniques (Task #180)
+  // =====================================================================
+  const V3_TECHNIQUE_ROLL_MODES = ["base_damage", "skill_check"];
+
+  // Sanitize the OR'd unlock conditions stored inline on a technique.
+  const sanitizeTechniqueRequirements = (raw: any): any[] => {
+    if (!Array.isArray(raw)) return [];
+    const out: any[] = [];
+    for (const c of raw) {
+      if (!c || (c.conditionType !== "knowledge" && c.conditionType !== "item")) continue;
+      if (c.conditionType === "knowledge") {
+        const name = String(c.knowledgeName || "").trim();
+        if (!name) continue;
+        out.push({ conditionType: "knowledge", knowledgeName: name });
+      } else {
+        if (!c.itemId && !c.itemName) continue;
+        out.push({
+          conditionType: "item",
+          itemId: c.itemId || null,
+          itemName: c.itemName || null,
+          consumed: !!c.consumed,
+        });
+      }
+    }
+    return out;
+  };
+
+  // --- Techniques CRUD (admin) ---
+  app.get("/api/admin/v3-techniques", requireAdmin, async (_req, res) => {
+    try {
+      res.json(await storage.getV3Techniques());
+    } catch (err: any) {
+      console.error("[V3 Techniques List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load techniques" });
+    }
+  });
+
+  app.post("/api/admin/v3-techniques", requireAdmin, async (req, res) => {
+    try {
+      const { name, image, description, energyCost, rollMode, skillKey, requirements } = req.body || {};
+      if (!String(name || "").trim()) return res.status(400).json({ error: "A technique name is required" });
+      const mode = V3_TECHNIQUE_ROLL_MODES.includes(rollMode) ? rollMode : "base_damage";
+      const created = await storage.createV3Technique({
+        name: String(name).trim(),
+        image: image || null,
+        description: description || null,
+        energyCost: Math.max(0, Math.floor(Number(energyCost) || 0)),
+        rollMode: mode,
+        skillKey: mode === "skill_check" ? (skillKey || null) : null,
+        requirements: sanitizeTechniqueRequirements(requirements),
+        system: "aa-v3",
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[V3 Techniques Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create technique" });
+    }
+  });
+
+  app.patch("/api/admin/v3-techniques/:id", requireAdmin, async (req, res) => {
+    try {
+      const { name, image, description, energyCost, rollMode, skillKey, requirements } = req.body || {};
+      const patch: any = {};
+      if (name !== undefined) patch.name = String(name).trim();
+      if (image !== undefined) patch.image = image || null;
+      if (description !== undefined) patch.description = description || null;
+      if (energyCost !== undefined) patch.energyCost = Math.max(0, Math.floor(Number(energyCost) || 0));
+      if (rollMode !== undefined) {
+        patch.rollMode = V3_TECHNIQUE_ROLL_MODES.includes(rollMode) ? rollMode : "base_damage";
+        patch.skillKey = patch.rollMode === "skill_check" ? (skillKey ?? null) : null;
+      } else if (skillKey !== undefined) {
+        patch.skillKey = skillKey || null;
+      }
+      if (requirements !== undefined) patch.requirements = sanitizeTechniqueRequirements(requirements);
+      const updated = await storage.updateV3Technique(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Technique not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Techniques Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update technique" });
+    }
+  });
+
+  app.delete("/api/admin/v3-techniques/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteV3Technique(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Techniques Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete technique" });
+    }
+  });
+
+  // --- Technique groups CRUD (admin) ---
+  app.get("/api/admin/v3-technique-groups", requireAdmin, async (_req, res) => {
+    try {
+      const [groups, members] = await Promise.all([
+        storage.getV3TechniqueGroups(),
+        storage.getV3TechniqueGroupMembers(),
+      ]);
+      const withMembers = groups.map((g) => ({
+        ...g,
+        techniqueIds: members.filter((m) => m.groupId === g.id).map((m) => m.techniqueId),
+      }));
+      res.json(withMembers);
+    } catch (err: any) {
+      console.error("[V3 Technique Groups List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load technique groups" });
+    }
+  });
+
+  app.post("/api/admin/v3-technique-groups", requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body || {};
+      if (!String(name || "").trim()) return res.status(400).json({ error: "A group name is required" });
+      const created = await storage.createV3TechniqueGroup({ name: String(name).trim(), system: "aa-v3" } as any);
+      res.json({ ...created, techniqueIds: [] });
+    } catch (err: any) {
+      console.error("[V3 Technique Groups Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create technique group" });
+    }
+  });
+
+  app.patch("/api/admin/v3-technique-groups/:id", requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body || {};
+      const patch: any = {};
+      if (name !== undefined) patch.name = String(name).trim();
+      const updated = await storage.updateV3TechniqueGroup(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Group not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Technique Groups Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update technique group" });
+    }
+  });
+
+  app.delete("/api/admin/v3-technique-groups/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteV3TechniqueGroup(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Technique Groups Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete technique group" });
+    }
+  });
+
+  // --- Group membership (admin) ---
+  app.post("/api/admin/v3-technique-groups/:id/members", requireAdmin, async (req, res) => {
+    try {
+      const { techniqueId } = req.body || {};
+      if (!techniqueId) return res.status(400).json({ error: "techniqueId is required" });
+      const created = await storage.addV3TechniqueGroupMember(req.params.id, techniqueId);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[V3 Technique Group Member Add] Error:", err?.message);
+      res.status(500).json({ error: "Failed to add technique to group" });
+    }
+  });
+
+  app.delete("/api/admin/v3-technique-groups/:id/members/:techniqueId", requireAdmin, async (req, res) => {
+    try {
+      await storage.removeV3TechniqueGroupMember(req.params.id, req.params.techniqueId);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Technique Group Member Remove] Error:", err?.message);
+      res.status(500).json({ error: "Failed to remove technique from group" });
+    }
+  });
+
+  // --- Player-facing reads: weapon surfaces resolve granted/unlocked techniques ---
+  app.get("/api/v3/techniques", requireAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getV3Techniques());
+    } catch (err: any) {
+      console.error("[V3 Techniques Read] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load techniques" });
+    }
+  });
+
+  app.get("/api/v3/technique-groups", requireAuth, async (_req, res) => {
+    try {
+      const [groups, members] = await Promise.all([
+        storage.getV3TechniqueGroups(),
+        storage.getV3TechniqueGroupMembers(),
+      ]);
+      const withMembers = groups.map((g) => ({
+        ...g,
+        techniqueIds: members.filter((m) => m.groupId === g.id).map((m) => m.techniqueId),
+      }));
+      res.json(withMembers);
+    } catch (err: any) {
+      console.error("[V3 Technique Groups Read] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load technique groups" });
+    }
+  });
+
   // Library scope helpers — let GMs maintain a private AAv2 library that's
   // visible to players inside the GM's own campaigns. Admins see everything.
   // ownerScope semantics for storage methods:

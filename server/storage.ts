@@ -79,6 +79,9 @@ import {
   type CraftRecipeOutcome, type InsertCraftRecipeOutcome,
   type V3Spell, type InsertV3Spell, v3Spells,
   type V3ElementRequirement, type InsertV3ElementRequirement, v3ElementRequirements,
+  type V3Technique, type InsertV3Technique, v3Techniques,
+  type V3TechniqueGroup, type InsertV3TechniqueGroup, v3TechniqueGroups,
+  type V3TechniqueGroupMember, v3TechniqueGroupMembers,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
@@ -400,6 +403,21 @@ export interface IStorage {
   createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement>;
   updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined>;
   deleteV3ElementRequirement(id: string): Promise<void>;
+
+  // AA V3 weapon techniques (Task #180)
+  getV3Techniques(): Promise<V3Technique[]>;
+  getV3Technique(id: string): Promise<V3Technique | undefined>;
+  createV3Technique(data: InsertV3Technique): Promise<V3Technique>;
+  updateV3Technique(id: string, data: Partial<InsertV3Technique>): Promise<V3Technique | undefined>;
+  deleteV3Technique(id: string): Promise<void>;
+  getV3TechniqueGroups(): Promise<V3TechniqueGroup[]>;
+  getV3TechniqueGroup(id: string): Promise<V3TechniqueGroup | undefined>;
+  createV3TechniqueGroup(data: InsertV3TechniqueGroup): Promise<V3TechniqueGroup>;
+  updateV3TechniqueGroup(id: string, data: Partial<InsertV3TechniqueGroup>): Promise<V3TechniqueGroup | undefined>;
+  deleteV3TechniqueGroup(id: string): Promise<void>;
+  getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]>;
+  addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<V3TechniqueGroupMember>;
+  removeV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<void>;
 
   // System Skill operations (admin-defined custom skills)
   getSystemSkills(system?: string): Promise<SystemSkill[]>;
@@ -3490,6 +3508,70 @@ export class DatabaseStorage implements IStorage {
 
   async deleteV3ElementRequirement(id: string): Promise<void> {
     await db.delete(v3ElementRequirements).where(eq(v3ElementRequirements.id, id));
+  }
+
+  // AA V3 weapon techniques (Task #180) -------------------------------------
+  async getV3Techniques(): Promise<V3Technique[]> {
+    return await db.select().from(v3Techniques).orderBy(v3Techniques.name);
+  }
+
+  async getV3Technique(id: string): Promise<V3Technique | undefined> {
+    const [row] = await db.select().from(v3Techniques).where(eq(v3Techniques.id, id));
+    return row;
+  }
+
+  async createV3Technique(data: InsertV3Technique): Promise<V3Technique> {
+    const [created] = await db.insert(v3Techniques).values(data).returning();
+    return created;
+  }
+
+  async updateV3Technique(id: string, data: Partial<InsertV3Technique>): Promise<V3Technique | undefined> {
+    const [updated] = await db.update(v3Techniques).set(data).where(eq(v3Techniques.id, id)).returning();
+    return updated;
+  }
+
+  async deleteV3Technique(id: string): Promise<void> {
+    await db.delete(v3Techniques).where(eq(v3Techniques.id, id));
+  }
+
+  async getV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
+    return await db.select().from(v3TechniqueGroups).orderBy(v3TechniqueGroups.name);
+  }
+
+  async getV3TechniqueGroup(id: string): Promise<V3TechniqueGroup | undefined> {
+    const [row] = await db.select().from(v3TechniqueGroups).where(eq(v3TechniqueGroups.id, id));
+    return row;
+  }
+
+  async createV3TechniqueGroup(data: InsertV3TechniqueGroup): Promise<V3TechniqueGroup> {
+    const [created] = await db.insert(v3TechniqueGroups).values(data).returning();
+    return created;
+  }
+
+  async updateV3TechniqueGroup(id: string, data: Partial<InsertV3TechniqueGroup>): Promise<V3TechniqueGroup | undefined> {
+    const [updated] = await db.update(v3TechniqueGroups).set(data).where(eq(v3TechniqueGroups.id, id)).returning();
+    return updated;
+  }
+
+  async deleteV3TechniqueGroup(id: string): Promise<void> {
+    await db.delete(v3TechniqueGroups).where(eq(v3TechniqueGroups.id, id));
+  }
+
+  async getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]> {
+    return await db.select().from(v3TechniqueGroupMembers);
+  }
+
+  async addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<V3TechniqueGroupMember> {
+    const existing = await db.select().from(v3TechniqueGroupMembers)
+      .where(and(eq(v3TechniqueGroupMembers.groupId, groupId), eq(v3TechniqueGroupMembers.techniqueId, techniqueId)));
+    if (existing[0]) return existing[0];
+    const [created] = await db.insert(v3TechniqueGroupMembers).values({ groupId, techniqueId }).returning();
+    return created;
+  }
+
+  async removeV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<void> {
+    await db.delete(v3TechniqueGroupMembers)
+      .where(and(eq(v3TechniqueGroupMembers.groupId, groupId), eq(v3TechniqueGroupMembers.techniqueId, techniqueId)));
   }
 
   // System Skill operations (admin-defined custom skills)

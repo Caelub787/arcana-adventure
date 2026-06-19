@@ -110,6 +110,7 @@ export interface ItemDraft {
   templatePriority?: number;
   templateUseOwnOrder?: boolean;
   system?: string;
+  v3TechniqueGroupIds?: string[];
   // Children
   rolls?: RollEntryDraft[];
   craftRecipes?: CraftRecipeDraft[];
@@ -134,6 +135,7 @@ const FRESH: ItemDraft = {
   templateLinks: [],
   maxSpells: 10,
   system: "aa-v2",
+  v3TechniqueGroupIds: [],
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
@@ -142,6 +144,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [draft, setDraft] = React.useState<ItemDraft>(FRESH);
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [techniqueGroups, setTechniqueGroups] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
@@ -171,7 +174,20 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       .finally(() => setLoading(false));
   }, [open, initialValue?.id, host]);
 
+  // Load assignable V3 technique groups when the dialog opens in a V3 host.
+  React.useEffect(() => {
+    if (!open || !aav3 || !host.techniqueGroups) { setTechniqueGroups([]); return; }
+    host.techniqueGroups()
+      .then(setTechniqueGroups)
+      .catch(e => host.notify("error", `Failed to load technique groups: ${e?.message ?? e}`));
+  }, [open, aav3, host]);
+
   const set = (patch: Partial<ItemDraft>) => setDraft(d => ({ ...d, ...patch }));
+
+  const toggleTechniqueGroup = (id: string) => setDraft(d => {
+    const cur = d.v3TechniqueGroupIds ?? [];
+    return { ...d, v3TechniqueGroupIds: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] };
+  });
 
   const handleSave = async () => {
     if (!draft.name.trim()) {
@@ -350,6 +366,29 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       onChange={e => set({ breakChance: optionalNum(e.target.value) ?? 10 })} />
                   </div>
                 </Grid3>
+              )}
+              {aav3 && it === "weapon" && host.techniqueGroups && (
+                <div style={{ marginTop: 8 }}>
+                  <Label>Technique Groups</Label>
+                  {techniqueGroups.length === 0 ? (
+                    <div className="ld-subtle" data-testid="text-no-technique-groups">
+                      No technique groups defined yet.
+                    </div>
+                  ) : (
+                    <Stack gap="sm">
+                      {techniqueGroups.map(g => (
+                        <Row key={g.id}>
+                          <Checkbox
+                            checked={(draft.v3TechniqueGroupIds ?? []).includes(g.id)}
+                            onCheckedChange={() => toggleTechniqueGroup(g.id)}
+                            data-testid={`checkbox-technique-group-${g.id}`}
+                          />
+                          <Label>{g.name}</Label>
+                        </Row>
+                      ))}
+                    </Stack>
+                  )}
+                </div>
               )}
             </Section>
           )}

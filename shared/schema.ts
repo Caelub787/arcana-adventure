@@ -530,6 +530,11 @@ export const items = pgTable("items", {
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
   templateItemId: varchar("template_item_id").references(() => items.id, { onDelete: "set null" }),
+  // AA V3 only: technique groups assigned to a weapon. The weapon grants every
+  // technique contained in these groups (subject to per-technique unlock
+  // requirements). Stored as an array of v3_technique_groups ids; copies with
+  // the item row when a template item is granted to a character.
+  v3TechniqueGroupIds: text("v3_technique_group_ids").array().default(sql`ARRAY[]::text[]`),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -2282,3 +2287,56 @@ export const insertV3ElementRequirementSchema = createInsertSchema(v3ElementRequ
 });
 export type InsertV3ElementRequirement = z.infer<typeof insertV3ElementRequirementSchema>;
 export type V3ElementRequirement = typeof v3ElementRequirements.$inferSelect;
+
+// AA V3 only: admin-authored weapon Techniques. A technique has a profile
+// image, description, flat energy cost, optional unlock requirements (same OR'd
+// knowledge/item conditions as element requirements, stored inline as jsonb),
+// and a roll mode: "base_damage" rolls the weapon's base-attack level dice;
+// "skill_check" rolls 1d{attrDie}+skillMod for `skillKey` (a V3 skill key).
+export const v3Techniques = pgTable("v3_techniques", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  image: text("image"),
+  description: text("description"),
+  energyCost: integer("energy_cost").notNull().default(0),
+  rollMode: text("roll_mode").notNull().default("base_damage"), // 'base_damage' | 'skill_check'
+  skillKey: text("skill_key"), // V3 skill key, used when rollMode === 'skill_check'
+  // OR'd unlock conditions (V3ElementCondition[] from shared/v3spells.ts). Empty
+  // array => the technique is unlocked for everyone who owns the weapon.
+  requirements: jsonb("requirements").$type<{ conditionType: "knowledge" | "item"; knowledgeName?: string | null; itemId?: string | null; itemName?: string | null; consumed?: boolean | null }[]>().default(sql`'[]'::jsonb`),
+  system: text("system").notNull().default("aa-v3"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertV3TechniqueSchema = createInsertSchema(v3Techniques).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertV3Technique = z.infer<typeof insertV3TechniqueSchema>;
+export type V3Technique = typeof v3Techniques.$inferSelect;
+
+// AA V3 only: a named group/bundle of techniques. Weapons assign one or more
+// groups (items.v3TechniqueGroupIds) and thereby grant all member techniques.
+export const v3TechniqueGroups = pgTable("v3_technique_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  system: text("system").notNull().default("aa-v3"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertV3TechniqueGroupSchema = createInsertSchema(v3TechniqueGroups).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertV3TechniqueGroup = z.infer<typeof insertV3TechniqueGroupSchema>;
+export type V3TechniqueGroup = typeof v3TechniqueGroups.$inferSelect;
+
+// Join: which techniques belong to which group (many-to-many).
+export const v3TechniqueGroupMembers = pgTable("v3_technique_group_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").notNull().references((): any => v3TechniqueGroups.id, { onDelete: "cascade" }),
+  techniqueId: varchar("technique_id").notNull().references((): any => v3Techniques.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  groupIdx: index("v3_technique_group_members_group_idx").on(t.groupId),
+  uniqueMember: index("v3_technique_group_members_unique_idx").on(t.groupId, t.techniqueId),
+}));
+export type V3TechniqueGroupMember = typeof v3TechniqueGroupMembers.$inferSelect;

@@ -284,6 +284,7 @@ export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: str
       transport: wrappedTransport,
       notify,
       imagePicker,
+      techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
     }),
     [wrappedTransport, notify, imagePicker],
   );

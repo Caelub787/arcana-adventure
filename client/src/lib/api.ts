@@ -2616,6 +2616,71 @@ class ApiClient {
     return this.request(`/admin/v3-element-requirements/${id}`, { method: 'DELETE' });
   }
 
+  // AA V3 weapon techniques (Task #180)
+  async getV3Techniques(): Promise<V3Technique[]> {
+    return this.request(`/v3/techniques`);
+  }
+
+  async getV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
+    return this.request(`/v3/technique-groups`);
+  }
+
+  async getAdminV3Techniques(): Promise<V3Technique[]> {
+    return this.request(`/admin/v3-techniques`);
+  }
+
+  async createV3Technique(data: {
+    name: string;
+    image?: string | null;
+    description?: string | null;
+    energyCost?: number;
+    rollMode?: 'base_damage' | 'skill_check';
+    skillKey?: string | null;
+    requirements?: V3TechniqueCondition[];
+  }): Promise<V3Technique> {
+    return this.request(`/admin/v3-techniques`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateV3Technique(id: string, data: Partial<{
+    name: string;
+    image: string | null;
+    description: string | null;
+    energyCost: number;
+    rollMode: 'base_damage' | 'skill_check';
+    skillKey: string | null;
+    requirements: V3TechniqueCondition[];
+  }>): Promise<V3Technique> {
+    return this.request(`/admin/v3-techniques/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteV3Technique(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-techniques/${id}`, { method: 'DELETE' });
+  }
+
+  async getAdminV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
+    return this.request(`/admin/v3-technique-groups`);
+  }
+
+  async createV3TechniqueGroup(data: { name: string }): Promise<V3TechniqueGroup> {
+    return this.request(`/admin/v3-technique-groups`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateV3TechniqueGroup(id: string, data: { name: string }): Promise<V3TechniqueGroup> {
+    return this.request(`/admin/v3-technique-groups/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteV3TechniqueGroup(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-technique-groups/${id}`, { method: 'DELETE' });
+  }
+
+  async addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<any> {
+    return this.request(`/admin/v3-technique-groups/${groupId}/members`, { method: 'POST', body: JSON.stringify({ techniqueId }) });
+  }
+
+  async removeV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-technique-groups/${groupId}/members/${techniqueId}`, { method: 'DELETE' });
+  }
+
 }
 
 export interface SandboxTemplate {
@@ -2690,6 +2755,36 @@ export interface V3ElementRequirement {
   itemName: string | null;
   consumed: boolean;
   createdAt: string;
+}
+
+// AA V3 weapon techniques (Task #180)
+export interface V3TechniqueCondition {
+  conditionType: 'knowledge' | 'item';
+  knowledgeName?: string | null;
+  itemId?: string | null;
+  itemName?: string | null;
+  consumed?: boolean | null;
+}
+
+export interface V3Technique {
+  id: string;
+  name: string;
+  image: string | null;
+  description: string | null;
+  energyCost: number;
+  rollMode: 'base_damage' | 'skill_check';
+  skillKey: string | null;
+  requirements: V3TechniqueCondition[];
+  system: string;
+  createdAt: string;
+}
+
+export interface V3TechniqueGroup {
+  id: string;
+  name: string;
+  system: string;
+  createdAt: string;
+  techniqueIds: string[];
 }
 
 // Returned by admin approve/create when another official (canonical) spell

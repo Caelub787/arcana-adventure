@@ -6,6 +6,9 @@ import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion"
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, type V3AttributeKey, type V3ArmorBoost } from "@shared/v3";
+import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
+import { evaluateV3ElementEligibility } from "@shared/v3spells";
+import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8485,6 +8488,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                     </div>
                   )}
                 </div>
+                {itemData.itemType === 'weapon' && campaignSystem === 'aa-v3' && (
+                  <V3WeaponUsePanel item={itemData} character={character} items={allItems || []} />
+                )}
               </div>
             )}
 
@@ -26272,6 +26278,150 @@ interface ItemDetailDialogProps {
   charPanelSuffix?: string;
 }
 
+// AA V3 weapon usage surface (Task #180): a leveled base attack plus the
+// techniques unlocked by the technique groups assigned to the weapon. Rendered
+// inside the weapon ItemDetailDialog and the battlemap hotbar info panel.
+// V3-only — callers gate this behind campaignSystem === 'aa-v3'.
+function V3WeaponUsePanel({ item, character, items }: { item: any; character: any; items: any[] }) {
+  const [level, setLevel] = useState(1);
+  const lv = Math.max(1, Math.floor(level || 1));
+
+  const { data: techniques = [] } = useQuery({
+    queryKey: ['v3-techniques'],
+    queryFn: () => api.getV3Techniques(),
+  });
+  const { data: groups = [] } = useQuery({
+    queryKey: ['v3-technique-groups'],
+    queryFn: () => api.getV3TechniqueGroups(),
+  });
+  const { data: customSkills = [] } = useQuery({
+    queryKey: ['character-custom-skills', character?.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+    enabled: !!character?.id,
+  });
+
+  const castChar = character as V3WeaponCastCharacter;
+
+  const unlocked = useMemo(() => {
+    const assigned: string[] = Array.isArray(item?.v3TechniqueGroupIds) ? item.v3TechniqueGroupIds : [];
+    if (assigned.length === 0) return [] as any[];
+    const techIds = new Set<string>();
+    for (const g of groups) {
+      if (assigned.includes(g.id)) for (const tid of g.techniqueIds || []) techIds.add(tid);
+    }
+    const input = {
+      knowledgeNames: (customSkills ?? []).map((s: any) => s.name).filter(Boolean),
+      items: (items ?? []).map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
+    };
+    return techniques.filter((t: any) => {
+      if (!techIds.has(t.id)) return false;
+      const reqs = Array.isArray(t.requirements) ? t.requirements : [];
+      return evaluateV3ElementEligibility(reqs as any, input).usable;
+    });
+  }, [item?.v3TechniqueGroupIds, groups, techniques, customSkills, items]);
+
+  const baseEnergy = v3WeaponBaseAttackEnergy(lv);
+
+  return (
+    <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-v3-weapon-use">
+      <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+        <Sword className="h-4 w-4" /> Base Attack
+      </h3>
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-stone-500">Attack Level</span>
+        <span className="flex items-center gap-1 text-amber-300 font-semibold" data-testid="text-v3-weapon-dice">
+          <Dices className="h-4 w-4" /> {v3LevelDiceNotation(lv)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+          onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1) - 1))}
+          disabled={lv <= 1}
+          data-testid="button-v3-weapon-level-minus"
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+        <Input
+          type="number"
+          min={1}
+          value={lv}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
+          }}
+          className="h-8 w-20 text-center bg-stone-950 border-stone-600"
+          data-testid="input-v3-weapon-level"
+        />
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+          onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1)) + 1)}
+          data-testid="button-v3-weapon-level-plus"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      <p className="text-xs text-stone-400" data-testid="text-v3-weapon-energy">
+        Energy cost: <span className="text-yellow-300">{baseEnergy}</span>
+      </p>
+      <Button
+        type="button"
+        className="w-full bg-amber-700 hover:bg-amber-600 text-white"
+        onClick={() => castV3WeaponBaseAttack(castChar, item?.name || 'Weapon', lv)}
+        data-testid="button-v3-weapon-attack"
+      >
+        <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(lv)})
+      </Button>
+
+      {unlocked.length > 0 && (
+        <div className="space-y-2 pt-2">
+          <h4 className="text-xs font-bold text-stone-300 uppercase tracking-wide">Techniques</h4>
+          {unlocked.map((t: any) => {
+            const skill = t.rollMode === 'skill_check' ? V3_SKILLS.find((s) => s.key === t.skillKey) : null;
+            return (
+              <div
+                key={t.id}
+                className="flex items-center gap-2 rounded border border-stone-700 bg-stone-900/60 p-2"
+                data-testid={`row-v3-technique-${t.id}`}
+              >
+                {t.image ? (
+                  <img src={t.image} alt={t.name} className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-8 w-8 rounded bg-stone-800 flex items-center justify-center flex-shrink-0">
+                    <Swords className="h-4 w-4 text-amber-500" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-stone-200 truncate">{t.name}</p>
+                  <p className="text-[11px] text-stone-500 truncate">
+                    {(t.energyCost ?? 0)} energy · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
+                  </p>
+                  {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-amber-700 hover:bg-amber-600 text-white flex-shrink-0"
+                  onClick={() => castV3Technique(castChar, t, lv)}
+                  data-testid={`button-v3-technique-${t.id}`}
+                >
+                  Use
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CraftSection({ item, character, canCraft }: { item: any; character: any; canCraft: boolean }) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -27170,6 +27320,10 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   )}
                 </div>
               </div>
+            )}
+
+            {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
+              <V3WeaponUsePanel item={currentData} character={character} items={items} />
             )}
 
             {currentData.itemType === 'armor' && (
