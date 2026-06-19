@@ -85,9 +85,9 @@ function SearchMultiSelect({
   const selSet = new Set(selectedIds);
   const selected = options.filter((o) => selSet.has(o.id));
   const trimmed = search.trim().toLowerCase();
-  const filtered = !trimmed
-    ? []
-    : options.filter((o) => !selSet.has(o.id) && o.name.toLowerCase().includes(trimmed)).slice(0, 30);
+  const filtered = options
+    .filter((o) => !selSet.has(o.id) && (!trimmed || o.name.toLowerCase().includes(trimmed)))
+    .slice(0, 100);
   if (options.length === 0) {
     return <div className="ld-subtle" data-testid={`text-no-${testIdPrefix}`}>{emptyText}</div>;
   }
@@ -104,17 +104,15 @@ function SearchMultiSelect({
         </Stack>
       )}
       <Input value={search} placeholder={placeholder ?? "Search…"} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testIdPrefix}-search`} />
-      {trimmed && (
-        <Stack gap="sm">
-          {filtered.length === 0 ? (
-            <div className="ld-subtle">No matches</div>
-          ) : (
-            filtered.map((o) => (
-              <Button key={o.id} size="sm" variant="outline" onClick={() => onToggle(o.id)} data-testid={`button-add-${testIdPrefix}-${o.id}`}>+ {o.name}</Button>
-            ))
-          )}
-        </Stack>
-      )}
+      <Stack gap="sm">
+        {filtered.length === 0 ? (
+          <div className="ld-subtle">{trimmed ? "No matches" : "All selected"}</div>
+        ) : (
+          filtered.map((o) => (
+            <Button key={o.id} size="sm" variant="outline" onClick={() => onToggle(o.id)} data-testid={`button-add-${testIdPrefix}-${o.id}`}>+ {o.name}</Button>
+          ))
+        )}
+      </Stack>
     </Stack>
   );
 }

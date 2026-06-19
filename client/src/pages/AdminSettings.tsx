@@ -2335,9 +2335,10 @@ function AdminSearchPicker({
   const [search, setSearch] = useState('');
   const selected = options.find((o) => o.value === value);
   const trimmed = search.trim().toLowerCase();
-  const filtered = !trimmed
-    ? []
-    : options.filter((o) => o.label.toLowerCase().includes(trimmed)).slice(0, 30);
+  const filtered = (trimmed
+    ? options.filter((o) => o.label.toLowerCase().includes(trimmed))
+    : options
+  ).slice(0, 100);
   return (
     <div className="space-y-1">
       {selected && (
@@ -2356,19 +2357,17 @@ function AdminSearchPicker({
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
             <Input className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
           </div>
-          {trimmed && (
-            <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
-              {filtered.length === 0 ? (
-                <p className="text-xs text-stone-500 p-2 italic">No matches</p>
-              ) : (
-                filtered.map((o) => (
-                  <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onChange(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
-                    {o.label}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
+          <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
+            {filtered.length === 0 ? (
+              <p className="text-xs text-stone-500 p-2 italic">No matches</p>
+            ) : (
+              filtered.map((o) => (
+                <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onChange(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
         </>
       )}
     </div>
@@ -2398,9 +2397,9 @@ function AdminSearchMultiPicker({
   const selSet = new Set(selectedIds);
   const selectedOptions = options.filter((o) => selSet.has(o.value));
   const trimmed = search.trim().toLowerCase();
-  const filtered = !trimmed
-    ? []
-    : options.filter((o) => !selSet.has(o.value) && o.label.toLowerCase().includes(trimmed)).slice(0, 30);
+  const filtered = options
+    .filter((o) => !selSet.has(o.value) && (!trimmed || o.label.toLowerCase().includes(trimmed)))
+    .slice(0, 100);
   return (
     <div className="space-y-1.5">
       {selectedOptions.length > 0 && (
@@ -2423,19 +2422,17 @@ function AdminSearchMultiPicker({
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
             <Input className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
           </div>
-          {trimmed && (
-            <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
-              {filtered.length === 0 ? (
-                <p className="text-xs text-stone-500 p-2 italic">No matches</p>
-              ) : (
-                filtered.map((o) => (
-                  <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onAdd(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
-                    {o.label}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
+          <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
+            {filtered.length === 0 ? (
+              <p className="text-xs text-stone-500 p-2 italic">{trimmed ? 'No matches' : 'All selected'}</p>
+            ) : (
+              filtered.map((o) => (
+                <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onAdd(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
         </>
       )}
     </div>
