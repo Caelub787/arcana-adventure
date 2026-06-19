@@ -12378,6 +12378,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GM-only: reverse a permanent V3 skill-boost previously granted by a skill
+  // scroll (Task #198). 'decrement' lowers the stored boost by `amount` (default
+  // 1, removed once it hits 0); 'clear' removes the entry entirely. AA V3 only.
+  app.post("/api/characters/:characterId/v3-skill-boost", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.isGM || access.trustedSelf) return res.status(403).json({ error: "Only the GM can adjust skill boosts" });
+      if (access.campaign?.system !== 'aa-v3') return res.status(400).json({ error: "Skill boosts are AA V3 only" });
+
+      const { skillKey, action } = req.body || {};
+      const amount = Math.max(1, Math.floor(Number(req.body?.amount) || 1));
+      if (!skillKey || typeof skillKey !== 'string') return res.status(400).json({ error: "skillKey is required" });
+      if (action !== 'decrement' && action !== 'clear') return res.status(400).json({ error: "action must be 'decrement' or 'clear'" });
+
+      const boosts: Record<string, number> = { ...((access.character as any)?.v3SkillBoosts || {}) };
+      if (!(skillKey in boosts)) return res.status(404).json({ error: "No skill boost to adjust" });
+
+      if (action === 'clear') {
+        delete boosts[skillKey];
+      } else {
+        const next = (Number(boosts[skillKey]) || 0) - amount;
+        if (next > 0) boosts[skillKey] = next;
+        else delete boosts[skillKey];
+      }
+
+      const updatedCharacter = await storage.updateCharacter(req.params.characterId, { v3SkillBoosts: boosts } as any);
+      if (updatedCharacter?.campaignId) {
+        broadcastToCampaign(updatedCharacter.campaignId, { type: "character_updated", characterId: updatedCharacter.id, character: updatedCharacter });
+      }
+      res.json({ success: true, character: updatedCharacter });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to adjust skill boost" });
+    }
+  });
+
   app.post("/api/items/:id/damage", requireAuth, async (req, res) => {
     try {
       const amount = req.body.amount || 1;

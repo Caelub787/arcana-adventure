@@ -1105,6 +1105,21 @@ class ApiClient {
     });
   }
 
+  // GM-only: reverse a permanent V3 skill-boost (from skill scrolls). action
+  // 'decrement' lowers the boost by `amount` (default 1, removed at <= 0);
+  // 'clear' removes the entry entirely. AA V3 only.
+  async adjustV3SkillBoost(
+    characterId: string,
+    skillKey: string,
+    action: 'decrement' | 'clear',
+    amount = 1,
+  ): Promise<any> {
+    return this.request(`/characters/${characterId}/v3-skill-boost`, {
+      method: 'POST',
+      body: JSON.stringify({ skillKey, action, amount }),
+    });
+  }
+
   // Crafter Recipes (AA V2 only)
   async getCraftRecipes(itemId: string): Promise<any[]> {
     return this.request(`/items/${itemId}/recipes`);

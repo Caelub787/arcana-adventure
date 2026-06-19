@@ -16323,6 +16323,7 @@ function V3ArmorBoostsEditor({
 function V3AttrsAndSkillsTab({
   liveCharacter,
   canEditSheet,
+  isGM = false,
   updateCharacterMutation,
   handleRoll,
   openRollPanel,
@@ -16330,11 +16331,23 @@ function V3AttrsAndSkillsTab({
 }: {
   liveCharacter: any;
   canEditSheet: boolean;
+  isGM?: boolean;
   updateCharacterMutation: any;
   handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
   openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
   armorBoosts?: Record<string, number>;
 }) {
+  const skillBoostQueryClient = useQueryClient();
+  const skillBoostMutation = useMutation({
+    mutationFn: ({ skillKey, action }: { skillKey: string; action: 'decrement' | 'clear' }) =>
+      api.adjustV3SkillBoost(liveCharacter.id, skillKey, action),
+    onSuccess: () => {
+      skillBoostQueryClient.invalidateQueries({ queryKey: ['character', liveCharacter.id] });
+      if (liveCharacter.campaignId) {
+        skillBoostQueryClient.invalidateQueries({ queryKey: ['characters', liveCharacter.campaignId] });
+      }
+    },
+  });
   const [editing, setEditing] = React.useState(false);
   const [attrData, setAttrData] = React.useState<Record<string, number>>({});
   const [skillData, setSkillData] = React.useState<Record<string, number>>({});
@@ -16637,11 +16650,37 @@ function V3AttrsAndSkillsTab({
                       )}
                     </div>
                   ) : (
-                    <span className={`text-xs font-semibold text-right shrink-0 ${skillArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400'}`} data-testid={`text-v3-skill-${skill.key}`}>
-                      {skillVal >= 0 ? `+${skillVal}` : skillVal}
-                      {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
-                      {skillScrollBoost > 0 && <span className="text-sky-400/80 ml-0.5">(+{skillScrollBoost})</span>}
-                    </span>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className={`text-xs font-semibold text-right ${skillArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400'}`} data-testid={`text-v3-skill-${skill.key}`}>
+                        {skillVal >= 0 ? `+${skillVal}` : skillVal}
+                        {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
+                        {skillScrollBoost > 0 && <span className="text-sky-400/80 ml-0.5">(+{skillScrollBoost})</span>}
+                      </span>
+                      {isGM && skillScrollBoost > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <button
+                            type="button"
+                            disabled={skillBoostMutation.isPending}
+                            onClick={() => skillBoostMutation.mutate({ skillKey: skill.key, action: 'decrement' })}
+                            className="h-4 px-1 rounded bg-stone-800 hover:bg-stone-700 text-sky-400/80 text-[10px] leading-none flex items-center justify-center disabled:opacity-50"
+                            title="Lower this scroll boost by 1 (GM)"
+                            data-testid={`button-v3-skill-boost-decrement-${skill.key}`}
+                          >
+                            −1
+                          </button>
+                          <button
+                            type="button"
+                            disabled={skillBoostMutation.isPending}
+                            onClick={() => skillBoostMutation.mutate({ skillKey: skill.key, action: 'clear' })}
+                            className="h-4 px-1 rounded bg-stone-800 hover:bg-red-900/40 text-red-400/80 text-[10px] leading-none flex items-center justify-center disabled:opacity-50"
+                            title="Clear this scroll boost (GM)"
+                            data-testid={`button-v3-skill-boost-clear-${skill.key}`}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
@@ -19829,6 +19868,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <V3AttrsAndSkillsTab
                 liveCharacter={liveCharacter}
                 canEditSheet={canEditSheet}
+                isGM={isGM}
                 updateCharacterMutation={updateCharacterMutation}
                 handleRoll={handleRoll}
                 openRollPanel={openRollPanel}
