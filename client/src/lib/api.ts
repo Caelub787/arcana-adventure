@@ -2625,6 +2625,20 @@ class ApiClient {
     return this.request(`/v3/technique-groups`);
   }
 
+  // Authoritatively use a technique: the server validates eligibility and
+  // deducts energy + a required consumable item, returning the updated
+  // character. The client still rolls the dice for display only.
+  async useV3Technique(
+    techniqueId: string,
+    characterId: string,
+    weaponItemId: string,
+  ): Promise<{ success: boolean; energySpent: number; consumedItem: { id: string; name: string | null } | null; character: any }> {
+    return this.request(`/v3/techniques/${techniqueId}/use`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId, weaponItemId }),
+    });
+  }
+
   async getAdminV3Techniques(): Promise<V3Technique[]> {
     return this.request(`/admin/v3-techniques`);
   }

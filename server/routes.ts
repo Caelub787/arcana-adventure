@@ -6640,6 +6640,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AA V3 only: authoritatively use a weapon technique. Mirrors the spell-craft
+  // deduction model so a modified client cannot fire a technique without paying
+  // its energy or spending a required consumable item. Validates that the
+  // technique is actually granted by a weapon the character owns, re-checks the
+  // technique's OR'd unlock conditions, deducts energy, and consumes a sole-path
+  // consumable — all server-side. The dice roll itself stays on the client (it
+  // is purely a display value with no resource impact).
+  app.post("/api/v3/techniques/:id/use", requireAuth, async (req, res) => {
+    try {
+      const { characterId, weaponItemId } = req.body || {};
+      if (!characterId) {
+        return res.status(400).json({ error: "characterId is required" });
+      }
+      if (!weaponItemId) {
+        return res.status(400).json({ error: "weaponItemId is required" });
+      }
+
+      const access = await checkCharacterAccess(characterId, req.session.userId!, "edit");
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to use this character" });
+
+      const character = access.character;
+      const campaign = access.campaign;
+      if (campaign?.system !== "aa-v3") {
+        return res.status(400).json({ error: "Techniques are only available in A.A. V3 campaigns" });
+      }
+
+      const technique = await storage.getV3Technique(req.params.id);
+      if (!technique) return res.status(404).json({ error: "Technique not found" });
+
+      // The weapon must belong to this character and assign a technique group
+      // that contains this technique. Prevents firing arbitrary techniques.
+      const weapon = await storage.getItem(weaponItemId);
+      if (!weapon) return res.status(404).json({ error: "Weapon not found" });
+      if (weapon.characterId !== character.id) {
+        return res.status(403).json({ error: "That weapon does not belong to this character" });
+      }
+      const assignedGroupIds: string[] = Array.isArray((weapon as any).v3TechniqueGroupIds)
+        ? (weapon as any).v3TechniqueGroupIds
+        : [];
+      if (assignedGroupIds.length === 0) {
+        return res.status(403).json({ error: "This weapon grants no techniques" });
+      }
+      const members = await storage.getV3TechniqueGroupMembers();
+      const granted = members.some(
+        (m) => assignedGroupIds.includes(m.groupId) && m.techniqueId === technique.id,
+      );
+      if (!granted) {
+        return res.status(403).json({ error: "This weapon does not grant that technique" });
+      }
+
+      // Re-validate the technique's OR'd unlock conditions against the
+      // character's Knowledge + inventory; collect a consumable to charge only
+      // when that is the sole satisfying path (free paths charge nothing).
+      const charKnowledge = await storage.getCharacterCustomSkills(character.id);
+      const charInventory = await storage.getItemsByCharacter(character.id);
+      const eligibility = v3spells.evaluateV3ElementEligibility(
+        Array.isArray(technique.requirements) ? (technique.requirements as any) : [],
+        {
+          knowledgeNames: charKnowledge.map((k) => k.name),
+          items: charInventory.map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
+        },
+      );
+      const rejectLocked = () =>
+        res.status(403).json({
+          error: "You don't meet this technique's requirements",
+          reason: "locked",
+          requirements: eligibility.requirements,
+        });
+      if (!eligibility.usable) {
+        return rejectLocked();
+      }
+
+      // Reserve a consumable inventory unit when the only satisfying path is a
+      // consumed item (mirrors the spell-craft sole-path consume rule).
+      let reservedRow: any = null;
+      if (!eligibility.freeToUse) {
+        const options = eligibility.consumeOptions;
+        reservedRow =
+          (charInventory as any[]).find(
+            (it) =>
+              (it.quantity ?? 1) > 0 &&
+              options.some(
+                (opt) =>
+                  (opt.itemId && it.templateItemId && it.templateItemId === opt.itemId) ||
+                  (opt.name &&
+                    it.name &&
+                    it.name.trim().toLowerCase() === (opt.name || "").trim().toLowerCase()),
+              ),
+          ) || null;
+        if (!reservedRow) {
+          return rejectLocked();
+        }
+      }
+
+      // Energy: reject before mutating anything if the character can't pay.
+      const energyCost = Math.max(0, Math.floor(Number(technique.energyCost) || 0));
+      const currentEnergy = character.energy ?? 0;
+      if (energyCost > 0 && currentEnergy < energyCost) {
+        return res.status(400).json({
+          error: "Not enough energy",
+          reason: "energy",
+          required: energyCost,
+          have: currentEnergy,
+        });
+      }
+
+      // All checks passed — apply deductions. Consume the reserved item first so
+      // the consumable requirement can never be bypassed (the Neon HTTP driver
+      // has no interactive transactions), then deduct energy.
+      let consumedItem: { id: string; name: string | null } | null = null;
+      if (reservedRow) {
+        const qty = reservedRow.quantity ?? 1;
+        if (qty > 1) {
+          await storage.updateItem(reservedRow.id, { quantity: qty - 1 } as any);
+        } else {
+          await storage.deleteItem(reservedRow.id);
+        }
+        consumedItem = { id: reservedRow.id, name: reservedRow.name ?? null };
+      }
+
+      let updatedCharacter = character;
+      if (energyCost > 0) {
+        updatedCharacter = await storage.updateCharacter(character.id, {
+          energy: currentEnergy - energyCost,
+        });
+      }
+
+      if (campaign?.id) {
+        broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
+      }
+
+      res.json({
+        success: true,
+        energySpent: energyCost,
+        consumedItem,
+        character: updatedCharacter,
+      });
+    } catch (err: any) {
+      console.error("[V3 Technique Use] Error:", err?.message, err?.stack);
+      res.status(500).json({ error: "Failed to use technique" });
+    }
+  });
+
   // GM authors a pending spell's name/description/image.
   app.post("/api/v3/spells/:id/author", requireAuth, async (req, res) => {
     try {

@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, type V3AttributeKey, type V3ArmorBoost } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { castV3WeaponBaseAttack, castV3Technique, consumeV3TechniqueItems, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
+import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26409,16 +26409,31 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                   type="button"
                   size="sm"
                   className="bg-amber-700 hover:bg-amber-600 text-white flex-shrink-0"
-                  onClick={() => {
-                    const fired = castV3Technique(castChar, t, lv);
-                    if (!fired) return;
-                    const knowledgeNames = (customSkills ?? []).map((s: any) => s.name).filter(Boolean);
-                    void consumeV3TechniqueItems(t, items, knowledgeNames).then(() => {
-                      if (character?.id) {
-                        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
-                        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
-                      }
-                    });
+                  onClick={async () => {
+                    // The server is authoritative for resources: it validates
+                    // eligibility and deducts energy + any required consumable
+                    // item, so a modified client can't bypass them. The dice
+                    // roll itself stays client-side (display only).
+                    try {
+                      await api.useV3Technique(t.id, character.id, item.id);
+                    } catch (err: any) {
+                      triggerRollNotification({
+                        type: 'system',
+                        label: err?.message || 'Could not use technique',
+                        result: 0,
+                        total: 0,
+                        username: castChar.name || 'Unknown',
+                        characterName: castChar.name || 'Unknown',
+                        calculationBreakdown: err?.message || 'Could not use technique',
+                      });
+                      return;
+                    }
+                    castV3Technique(castChar, t, lv, { skipEnergy: true });
+                    if (character?.id) {
+                      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+                      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+                      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+                    }
                   }}
                   data-testid={`button-v3-technique-${t.id}`}
                 >
