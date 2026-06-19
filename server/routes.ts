@@ -17777,6 +17777,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         grantsDcBonus: itemData.grantsDcBonus ?? false,
         dcBonusValue: itemData.dcBonusValue ?? 0,
         isTemplate: false,
+        ...(itemData.v3TechniqueGroupIds !== undefined ? { v3TechniqueGroupIds: itemData.v3TechniqueGroupIds } : {}),
+        ...(itemData.scrollEffectMode !== undefined ? { scrollEffectMode: itemData.scrollEffectMode } : {}),
+        ...(itemData.scrollKnowledgeName !== undefined ? { scrollKnowledgeName: itemData.scrollKnowledgeName } : {}),
+        ...(itemData.scrollKnowledgeAttribute !== undefined ? { scrollKnowledgeAttribute: itemData.scrollKnowledgeAttribute } : {}),
+        ...(itemData.scrollKnowledgeValue !== undefined ? { scrollKnowledgeValue: itemData.scrollKnowledgeValue } : {}),
+        ...(itemData.scrollSkillKey !== undefined ? { scrollSkillKey: itemData.scrollSkillKey } : {}),
+        ...(itemData.scrollSkillAmount !== undefined ? { scrollSkillAmount: itemData.scrollSkillAmount } : {}),
+        ...(itemData.runeTargetItemType !== undefined ? { runeTargetItemType: itemData.runeTargetItemType } : {}),
+        ...(itemData.runeStatEffects !== undefined ? { runeStatEffects: itemData.runeStatEffects } : {}),
+        ...(itemData.runeRemoveDurabilityCost !== undefined ? { runeRemoveDurabilityCost: itemData.runeRemoveDurabilityCost } : {}),
+        ...(itemData.runeUnremovable !== undefined ? { runeUnremovable: itemData.runeUnremovable } : {}),
+        ...(itemData.runeUseMode !== undefined ? { runeUseMode: itemData.runeUseMode } : {}),
+        ...(itemData.runeSkillKey !== undefined ? { runeSkillKey: itemData.runeSkillKey } : {}),
+        ...(itemData.runeSkillAdjustment !== undefined ? { runeSkillAdjustment: itemData.runeSkillAdjustment } : {}),
+        ...(itemData.runeWeaponDamageLevelBonus !== undefined ? { runeWeaponDamageLevelBonus: itemData.runeWeaponDamageLevelBonus } : {}),
       } as any);
 
       if (shopItem.quantity > 0) {

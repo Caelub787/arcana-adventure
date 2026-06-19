@@ -11402,6 +11402,8 @@ export default function Campaign() {
                       <option value="container">Container</option>
                       <option value="currency">Currency</option>
                       <option value="ammunition">Ammunition</option>
+                      {isAAV3 && <option value="scroll">Scroll</option>}
+                      {isAAV3 && <option value="rune">Rune</option>}
                     </select>
                     <select
                       value={shopImportRarityFilter}
@@ -11505,6 +11507,21 @@ export default function Campaign() {
                               detonateAoeRange: t.detonateAoeRange, canApplyEffects: t.canApplyEffects,
                               grantsDcBonus: t.grantsDcBonus, dcBonusValue: t.dcBonusValue,
                               rationServings: t.rationServings,
+                              v3TechniqueGroupIds: t.v3TechniqueGroupIds,
+                              scrollEffectMode: t.scrollEffectMode,
+                              scrollKnowledgeName: t.scrollKnowledgeName,
+                              scrollKnowledgeAttribute: t.scrollKnowledgeAttribute,
+                              scrollKnowledgeValue: t.scrollKnowledgeValue,
+                              scrollSkillKey: t.scrollSkillKey,
+                              scrollSkillAmount: t.scrollSkillAmount,
+                              runeTargetItemType: t.runeTargetItemType,
+                              runeStatEffects: t.runeStatEffects,
+                              runeRemoveDurabilityCost: t.runeRemoveDurabilityCost,
+                              runeUnremovable: t.runeUnremovable,
+                              runeUseMode: t.runeUseMode,
+                              runeSkillKey: t.runeSkillKey,
+                              runeSkillAdjustment: t.runeSkillAdjustment,
+                              runeWeaponDamageLevelBonus: t.runeWeaponDamageLevelBonus,
                             };
                             createShopItemMutation.mutate({
                               pinId: shopEditingPin.id,
