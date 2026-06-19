@@ -2698,6 +2698,9 @@ export interface V3SpellConflict {
   conflict: true;
   existing: V3Spell;
   candidate: V3Spell;
+  // How many campaigns / distinct characters currently use this recipe (shared
+  // by both spells since they share a composition hash).
+  usage?: { campaignCount: number; characterCount: number };
 }
 
 export type V3SpellApproveResult = V3Spell | V3SpellConflict;

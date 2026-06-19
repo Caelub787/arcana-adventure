@@ -46,6 +46,7 @@ const h = vi.hoisted(() => {
     updateV3Spell: fn(),
     createV3Spell: fn(),
     getCanonicalV3SpellByHash: fn(),
+    getV3SpellUsageByHash: fn(),
     getV3SpellsForSpellbook: fn(),
     getV3SpellsForCharacter: fn(),
     deleteV3Spell: fn(),

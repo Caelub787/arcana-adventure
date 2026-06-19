@@ -1893,7 +1893,7 @@ function V3SpellsApprovalView() {
   const [showImageBrowser, setShowImageBrowser] = useState(false);
   const [filter, setFilter] = useState<V3SpellFilter>('official');
   // Set when approve/create finds another official spell with the same recipe.
-  const [conflict, setConflict] = useState<{ existing: V3Spell; candidate: V3Spell } | null>(null);
+  const [conflict, setConflict] = useState<{ existing: V3Spell; candidate: V3Spell; usage?: { campaignCount: number; characterCount: number } } | null>(null);
   const spellImageInputRef = useRef<HTMLInputElement>(null);
 
   const handleSpellImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1921,7 +1921,7 @@ function V3SpellsApprovalView() {
     mutationFn: (id: string) => api.approveV3Spell(id),
     onSuccess: (res) => {
       if (isV3SpellConflict(res)) {
-        setConflict({ existing: res.existing, candidate: res.candidate });
+        setConflict({ existing: res.existing, candidate: res.candidate, usage: res.usage });
         return;
       }
       toast({ title: 'Approved', description: 'This composition is now official.' });
@@ -1968,7 +1968,7 @@ function V3SpellsApprovalView() {
       queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
       setCreating(false);
       if (isV3SpellConflict(res)) {
-        setConflict({ existing: res.existing, candidate: res.candidate });
+        setConflict({ existing: res.existing, candidate: res.candidate, usage: res.usage });
         return;
       }
       toast({ title: 'Created', description: 'New recognized spell added.' });
@@ -2221,24 +2221,48 @@ function V3SpellsApprovalView() {
       <ImageBrowser open={showImageBrowser} onOpenChange={setShowImageBrowser} onSelect={(url) => setImage(url)} title="Select Spell Image" />
 
       <Dialog open={!!conflict} onOpenChange={(o) => { if (!o) setConflict(null); }}>
-        <DialogContent className="max-w-md" data-testid="dialog-v3-spell-conflict">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-v3-spell-conflict">
           <DialogHeader>
             <DialogTitle>Duplicate Recipe</DialogTitle>
             <DialogDescription>
-              Another official spell already exists for this exact recipe. Only one can be the official version. Choose which one to keep — spells already used in campaigns are never changed.
+              Another official spell already exists for this exact recipe. Only one can be the official version. Compare them below and choose which one to keep — spells already used in campaigns are never changed.
             </DialogDescription>
           </DialogHeader>
           {conflict && (
             <div className="space-y-3">
-              <div className="rounded-lg border border-violet-700 bg-violet-900/20 p-2" data-testid="conflict-existing">
-                <p className="text-[11px] uppercase tracking-wide text-violet-300 mb-1">Current official</p>
-                <p className="text-sm text-stone-100">{conflict.existing.name || <span className="italic text-stone-500">Unnamed</span>}</p>
-                {conflict.existing.description && <p className="text-xs text-stone-400 line-clamp-2">{conflict.existing.description}</p>}
-              </div>
-              <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2" data-testid="conflict-candidate">
-                <p className="text-[11px] uppercase tracking-wide text-stone-400 mb-1">This spell</p>
-                <p className="text-sm text-stone-100">{conflict.candidate.name || <span className="italic text-stone-500">Unnamed</span>}</p>
-                {conflict.candidate.description && <p className="text-xs text-stone-400 line-clamp-2">{conflict.candidate.description}</p>}
+              {conflict.usage && (conflict.usage.campaignCount > 0 || conflict.usage.characterCount > 0) ? (
+                <div className="rounded-md border border-amber-700 bg-amber-900/20 px-3 py-2 text-xs text-amber-200" data-testid="conflict-usage">
+                  This recipe is already in play: {conflict.usage.campaignCount} campaign{conflict.usage.campaignCount === 1 ? '' : 's'} · {conflict.usage.characterCount} character{conflict.usage.characterCount === 1 ? '' : 's'}. Those copies stay exactly as they are no matter which you pick.
+                </div>
+              ) : (
+                <div className="rounded-md border border-stone-700 bg-stone-900/60 px-3 py-2 text-xs text-stone-400" data-testid="conflict-usage">
+                  Not used in any campaigns or by any characters yet.
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  { label: 'Current official', spell: conflict.existing, accent: 'border-violet-700 bg-violet-900/20', tag: 'text-violet-300', testid: 'conflict-existing' },
+                  { label: 'This spell', spell: conflict.candidate, accent: 'border-stone-700 bg-stone-900/60', tag: 'text-stone-400', testid: 'conflict-candidate' },
+                ] as const).map(({ label, spell, accent, tag, testid }) => (
+                  <div key={testid} className={`rounded-lg border ${accent} p-3 space-y-2`} data-testid={testid}>
+                    <p className={`text-[11px] uppercase tracking-wide ${tag}`}>{label}</p>
+                    <div className="flex items-start gap-3">
+                      <div className="h-16 w-16 shrink-0 rounded-lg border border-stone-700 bg-stone-800 overflow-hidden flex items-center justify-center">
+                        {spell.image ? <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" /> : <Sparkles className="h-5 w-5 text-stone-500" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-stone-100 break-words">{spell.name || <span className="italic text-stone-500">Unnamed</span>}</p>
+                        <p className="text-[11px] text-stone-500 mt-0.5">{spell.manaCost} mana · DC {spell.craftDc}</p>
+                      </div>
+                    </div>
+                    <div>{formula(spell.composition)}</div>
+                    {spell.description ? (
+                      <p className="text-xs text-stone-400 whitespace-pre-wrap">{spell.description}</p>
+                    ) : (
+                      <p className="text-xs italic text-stone-600">No description.</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

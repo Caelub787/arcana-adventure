@@ -385,6 +385,7 @@ export interface IStorage {
   getV3Spell(id: string): Promise<V3Spell | undefined>;
   listV3Spells(status?: string): Promise<V3Spell[]>;
   getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined>;
+  getV3SpellUsageByHash(hash: string): Promise<{ campaignCount: number; characterCount: number }>;
   getCampaignAuthoredV3SpellByHash(campaignId: string, hash: string): Promise<V3Spell | undefined>;
   getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
   getV3SpellsForCharacter(characterId: string): Promise<V3Spell[]>;
@@ -3338,6 +3339,26 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return row;
+  }
+
+  // Count how many campaigns and distinct characters are actively using a
+  // recipe (by composition hash). Global admin templates (campaignId AND
+  // spellbookItemId both null) are excluded so the figures reflect real play.
+  async getV3SpellUsageByHash(hash: string): Promise<{ campaignCount: number; characterCount: number }> {
+    const rows = await db.select({
+      campaignId: v3Spells.campaignId,
+      characterId: v3Spells.createdByCharacterId,
+      spellbookItemId: v3Spells.spellbookItemId,
+    }).from(v3Spells).where(eq(v3Spells.compositionHash, hash));
+    const campaignIds = new Set<string>();
+    const characterIds = new Set<string>();
+    for (const r of rows) {
+      // Skip global admin templates (the canonical rows themselves).
+      if (!r.campaignId && !r.spellbookItemId) continue;
+      if (r.campaignId) campaignIds.add(r.campaignId);
+      if (r.characterId) characterIds.add(r.characterId);
+    }
+    return { campaignCount: campaignIds.size, characterCount: characterIds.size };
   }
 
   // The most recent GM-authored spell for this composition within a single

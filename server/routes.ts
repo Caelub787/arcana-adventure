@@ -6898,7 +6898,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const conflict = !!prev && prev.id !== spell.id;
 
       if (conflict && !resolution) {
-        return res.json({ conflict: true, existing: prev, candidate: spell });
+        const usage = await storage.getV3SpellUsageByHash(spell.compositionHash);
+        return res.json({ conflict: true, existing: prev, candidate: spell, usage });
       }
 
       if (conflict && resolution === "keep_other") {
@@ -6967,7 +6968,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } as any);
 
       if (conflict) {
-        return res.json({ conflict: true, existing: prev, candidate: spell });
+        const usage = await storage.getV3SpellUsageByHash(compositionHash);
+        return res.json({ conflict: true, existing: prev, candidate: spell, usage });
       }
       res.json(spell);
     } catch (err: any) {
