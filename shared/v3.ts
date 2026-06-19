@@ -83,6 +83,19 @@ export function attrDieType(value: number): string {
   return `d${attrValueToDieSides(value)}`;
 }
 
+// Effective V3 skill modifier (Task #198): the base allocated skill value plus
+// any permanent scroll boost stored in `characters.v3SkillBoosts`. Use this
+// everywhere a V3 skill check is rolled so boosted skills affect gameplay.
+export function v3EffectiveSkillMod(
+  character: { v3Skills?: Record<string, number> | null; v3SkillBoosts?: Record<string, number> | null } | null | undefined,
+  skillKey: string | null | undefined,
+): number {
+  if (!skillKey) return 0;
+  const base = Math.floor(Number(character?.v3Skills?.[skillKey]) || 0);
+  const boost = Math.floor(Number(character?.v3SkillBoosts?.[skillKey]) || 0);
+  return base + boost;
+}
+
 // Level-up point budgets (AA V3 only) -----------------------------------------
 //
 // Attributes: 4 points at level 1, +1 every level divisible by 3.
@@ -183,4 +196,113 @@ export function computeV3ArmorBoosts(
     }
   }
   return out;
+}
+
+// AA V3 runes -----------------------------------------------------------------
+//
+// Runes are a V3-only socketable item type. An item exposes a number of rune
+// slots based on its rarity; a socketed rune modifies the host item's stats
+// and/or adds a usable skill-check action. Weapon-targeted runes add a stacking
+// base-damage-level bonus to the host weapon (no extra mana).
+
+// Number of rune slots an item exposes, keyed by rarity.
+export const V3_RUNE_SLOTS_BY_RARITY: Record<string, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+};
+
+export function v3RuneSlotCount(rarity: string | null | undefined): number {
+  return V3_RUNE_SLOTS_BY_RARITY[(rarity || "common").toLowerCase()] ?? 0;
+}
+
+// Item types a rune can be configured to socket into. 'any' fits every item.
+export interface V3RuneTargetOption {
+  value: string;
+  label: string;
+}
+export const V3_RUNE_TARGET_ITEM_TYPES: V3RuneTargetOption[] = [
+  { value: "any", label: "Any item" },
+  { value: "weapon", label: "Weapon" },
+  { value: "armor", label: "Armor" },
+  { value: "consumable", label: "Consumable" },
+  { value: "utility", label: "Utility" },
+  { value: "container", label: "Container" },
+];
+
+// Host-item stats a rune can modify while socketed. Each maps to a numeric
+// column on the items table; the aggregated deltas are applied additively.
+export interface V3RuneStatTarget {
+  value: string;
+  label: string;
+}
+// Only columns that actually exist on the `items` table — a socketed rune
+// writes its delta onto the host column (reverted on removal), so an unknown
+// key would crash the Drizzle update.
+export const V3_RUNE_STAT_TARGETS: V3RuneStatTarget[] = [
+  { value: "carryCapacity", label: "Carry Capacity" },
+  { value: "damageReduction", label: "Damage Reduction" },
+  { value: "dcBonusValue", label: "DC Bonus" },
+  { value: "mod", label: "Attack/Roll Mod" },
+  { value: "range", label: "Range (ft)" },
+  { value: "price", label: "Price" },
+  { value: "itemWeight", label: "Weight (lb)" },
+];
+
+export function v3RuneStatTargetLabel(key: string): string {
+  return V3_RUNE_STAT_TARGETS.find(t => t.value === key)?.label ?? key;
+}
+
+export interface V3RuneStatEffect {
+  target: string;
+  amount: number;
+}
+
+// A rune snapshot stored on a host item's `socketedRunes` jsonb.
+export interface V3SocketedRune {
+  slotIndex: number;
+  runeItemId?: string | null;
+  name: string;
+  image?: string | null;
+  description?: string | null;
+  statEffects: V3RuneStatEffect[];
+  useMode: string; // 'none' | 'skill_check'
+  skillKey?: string | null;
+  skillAdjustment: number;
+  weaponDamageLevelBonus: number;
+  removable: boolean;
+  removeDurabilityCost: number;
+}
+
+// Fold every socketed rune's stat effects into a single map keyed by stat
+// target. Used to compute a host item's effective stats.
+export function aggregateRuneStatEffects(
+  socketedRunes: Array<{ statEffects?: V3RuneStatEffect[] | null } | null | undefined> | null | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!Array.isArray(socketedRunes)) return out;
+  for (const rune of socketedRunes) {
+    const effects = rune?.statEffects;
+    if (!Array.isArray(effects)) continue;
+    for (const e of effects) {
+      if (!e || !e.target) continue;
+      const amt = Math.trunc(Number(e.amount) || 0);
+      if (!amt) continue;
+      out[e.target] = (out[e.target] || 0) + amt;
+    }
+  }
+  return out;
+}
+
+// Sum the weapon base-damage-level bonus across every socketed rune (stacks).
+export function aggregateRuneWeaponDamageLevelBonus(
+  socketedRunes: Array<{ weaponDamageLevelBonus?: number | null } | null | undefined> | null | undefined,
+): number {
+  if (!Array.isArray(socketedRunes)) return 0;
+  return socketedRunes.reduce(
+    (sum, rune) => sum + Math.trunc(Number(rune?.weaponDamageLevelBonus) || 0),
+    0,
+  );
 }

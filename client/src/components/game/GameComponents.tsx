@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, type V3AttributeKey, type V3ArmorBoost } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, v3RuneStatTargetLabel, v3EffectiveSkillMod, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -8126,6 +8126,23 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     return '';
   };
 
+  // AA V3 knowledge/skill scroll used directly from the hotbar (no cast panel).
+  const handleUseScrollFromHotbar = async () => {
+    if (!itemData) return;
+    try {
+      const wasLast = (itemData.quantity ?? 1) <= 1;
+      await api.useScroll(character.id, itemData.id);
+      if (wasLast && hotbar) await api.deleteHotbar(hotbar.id);
+      queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['custom-skills', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    } catch (err) {
+      console.error('Failed to use scroll:', err);
+    }
+  };
+
   return (
     <>
       <TooltipProvider>
@@ -8136,7 +8153,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 hotbar?.v3SpellId && v3SpellData
                   ? () => setShowV3Detail(true)
                   : isMagicItemClickable
-                    ? () => setShowMagicPanel(true)
+                    ? () => {
+                        const mode = itemData?.scrollEffectMode || 'spell';
+                        if (itemData?.itemType === 'scroll' && (mode === 'knowledge' || mode === 'skill')) {
+                          handleUseScrollFromHotbar();
+                          return;
+                        }
+                        setShowMagicPanel(true);
+                      }
                     : isClickable
                       ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
                       : undefined
@@ -16568,7 +16592,11 @@ function V3AttrsAndSkillsTab({
               const dieType = `d${attrValueToDieSides(attrVal + attrArmorBoost)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillArmorBoost = editing ? 0 : Number(armorBoosts[skill.key] || 0);
-              const skillVal = rawSkillVal + skillArmorBoost;
+              // Scroll boost (Task #198): a permanent free per-skill bonus that
+              // raises the modifier AND the allocation cap by X (can exceed +5).
+              const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
+              const skillMax = 5 + skillScrollBoost;
+              const skillVal = rawSkillVal + skillArmorBoost + (editing ? 0 : skillScrollBoost);
               return (
                 <div
                   key={skill.key}
@@ -16591,22 +16619,28 @@ function V3AttrsAndSkillsTab({
                     <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
                   </button>
                   {editing ? (
-                    <Input
-                      type="number"
-                      min={-2}
-                      max={5}
-                      value={skillData[skill.key] ?? 0}
-                      onChange={e => {
-                        const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
-                        setSkillData({ ...skillData, [skill.key]: v });
-                      }}
-                      className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs shrink-0"
-                      data-testid={`input-v3-skill-${skill.key}`}
-                    />
+                    <div className="flex flex-col items-end shrink-0">
+                      <Input
+                        type="number"
+                        min={-2}
+                        max={skillMax}
+                        value={skillData[skill.key] ?? 0}
+                        onChange={e => {
+                          const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(skillMax, parseInt(e.target.value) || 0));
+                          setSkillData({ ...skillData, [skill.key]: v });
+                        }}
+                        className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
+                        data-testid={`input-v3-skill-${skill.key}`}
+                      />
+                      {skillScrollBoost > 0 && (
+                        <span className="text-[10px] text-sky-400/80 mt-0.5" data-testid={`text-v3-skill-scroll-${skill.key}`}>+{skillScrollBoost} scroll</span>
+                      )}
+                    </div>
                   ) : (
                     <span className={`text-xs font-semibold text-right shrink-0 ${skillArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400'}`} data-testid={`text-v3-skill-${skill.key}`}>
                       {skillVal >= 0 ? `+${skillVal}` : skillVal}
                       {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
+                      {skillScrollBoost > 0 && <span className="text-sky-400/80 ml-0.5">(+{skillScrollBoost})</span>}
                     </span>
                   )}
                 </div>
@@ -18179,6 +18213,41 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       setSelectedItem(null);
     }
   });
+
+  // AA V3 multi-purpose scroll use (knowledge / skill modes). Spell-mode
+  // scrolls are still cast through the SpellbookPanel and consumed there.
+  const useScrollMutation = useMutation({
+    mutationFn: (itemId: string) => api.useScroll(character.id, itemId),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['custom-skills', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      if (res?.mode === 'knowledge') {
+        toast({ title: 'Knowledge gained', description: res?.grantedSkill?.name ? `Learned "${res.grantedSkill.name}".` : 'Scroll consumed.' });
+      } else if (res?.mode === 'skill') {
+        toast({ title: 'Skill empowered', description: 'The scroll permanently boosted a skill.' });
+      } else {
+        toast({ title: 'Scroll used' });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: 'Could not use scroll', description: err?.message || 'Failed to use scroll', variant: 'destructive' });
+    },
+  });
+
+  // Route a scroll either to its effect endpoint (knowledge/skill) or to the
+  // spellbook cast panel (spell mode / non-V3).
+  const handleOpenScroll = (it: any) => {
+    const mode = it?.scrollEffectMode || 'spell';
+    if (isAAV3 && it?.itemType === 'scroll' && (mode === 'knowledge' || mode === 'skill')) {
+      useScrollMutation.mutate(it.id);
+      return;
+    }
+    setSelectedSpellbook(it);
+    setShowSpellbook(true);
+    bringToFront?.(`spellbook${charPanelSuffix}`);
+  };
 
   // Fetch spells
   const { data: spells = [] } = useQuery({
@@ -20938,7 +21007,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           toggleContainer={toggleContainer}
                           setSelectedItem={setSelectedItem}
                           setShowItemDetail={setShowItemDetail}
-                          onOpenSpellbook={(it) => { setSelectedSpellbook(it); setShowSpellbook(true); bringToFront?.(`spellbook${charPanelSuffix}`); }}
+                          onOpenSpellbook={handleOpenScroll}
                           isAAV3={isAAV3}
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
@@ -26278,6 +26347,168 @@ interface ItemDetailDialogProps {
   charPanelSuffix?: string;
 }
 
+// AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
+// (count by rarity), lets the owner socket an owned rune into the next free slot
+// (consuming it) and remove a removable rune (which permanently lowers the host's
+// max durability), and exposes each socketed rune's skill-check action.
+// V3-only — callers gate this behind campaignSystem === 'aa-v3'.
+function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; character: any; items: any[]; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const slotCount = v3RuneSlotCount(item?.rarity);
+  const socketed: V3SocketedRune[] = Array.isArray(item?.socketedRunes) ? item.socketedRunes : [];
+  const freeSlots = Math.max(0, slotCount - socketed.length);
+
+  // Owned runes that can target this host item's type.
+  const ownedRunes = useMemo(() => {
+    return (items || []).filter((it: any) => {
+      if (it.itemType !== 'rune' || it.id === item?.id) return false;
+      const t = it.runeTargetItemType || 'any';
+      return t === 'any' || t === item?.itemType;
+    });
+  }, [items, item?.id, item?.itemType]);
+
+  if (slotCount <= 0 && socketed.length === 0) return null;
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+    queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+    queryClient.invalidateQueries({ queryKey: ['item', item.id] });
+  };
+
+  const handleSocket = async (runeItemId: string) => {
+    setBusy(true);
+    try {
+      await api.socketRune(character.id, item.id, runeItemId);
+      invalidate();
+      setPickerOpen(false);
+      toast({ title: 'Rune socketed' });
+    } catch (err: any) {
+      toast({ title: 'Could not socket rune', description: err?.message || 'Failed', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemove = async (slotIndex: number, cost: number) => {
+    if (cost > 0 && !window.confirm(`Removing this rune permanently lowers this item's max durability by ${cost}. Continue?`)) return;
+    setBusy(true);
+    try {
+      await api.removeRune(character.id, item.id, slotIndex);
+      invalidate();
+      toast({ title: 'Rune removed' });
+    } catch (err: any) {
+      toast({ title: 'Could not remove rune', description: err?.message || 'Failed', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Roll a socketed rune's skill-check action: 1d{parentAttrDie} + skillMod + adj.
+  const useRuneSkill = (rune: V3SocketedRune) => {
+    const skill = V3_SKILLS.find(s => s.key === rune.skillKey);
+    const parent = (skill?.parent ?? 'might') as V3AttributeKey;
+    const attrVal = Math.floor(Number((character as any)[parent]) || 0);
+    const sides = attrValueToDieSides(attrVal);
+    const skillMod = v3EffectiveSkillMod(character, rune.skillKey);
+    const adj = Math.floor(Number(rune.skillAdjustment) || 0);
+    const die = Math.floor(Math.random() * sides) + 1;
+    const total = die + skillMod + adj;
+    const parts = [`1d${sides} (${die})`];
+    if (skillMod) parts.push(`${skillMod >= 0 ? '+' : '-'} ${Math.abs(skillMod)}`);
+    if (adj) parts.push(`${adj >= 0 ? '+' : '-'} ${Math.abs(adj)}`);
+    triggerRollNotification({
+      type: 'custom',
+      label: `${rune.name}${skill ? ` · ${skill.name}` : ''}`,
+      result: total,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name || 'Unknown',
+      calculationBreakdown: `${parts.join(' ')} = ${total}`,
+    });
+  };
+
+  return (
+    <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-v3-runes">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-sky-300 flex items-center gap-2">
+          <Sparkles className="h-4 w-4" /> Runes
+        </h3>
+        <span className="text-[11px] text-stone-500" data-testid="text-v3-rune-slots">{socketed.length} / {slotCount} slots</span>
+      </div>
+
+      {socketed.length === 0 && <p className="text-xs text-stone-500">No runes socketed.</p>}
+
+      {socketed.map((rune) => (
+        <div key={rune.slotIndex} className="rounded border border-stone-700 bg-stone-900/60 p-2 space-y-1" data-testid={`row-v3-socketed-rune-${rune.slotIndex}`}>
+          <div className="flex items-center gap-2">
+            {rune.image ? (
+              <img src={rune.image} alt={rune.name} className="h-8 w-8 rounded object-cover flex-shrink-0" />
+            ) : (
+              <div className="h-8 w-8 rounded bg-stone-800 flex items-center justify-center flex-shrink-0"><Sparkles className="h-4 w-4 text-sky-400" /></div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-stone-200 truncate">{rune.name}</p>
+              {rune.description && <p className="text-[11px] text-stone-500 truncate">{rune.description}</p>}
+            </div>
+            {rune.useMode === 'skill_check' && (
+              <Button type="button" size="sm" className="bg-sky-700 hover:bg-sky-600 text-white flex-shrink-0" onClick={() => useRuneSkill(rune)} data-testid={`button-use-rune-${rune.slotIndex}`}>Use</Button>
+            )}
+          </div>
+          {(Array.isArray(rune.statEffects) && rune.statEffects.length > 0 || (rune.weaponDamageLevelBonus || 0) > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {(rune.statEffects || []).map((e, i) => e?.target ? (
+                <Badge key={i} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">{v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}</Badge>
+              ) : null)}
+              {(rune.weaponDamageLevelBonus || 0) > 0 && (
+                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">+{rune.weaponDamageLevelBonus} base dmg level</Badge>
+              )}
+            </div>
+          )}
+          {canEdit && (
+            rune.removable === false ? (
+              <p className="text-[10px] text-stone-500">Unremovable</p>
+            ) : (
+              <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] border-red-900 text-red-300 hover:bg-red-950" disabled={busy} onClick={() => handleRemove(rune.slotIndex, rune.removeDurabilityCost || 0)} data-testid={`button-remove-rune-${rune.slotIndex}`}>
+                Remove{(rune.removeDurabilityCost || 0) > 0 ? ` (-${rune.removeDurabilityCost} max dur)` : ''}
+              </Button>
+            )
+          )}
+        </div>
+      ))}
+
+      {canEdit && freeSlots > 0 && (
+        !pickerOpen ? (
+          <Button type="button" size="sm" variant="outline" className="w-full border-sky-800 text-sky-300 hover:bg-sky-950" onClick={() => setPickerOpen(true)} disabled={busy} data-testid="button-open-rune-picker">
+            <Plus className="h-4 w-4 mr-1" /> Socket Rune ({freeSlots} free)
+          </Button>
+        ) : (
+          <div className="rounded border border-stone-700 bg-stone-900 p-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-stone-400">Choose a rune</span>
+              <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setPickerOpen(false)}>Cancel</Button>
+            </div>
+            {ownedRunes.length === 0 ? (
+              <p className="text-xs text-stone-500">No compatible runes in your inventory.</p>
+            ) : (
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {ownedRunes.map((r: any) => (
+                  <button key={r.id} type="button" disabled={busy} onClick={() => handleSocket(r.id)} className="w-full flex items-center justify-between p-2 hover:bg-stone-800 rounded text-left disabled:opacity-50" data-testid={`button-pick-rune-${r.id}`}>
+                    <span className="text-sm text-stone-200 truncate">{r.name}</span>
+                    <Plus className="h-4 w-4 text-sky-400 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // AA V3 weapon usage surface (Task #180): a leveled base attack plus the
 // techniques unlocked by the technique groups assigned to the weapon. Rendered
 // inside the weapon ItemDetailDialog and the battlemap hotbar info panel.
@@ -26322,6 +26553,9 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
   }, [item?.v3TechniqueGroupIds, groups, techniques, customSkills, items]);
 
   const baseEnergy = v3WeaponBaseAttackEnergy(lv);
+  // Socketed weapon runes raise the base-attack dice tier for free (stacking).
+  const runeDamageBonus = aggregateRuneWeaponDamageLevelBonus(item?.socketedRunes);
+  const effectiveDiceLevel = lv + runeDamageBonus;
 
   return (
     <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-v3-weapon-use">
@@ -26331,7 +26565,8 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-stone-500">Attack Level</span>
         <span className="flex items-center gap-1 text-amber-300 font-semibold" data-testid="text-v3-weapon-dice">
-          <Dices className="h-4 w-4" /> {v3LevelDiceNotation(lv)}
+          <Dices className="h-4 w-4" /> {v3LevelDiceNotation(effectiveDiceLevel)}
+          {runeDamageBonus > 0 && <span className="text-sky-400 text-[10px]">(+{runeDamageBonus} rune)</span>}
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -26374,10 +26609,10 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
       <Button
         type="button"
         className="w-full bg-amber-700 hover:bg-amber-600 text-white"
-        onClick={() => castV3WeaponBaseAttack(castChar, item?.name || 'Weapon', lv)}
+        onClick={() => castV3WeaponBaseAttack(castChar, item?.name || 'Weapon', lv, runeDamageBonus)}
         data-testid="button-v3-weapon-attack"
       >
-        <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(lv)})
+        <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(effectiveDiceLevel)})
       </Button>
 
       {unlocked.length > 0 && (
@@ -27350,6 +27585,10 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
               <V3WeaponUsePanel item={currentData} character={character} items={items} />
+            )}
+
+            {campaignSystem === 'aa-v3' && !isEditing && currentData.itemType !== 'rune' && (
+              <V3RuneSocketPanel item={currentData} character={character} items={items} canEdit={isOwner || isGM} />
             )}
 
             {currentData.itemType === 'armor' && (

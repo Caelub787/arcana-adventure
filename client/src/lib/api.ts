@@ -258,6 +258,25 @@ export interface Item {
   detonateAoeShape?: string;
   detonateAoeRange?: number;
   isDamaging?: boolean;
+  // AA V3 scrolls & runes (Task #198)
+  maxDurability?: number;
+  dcBonusValue?: number;
+  templateItemId?: string | null;
+  scrollEffectMode?: string;
+  scrollKnowledgeName?: string | null;
+  scrollKnowledgeAttribute?: string | null;
+  scrollKnowledgeValue?: number | null;
+  scrollSkillKey?: string | null;
+  scrollSkillAmount?: number | null;
+  runeTargetItemType?: string | null;
+  runeStatEffects?: { target: string; amount: number }[];
+  runeRemoveDurabilityCost?: number | null;
+  runeUnremovable?: boolean;
+  runeUseMode?: string;
+  runeSkillKey?: string | null;
+  runeSkillAdjustment?: number | null;
+  runeWeaponDamageLevelBonus?: number | null;
+  socketedRunes?: import("@shared/v3").V3SocketedRune[];
 }
 
 export interface Spell {
@@ -1062,6 +1081,28 @@ class ApiClient {
 
   async deleteItem(id: string): Promise<void> {
     return this.request(`/items/${id}`, { method: 'DELETE' });
+  }
+
+  // AA V3 runes & multi-purpose scrolls (Task #198)
+  async socketRune(characterId: string, itemId: string, runeItemId: string): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${itemId}/socket-rune`, {
+      method: 'POST',
+      body: JSON.stringify({ runeItemId }),
+    });
+  }
+
+  async removeRune(characterId: string, itemId: string, slotIndex: number): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${itemId}/remove-rune`, {
+      method: 'POST',
+      body: JSON.stringify({ slotIndex }),
+    });
+  }
+
+  async useScroll(characterId: string, itemId: string): Promise<any> {
+    return this.request(`/characters/${characterId}/items/${itemId}/use-scroll`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   }
 
   // Crafter Recipes (AA V2 only)

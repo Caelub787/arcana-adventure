@@ -12174,6 +12174,210 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ---- AA V3 runes & multi-purpose scrolls (Task #198) ----------------------
+  // All gated to aa-v3 campaigns; validate-then-write (Neon HTTP has no
+  // interactive transactions, so all checks run before any write).
+  const V3_RUNE_SLOTS_BY_RARITY: Record<string, number> = {
+    common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4,
+  };
+  function v3RuneSlots(rarity?: string | null): number {
+    return V3_RUNE_SLOTS_BY_RARITY[(rarity || 'common').toLowerCase()] ?? 0;
+  }
+  // Stat targets a rune may write onto a host item. Restricted to real numeric
+  // columns on `items` so an unknown key can never crash the Drizzle update.
+  const V3_RUNE_STAT_COLUMNS = new Set<string>([
+    'carryCapacity', 'damageReduction', 'dcBonusValue', 'mod', 'range', 'price', 'itemWeight',
+  ]);
+
+  // Socket an owned rune into a host item's next free slot. Consumes the rune.
+  app.post("/api/characters/:characterId/items/:itemId/socket-rune", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'aa-v3') return res.status(400).json({ error: "Runes are AA V3 only" });
+
+      const { runeItemId } = req.body || {};
+      if (!runeItemId) return res.status(400).json({ error: "runeItemId required" });
+
+      const host = await storage.getItem(req.params.itemId);
+      const rune = await storage.getItem(runeItemId);
+      if (!host || host.characterId !== req.params.characterId) return res.status(404).json({ error: "Host item not found" });
+      if (!rune || rune.characterId !== req.params.characterId) return res.status(404).json({ error: "Rune not found" });
+      if (rune.itemType !== 'rune') return res.status(400).json({ error: "That item is not a rune" });
+      if (host.id === rune.id) return res.status(400).json({ error: "Cannot socket a rune into itself" });
+
+      const target = (rune as any).runeTargetItemType || 'any';
+      if (target !== 'any' && target !== host.itemType) {
+        return res.status(400).json({ error: `This rune can only be applied to ${target} items` });
+      }
+
+      const slots = v3RuneSlots(host.rarity);
+      const socketed: any[] = Array.isArray((host as any).socketedRunes) ? [...(host as any).socketedRunes] : [];
+      if (socketed.length >= slots) {
+        return res.status(400).json({ error: "No free rune slots on this item" });
+      }
+      const usedIdx = new Set(socketed.map((r: any) => r.slotIndex));
+      let slotIndex = 0;
+      while (usedIdx.has(slotIndex)) slotIndex++;
+
+      const statEffects = Array.isArray((rune as any).runeStatEffects) ? (rune as any).runeStatEffects : [];
+      const snapshot = {
+        slotIndex,
+        runeItemId: rune.id,
+        name: rune.name,
+        image: rune.image ?? null,
+        description: rune.description ?? null,
+        statEffects,
+        useMode: (rune as any).runeUseMode || 'none',
+        skillKey: (rune as any).runeSkillKey ?? null,
+        skillAdjustment: (rune as any).runeSkillAdjustment ?? 0,
+        weaponDamageLevelBonus: (rune as any).runeWeaponDamageLevelBonus ?? 0,
+        removable: !(rune as any).runeUnremovable,
+        removeDurabilityCost: (rune as any).runeRemoveDurabilityCost ?? 0,
+      };
+
+      // Apply stat effects onto the host's real columns so existing consumers
+      // (carry capacity, damage reduction, etc.) reflect them; reverted on removal.
+      const hostUpdates: any = { socketedRunes: [...socketed, snapshot] };
+      for (const e of statEffects) {
+        if (!e || !e.target || !V3_RUNE_STAT_COLUMNS.has(e.target)) continue;
+        const amt = Number(e.amount) || 0;
+        if (!amt) continue;
+        const cur = Number((host as any)[e.target] ?? 0);
+        hostUpdates[e.target] = cur + amt;
+      }
+
+      // Consume the rune item (all validation passed).
+      if ((rune.quantity ?? 1) > 1) {
+        await storage.updateItem(rune.id, { quantity: (rune.quantity ?? 1) - 1 });
+      } else {
+        await storage.deleteItem(rune.id);
+      }
+      const updatedHost = await storage.updateItem(host.id, hostUpdates);
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedHost });
+      }
+      res.json(updatedHost);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to socket rune" });
+    }
+  });
+
+  // Remove a removable rune from a host item. Reverts its stat effects and
+  // permanently lowers the host's max durability by the rune's remove cost.
+  app.post("/api/characters/:characterId/items/:itemId/remove-rune", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'aa-v3') return res.status(400).json({ error: "Runes are AA V3 only" });
+
+      const { slotIndex } = req.body || {};
+      if (slotIndex === undefined || slotIndex === null) return res.status(400).json({ error: "slotIndex required" });
+
+      const host = await storage.getItem(req.params.itemId);
+      if (!host || host.characterId !== req.params.characterId) return res.status(404).json({ error: "Host item not found" });
+
+      const socketed: any[] = Array.isArray((host as any).socketedRunes) ? [...(host as any).socketedRunes] : [];
+      const idx = socketed.findIndex((r: any) => r.slotIndex === slotIndex);
+      if (idx < 0) return res.status(404).json({ error: "No rune in that slot" });
+      const rune = socketed[idx];
+      if (rune.removable === false) return res.status(400).json({ error: "This rune is unremovable" });
+
+      const hostUpdates: any = { socketedRunes: socketed.filter((_: any, i: number) => i !== idx) };
+      // Revert stat effects.
+      for (const e of (Array.isArray(rune.statEffects) ? rune.statEffects : [])) {
+        if (!e || !e.target || !V3_RUNE_STAT_COLUMNS.has(e.target)) continue;
+        const amt = Number(e.amount) || 0;
+        if (!amt) continue;
+        const cur = Number((host as any)[e.target] ?? 0);
+        hostUpdates[e.target] = cur - amt;
+      }
+      // Permanently lower max durability; clamp current durability to it.
+      const cost = Number(rune.removeDurabilityCost) || 0;
+      if (cost > 0) {
+        const newMax = Math.max(0, Number((host as any).maxDurability ?? 10) - cost);
+        hostUpdates.maxDurability = newMax;
+        hostUpdates.durability = Math.min(Number(host.durability ?? 0), newMax);
+      }
+
+      const updatedHost = await storage.updateItem(host.id, hostUpdates);
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedHost });
+      }
+      res.json(updatedHost);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to remove rune" });
+    }
+  });
+
+  // Use a multi-purpose V3 scroll's knowledge/skill effect, then consume it.
+  // Spell-mode scrolls are cast through the existing spellbook flow, not here.
+  app.post("/api/characters/:characterId/items/:itemId/use-scroll", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'aa-v3') return res.status(400).json({ error: "Scrolls effects are AA V3 only" });
+
+      const scroll = await storage.getItem(req.params.itemId);
+      if (!scroll || scroll.characterId !== req.params.characterId) return res.status(404).json({ error: "Scroll not found" });
+      if (scroll.itemType !== 'scroll') return res.status(400).json({ error: "That item is not a scroll" });
+
+      const mode = (scroll as any).scrollEffectMode || 'spell';
+      if (mode === 'spell') return res.status(400).json({ error: "Spell scrolls are cast from the spellbook" });
+
+      let grantedSkill: any = null;
+      let updatedCharacter: any = null;
+      if (mode === 'knowledge') {
+        const name = ((scroll as any).scrollKnowledgeName || '').trim();
+        if (!name) return res.status(400).json({ error: "This scroll has no Knowledge configured" });
+        grantedSkill = await storage.addCharacterCustomSkill({
+          characterId: req.params.characterId,
+          name,
+          parentAttribute: (scroll as any).scrollKnowledgeAttribute || 'intelligence',
+          value: Number((scroll as any).scrollKnowledgeValue) || 0,
+        } as any);
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, { type: "custom_skill_added", characterId: req.params.characterId, skill: grantedSkill });
+        }
+      } else if (mode === 'skill') {
+        const skillKey = (scroll as any).scrollSkillKey;
+        if (!skillKey) return res.status(400).json({ error: "This scroll has no skill configured" });
+        const amount = Number((scroll as any).scrollSkillAmount) || 0;
+        const char = await storage.getCharacter(req.params.characterId);
+        const boosts: Record<string, number> = { ...((char as any)?.v3SkillBoosts || {}) };
+        boosts[skillKey] = (Number(boosts[skillKey]) || 0) + amount;
+        updatedCharacter = await storage.updateCharacter(req.params.characterId, { v3SkillBoosts: boosts } as any);
+        if (updatedCharacter?.campaignId) {
+          broadcastToCampaign(updatedCharacter.campaignId, { type: "character_updated", characterId: updatedCharacter.id, character: updatedCharacter });
+        }
+      } else {
+        return res.status(400).json({ error: "Unknown scroll effect" });
+      }
+
+      // Consume the scroll in all cases. When more than one remains, decrement
+      // and broadcast an update; only broadcast a delete when the row is gone.
+      if ((scroll.quantity ?? 1) > 1) {
+        const updatedScroll = await storage.updateItem(scroll.id, { quantity: (scroll.quantity ?? 1) - 1 });
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedScroll });
+        }
+      } else {
+        await storage.deleteItem(scroll.id);
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, { type: "item_deleted", characterId: req.params.characterId, itemId: scroll.id });
+        }
+      }
+
+      res.json({ success: true, mode, grantedSkill, character: updatedCharacter });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to use scroll" });
+    }
+  });
+
   app.post("/api/items/:id/damage", requireAuth, async (req, res) => {
     try {
       const amount = req.body.amount || 1;

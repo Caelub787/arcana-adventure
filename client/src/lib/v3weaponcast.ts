@@ -10,6 +10,7 @@ import {
   V3_SKILLS,
   V3_ATTRIBUTE_KEYS,
   attrValueToDieSides,
+  v3EffectiveSkillMod,
   type V3AttributeKey,
 } from "@shared/v3";
 
@@ -21,6 +22,7 @@ export interface V3WeaponCastCharacter {
   name?: string;
   energy?: number | null;
   v3Skills?: Record<string, number> | null;
+  v3SkillBoosts?: Record<string, number> | null;
   // The six V3 attribute columns (might/finesse/.../intelligence).
   might?: number | null;
   finesse?: number | null;
@@ -102,19 +104,24 @@ export function castV3WeaponBaseAttack(
   character: V3WeaponCastCharacter,
   weaponName: string,
   level: number,
+  damageLevelBonus: number = 0,
 ): boolean {
   const lv = Math.max(1, Math.floor(level || 1));
+  // Energy scales with the chosen attack level only; socketed-rune damage-level
+  // bonuses raise the dice tier for free (no extra energy/mana).
   const energyCost = v3WeaponBaseAttackEnergy(lv);
   const have = character.energy ?? 0;
   const charName = character.name || "Unknown";
-  const label = `${weaponName || "Weapon"} · Lv ${lv}`;
+  const bonus = Math.max(0, Math.floor(Number(damageLevelBonus) || 0));
+  const diceLevel = lv + bonus;
+  const label = `${weaponName || "Weapon"} · Lv ${lv}${bonus > 0 ? ` (+${bonus} rune)` : ""}`;
 
   if (energyCost > 0 && have < energyCost) {
     notEnoughEnergy(charName, label, energyCost, have);
     return false;
   }
 
-  const { total, rolls, notation } = rollLevelDice(lv);
+  const { total, rolls, notation } = rollLevelDice(diceLevel);
   const rollsText = rolls.length > 1 ? ` (${rolls.join(", ")})` : "";
   triggerRollNotification({
     type: "custom",
@@ -163,7 +170,7 @@ export function castV3Technique(
     const parent = (skill?.parent ?? "might") as V3AttributeKey;
     const attr = V3_ATTRIBUTE_KEYS.includes(parent) ? parent : "might";
     const sides = attrValueToDieSides(attrValue(character, attr));
-    const skillMod = Math.floor(Number(character.v3Skills?.[technique.skillKey ?? ""]) || 0);
+    const skillMod = v3EffectiveSkillMod(character, technique.skillKey);
     const die = Math.floor(Math.random() * sides) + 1;
     total = die + skillMod;
     const modText = skillMod !== 0 ? ` ${skillMod >= 0 ? "+" : "-"} ${Math.abs(skillMod)}` : "";

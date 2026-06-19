@@ -28,8 +28,34 @@ import type { DialogProps } from "../types";
 
 const ITEM_TYPES = [
   "weapon", "ammunition", "armor", "consumable",
-  "utility", "container", "currency", "crafter", "spellbook", "scroll",
+  "utility", "container", "currency", "crafter", "spellbook", "scroll", "rune",
 ] as const;
+
+// AA V3 scroll effect modes (mirrors shared/schema scrollEffectMode).
+const V3_SCROLL_EFFECT_MODES: { value: string; label: string }[] = [
+  { value: "spell", label: "Cast Spell" },
+  { value: "knowledge", label: "Grant Knowledge" },
+  { value: "skill", label: "Boost Skill" },
+];
+// AA V3 rune host-item targets (mirrors V3_RUNE_TARGET_ITEM_TYPES in shared/v3.ts).
+const V3_RUNE_TARGET_ITEM_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "any", label: "Any item" },
+  { value: "weapon", label: "Weapon" },
+  { value: "armor", label: "Armor" },
+  { value: "consumable", label: "Consumable" },
+  { value: "utility", label: "Utility" },
+  { value: "container", label: "Container" },
+];
+// AA V3 rune stat-effect targets (mirrors V3_RUNE_STAT_TARGETS in shared/v3.ts).
+const V3_RUNE_STAT_TARGET_OPTIONS: { value: string; label: string }[] = [
+  { value: "carryCapacity", label: "Carry Capacity" },
+  { value: "damageReduction", label: "Damage Reduction" },
+  { value: "dcBonusValue", label: "DC Bonus" },
+  { value: "mod", label: "Attack/Roll Mod" },
+  { value: "range", label: "Range (ft)" },
+  { value: "price", label: "Price" },
+  { value: "itemWeight", label: "Weight (lb)" },
+];
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"] as const;
@@ -166,6 +192,22 @@ export interface ItemDraft {
   templateUseOwnOrder?: boolean;
   system?: string;
   v3TechniqueGroupIds?: string[];
+  maxDurability?: number;
+  // AA V3 scrolls & runes (Task #198)
+  scrollEffectMode?: string;
+  scrollKnowledgeName?: string | null;
+  scrollKnowledgeAttribute?: string | null;
+  scrollKnowledgeValue?: number | null;
+  scrollSkillKey?: string | null;
+  scrollSkillAmount?: number | null;
+  runeTargetItemType?: string | null;
+  runeStatEffects?: { target: string; amount: number }[];
+  runeRemoveDurabilityCost?: number | null;
+  runeUnremovable?: boolean;
+  runeUseMode?: string;
+  runeSkillKey?: string | null;
+  runeSkillAdjustment?: number | null;
+  runeWeaponDamageLevelBonus?: number | null;
   // Children
   rolls?: RollEntryDraft[];
   craftRecipes?: CraftRecipeDraft[];
@@ -317,6 +359,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       if (t === "crafter") return aav2;
                       if (t === "spellbook") return aav3;
                       if (t === "scroll") return aav3;
+                      if (t === "rune") return aav3;
                       return true;
                     }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
@@ -519,37 +562,237 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {aav3 && (it === "spellbook" || it === "scroll") && (
-            <Section title={it === "scroll" ? "Scroll" : "Spellbook"}>
+          {aav3 && it === "scroll" && (
+            <Section title="Scroll">
               <Stack gap="sm">
-                {it === "scroll" ? (
-                  <div className="ld-subtle" data-testid="text-scroll-single-spell">
-                    A scroll holds a single spell and is consumed when cast.
-                  </div>
-                ) : (
-                  <div><Label>Max spells (0 = unlimited)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={draft.maxSpells ?? 0}
-                      onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
-                      data-testid="input-spellbook-max-spells"
-                    />
-                  </div>
+                <div className="ld-subtle" data-testid="text-scroll-consumed">
+                  A scroll does exactly one thing when used, then is consumed.
+                </div>
+                <div><Label>Scroll Effect</Label>
+                  <Select
+                    value={draft.scrollEffectMode ?? "spell"}
+                    onValueChange={v => set({ scrollEffectMode: v })}
+                    data-testid="select-scroll-effect-mode"
+                  >
+                    {V3_SCROLL_EFFECT_MODES.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </Select>
+                </div>
+                {(draft.scrollEffectMode ?? "spell") === "knowledge" && (
+                  <Grid3>
+                    <div><Label>Knowledge name</Label>
+                      <Input
+                        value={draft.scrollKnowledgeName ?? ""}
+                        onChange={e => set({ scrollKnowledgeName: e.target.value })}
+                        placeholder="e.g. Ancient Runes"
+                        data-testid="input-scroll-knowledge-name"
+                      />
+                    </div>
+                    <div><Label>Parent attribute</Label>
+                      <Select
+                        value={draft.scrollKnowledgeAttribute ?? "intelligence"}
+                        onValueChange={v => set({ scrollKnowledgeAttribute: v })}
+                        data-testid="select-scroll-knowledge-attr"
+                      >
+                        {V3_BOOST_TARGET_OPTIONS.filter(o => o.label.includes("Attribute")).map(o => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    <div><Label>Value</Label>
+                      <Input
+                        type="number"
+                        value={draft.scrollKnowledgeValue ?? 0}
+                        onChange={e => set({ scrollKnowledgeValue: optionalNum(e.target.value) ?? 0 })}
+                        data-testid="input-scroll-knowledge-value"
+                      />
+                    </div>
+                  </Grid3>
                 )}
+                {(draft.scrollEffectMode ?? "spell") === "skill" && (
+                  <Grid2>
+                    <div><Label>Skill to boost</Label>
+                      <Select
+                        value={draft.scrollSkillKey ?? ""}
+                        onValueChange={v => set({ scrollSkillKey: v || null })}
+                        data-testid="select-scroll-skill-key"
+                      >
+                        <SelectItem value="">—</SelectItem>
+                        {V3_BOOST_TARGET_OPTIONS.filter(o => o.label.includes("Skill")).map(o => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    <div><Label>Amount (raises modifier + cap)</Label>
+                      <Input
+                        type="number"
+                        value={draft.scrollSkillAmount ?? 1}
+                        onChange={e => set({ scrollSkillAmount: optionalNum(e.target.value) ?? 1 })}
+                        data-testid="input-scroll-skill-amount"
+                      />
+                    </div>
+                  </Grid2>
+                )}
+                {(draft.scrollEffectMode ?? "spell") === "spell" && (
+                  host.spellbookManager ? (
+                    draft.id ? (
+                      <host.spellbookManager
+                        itemId={draft.id}
+                        maxSpells={1}
+                        campaignSystem={campaignSystem ?? draft.system}
+                      />
+                    ) : (
+                      <div className="ld-subtle" data-testid="text-spellbook-save-first">
+                        Save this scroll first to pre-load a spell into it.
+                      </div>
+                    )
+                  ) : null
+                )}
+              </Stack>
+            </Section>
+          )}
+
+          {aav3 && it === "spellbook" && (
+            <Section title="Spellbook">
+              <Stack gap="sm">
+                <div><Label>Max spells (0 = unlimited)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={draft.maxSpells ?? 0}
+                    onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
+                    data-testid="input-spellbook-max-spells"
+                  />
+                </div>
                 {host.spellbookManager ? (
                   draft.id ? (
                     <host.spellbookManager
                       itemId={draft.id}
-                      maxSpells={it === "scroll" ? 1 : (draft.maxSpells ?? 0)}
+                      maxSpells={draft.maxSpells ?? 0}
                       campaignSystem={campaignSystem ?? draft.system}
                     />
                   ) : (
                     <div className="ld-subtle" data-testid="text-spellbook-save-first">
-                      Save this {it === "scroll" ? "scroll" : "spellbook"} first to pre-load spells into it.
+                      Save this spellbook first to pre-load spells into it.
                     </div>
                   )
                 ) : null}
+              </Stack>
+            </Section>
+          )}
+
+          {aav3 && it === "rune" && (
+            <Section title="Rune">
+              <Stack gap="sm">
+                <div className="ld-subtle" data-testid="text-rune-help">
+                  A rune sockets into another item (slots by rarity). It modifies the host's stats and/or adds a usable skill-check action.
+                </div>
+                <div><Label>Can be applied to</Label>
+                  <Select
+                    value={draft.runeTargetItemType ?? "any"}
+                    onValueChange={v => set({ runeTargetItemType: v })}
+                    data-testid="select-rune-target-item-type"
+                  >
+                    {V3_RUNE_TARGET_ITEM_TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Stat effects (applied to host while socketed)</Label>
+                  <Stack gap="sm">
+                    {(draft.runeStatEffects ?? []).map((eff: { target: string; amount: number }, i: number) => (
+                      <Row key={i}>
+                        <Select
+                          value={eff.target ?? ""}
+                          onValueChange={v => {
+                            const next = [...(draft.runeStatEffects ?? [])];
+                            next[i] = { ...next[i], target: v };
+                            set({ runeStatEffects: next });
+                          }}
+                          data-testid={`select-rune-stat-target-${i}`}
+                        >
+                          <SelectItem value="">—</SelectItem>
+                          {V3_RUNE_STAT_TARGET_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </Select>
+                        <Input
+                          type="number"
+                          value={eff.amount ?? 0}
+                          onChange={e => {
+                            const next = [...(draft.runeStatEffects ?? [])];
+                            next[i] = { ...next[i], amount: optionalNum(e.target.value) ?? 0 };
+                            set({ runeStatEffects: next });
+                          }}
+                          data-testid={`input-rune-stat-amount-${i}`}
+                        />
+                        <Button size="sm" variant="outline" onClick={() => {
+                          const next = (draft.runeStatEffects ?? []).filter((_: unknown, j: number) => j !== i);
+                          set({ runeStatEffects: next });
+                        }} data-testid={`button-rune-stat-remove-${i}`}>✕</Button>
+                      </Row>
+                    ))}
+                    <div>
+                      <Button size="sm" variant="outline" onClick={() => set({ runeStatEffects: [...(draft.runeStatEffects ?? []), { target: "", amount: 1 }] })} data-testid="button-rune-stat-add">+ Add Stat Effect</Button>
+                    </div>
+                  </Stack>
+                </div>
+
+                <Grid2>
+                  <div><Label>Remove cost (max durability lost)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.runeRemoveDurabilityCost ?? 0}
+                      onChange={e => set({ runeRemoveDurabilityCost: optionalNum(e.target.value) ?? 0 })}
+                      data-testid="input-rune-remove-cost"
+                    />
+                  </div>
+                  <Row><Checkbox checked={!!draft.runeUnremovable} onCheckedChange={v => set({ runeUnremovable: v })} data-testid="checkbox-rune-unremovable" /><Label>Unremovable</Label></Row>
+                </Grid2>
+
+                <div><Label>Use mode</Label>
+                  <Select
+                    value={draft.runeUseMode ?? "none"}
+                    onValueChange={v => set({ runeUseMode: v })}
+                    data-testid="select-rune-use-mode"
+                  >
+                    <SelectItem value="none">Nothing (RP only)</SelectItem>
+                    <SelectItem value="skill_check">Skill Check</SelectItem>
+                  </Select>
+                </div>
+                {(draft.runeUseMode ?? "none") === "skill_check" && (
+                  <Grid2>
+                    <div><Label>Skill</Label>
+                      <Select
+                        value={draft.runeSkillKey ?? ""}
+                        onValueChange={v => set({ runeSkillKey: v || null })}
+                        data-testid="select-rune-skill-key"
+                      >
+                        <SelectItem value="">—</SelectItem>
+                        {V3_BOOST_TARGET_OPTIONS.filter(o => o.label.includes("Skill")).map(o => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    <div><Label>Adjustment (+/-)</Label>
+                      <Input
+                        type="number"
+                        value={draft.runeSkillAdjustment ?? 0}
+                        onChange={e => set({ runeSkillAdjustment: optionalNum(e.target.value) ?? 0 })}
+                        data-testid="input-rune-skill-adjustment"
+                      />
+                    </div>
+                  </Grid2>
+                )}
+                {(draft.runeTargetItemType ?? "any") === "weapon" && (
+                  <div><Label>Weapon base-damage-level bonus (stacks, no extra mana)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.runeWeaponDamageLevelBonus ?? 0}
+                      onChange={e => set({ runeWeaponDamageLevelBonus: optionalNum(e.target.value) ?? 0 })}
+                      data-testid="input-rune-weapon-damage-level-bonus"
+                    />
+                  </div>
+                )}
               </Stack>
             </Section>
           )}

@@ -276,6 +276,11 @@ export const characters = pgTable("characters", {
   intelligence: integer("intelligence").notNull().default(0),
   // AA V3 fixed-list skills, stored as { [skillKey]: value }
   v3Skills: jsonb("v3_skills").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
+  // AA V3 permanent skill boosts granted by skill scrolls, stored as
+  // { [skillKey]: amount }. These are FREE (excluded from the point budget);
+  // they raise both the displayed/rolled modifier and the editor cap (5+boost),
+  // so a boosted skill can exceed the normal +5 limit.
+  v3SkillBoosts: jsonb("v3_skill_boosts").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
   spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
   // Legacy attributes (kept for backward compatibility)
@@ -492,7 +497,11 @@ export const items = pgTable("items", {
   itemWeight: real("item_weight").default(0).notNull(), // In pounds
   quantity: integer("quantity").default(1).notNull(),
   durability: integer("durability").default(10).notNull(), // 0-10
-  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency"
+  // AA V3 only: an item's maximum durability. Removing a socketed rune
+  // permanently lowers this by the rune's remove cost; current durability is
+  // then clamped to it. Defaults to 10 to mirror the legacy 0-10 scale.
+  maxDurability: integer("max_durability").default(10).notNull(),
+  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3)
   rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
   isContainer: boolean("is_container").default(false).notNull(),
   carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container, affects max carry weight
@@ -535,6 +544,43 @@ export const items = pgTable("items", {
   // requirements). Stored as an array of v3_technique_groups ids; copies with
   // the item row when a template item is granted to a character.
   v3TechniqueGroupIds: text("v3_technique_group_ids").array().default(sql`ARRAY[]::text[]`),
+  // ---- AA V3 scroll effect (scroll items only) -----------------------------
+  // A V3 scroll does exactly ONE of three things when used; the scroll is
+  // consumed in every case. Default 'spell' preserves the legacy behavior.
+  scrollEffectMode: text("scroll_effect_mode").default("spell").notNull(), // 'spell' | 'knowledge' | 'skill'
+  scrollKnowledgeName: text("scroll_knowledge_name"), // knowledge mode: Knowledge granted
+  scrollKnowledgeAttribute: text("scroll_knowledge_attribute").default("intelligence"), // parent attr for the granted Knowledge
+  scrollKnowledgeValue: integer("scroll_knowledge_value").default(0), // value for the granted Knowledge
+  scrollSkillKey: text("scroll_skill_key"), // skill mode: which of the 14 V3 skills
+  scrollSkillAmount: integer("scroll_skill_amount").default(1), // skill mode: boost amount (raises modifier AND cap)
+  // ---- AA V3 rune config (rune items only) ---------------------------------
+  runeTargetItemType: text("rune_target_item_type").default("any"), // host item type a rune can socket into ('any' = all)
+  // Stat effects applied to the host while the rune is socketed. Each is a
+  // {target, amount} where target is a host-item stat key (see V3_RUNE_STAT_TARGETS).
+  runeStatEffects: jsonb("rune_stat_effects").$type<{ target: string; amount: number }[]>().default(sql`'[]'::jsonb`),
+  runeRemoveDurabilityCost: integer("rune_remove_durability_cost").default(0), // max-durability lost when removed
+  runeUnremovable: boolean("rune_unremovable").default(false).notNull(),
+  runeUseMode: text("rune_use_mode").default("none"), // 'none' (RP only) | 'skill_check'
+  runeSkillKey: text("rune_skill_key"), // skill_check mode: which V3 skill
+  runeSkillAdjustment: integer("rune_skill_adjustment").default(0), // skill_check mode: +/- to the roll
+  runeWeaponDamageLevelBonus: integer("rune_weapon_damage_level_bonus").default(0), // weapon-targeted: +base damage levels (stacks)
+  // ---- AA V3 socketed runes (host items) -----------------------------------
+  // Snapshotted runes currently socketed into THIS item. Snapshotting lets the
+  // effects + use-panel work without the original rune item still existing.
+  socketedRunes: jsonb("socketed_runes").$type<{
+    slotIndex: number;
+    runeItemId?: string | null;
+    name: string;
+    image?: string | null;
+    description?: string | null;
+    statEffects: { target: string; amount: number }[];
+    useMode: string;
+    skillKey?: string | null;
+    skillAdjustment: number;
+    weaponDamageLevelBonus: number;
+    removable: boolean;
+    removeDurabilityCost: number;
+  }[]>().default(sql`'[]'::jsonb`),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
