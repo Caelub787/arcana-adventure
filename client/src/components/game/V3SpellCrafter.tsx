@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import {
   V3_ELEMENTS,
@@ -725,6 +725,17 @@ export function V3GmSpellManager({
   const [image, setImage] = useState<string | null>(null);
   const [showImageBrowser, setShowImageBrowser] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => setImage(event.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+    e.target.value = "";
+  };
 
   const reload = useCallback(() => {
     if (!campaignId || !isGM) return;
@@ -913,18 +924,16 @@ export function V3GmSpellManager({
                 </div>
               )}
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowImageBrowser(true)}
-                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500 transition-colors"
-                  data-testid="button-edit-spell-image"
+                <div
+                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center"
+                  data-testid="img-edit-spell-preview"
                 >
                   {image ? (
                     <img src={image} alt="Spell" className="h-full w-full object-cover" />
                   ) : (
                     <ImageIcon className="h-6 w-6 text-stone-500" />
                   )}
-                </button>
+                </div>
                 <div className="flex-1 space-y-1">
                   <Label className="text-xs text-stone-400">Name</Label>
                   <Input
@@ -932,7 +941,11 @@ export function V3GmSpellManager({
                     onChange={(e) => setName(e.target.value)}
                     data-testid="input-edit-spell-name"
                   />
-                  <p className="text-[10px] text-stone-500">Click the box to set a profile image.</p>
+                  <div className="flex gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => imageInputRef.current?.click()} data-testid="button-edit-spell-upload">Upload</Button>
+                    <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => setShowImageBrowser(true)} data-testid="button-edit-spell-browse">Browse</Button>
+                    {image && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-red-400" onClick={() => setImage(null)} data-testid="button-edit-spell-clear-image">Clear</Button>}
+                  </div>
                 </div>
               </div>
               <div className="space-y-1">
@@ -960,11 +973,11 @@ export function V3GmSpellManager({
         </DialogContent>
       </Dialog>
 
+      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} data-testid="input-edit-spell-file" />
       <ImageBrowser
         open={showImageBrowser}
         onOpenChange={setShowImageBrowser}
         onSelect={(url) => setImage(url)}
-        saveToFile
         title="Select Spell Image"
       />
     </>

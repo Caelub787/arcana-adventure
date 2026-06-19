@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { V3SpellCrafter } from "./V3SpellCrafter";
-import { castV3Spell, type V3CastCharacter } from "@/lib/v3cast";
+import { castV3Spell, v3ReachExtraMana, type V3CastCharacter } from "@/lib/v3cast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   V3_INTENT_MAP,
   V3_DELIVERY_MAP,
   V3_ELEMENT_MAP,
   V3_REACH_MAP,
+  V3_REACHES,
   V3_DURATION_MAP,
   V3_ROLE_MAP,
   v3LevelDiceNotation,
@@ -67,6 +69,7 @@ export function V3SpellDetailDialog({
   onCast?: () => void;
 }) {
   const [level, setLevel] = useState(1);
+  const [reach, setReach] = useState<string>(spell?.composition?.reach || "");
   if (!spell) return null;
   const comp = spell.composition;
   const awaiting = spell.status === "awaiting_gm";
@@ -74,20 +77,27 @@ export function V3SpellDetailDialog({
   const diceLabel = v3LevelDiceNotation(lv);
   const extraMana = v3LevelExtraMana(lv);
   const baseMana = spell.manaCost ?? 0;
-  const totalMana = baseMana + extraMana;
+  const craftedReach = comp?.reach || "";
+  const chosenReach = reach || craftedReach;
+  const reachExtra = v3ReachExtraMana(spell, chosenReach);
+  const totalMana = Math.max(0, baseMana + extraMana + reachExtra);
   const canCast = !!castCharacter && !awaiting;
 
   const handleOpenChange = (o: boolean) => {
-    if (!o) setLevel(1);
+    if (!o) {
+      setLevel(1);
+      setReach(spell?.composition?.reach || "");
+    }
     onOpenChange(o);
   };
 
   const handleCast = () => {
     if (!castCharacter) return;
-    const ok = castV3Spell(castCharacter, spell, lv);
+    const ok = castV3Spell(castCharacter, spell, lv, chosenReach);
     if (ok) {
       onCast?.();
       setLevel(1);
+      setReach(spell?.composition?.reach || "");
       onOpenChange(false);
     }
   };
@@ -141,6 +151,23 @@ export function V3SpellDetailDialog({
 
           {canCast && (
             <div className="space-y-2 border-t border-stone-700 pt-3" data-testid="section-v3-spell-cast">
+              {craftedReach && (
+                <div className="space-y-1" data-testid="section-v3-spell-reach">
+                  <span className="text-xs uppercase tracking-wide text-stone-500">Range</span>
+                  <Select value={chosenReach} onValueChange={setReach}>
+                    <SelectTrigger className="h-8 bg-stone-950 border-stone-600 text-stone-200" data-testid="select-v3-reach">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {V3_REACHES.map((r) => (
+                        <SelectItem key={r.key} value={r.key} className="text-xs">
+                          {r.name} ({r.description})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-xs uppercase tracking-wide text-stone-500">Cast Level</span>
                 <span className="flex items-center gap-1 text-purple-300 font-semibold" data-testid="text-v3-dice-readout">
@@ -183,7 +210,7 @@ export function V3SpellDetailDialog({
               </div>
               <p className="text-xs text-stone-400" data-testid="text-v3-total-mana">
                 Total mana: <span className="text-blue-300">{totalMana}</span>
-                <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""})</span>
+                <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""}{reachExtra !== 0 ? ` ${reachExtra > 0 ? "+" : "−"} ${Math.abs(reachExtra)} for range` : ""})</span>
               </p>
               <Button
                 type="button"

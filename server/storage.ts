@@ -3325,8 +3325,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined> {
+    // Official/canonical spells are GLOBAL admin templates only: campaignId and
+    // spellbookItemId are both null. Campaign-attached rows (used in active play)
+    // must never be returned here, so duplicate-conflict resolution can only ever
+    // demote a global template, never a spell a campaign is currently using.
     const [row] = await db.select().from(v3Spells)
-      .where(and(eq(v3Spells.compositionHash, hash), eq(v3Spells.isCanonical, true)))
+      .where(and(
+        eq(v3Spells.compositionHash, hash),
+        eq(v3Spells.isCanonical, true),
+        isNull(v3Spells.campaignId),
+        isNull(v3Spells.spellbookItemId),
+      ))
       .limit(1);
     return row;
   }

@@ -6875,6 +6875,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: approve a spell -> mark canonical for its composition.
+  //
+  // Duplicate handling: when another official (canonical) spell already exists
+  // for the same recipe hash and no resolution is supplied, this returns a
+  // 200 conflict envelope { conflict, existing, candidate } WITHOUT changing
+  // anything, so the client can ask the admin how to resolve it. Resolutions:
+  //   - 'keep_this'  -> candidate becomes official; the previous one is demoted
+  //                     back into the approval queue (isCanonical=false, ready).
+  //   - 'keep_other' -> the existing official is kept; the candidate is parked
+  //                     in the approval queue (isCanonical=false, ready).
+  // Campaign-used spell rows (campaignId set) are never touched — only the
+  // canonical (campaignId null) rows participate.
   app.post("/api/admin/v3-spells/:id/approve", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.getV3Spell(req.params.id);
@@ -6882,10 +6893,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!spell.name || !spell.name.trim()) {
         return res.status(400).json({ error: "Spell must be authored before approval" });
       }
-      // Demote any previous canonical for the same composition.
+      const resolution = req.body?.resolution as "keep_this" | "keep_other" | undefined;
       const prev = await storage.getCanonicalV3SpellByHash(spell.compositionHash);
-      if (prev && prev.id !== spell.id) {
-        await storage.updateV3Spell(prev.id, { isCanonical: false });
+      const conflict = !!prev && prev.id !== spell.id;
+
+      if (conflict && !resolution) {
+        return res.json({ conflict: true, existing: prev, candidate: spell });
+      }
+
+      if (conflict && resolution === "keep_other") {
+        // Keep the existing official; park this candidate back in the queue.
+        const updated = await storage.updateV3Spell(spell.id, { isCanonical: false, status: "ready" });
+        return res.json(updated);
+      }
+
+      // keep_this, or no conflict: this spell becomes the official one.
+      if (conflict) {
+        await storage.updateV3Spell(prev!.id, { isCanonical: false, status: "ready" });
       }
       const updated = await storage.updateV3Spell(spell.id, { isCanonical: true, status: "approved" });
       res.json(updated);
@@ -6917,11 +6941,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!trimmedName) return res.status(400).json({ error: "A spell name is required" });
 
       const compositionHash = hashV3Composition(composition);
-      // A new canonical version supersedes any previous canonical for this hash.
+      // If an official (canonical) spell already exists for this recipe, do NOT
+      // silently supersede it. Create the new spell parked in the approval queue
+      // (isCanonical=false, ready) and return a conflict envelope so the admin
+      // can decide which one stays official.
       const prev = await storage.getCanonicalV3SpellByHash(compositionHash);
-      if (prev) {
-        await storage.updateV3Spell(prev.id, { isCanonical: false });
-      }
+      const conflict = !!prev;
 
       const spell = await storage.createV3Spell({
         campaignId: null,
@@ -6936,10 +6961,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdByUserId: req.session.userId!,
         createdByCharacterId: null,
         authoredByUserId: req.session.userId!,
-        status: "approved",
-        isCanonical: true,
+        status: conflict ? "ready" : "approved",
+        isCanonical: conflict ? false : true,
         flagged: containsProfanity(trimmedName),
       } as any);
+
+      if (conflict) {
+        return res.json({ conflict: true, existing: prev, candidate: spell });
+      }
       res.json(spell);
     } catch (err: any) {
       console.error("[V3 Spell Admin Create] Error:", err?.message);

@@ -237,6 +237,12 @@ export function v3LevelExtraMana(level: number): number {
  * [role, element] pairs are kept in their listed order, so two spells built
  * with the same parts in a different order hash differently and are treated
  * as distinct compositions.
+ *
+ * Range (reach) and area size (aoeRange) are deliberately excluded from the
+ * recipe identity: two spells that differ only by range or area are the same
+ * recipe. Mana cost still reflects the chosen range/area (see v3ManaCost), but
+ * those choices do not make a spell a distinct composition. Applies to crafts
+ * computed from now on — previously stored hashes are unchanged.
  */
 export function serializeV3Composition(comp: V3SpellComposition): string {
   const secondaries = (comp.secondaries ?? []).map((s) => ({ role: s.role, element: s.element }));
@@ -245,11 +251,8 @@ export function serializeV3Composition(comp: V3SpellComposition): string {
     secondaries,
     intent: comp.intent,
     delivery: comp.delivery,
-    reach: comp.reach,
     duration: comp.duration,
   };
-  // Only include aoeRange when set, so existing (non-AOE) spells hash unchanged.
-  if (comp.aoeRange) obj.aoeRange = comp.aoeRange;
   return JSON.stringify(obj);
 }
 

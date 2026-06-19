@@ -2565,15 +2565,18 @@ class ApiClient {
     return this.request(`/admin/v3-spells${status ? `?status=${encodeURIComponent(status)}` : ''}`);
   }
 
-  async approveV3Spell(spellId: string): Promise<V3Spell> {
-    return this.request(`/admin/v3-spells/${spellId}/approve`, { method: 'POST' });
+  async approveV3Spell(spellId: string, resolution?: 'keep_this' | 'keep_other'): Promise<V3SpellApproveResult> {
+    return this.request(`/admin/v3-spells/${spellId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(resolution ? { resolution } : {}),
+    });
   }
 
   async rejectV3Spell(spellId: string): Promise<V3Spell> {
     return this.request(`/admin/v3-spells/${spellId}/reject`, { method: 'POST' });
   }
 
-  async createAdminV3Spell(data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null }): Promise<V3Spell> {
+  async createAdminV3Spell(data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null }): Promise<V3SpellCreateResult> {
     return this.request(`/admin/v3-spells`, { method: 'POST', body: JSON.stringify(data) });
   }
 
@@ -2687,6 +2690,21 @@ export interface V3ElementRequirement {
   itemName: string | null;
   consumed: boolean;
   createdAt: string;
+}
+
+// Returned by admin approve/create when another official (canonical) spell
+// already exists for the same recipe hash; the admin chooses which one stays.
+export interface V3SpellConflict {
+  conflict: true;
+  existing: V3Spell;
+  candidate: V3Spell;
+}
+
+export type V3SpellApproveResult = V3Spell | V3SpellConflict;
+export type V3SpellCreateResult = V3Spell | V3SpellConflict;
+
+export function isV3SpellConflict(res: V3SpellApproveResult | V3SpellCreateResult): res is V3SpellConflict {
+  return !!res && typeof res === 'object' && 'conflict' in res && (res as V3SpellConflict).conflict === true;
 }
 
 export interface V3CraftResult {

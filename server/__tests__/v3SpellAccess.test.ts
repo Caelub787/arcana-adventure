@@ -467,7 +467,35 @@ describe("POST /api/admin/v3-spells/:id/approve — canonical governance", () =>
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
   });
 
-  it("marks the spell canonical and demotes the prior canonical for the same hash", async () => {
+  it("returns a conflict envelope (no writes) when another official spell shares the hash and no resolution is given", async () => {
+    h.adminUserIds.add("admin1");
+    const hash = "hashA";
+    h.storage.getV3Spell.mockResolvedValue({
+      id: "new1",
+      name: "Fireball",
+      compositionHash: hash,
+      isCanonical: false,
+      status: "ready",
+    });
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
+      id: "old1",
+      name: "Fireball (old)",
+      compositionHash: hash,
+      isCanonical: true,
+    });
+
+    const res = await api("/api/admin/v3-spells/new1/approve", { method: "POST", user: "admin1" });
+    expect(res.status).toBe(200);
+
+    // Nothing is mutated until the admin resolves the duplicate.
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.conflict).toBe(true);
+    expect(body.existing.id).toBe("old1");
+    expect(body.candidate.id).toBe("new1");
+  });
+
+  it("resolution 'keep_this' promotes the candidate and demotes the prior canonical into the queue", async () => {
     h.adminUserIds.add("admin1");
     const hash = "hashA";
     h.storage.getV3Spell.mockResolvedValue({
@@ -489,11 +517,15 @@ describe("POST /api/admin/v3-spells/:id/approve — canonical governance", () =>
       return { id, ...patch };
     });
 
-    const res = await api("/api/admin/v3-spells/new1/approve", { method: "POST", user: "admin1" });
+    const res = await api("/api/admin/v3-spells/new1/approve", {
+      method: "POST",
+      user: "admin1",
+      body: { resolution: "keep_this" },
+    });
     expect(res.status).toBe(200);
 
-    // Prior canonical demoted...
-    expect(calls).toContainEqual({ id: "old1", patch: { isCanonical: false } });
+    // Prior canonical demoted back into the approval queue...
+    expect(calls).toContainEqual({ id: "old1", patch: { isCanonical: false, status: "ready" } });
     // ...and the approved spell promoted to canonical/approved.
     expect(calls).toContainEqual({
       id: "new1",
@@ -502,6 +534,39 @@ describe("POST /api/admin/v3-spells/:id/approve — canonical governance", () =>
     const body = await res.json();
     expect(body.isCanonical).toBe(true);
     expect(body.status).toBe("approved");
+  });
+
+  it("resolution 'keep_other' parks the candidate in the queue and leaves the existing official untouched", async () => {
+    h.adminUserIds.add("admin1");
+    const hash = "hashA";
+    h.storage.getV3Spell.mockResolvedValue({
+      id: "new1",
+      name: "Fireball",
+      compositionHash: hash,
+      isCanonical: false,
+      status: "ready",
+    });
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
+      id: "old1",
+      name: "Fireball (old)",
+      compositionHash: hash,
+      isCanonical: true,
+    });
+    const calls: Array<{ id: string; patch: any }> = [];
+    h.storage.updateV3Spell.mockImplementation(async (id: string, patch: any) => {
+      calls.push({ id, patch });
+      return { id, ...patch };
+    });
+
+    const res = await api("/api/admin/v3-spells/new1/approve", {
+      method: "POST",
+      user: "admin1",
+      body: { resolution: "keep_other" },
+    });
+    expect(res.status).toBe(200);
+
+    // Only the candidate is parked back in the queue; the existing official is never touched.
+    expect(calls).toEqual([{ id: "new1", patch: { isCanonical: false, status: "ready" } }]);
   });
 
   it("does not demote when no prior canonical exists for the hash", async () => {
@@ -523,6 +588,35 @@ describe("POST /api/admin/v3-spells/:id/approve — canonical governance", () =>
     expect(res.status).toBe(200);
     // Only the approval write, no demotion.
     expect(calls).toEqual([{ id: "new1", patch: { isCanonical: true, status: "approved" } }]);
+  });
+
+  it("never mutates a campaign-used spell: getCanonicalV3SpellByHash excludes campaign rows, so a same-hash campaign spell is not a conflict", async () => {
+    h.adminUserIds.add("admin1");
+    const hash = "hashCampaign";
+    h.storage.getV3Spell.mockResolvedValue({
+      id: "global1",
+      name: "Fireball",
+      compositionHash: hash,
+      campaignId: null,
+      spellbookItemId: null,
+      isCanonical: false,
+      status: "ready",
+    });
+    // A same-hash spell exists, but it is attached to a campaign/spellbook. The
+    // storage lookup is GLOBAL-only (campaignId/spellbookItemId null), so it
+    // returns undefined here and the route must treat it as no conflict.
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue(undefined);
+    const calls: Array<{ id: string; patch: any }> = [];
+    h.storage.updateV3Spell.mockImplementation(async (id: string, patch: any) => {
+      calls.push({ id, patch });
+      return { id, ...patch };
+    });
+
+    const res = await api("/api/admin/v3-spells/global1/approve", { method: "POST", user: "admin1" });
+    expect(res.status).toBe(200);
+    // The candidate is promoted; the campaign-attached row is never touched.
+    expect(calls).toEqual([{ id: "global1", patch: { isCanonical: true, status: "approved" } }]);
+    expect(calls.some((c) => c.id !== "global1")).toBe(false);
   });
 
   it("does not self-demote when the spell is already the canonical for its hash", async () => {
@@ -697,7 +791,7 @@ describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => 
     expect(h.storage.createV3Spell).not.toHaveBeenCalled();
   });
 
-  it("demotes the prior canonical and creates a new canonical/approved spell", async () => {
+  it("parks the new spell in the queue and returns a conflict when a prior canonical exists (never silently supersedes)", async () => {
     h.adminUserIds.add("admin1");
     h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
       id: "old1",
@@ -717,13 +811,13 @@ describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => 
     });
     expect(res.status).toBe(200);
 
-    // Prior canonical for this hash is demoted.
+    // The prior canonical is detected but NOT demoted — the admin decides via the conflict popup.
     expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith(expectedHash);
-    expect(h.storage.updateV3Spell).toHaveBeenCalledWith("old1", { isCanonical: false });
+    expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
 
-    // New row is created as the canonical/approved version with correct math.
-    expect(createArg.isCanonical).toBe(true);
-    expect(createArg.status).toBe("approved");
+    // New row is created parked in the approval queue (not canonical/approved) with correct math.
+    expect(createArg.isCanonical).toBe(false);
+    expect(createArg.status).toBe("ready");
     expect(createArg.compositionHash).toBe(expectedHash);
     expect(createArg.manaCost).toBe(expectedMana);
     expect(createArg.craftDc).toBe(expectedDc);
@@ -731,9 +825,9 @@ describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => 
     expect(createArg.composition).toEqual(composition);
 
     const body = await res.json();
-    expect(body.id).toBe("new1");
-    expect(body.isCanonical).toBe(true);
-    expect(body.status).toBe("approved");
+    expect(body.conflict).toBe(true);
+    expect(body.existing.id).toBe("old1");
+    expect(body.candidate.id).toBe("new1");
   });
 
   it("creates without demotion when no prior canonical exists for the hash", async () => {

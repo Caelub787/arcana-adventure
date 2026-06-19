@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell } from '@/lib/api';
+import { api, isV3SpellConflict, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell } from '@/lib/api';
 import {
   V3_ELEMENT_MAP,
   V3_ROLE_MAP,
@@ -1880,6 +1880,8 @@ function V3CompositionBuilder({ value, onChange }: { value: V3SpellComposition; 
   );
 }
 
+type V3SpellFilter = 'official' | 'needs_approval' | 'all';
+
 function V3SpellsApprovalView() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<V3Spell | null>(null);
@@ -1889,17 +1891,52 @@ function V3SpellsApprovalView() {
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [showImageBrowser, setShowImageBrowser] = useState(false);
+  const [filter, setFilter] = useState<V3SpellFilter>('official');
+  // Set when approve/create finds another official spell with the same recipe.
+  const [conflict, setConflict] = useState<{ existing: V3Spell; candidate: V3Spell } | null>(null);
+  const spellImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSpellImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => setImage(event.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
 
   const { data: spells = [], isLoading } = useQuery({
     queryKey: ['admin-v3-spells'],
     queryFn: () => api.getAdminV3Spells(),
   });
 
+  const filteredSpells = spells.filter((s) => {
+    if (filter === 'official') return s.isCanonical;
+    if (filter === 'needs_approval') return s.status === 'awaiting_gm' || s.status === 'ready';
+    return true;
+  });
+
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.approveV3Spell(id),
-    onSuccess: () => {
-      toast({ title: 'Approved', description: 'This composition is now canonical.' });
+    onSuccess: (res) => {
+      if (isV3SpellConflict(res)) {
+        setConflict({ existing: res.existing, candidate: res.candidate });
+        return;
+      }
+      toast({ title: 'Approved', description: 'This composition is now official.' });
       queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (vars: { id: string; resolution: 'keep_this' | 'keep_other' }) =>
+      api.approveV3Spell(vars.id, vars.resolution),
+    onSuccess: () => {
+      toast({ title: 'Resolved', description: 'The official spell for this recipe was updated.' });
+      queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
+      setConflict(null);
     },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
@@ -1927,10 +1964,14 @@ function V3SpellsApprovalView() {
   const createMutation = useMutation({
     mutationFn: (vars: { composition: V3SpellComposition; name: string; description: string; image: string | null }) =>
       api.createAdminV3Spell(vars),
-    onSuccess: () => {
-      toast({ title: 'Created', description: 'New recognized spell added.' });
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
       setCreating(false);
+      if (isV3SpellConflict(res)) {
+        setConflict({ existing: res.existing, candidate: res.candidate });
+        return;
+      }
+      toast({ title: 'Created', description: 'New recognized spell added.' });
     },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
@@ -2003,15 +2044,31 @@ function V3SpellsApprovalView() {
 
   return (
     <div className="space-y-3" data-testid="view-v3-spells">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2">
+        <Select value={filter} onValueChange={(v) => setFilter(v as V3SpellFilter)}>
+          <SelectTrigger className="w-[180px] h-9 bg-stone-900 border-stone-700 text-stone-200" data-testid="select-v3-spell-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="official">Official only</SelectItem>
+            <SelectItem value="needs_approval">Needs approval</SelectItem>
+            <SelectItem value="all">All</SelectItem>
+          </SelectContent>
+        </Select>
         <Button size="sm" className="bg-violet-700 hover:bg-violet-600 text-stone-50" onClick={openCreate} data-testid="button-create-v3-spell">
           <Plus className="h-4 w-4 mr-1" /> Create Spell
         </Button>
       </div>
-      {spells.length === 0 && (
-        <p className="text-stone-500 italic" data-testid="text-v3-spells-empty">No crafted spells yet. Player-crafted spells will appear here for review.</p>
+      {filteredSpells.length === 0 && (
+        <p className="text-stone-500 italic" data-testid="text-v3-spells-empty">
+          {filter === 'official'
+            ? 'No official spells yet. Approve a crafted spell or create one to make it official.'
+            : filter === 'needs_approval'
+            ? 'Nothing waiting for approval right now.'
+            : 'No crafted spells yet. Player-crafted spells will appear here for review.'}
+        </p>
       )}
-      {spells.map((spell) => (
+      {filteredSpells.map((spell) => (
         <Card key={spell.id} className="bg-stone-900 border-stone-700" data-testid={`card-v3-spell-${spell.id}`}>
           <CardHeader className="pb-3">
             <div className="flex items-start gap-3">
@@ -2088,17 +2145,17 @@ function V3SpellsApprovalView() {
             <div className="space-y-3">
               <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2">{formula(editing.composition)}</div>
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowImageBrowser(true)}
-                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500"
-                  data-testid="button-v3-spell-image"
-                >
+                <div className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center" data-testid="img-v3-spell-preview">
                   {image ? <img src={image} alt="Spell" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-stone-500" />}
-                </button>
+                </div>
                 <div className="flex-1 space-y-1">
                   <Label className="text-xs text-stone-400">Name</Label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-v3-spell-name" />
+                  <div className="flex gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => spellImageInputRef.current?.click()} data-testid="button-v3-spell-upload">Upload</Button>
+                    <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => setShowImageBrowser(true)} data-testid="button-v3-spell-browse"><Library className="h-3 w-3 mr-1" /> Browse</Button>
+                    {image && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-red-400" onClick={() => setImage(null)} data-testid="button-v3-spell-clear-image">Clear</Button>}
+                  </div>
                 </div>
               </div>
               <div className="space-y-1">
@@ -2129,17 +2186,17 @@ function V3SpellsApprovalView() {
           <div className="space-y-3">
             <V3CompositionBuilder value={composition} onChange={setComposition} />
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowImageBrowser(true)}
-                className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center hover:border-amber-500"
-                data-testid="button-create-v3-spell-image"
-              >
+              <div className="h-20 w-20 shrink-0 rounded-lg border border-stone-700 bg-stone-900 overflow-hidden flex items-center justify-center" data-testid="img-create-v3-spell-preview">
                 {image ? <img src={image} alt="Spell" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-stone-500" />}
-              </button>
+              </div>
               <div className="flex-1 space-y-1">
                 <Label className="text-xs text-stone-400">Name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-create-v3-spell-name" />
+                <div className="flex gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => spellImageInputRef.current?.click()} data-testid="button-create-v3-spell-upload">Upload</Button>
+                  <Button type="button" variant="outline" size="sm" className="border-stone-600 h-7 text-xs" onClick={() => setShowImageBrowser(true)} data-testid="button-create-v3-spell-browse"><Library className="h-3 w-3 mr-1" /> Browse</Button>
+                  {image && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-red-400" onClick={() => setImage(null)} data-testid="button-create-v3-spell-clear-image">Clear</Button>}
+                </div>
               </div>
             </div>
             <div className="space-y-1">
@@ -2160,7 +2217,61 @@ function V3SpellsApprovalView() {
         </DialogContent>
       </Dialog>
 
-      <ImageBrowser open={showImageBrowser} onOpenChange={setShowImageBrowser} onSelect={(url) => setImage(url)} saveToFile title="Select Spell Image" />
+      <input ref={spellImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSpellImageUpload} data-testid="input-v3-spell-file" />
+      <ImageBrowser open={showImageBrowser} onOpenChange={setShowImageBrowser} onSelect={(url) => setImage(url)} title="Select Spell Image" />
+
+      <Dialog open={!!conflict} onOpenChange={(o) => { if (!o) setConflict(null); }}>
+        <DialogContent className="max-w-md" data-testid="dialog-v3-spell-conflict">
+          <DialogHeader>
+            <DialogTitle>Duplicate Recipe</DialogTitle>
+            <DialogDescription>
+              Another official spell already exists for this exact recipe. Only one can be the official version. Choose which one to keep — spells already used in campaigns are never changed.
+            </DialogDescription>
+          </DialogHeader>
+          {conflict && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-violet-700 bg-violet-900/20 p-2" data-testid="conflict-existing">
+                <p className="text-[11px] uppercase tracking-wide text-violet-300 mb-1">Current official</p>
+                <p className="text-sm text-stone-100">{conflict.existing.name || <span className="italic text-stone-500">Unnamed</span>}</p>
+                {conflict.existing.description && <p className="text-xs text-stone-400 line-clamp-2">{conflict.existing.description}</p>}
+              </div>
+              <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2" data-testid="conflict-candidate">
+                <p className="text-[11px] uppercase tracking-wide text-stone-400 mb-1">This spell</p>
+                <p className="text-sm text-stone-100">{conflict.candidate.name || <span className="italic text-stone-500">Unnamed</span>}</p>
+                {conflict.candidate.description && <p className="text-xs text-stone-400 line-clamp-2">{conflict.candidate.description}</p>}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+            <Button
+              className="w-full bg-violet-700 hover:bg-violet-600 text-stone-50"
+              disabled={resolveMutation.isPending}
+              onClick={() => conflict && resolveMutation.mutate({ id: conflict.candidate.id, resolution: 'keep_this' })}
+              data-testid="button-conflict-keep-this"
+            >
+              Keep this one (make it official)
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full border-stone-600"
+              disabled={resolveMutation.isPending}
+              onClick={() => conflict && resolveMutation.mutate({ id: conflict.candidate.id, resolution: 'keep_other' })}
+              data-testid="button-conflict-keep-other"
+            >
+              Keep the current official
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full text-stone-400"
+              disabled={resolveMutation.isPending}
+              onClick={() => { setConflict(null); queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] }); }}
+              data-testid="button-conflict-decide-later"
+            >
+              Decide later
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
