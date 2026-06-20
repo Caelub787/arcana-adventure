@@ -3840,6 +3840,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
               <SelectItem value="currency">Currency</SelectItem>
               <SelectItem value="spellbook">Spellbooks</SelectItem>
               <SelectItem value="scroll">Scrolls</SelectItem>
+              <SelectItem value="rune">Runes</SelectItem>
             </SelectContent>
           </Select>
         </div>

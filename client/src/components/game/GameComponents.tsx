@@ -20989,6 +20989,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <SelectItem value="currency">Currency</SelectItem>
                       <SelectItem value="spellbook">Spellbooks</SelectItem>
                       <SelectItem value="scroll">Scrolls</SelectItem>
+                      <SelectItem value="rune">Runes</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -24777,7 +24778,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     setTemplateRarityFilter('all');
   };
 
-  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll'];
+  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll', 'rune'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
