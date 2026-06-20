@@ -47,6 +47,7 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
     dayVisionDistance: 60,
     nightVisionDistance: 30,
     attributeBonuses: {} as Record<string, number>,
+    skillBonuses: {} as Record<string, number>,
     defaultCustomSkills: [] as V3DefaultSkill[],
     defaultTraits: [] as V3DefaultTrait[],
   });
@@ -77,6 +78,7 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
         dayVisionDistance: s?.dayVisionDistance ?? 60,
         nightVisionDistance: s?.nightVisionDistance ?? 30,
         attributeBonuses: s?.attributeBonuses || {},
+        skillBonuses: s?.skillBonuses || {},
         defaultCustomSkills: s?.defaultCustomSkills || [],
         defaultTraits: s?.defaultTraits || [],
       });
@@ -107,6 +109,18 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
     value: (form[field] as number) ?? 0,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm({ ...form, [field]: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 }),
+    className: "bg-stone-800 border-stone-700 h-8",
+  });
+
+  // V3 stats are Max-only; keep the legacy "starting/current" column equal to Max
+  // so new characters start full and downstream readers stay consistent.
+  const maxStat = (maxField: keyof typeof form, startField: keyof typeof form) => ({
+    type: "number" as const,
+    value: (form[maxField] as number) ?? 0,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.value === "" ? 0 : parseInt(e.target.value) || 0;
+      setForm({ ...form, [maxField]: v, [startField]: v });
+    },
     className: "bg-stone-800 border-stone-700 h-8",
   });
 
@@ -172,50 +186,35 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Natural Armor (DC)</Label>
-                <Input {...num("naturalArmor")} data-testid="input-v3-system-species-armor" />
-              </div>
-              <div>
                 <Label className="text-xs">Carry Weight</Label>
                 <Input {...num("carryWeight")} data-testid="input-v3-system-species-carry" />
               </div>
               <div>
-                <Label className="text-xs">Start HP</Label>
-                <Input {...num("startingHp")} data-testid="input-v3-system-species-hp" />
-              </div>
-              <div>
                 <Label className="text-xs">Max HP</Label>
-                <Input {...num("startingMaxHp")} data-testid="input-v3-system-species-maxhp" />
+                <Input {...maxStat("startingMaxHp", "startingHp")} data-testid="input-v3-system-species-maxhp" />
               </div>
               <div>
                 <Label className="text-xs">HP / Level</Label>
                 <Input {...num("hpPerLevel")} data-testid="input-v3-system-species-hpperlevel" />
               </div>
               <div>
-                <Label className="text-xs">Start Energy</Label>
-                <Input {...num("startingEnergy")} data-testid="input-v3-system-species-energy" />
-              </div>
-              <div>
                 <Label className="text-xs">Max Energy</Label>
-                <Input {...num("startingMaxEnergy")} data-testid="input-v3-system-species-maxenergy" />
+                <Input {...maxStat("startingMaxEnergy", "startingEnergy")} data-testid="input-v3-system-species-maxenergy" />
               </div>
               <div>
                 <Label className="text-xs">Energy / Level</Label>
                 <Input {...num("energyPerLevel")} data-testid="input-v3-system-species-energyperlevel" />
               </div>
               <div>
-                <Label className="text-xs">Start Mana</Label>
-                <Input {...num("startingMana")} data-testid="input-v3-system-species-mana" />
-              </div>
-              <div>
                 <Label className="text-xs">Max Mana</Label>
-                <Input {...num("startingMaxMana")} data-testid="input-v3-system-species-maxmana" />
+                <Input {...maxStat("startingMaxMana", "startingMana")} data-testid="input-v3-system-species-maxmana" />
               </div>
             </div>
 
             <div className="border-t border-stone-700 pt-4">
               <V3SpeciesDefaultsEditor
                 attributeBonuses={form.attributeBonuses}
+                skillBonuses={form.skillBonuses}
                 defaultCustomSkills={form.defaultCustomSkills}
                 defaultTraits={form.defaultTraits}
                 onChange={(patch) => setForm({ ...form, ...patch })}

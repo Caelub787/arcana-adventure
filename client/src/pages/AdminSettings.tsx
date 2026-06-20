@@ -12306,16 +12306,18 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
               </div>
             )}
 
-            <div className="pt-4 border-t border-stone-700">
-              <RollEntriesEditor 
-                ownerType="item" 
-                ownerId={initialData?.id}
-                canEdit={true}
-                draftRolls={!initialData?.id ? draftRolls : undefined}
-                onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
-                campaignSystem={campaignSystem || 'arcana-adventure'}
-              />
-            </div>
+            {(campaignSystem || (initialData as any)?.system || 'arcana-adventure') !== 'aa-v3' && (
+              <div className="pt-4 border-t border-stone-700">
+                <RollEntriesEditor 
+                  ownerType="item" 
+                  ownerId={initialData?.id}
+                  canEdit={true}
+                  draftRolls={!initialData?.id ? draftRolls : undefined}
+                  onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+                  campaignSystem={campaignSystem || 'arcana-adventure'}
+                />
+              </div>
+            )}
 
             {isAaV2 && formData.itemType === 'crafter' && initialData?.id && (
               <div className="pt-4 border-t border-stone-700">

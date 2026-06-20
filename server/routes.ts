@@ -127,9 +127,24 @@ async function applyV3SpeciesDefaults(character: any, campaignId: string, raceNa
     }
   }
 
+  // Skill bonuses: add onto the character's v3SkillBoosts (the free additive
+  // layer that raises the skill modifier without consuming the player's budget).
+  const skillBonuses = (species.skillBonuses || {}) as Record<string, number>;
+  const curBoosts = { ...((character.v3SkillBoosts || {}) as Record<string, number>) };
+  let boostsChanged = false;
+  for (const [k, v] of Object.entries(skillBonuses)) {
+    const b = Number(v) || 0;
+    if (b !== 0) {
+      curBoosts[k] = (Number(curBoosts[k]) || 0) + b;
+      boostsChanged = true;
+    }
+  }
+
   let updated = character;
-  if (Object.keys(attrUpdate).length > 0) {
-    updated = (await storage.updateCharacter(character.id, attrUpdate as any)) || character;
+  const combinedUpdate: Record<string, any> = { ...attrUpdate };
+  if (boostsChanged) combinedUpdate.v3SkillBoosts = curBoosts;
+  if (Object.keys(combinedUpdate).length > 0) {
+    updated = (await storage.updateCharacter(character.id, combinedUpdate as any)) || character;
   }
 
   // Default custom skills.
@@ -195,8 +210,23 @@ async function reapplyV3SpeciesOnChange(character: any, campaignId: string, oldR
           attrUpdate[col] = (Number(character[col]) || 0) - bonus;
         }
       }
-      if (Object.keys(attrUpdate).length > 0) {
-        character = (await storage.updateCharacter(character.id, attrUpdate as any)) || character;
+      // Revert skill bonuses from v3SkillBoosts (subtract the exact amounts the
+      // old species added; scroll/other boosts in the same map are preserved).
+      const oldSkillBonuses = (oldSpecies.skillBonuses || {}) as Record<string, number>;
+      const curBoosts = { ...((character.v3SkillBoosts || {}) as Record<string, number>) };
+      let boostsChanged = false;
+      for (const [k, v] of Object.entries(oldSkillBonuses)) {
+        const b = Number(v) || 0;
+        if (b !== 0) {
+          curBoosts[k] = (Number(curBoosts[k]) || 0) - b;
+          boostsChanged = true;
+        }
+      }
+
+      const revertUpdate: Record<string, any> = { ...attrUpdate };
+      if (boostsChanged) revertUpdate.v3SkillBoosts = curBoosts;
+      if (Object.keys(revertUpdate).length > 0) {
+        character = (await storage.updateCharacter(character.id, revertUpdate as any)) || character;
       }
 
       // Delete species-sourced custom skills.
@@ -230,6 +260,49 @@ async function reapplyV3SpeciesOnChange(character: any, campaignId: string, oldR
   // above may already have mutated `character`, so fall back to it (never undefined).
   const applied = await applyV3SpeciesDefaults(character, campaignId, newRace);
   return applied || character;
+}
+
+// AA V3: determine whether a class is currently "locked" for a character due to
+// per-class visibility gating (required item or required knowledge). Returns
+// false for non-V3 campaigns and for classes set to visible-to-all. A locked
+// class keeps any progression already made but cannot be progressed further.
+async function isV3ClassLockedForCharacter(character: any, gameClass: any): Promise<boolean> {
+  if (!character || !gameClass) return false;
+  const mode = (gameClass.visibilityMode || 'all') as string;
+  if (mode === 'all') return false;
+  // Only gate AA V3 campaigns.
+  let system: string | undefined;
+  try {
+    if (character.campaignId) {
+      const campaign = await storage.getCampaign(character.campaignId);
+      system = campaign?.system;
+    }
+  } catch {}
+  if (system !== 'aa-v3') return false;
+
+  if (mode === 'item') {
+    const reqItemId = gameClass.requiredItemId;
+    if (!reqItemId) return false; // misconfigured -> treat as visible
+    let reqName: string | undefined;
+    try { reqName = (await storage.getItem(reqItemId))?.name; } catch {}
+    const items = await storage.getItemsByCharacter(character.id);
+    const owns = items.some((it: any) =>
+      it.templateItemId === reqItemId ||
+      it.id === reqItemId ||
+      (reqName && it.name === reqName)
+    );
+    return !owns;
+  }
+
+  if (mode === 'knowledge') {
+    const reqName = gameClass.requiredKnowledgeName;
+    if (!reqName) return false;
+    const skills = await storage.getCharacterCustomSkills(character.id);
+    const has = skills.some((s: any) => s.name === reqName);
+    return !has;
+  }
+
+  return false;
 }
 
 // AA V3: assign every "universal" (applyToAll) V3 class to one character,
@@ -3944,6 +4017,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (updated) character = updated;
         } catch (e: any) {
           console.error("[Character Create] V3 species defaults failed:", e?.message);
+        }
+      }
+
+      // AA V3: new characters start with their HP/Energy/Mana bars full
+      // (current = max). Species only configures the Max value in V3.
+      if (campaign?.system === 'aa-v3') {
+        const fullUpdate: Record<string, any> = {};
+        if (character.hp !== character.maxHp) fullUpdate.hp = character.maxHp;
+        if (character.energy !== character.maxEnergy) fullUpdate.energy = character.maxEnergy;
+        if (character.mana !== character.maxMana) fullUpdate.mana = character.maxMana;
+        if (Object.keys(fullUpdate).length > 0) {
+          const updated = await storage.updateCharacter(character.id, fullUpdate);
+          if (updated) character = updated;
         }
       }
 
@@ -9734,6 +9820,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const charClass = charClasses.find(cc => cc.id === req.params.charClassId);
       if (!charClass) return res.status(404).json({ error: "Character class not found" });
 
+      // AA V3: a class locked by visibility gating is read-only — no progression.
+      const luGameClass = await storage.getClass(charClass.classId);
+      if (await isV3ClassLockedForCharacter(access.character, luGameClass)) {
+        return res.status(403).json({ error: "This class is locked. The required item or knowledge is needed to progress it." });
+      }
+
       const newLevel = charClass.classLevel + 1;
       const totalPoints = 3 * newLevel + 2 * Math.floor(newLevel / 3);
       const spentNodes = await storage.getCharacterClassSkills(req.params.id, charClass.classId);
@@ -9769,6 +9861,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const node = await storage.getClassSkillNode(req.params.nodeId);
       if (!node) return res.status(404).json({ error: "Node not found" });
       if (node.classId !== req.params.classId) return res.status(400).json({ error: "Node does not belong to this class" });
+
+      // AA V3: a class locked by visibility gating is read-only — no node unlocks.
+      const ulGameClass = await storage.getClass(req.params.classId);
+      if (await isV3ClassLockedForCharacter(access.character, ulGameClass)) {
+        return res.status(403).json({ error: "This class is locked. The required item or knowledge is needed to unlock nodes." });
+      }
 
       const charClasses = await storage.getCharacterClasses(req.params.id);
       let charClass = charClasses.find(cc => cc.classId === req.params.classId);

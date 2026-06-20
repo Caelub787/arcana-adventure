@@ -46,6 +46,13 @@ export interface ClassDraft {
   /** Optional link to a `feat_trees` row for species-style progression alongside the class skill tree. */
   skillTreeId?: string | null;
 
+  /** AA V3 only: per-class visibility gating. 'all' = always visible. */
+  visibilityMode?: string;
+  /** AA V3: when visibilityMode='item', the admin item id required to see/progress this class. */
+  requiredItemId?: string | null;
+  /** AA V3: when visibilityMode='knowledge', the exact knowledge name required. */
+  requiredKnowledgeName?: string | null;
+
   gridWidth: number;
   gridHeight: number;
   defaultViewX?: number | null;
@@ -74,6 +81,9 @@ const FRESH: ClassDraft = {
   image: "",
   system: "aa-v2",
   skillTreeId: "",
+  visibilityMode: "all",
+  requiredItemId: "",
+  requiredKnowledgeName: "",
   gridWidth: 7,
   gridHeight: 10,
   skillNodes: [],
@@ -87,6 +97,7 @@ export const ClassDialog: React.FC<DialogProps<ClassDraft>> = ({
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [featTrees, setFeatTrees] = React.useState<FeatTreeListEntry[]>([]);
+  const [adminItems, setAdminItems] = React.useState<{ id: string; name?: string }[]>([]);
   const [view, setView] = React.useState<"tree" | "list">("tree");
   const editing = mode ? mode === "edit" : !!initialValue?.id;
 
@@ -95,6 +106,9 @@ export const ClassDialog: React.FC<DialogProps<ClassDraft>> = ({
     host.transport.list<FeatTreeListEntry>("feat-tree")
       .then(r => setFeatTrees(r.data ?? []))
       .catch(e => host.notify("warning", `Could not load feat trees: ${e instanceof Error ? e.message : String(e)}`));
+    host.transport.list<{ id: string; name?: string }>("item")
+      .then(r => setAdminItems(r.data ?? []))
+      .catch(() => { /* item picker is optional */ });
   }, [open, host]);
 
   React.useEffect(() => {
@@ -246,6 +260,48 @@ export const ClassDialog: React.FC<DialogProps<ClassDraft>> = ({
                   ))}
                 </Select>
               </div>
+              {((draft.system ?? campaignSystem) === "aa-v3") && (
+                <>
+                  <div>
+                    <Label>Visibility</Label>
+                    <Select
+                      value={draft.visibilityMode || "all"}
+                      onValueChange={v => set({ visibilityMode: v })}
+                      data-testid="select-class-visibility"
+                    >
+                      <SelectItem value="all">Visible to all</SelectItem>
+                      <SelectItem value="item">Requires item</SelectItem>
+                      <SelectItem value="knowledge">Requires knowledge</SelectItem>
+                    </Select>
+                  </div>
+                  {draft.visibilityMode === "item" && (
+                    <div>
+                      <Label>Required Item</Label>
+                      <Select
+                        value={draft.requiredItemId || "_none"}
+                        onValueChange={v => set({ requiredItemId: v === "_none" ? "" : v })}
+                        data-testid="select-class-required-item"
+                      >
+                        <SelectItem value="_none">Select an item…</SelectItem>
+                        {adminItems.map(it => (
+                          <SelectItem key={it.id} value={it.id}>{it.name || it.id}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                  {draft.visibilityMode === "knowledge" && (
+                    <div>
+                      <Label>Required Knowledge (name)</Label>
+                      <Input
+                        value={draft.requiredKnowledgeName ?? ""}
+                        onChange={e => set({ requiredKnowledgeName: e.target.value })}
+                        placeholder="Exact knowledge name"
+                        data-testid="input-class-required-knowledge"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
             </Stack>
           </Section>
 

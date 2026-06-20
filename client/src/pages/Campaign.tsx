@@ -431,6 +431,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     dayVisionDistance: number | string;
     nightVisionDistance: number | string;
     attributeBonuses: Record<string, number>;
+    skillBonuses: Record<string, number>;
     defaultCustomSkills: { name: string; description?: string; parentAttribute: string; value: number }[];
     defaultTraits: { name: string; description?: string; parentAttribute: string; usesPerLongRest: number }[];
   }>({
@@ -457,6 +458,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     dayVisionDistance: 120,
     nightVisionDistance: 60,
     attributeBonuses: {},
+    skillBonuses: {},
     defaultCustomSkills: [],
     defaultTraits: [],
   });
@@ -491,6 +493,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         dayVisionDistance: (initialData as any)?.dayVisionDistance ?? 120,
         nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
         attributeBonuses: (initialData as any)?.attributeBonuses || {},
+        skillBonuses: (initialData as any)?.skillBonuses || {},
         defaultCustomSkills: (initialData as any)?.defaultCustomSkills || [],
         defaultTraits: (initialData as any)?.defaultTraits || [],
       });
@@ -510,6 +513,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
   const handleNumericChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
+  };
+
+  // V3: stats are Max-only; keep the legacy starting/current value equal to Max
+  // so new V3 characters begin with full bars.
+  const handleV3MaxChange = (maxField: string, startField: string, value: string) => {
+    const v = value === '' ? '' : parseInt(value);
+    setFormData({ ...formData, [maxField]: v, [startField]: v });
   };
 
   const handleSizeChange = (newSize: string) => {
@@ -677,6 +687,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
+              {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Natural Armor</Label>
                 <Input
@@ -687,6 +698,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="5"
                 />
               </div>
+              )}
 
               <div>
                 <Label>Size Bonus</Label>
@@ -701,6 +713,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
                 <Label className="text-sm font-semibold text-red-400">HP</Label>
               </div>
+              {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Starting HP</Label>
                 <Input
@@ -711,12 +724,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
+              )}
               <div>
                 <Label>Max HP</Label>
                 <Input
                   type="number"
                   value={formData.startingMaxHp}
-                  onChange={(e) => handleNumericChange('startingMaxHp', e.target.value)}
+                  onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxHp', 'startingHp', e.target.value) : handleNumericChange('startingMaxHp', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   placeholder="10"
                 />
@@ -735,6 +749,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
                 <Label className="text-sm font-semibold text-cyan-400">Energy</Label>
               </div>
+              {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Starting Energy</Label>
                 <Input
@@ -745,12 +760,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   placeholder="10"
                 />
               </div>
+              )}
               <div>
                 <Label>Max Energy</Label>
                 <Input
                   type="number"
                   value={formData.startingMaxEnergy}
-                  onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
+                  onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxEnergy', 'startingEnergy', e.target.value) : handleNumericChange('startingMaxEnergy', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   placeholder="10"
                 />
@@ -773,6 +789,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
                     <Label className="text-sm font-semibold text-violet-400">Mana</Label>
                   </div>
+                  {campaignSystem !== 'aa-v3' && (
                   <div>
                     <Label>Starting Mana</Label>
                     <Input
@@ -783,12 +800,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                       placeholder="0"
                     />
                   </div>
+                  )}
                   <div>
-                    <Label>Starting Max Mana</Label>
+                    <Label>Max Mana</Label>
                     <Input
                       type="number"
                       value={formData.startingMaxMana}
-                      onChange={(e) => handleNumericChange('startingMaxMana', e.target.value)}
+                      onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxMana', 'startingMana', e.target.value) : handleNumericChange('startingMaxMana', e.target.value)}
                       className="bg-stone-800 border-stone-700"
                       placeholder="0"
                     />
@@ -875,6 +893,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 <div className="col-span-2 space-y-4 border-t border-stone-700 pt-4">
                   <V3SpeciesDefaultsEditor
                     attributeBonuses={formData.attributeBonuses}
+                    skillBonuses={formData.skillBonuses}
                     defaultCustomSkills={formData.defaultCustomSkills}
                     defaultTraits={formData.defaultTraits}
                     onChange={(patch) => setFormData({ ...formData, ...patch })}

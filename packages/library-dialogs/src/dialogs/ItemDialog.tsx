@@ -797,15 +797,17 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          <Section title="Rolls">
-            <RollEntriesEditor
-              ownerType="item"
-              value={draft.rolls ?? []}
-              onChange={(rolls) => set({ rolls })}
-              campaignSystem={campaignSystem ?? draft.system}
-              host={host}
-            />
-          </Section>
+          {!aav3 && (
+            <Section title="Rolls">
+              <RollEntriesEditor
+                ownerType="item"
+                value={draft.rolls ?? []}
+                onChange={(rolls) => set({ rolls })}
+                campaignSystem={campaignSystem ?? draft.system}
+                host={host}
+              />
+            </Section>
+          )}
 
           {aav2 && it === "crafter" && (
             <Section title="Crafting recipes (crafter item)">

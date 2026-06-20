@@ -743,6 +743,7 @@ export const systemSpecies = pgTable("system_species", {
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   // AA V3 species fields (null/empty for non-V3 species)
   attributeBonuses: jsonb("attribute_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
+  skillBonuses: jsonb("skill_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
   defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
   defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -784,6 +785,7 @@ export const campaignSpecies = pgTable("campaign_species", {
   nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
   // AA V3 species fields (null/empty for non-V3 species)
   attributeBonuses: jsonb("attribute_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
+  skillBonuses: jsonb("skill_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
   defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
   defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2128,6 +2130,13 @@ export const classes = pgTable("classes", {
   // V3 character on creation and backfilled onto existing V3 characters when
   // the flag is turned on. Ignored for V2/other systems.
   applyToAll: boolean("apply_to_all").default(false).notNull(),
+  // AA V3 only: per-class visibility gating. 'all' = visible to everyone (default).
+  // 'item' = hidden unless the character owns the item named by requiredItemId.
+  // 'knowledge' = hidden unless the character has the knowledge named by requiredKnowledgeName.
+  // Progression already made in a now-locked class is preserved and shown read-only.
+  visibilityMode: text("visibility_mode").default("all").notNull(),
+  requiredItemId: text("required_item_id"),
+  requiredKnowledgeName: text("required_knowledge_name"),
   skillTreeId: text("skill_tree_id"),
   gridWidth: integer("grid_width").default(7).notNull(),
   gridHeight: integer("grid_height").default(10).notNull(),

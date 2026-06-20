@@ -9097,11 +9097,11 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       flySpeed: selectedSpecies.flySpeed || 0,
       featTree: selectedSpecies.featTree || "",
       portrait: selectedSpecies.defaultImage || null,
-      hp: selectedSpecies.startingHp || 10,
+      hp: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxHp : selectedSpecies.startingHp) || 10,
       maxHp: selectedSpecies.startingMaxHp || 10,
-      energy: selectedSpecies.startingEnergy || 10,
+      energy: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxEnergy : selectedSpecies.startingEnergy) || 10,
       maxEnergy: selectedSpecies.startingMaxEnergy || 10,
-      mana: selectedSpecies.startingMana || 0,
+      mana: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxMana : selectedSpecies.startingMana) || 0,
       maxMana: selectedSpecies.startingMaxMana || 0,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
@@ -17947,6 +17947,43 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     enabled: !!character.id
   });
 
+  // AA V3 class visibility gating (client-side UX; server is authoritative).
+  // A class is "locked" when its requirement isn't met. Locked classes the
+  // character has never progressed are hidden; progressed-but-locked classes
+  // stay visible read-only (progression disabled). This predicate MUST mirror
+  // the server's isV3ClassLockedForCharacter (server/routes.ts) exactly so the
+  // UI never disagrees with the server's 403 enforcement.
+  const { data: classReqItemSummaries = [] } = useQuery({
+    queryKey: ['system-items-summary-for-classes', campaignSystem, campaignId],
+    queryFn: () => api.getSystemItemSummaries(campaignSystem, campaignId),
+    enabled: campaignSystem === 'aa-v3',
+    staleTime: 10 * 60 * 1000,
+  });
+  const isClassLockedForChar = (cls: any): boolean => {
+    if (campaignSystem !== 'aa-v3' || !cls) return false;
+    const mode = cls.visibilityMode || 'all';
+    if (mode === 'all') return false;
+    if (mode === 'item') {
+      const reqId = cls.requiredItemId;
+      if (!reqId) return false;
+      // Server resolves the required item's name and also matches by name as a
+      // fallback (covers items copied without a templateItemId pointer).
+      const reqName = (classReqItemSummaries as any[]).find((s: any) => s.id === reqId)?.name;
+      return !(items as any[]).some((it: any) =>
+        it.templateItemId === reqId ||
+        it.id === reqId ||
+        (reqName && it.name === reqName)
+      );
+    }
+    if (mode === 'knowledge') {
+      const reqName = cls.requiredKnowledgeName;
+      if (!reqName) return false;
+      // Server uses an exact (case-sensitive) name comparison.
+      return !(characterCustomSkills as any[]).some((cs: any) => cs.name === reqName);
+    }
+    return false;
+  };
+
   // Fetch hotbars for weight calculation (container bonus when equipped in utility)
   const { data: hotbars = [] } = useQuery({
     queryKey: ['hotbars', character.id],
@@ -23221,6 +23258,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               availableClasses.map((cls: any) => {
                 const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
                 const hasClass = !!charClass;
+                const classLocked = isClassLockedForChar(cls);
+                // Hide classes the character can't access and has never progressed.
+                if (classLocked && !hasClass) return null;
                 const globalAvailablePoints = liveCharacter.classSkillPoints || 0;
                 return (
                   <div
@@ -23243,8 +23283,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                          {classLocked && (
+                            <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-900/30 border border-amber-700/50 rounded px-1.5 py-0.5" data-testid={`class-locked-${cls.id}`}>
+                              <Lock className="h-3 w-3" /> Locked
+                            </span>
+                          )}
                         </div>
                         {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
+                        {classLocked && (
+                          <p className="text-[10px] text-amber-500/80 mt-0.5">
+                            {cls.visibilityMode === 'item' ? 'Requires a specific item — progression locked (read-only).' : 'Requires specific knowledge — progression locked (read-only).'}
+                          </p>
+                        )}
                         {hasClass && (
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-stone-500">Class Points Available: {globalAvailablePoints}</span>
@@ -23261,7 +23311,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         >
                           <GitBranch className="h-4 w-4" />
                         </Button>
-                        {isGM && !hasClass && (
+                        {isGM && !hasClass && !classLocked && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -23322,7 +23372,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               classId={showClassSkillTree}
               characterId={liveCharacter.id}
               characterClass={characterClasses.find((cc: any) => cc.classId === showClassSkillTree)}
-              canEdit={canEditSheet}
+              canEdit={canEditSheet && !isClassLockedForChar(availableClasses.find((c: any) => c.id === showClassSkillTree))}
               globalClassPoints={liveCharacter.classSkillPoints || 0}
               campaignSystem={campaignSystem}
               onNodeUnlocked={() => {
