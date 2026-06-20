@@ -60,6 +60,90 @@ const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"] as const;
 
+// AA V3 rune-slot count by rarity (mirrors v3RuneSlotCount in shared/v3.ts).
+// Inlined because this package has no shared imports.
+const V3_RUNE_SLOTS_BY_RARITY: Record<string, number> = {
+  common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4,
+};
+const v3RuneSlots = (rarity?: string | null): number =>
+  V3_RUNE_SLOTS_BY_RARITY[(rarity ?? "common").toLowerCase()] ?? 0;
+const V3_RUNE_STAT_COLUMN_SET = new Set(V3_RUNE_STAT_TARGET_OPTIONS.map(o => o.value));
+
+// A socketed-rune snapshot baked onto a host item (mirrors V3SocketedRune in shared/v3.ts).
+interface SocketedRuneSnapshot {
+  slotIndex: number;
+  runeItemId: string | null;
+  name: string;
+  image: string | null;
+  description: string | null;
+  statEffects: { target: string; amount: number }[];
+  useMode: string;
+  skillKey: string | null;
+  skillAdjustment: number;
+  weaponDamageLevelBonus: number;
+  removable: boolean;
+  removeDurabilityCost: number;
+}
+
+function runeItemToSnapshot(rune: any, slotIndex: number): SocketedRuneSnapshot {
+  return {
+    slotIndex,
+    runeItemId: rune?.id ?? null,
+    name: rune?.name ?? "Rune",
+    image: rune?.image ?? null,
+    description: rune?.description ?? null,
+    statEffects: Array.isArray(rune?.runeStatEffects) ? rune.runeStatEffects : [],
+    useMode: rune?.runeUseMode || "none",
+    skillKey: rune?.runeSkillKey ?? null,
+    skillAdjustment: Math.trunc(Number(rune?.runeSkillAdjustment) || 0),
+    weaponDamageLevelBonus: Math.trunc(Number(rune?.runeWeaponDamageLevelBonus) || 0),
+    removable: !rune?.runeUnremovable,
+    removeDurabilityCost: Math.trunc(Number(rune?.runeRemoveDurabilityCost) || 0),
+  };
+}
+
+// Returns the host-field deltas (socketedRunes + baked stat columns) for
+// attaching a rune, or an error string. Pure; does not mutate the draft.
+function attachRuneToDraft(draft: ItemDraft, rune: any): { error?: string; updates?: Partial<ItemDraft> } {
+  if (!rune || rune.itemType !== "rune") return { error: "That item is not a rune" };
+  const target = rune.runeTargetItemType || "any";
+  if (target !== "any" && target !== draft.itemType) {
+    return { error: `This rune only fits ${target} items` };
+  }
+  const slots = v3RuneSlots(draft.rarity);
+  const socketed: SocketedRuneSnapshot[] = Array.isArray(draft.socketedRunes) ? [...draft.socketedRunes] : [];
+  if (socketed.length >= slots) {
+    return { error: slots === 0 ? "This rarity has no rune slots" : "No free rune slots" };
+  }
+  const used = new Set(socketed.map(r => r.slotIndex));
+  let slotIndex = 0;
+  while (used.has(slotIndex)) slotIndex++;
+  const snap = runeItemToSnapshot(rune, slotIndex);
+  const updates: any = { socketedRunes: [...socketed, snap] };
+  for (const e of snap.statEffects) {
+    if (!e || !e.target || !V3_RUNE_STAT_COLUMN_SET.has(e.target)) continue;
+    const amt = Math.trunc(Number(e.amount) || 0);
+    if (!amt) continue;
+    updates[e.target] = (Number((draft as any)[e.target]) || 0) + amt;
+  }
+  return { updates };
+}
+
+function detachRuneFromDraft(draft: ItemDraft, slotIndex: number): Partial<ItemDraft> {
+  const socketed: SocketedRuneSnapshot[] = Array.isArray(draft.socketedRunes) ? [...draft.socketedRunes] : [];
+  const idx = socketed.findIndex(r => r.slotIndex === slotIndex);
+  if (idx < 0) return {};
+  const rune = socketed[idx];
+  const updates: any = { socketedRunes: socketed.filter((_, i) => i !== idx) };
+  for (const e of (Array.isArray(rune.statEffects) ? rune.statEffects : [])) {
+    if (!e || !e.target || !V3_RUNE_STAT_COLUMN_SET.has(e.target)) continue;
+    const amt = Math.trunc(Number(e.amount) || 0);
+    if (!amt) continue;
+    updates[e.target] = (Number((draft as any)[e.target]) || 0) - amt;
+  }
+  return updates;
+}
+
 // AA V3 armor-boost targets. Inlined here because this package has no @shared
 // imports; mirrors V3_ATTRIBUTES + V3_SKILLS in shared/v3.ts.
 const V3_BOOST_TARGET_OPTIONS: { value: string; label: string }[] = [
@@ -208,6 +292,8 @@ export interface ItemDraft {
   runeSkillKey?: string | null;
   runeSkillAdjustment?: number | null;
   runeWeaponDamageLevelBonus?: number | null;
+  // AA V3 default (pre-loaded) runes baked onto a non-rune item at authoring time.
+  socketedRunes?: SocketedRuneSnapshot[] | null;
   // Children
   rolls?: RollEntryDraft[];
   craftRecipes?: CraftRecipeDraft[];
@@ -277,6 +363,15 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
     host.techniqueGroups()
       .then(setTechniqueGroups)
       .catch(e => host.notify("error", `Failed to load technique groups: ${e?.message ?? e}`));
+  }, [open, aav3, host]);
+
+  // Load library rune items so a GM can pre-load default runes onto a V3 item.
+  const [runeItems, setRuneItems] = React.useState<any[]>([]);
+  React.useEffect(() => {
+    if (!open || !aav3) { setRuneItems([]); return; }
+    host.transport.list<any>("item")
+      .then(res => setRuneItems((res?.data ?? []).filter((i: any) => i.itemType === "rune")))
+      .catch(() => setRuneItems([]));
   }, [open, aav3, host]);
 
   const set = (patch: Partial<ItemDraft>) => setDraft(d => ({ ...d, ...patch }));
@@ -792,6 +887,71 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       data-testid="input-rune-weapon-damage-level-bonus"
                     />
                   </div>
+                )}
+              </Stack>
+            </Section>
+          )}
+
+          {aav3 && it !== "rune" && (
+            <Section title="Default runes">
+              <Stack>
+                <p className="ld-subtle" data-testid="text-default-runes-help">
+                  Pre-load runes onto this item. Slots come from rarity
+                  ({draft.rarity ?? "common"} = {v3RuneSlots(draft.rarity)}).
+                  Used {(draft.socketedRunes ?? []).length} / {v3RuneSlots(draft.rarity)}.
+                </p>
+                {(draft.socketedRunes ?? []).map(rune => (
+                  <div
+                    key={rune.slotIndex}
+                    className="ld-row" style={{ justifyContent: "space-between" }}
+                    data-testid={`row-default-rune-${rune.slotIndex}`}
+                  >
+                    <span>
+                      <strong>{rune.name}</strong>
+                      {rune.statEffects?.length ? (
+                        <span className="ld-subtle">
+                          {" "}— {rune.statEffects.map(e => `${e.amount > 0 ? "+" : ""}${e.amount} ${e.target}`).join(", ")}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => set(detachRuneFromDraft(draft, rune.slotIndex))}
+                      data-testid={`button-remove-default-rune-${rune.slotIndex}`}
+                    >Remove</Button>
+                  </div>
+                ))}
+                {(draft.socketedRunes ?? []).length < v3RuneSlots(draft.rarity) && (
+                  <div>
+                    <Label>Add a rune</Label>
+                    <Select
+                      value=""
+                      onValueChange={(id) => {
+                        if (!id) return;
+                        const rune = runeItems.find(r => r.id === id);
+                        if (!rune) return;
+                        const res = attachRuneToDraft(draft, rune);
+                        if (res.error) { host.notify("warning", res.error); return; }
+                        set(res.updates!);
+                      }}
+                      data-testid="select-add-default-rune"
+                    >
+                      <SelectItem value="">Choose a rune…</SelectItem>
+                      {runeItems
+                        .filter(r => {
+                          const t = r.runeTargetItemType || "any";
+                          return t === "any" || t === draft.itemType;
+                        })
+                        .map(r => (
+                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                        ))}
+                    </Select>
+                  </div>
+                )}
+                {v3RuneSlots(draft.rarity) === 0 && (
+                  <p className="ld-subtle" data-testid="text-no-rune-slots">
+                    This rarity has no rune slots. Raise the rarity to add runes.
+                  </p>
                 )}
               </Stack>
             </Section>

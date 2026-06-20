@@ -306,3 +306,87 @@ export function aggregateRuneWeaponDamageLevelBonus(
     0,
   );
 }
+
+// Host-item stat columns a rune may write to. Mirrors the server's
+// V3_RUNE_STAT_COLUMNS whitelist (an unknown key would crash a Drizzle update).
+const V3_RUNE_STAT_COLUMN_SET = new Set<string>(V3_RUNE_STAT_TARGETS.map(t => t.value));
+
+// Build a socketed-rune snapshot from a library/admin rune item. Used when a GM
+// pre-loads ("by default") a rune onto an item at authoring time, sourcing the
+// rune from the library rather than consuming an owned inventory rune.
+export function v3RuneItemToSnapshot(rune: any, slotIndex: number): V3SocketedRune {
+  return {
+    slotIndex,
+    runeItemId: rune?.id ?? null,
+    name: rune?.name ?? "Rune",
+    image: rune?.image ?? null,
+    description: rune?.description ?? null,
+    statEffects: Array.isArray(rune?.runeStatEffects) ? rune.runeStatEffects : [],
+    useMode: rune?.runeUseMode || "none",
+    skillKey: rune?.runeSkillKey ?? null,
+    skillAdjustment: Math.trunc(Number(rune?.runeSkillAdjustment) || 0),
+    weaponDamageLevelBonus: Math.trunc(Number(rune?.runeWeaponDamageLevelBonus) || 0),
+    removable: !rune?.runeUnremovable,
+    removeDurabilityCost: Math.trunc(Number(rune?.runeRemoveDurabilityCost) || 0),
+  };
+}
+
+export interface V3RuneAttachResult {
+  ok: boolean;
+  error?: string;
+  // Field updates to merge into the host item: { socketedRunes, ...statColumns }.
+  updates?: Record<string, any>;
+}
+
+// Pure: attach a library rune onto a host item object, respecting rune-slot
+// limits (by rarity) and target-type compatibility. Returns the field updates
+// (socketedRunes + baked stat columns) to merge into the host. Does NOT mutate
+// inputs. Mirrors the runtime socket-rune route's math so a pre-loaded rune
+// behaves exactly like an in-game socketed one (removal reverts the columns).
+export function v3AttachRune(host: any, rune: any): V3RuneAttachResult {
+  if (!host) return { ok: false, error: "No host item" };
+  if (!rune || rune.itemType !== "rune") return { ok: false, error: "That item is not a rune" };
+  if (host.itemType === "rune") return { ok: false, error: "Cannot socket a rune into a rune" };
+  const target = rune.runeTargetItemType || "any";
+  if (target !== "any" && target !== host.itemType) {
+    return { ok: false, error: `This rune can only be applied to ${target} items` };
+  }
+  const slots = v3RuneSlotCount(host.rarity);
+  const socketed: V3SocketedRune[] = Array.isArray(host.socketedRunes) ? [...host.socketedRunes] : [];
+  if (socketed.length >= slots) {
+    return {
+      ok: false,
+      error: slots === 0 ? "This item has no rune slots (raise its rarity)" : "No free rune slots on this item",
+    };
+  }
+  const used = new Set(socketed.map(r => r.slotIndex));
+  let slotIndex = 0;
+  while (used.has(slotIndex)) slotIndex++;
+  const snap = v3RuneItemToSnapshot(rune, slotIndex);
+  const updates: Record<string, any> = { socketedRunes: [...socketed, snap] };
+  for (const e of snap.statEffects) {
+    if (!e || !e.target || !V3_RUNE_STAT_COLUMN_SET.has(e.target)) continue;
+    const amt = Math.trunc(Number(e.amount) || 0);
+    if (!amt) continue;
+    updates[e.target] = (Number(host[e.target]) || 0) + amt;
+  }
+  return { ok: true, updates };
+}
+
+// Pure: detach a socketed rune from a host item by slot index, reverting its
+// stat-column deltas. Used by authoring UIs (no durability cost — that is a
+// runtime-removal mechanic). Does NOT mutate inputs.
+export function v3DetachRune(host: any, slotIndex: number): V3RuneAttachResult {
+  const socketed: V3SocketedRune[] = Array.isArray(host?.socketedRunes) ? [...host.socketedRunes] : [];
+  const idx = socketed.findIndex(r => r.slotIndex === slotIndex);
+  if (idx < 0) return { ok: false, error: "No rune in that slot" };
+  const rune = socketed[idx];
+  const updates: Record<string, any> = { socketedRunes: socketed.filter((_, i) => i !== idx) };
+  for (const e of (Array.isArray(rune.statEffects) ? rune.statEffects : [])) {
+    if (!e || !e.target || !V3_RUNE_STAT_COLUMN_SET.has(e.target)) continue;
+    const amt = Math.trunc(Number(e.amount) || 0);
+    if (!amt) continue;
+    updates[e.target] = (Number(host[e.target]) || 0) - amt;
+  }
+  return { ok: true, updates };
+}

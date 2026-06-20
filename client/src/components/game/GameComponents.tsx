@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, v3RuneStatTargetLabel, v3EffectiveSkillMod, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -45,6 +45,7 @@ import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRol
 import { RollEntriesEditor } from './RollEntriesEditor';
 import { CraftRecipesEditor } from './CraftRecipesEditor';
 import { TemplateManager } from './TemplateManager';
+import { V3RuneAttachEditor } from './V3RuneAttachEditor';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay, FogMoveOverlay } from './FogOfWarOverlay';
@@ -439,6 +440,7 @@ interface BattleMapProps {
   mapPins?: any[];
   pinPlaceMode?: boolean;
   pinMoveMode?: boolean;
+  pinSnapToGrid?: boolean;
   onPinClick?: (pin: any) => void;
   onPinPlaced?: (x: number, y: number) => void;
   onPinDragEnd?: (pinId: string, x: number, y: number) => void;
@@ -498,13 +500,17 @@ async function consumeRollItemCosts(rollEntry: any, inventory: any[] | undefined
   }
 }
 
-function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
+function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, snapToGrid, snapGridSize, snapOffsetX, snapOffsetY, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
   pin: any;
   xPx: number;
   yPx: number;
   isRevealed: boolean;
   isGM: boolean;
   pinMoveMode?: boolean;
+  snapToGrid?: boolean;
+  snapGridSize?: number;
+  snapOffsetX?: number;
+  snapOffsetY?: number;
   bgImageDimensions: { width: number; height: number };
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoomRef: React.MutableRefObject<number>;
@@ -519,12 +525,12 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
-    if (isGM && pinMoveMode && onPinDragEnd) {
+    if (isGM && onPinDragEnd) {
       e.preventDefault();
       dragRef.current = { startScreenX: e.clientX, startScreenY: e.clientY, dragging: false, pointerId: e.pointerId };
       pinRef.current?.setPointerCapture(e.pointerId);
     }
-  }, [isGM, pinMoveMode, onPinDragEnd]);
+  }, [isGM, onPinDragEnd]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
@@ -549,8 +555,14 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
       const currentZoom = zoomRef.current;
       const dx = (e.clientX - dragRef.current.startScreenX) / currentZoom;
       const dy = (e.clientY - dragRef.current.startScreenY) / currentZoom;
-      const newXPx = xPx + dx;
-      const newYPx = yPx + dy;
+      let newXPx = xPx + dx;
+      let newYPx = yPx + dy;
+      if (snapToGrid && snapGridSize && snapGridSize > 0) {
+        const offX = snapOffsetX || 0;
+        const offY = snapOffsetY || 0;
+        newXPx = offX + (Math.round((newXPx - offX) / snapGridSize - 0.5) + 0.5) * snapGridSize;
+        newYPx = offY + (Math.round((newYPx - offY) / snapGridSize - 0.5) + 0.5) * snapGridSize;
+      }
       const pctX = Math.max(0, Math.min(100, (newXPx / bgImageDimensions.width) * 100));
       const pctY = Math.max(0, Math.min(100, (newYPx / bgImageDimensions.height) * 100));
       onPinDragEnd(pin.id, pctX, pctY);
@@ -559,7 +571,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
     }
     dragRef.current = null;
     setDragOffset(null);
-  }, [onPinDragEnd, bgImageDimensions, xPx, yPx, pin, zoomRef, onPinClick, onRevealToggle]);
+  }, [onPinDragEnd, bgImageDimensions, xPx, yPx, pin, zoomRef, onPinClick, onRevealToggle, snapToGrid, snapGridSize, snapOffsetX, snapOffsetY]);
 
   const doPinClick = () => {
     if (pin.isShop && onPinClick) {
@@ -588,7 +600,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
         top: displayY,
         transform: 'translate(-50%, -100%)',
         zIndex: isRevealed ? 1000 : 100,
-        cursor: isGM && pinMoveMode ? 'grab' : 'pointer',
+        cursor: isGM ? 'grab' : 'pointer',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -596,7 +608,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
       onPointerUp={handlePointerUp}
       onClick={(e) => {
         e.stopPropagation();
-        if (!pinMoveMode) doPinClick();
+        if (!isGM) doPinClick();
       }}
       data-testid={`map-pin-${pin.id}`}
     >
@@ -745,7 +757,7 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
 }
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -2678,29 +2690,39 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               height: bgImageDimensions.height,
             }}
           >
-            {mapPins.map((pin: any) => {
-              const xPx = (pin.x / 100) * bgImageDimensions.width;
-              const yPx = (pin.y / 100) * bgImageDimensions.height;
-              const isRevealed = revealedPinId === pin.id;
-              return (
-                <CampaignMapPinMarker
-                  key={pin.id}
-                  pin={pin}
-                  xPx={xPx}
-                  yPx={yPx}
-                  isRevealed={isRevealed}
-                  isGM={isGM}
-                  pinMoveMode={pinMoveMode}
-                  bgImageDimensions={bgImageDimensions}
-                  containerRef={containerRef}
-                  zoomRef={zoomRef}
-                  panRef={panRef}
-                  onPinClick={onPinClick}
-                  onPinDragEnd={onPinDragEnd}
-                  onRevealToggle={(pinId) => setRevealedPinId(prev => prev === pinId ? null : pinId)}
-                />
-              );
-            })}
+            {(() => {
+              const snapGs = gridSize || 50;
+              const snapBase = 9000 % snapGs;
+              const snapOffX = ((snapBase + ((scene as any)?.gridOffsetX || 0)) % snapGs + snapGs) % snapGs;
+              const snapOffY = ((snapBase + ((scene as any)?.gridOffsetY || 0)) % snapGs + snapGs) % snapGs;
+              return mapPins.map((pin: any) => {
+                const xPx = (pin.x / 100) * bgImageDimensions.width;
+                const yPx = (pin.y / 100) * bgImageDimensions.height;
+                const isRevealed = revealedPinId === pin.id;
+                return (
+                  <CampaignMapPinMarker
+                    key={pin.id}
+                    pin={pin}
+                    xPx={xPx}
+                    yPx={yPx}
+                    isRevealed={isRevealed}
+                    isGM={isGM}
+                    pinMoveMode={pinMoveMode}
+                    snapToGrid={pinSnapToGrid}
+                    snapGridSize={snapGs}
+                    snapOffsetX={snapOffX}
+                    snapOffsetY={snapOffY}
+                    bgImageDimensions={bgImageDimensions}
+                    containerRef={containerRef}
+                    zoomRef={zoomRef}
+                    panRef={panRef}
+                    onPinClick={onPinClick}
+                    onPinDragEnd={onPinDragEnd}
+                    onRevealToggle={(pinId) => setRevealedPinId(prev => prev === pinId ? null : pinId)}
+                  />
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -24930,6 +24952,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     grantsDcBonus: boolean;
     dcBonusValue: number | string;
     v3ArmorBoosts: V3ArmorBoost[];
+    socketedRunes: V3SocketedRune[];
   }>({
     name: '',
     image: '',
@@ -24970,6 +24993,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     grantsDcBonus: false,
     dcBonusValue: 0,
     v3ArmorBoosts: [],
+    socketedRunes: [],
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -25026,6 +25050,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
         dcBonusValue: template.dcBonusValue || 0,
         v3ArmorBoosts: template.v3ArmorBoosts || [],
         canApplyEffects: template.canApplyEffects || false,
+        socketedRunes: template.socketedRunes || [],
         sourceTemplateId: template.id,
       };
       onSave(itemData);
@@ -25158,7 +25183,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       detonateAoeRange: optionalNum(formData.detonateAoeRange),
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
       grantsDcBonus: formData.grantsDcBonus,
-      dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
+      dcBonusValue: formData.grantsDcBonus
+        ? (Number(formData.dcBonusValue) || 0)
+        : (aggregateRuneStatEffects(formData.socketedRunes)['dcBonusValue'] || 0),
       v3ArmorBoosts: (isAAV3 && formData.itemType === 'armor')
         ? (formData.v3ArmorBoosts || []).filter(b => b.target && Number(b.amount))
         : [],
@@ -25204,6 +25231,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       grantsDcBonus: false,
       dcBonusValue: 0,
       v3ArmorBoosts: [],
+      socketedRunes: [],
     });
   };
 
@@ -25893,6 +25921,17 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {isAAV3 && formData.itemType !== 'rune' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Runes</h3>
+                <V3RuneAttachEditor
+                  host={formData}
+                  onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
+                  campaignSystem={campaignSystem}
+                  campaignId={campaignId}
+                />
               </div>
             )}
             <div className="border-t border-stone-700 pt-4">

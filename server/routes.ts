@@ -17890,6 +17890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...(itemData.runeSkillKey !== undefined ? { runeSkillKey: itemData.runeSkillKey } : {}),
         ...(itemData.runeSkillAdjustment !== undefined ? { runeSkillAdjustment: itemData.runeSkillAdjustment } : {}),
         ...(itemData.runeWeaponDamageLevelBonus !== undefined ? { runeWeaponDamageLevelBonus: itemData.runeWeaponDamageLevelBonus } : {}),
+        ...(itemData.socketedRunes !== undefined ? { socketedRunes: itemData.socketedRunes } : {}),
       } as any);
 
       if (shopItem.quantity > 0) {

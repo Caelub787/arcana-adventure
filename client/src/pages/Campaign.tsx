@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode, type RulerShape, type RulerMarker } from "@/components/game/GameComponents";
+import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
@@ -6858,6 +6859,7 @@ export default function Campaign() {
   const [showMapPinEditor, setShowMapPinEditor] = useState(false);
   const [pinPlaceMode, setPinPlaceMode] = useState(false);
   const [pinMoveMode, setPinMoveMode] = useState(false);
+  const [pinSnapToGrid, setPinSnapToGrid] = useState(false);
   const [editingPin, setEditingPin] = useState<any | null>(null);
   const [pinFormData, setPinFormData] = useState({
     x: 0, y: 0, label: '', color: '#f59e0b', icon: 'pin',
@@ -7697,9 +7699,10 @@ export default function Campaign() {
   });
 
   const updatePinMutation = useMutation({
-    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.updateCampaignMapPin(pinId, data),
-    onSuccess: () => {
+    mutationFn: ({ pinId, data }: { pinId: string; data: any; silent?: boolean }) => api.updateCampaignMapPin(pinId, data),
+    onSuccess: (_res, variables) => {
       queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
+      if (variables?.silent) return;
       setShowPinForm(false);
       setEditingPin(null);
       toast({ title: 'Pin updated' });
@@ -11129,6 +11132,16 @@ export default function Campaign() {
                       {pinMoveMode ? 'Moving... Drag pin on map' : 'Move Pin'}
                     </Button>
                   )}
+                  <label className="flex items-center gap-2 text-xs text-stone-400 cursor-pointer pt-1" data-testid="toggle-pin-snap-grid">
+                    <input
+                      type="checkbox"
+                      checked={pinSnapToGrid}
+                      onChange={(e) => setPinSnapToGrid(e.target.checked)}
+                      className="accent-amber-500"
+                      data-testid="checkbox-pin-snap-grid"
+                    />
+                    Snap pins to grid when dragging
+                  </label>
                   <div className="flex gap-2 pt-2">
                     <Button
                       className="flex-1 bg-amber-600 hover:bg-amber-700"
@@ -11386,6 +11399,19 @@ export default function Campaign() {
                             />
                           </div>
                         </div>
+                        {isAAV3 && (item.itemData as any)?.itemType !== 'rune' && (
+                          <div className="border-t border-stone-700 pt-2">
+                            <V3RuneAttachEditor
+                              host={(item.itemData || {}) as any}
+                              onChange={(updates) => {
+                                const currentData = (item.itemData || {}) as Record<string, any>;
+                                updateShopItemMutation.mutate({ itemId: item.id, data: { itemData: { ...currentData, ...updates } } });
+                              }}
+                              campaignSystem={campaign?.system}
+                              campaignId={campaignId}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
@@ -11541,6 +11567,7 @@ export default function Campaign() {
                               runeSkillKey: t.runeSkillKey,
                               runeSkillAdjustment: t.runeSkillAdjustment,
                               runeWeaponDamageLevelBonus: t.runeWeaponDamageLevelBonus,
+                              socketedRunes: (t as any).socketedRunes,
                             };
                             createShopItemMutation.mutate({
                               pinId: shopEditingPin.id,
@@ -12360,10 +12387,12 @@ export default function Campaign() {
                }
              }}
              onPinDragEnd={(pinId: string, x: number, y: number) => {
-               setPinFormData(prev => ({ ...prev, x, y }));
-               setPinMoveMode(false);
-               toast({ title: 'Pin moved', description: 'Click Save to save the new position' });
+               updatePinMutation.mutate({ pinId, data: { x, y }, silent: true });
+               if (editingPin?.id === pinId) {
+                 setPinFormData(prev => ({ ...prev, x, y }));
+               }
              }}
+             pinSnapToGrid={pinSnapToGrid}
              campaignSystem={(campaign as any)?.system}
            />
            
