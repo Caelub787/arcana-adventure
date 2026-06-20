@@ -22897,6 +22897,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}
         charPanelSuffix={charPanelSuffix}
+        inventoryRunes={(items as any[]).filter((i: any) => i.itemType === 'rune')}
       />
 
       {/* Manage Templates Dialog (GM Only) */}
@@ -24833,7 +24834,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '' }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string }) {
+function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '', inventoryRunes }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string; inventoryRunes?: any[] }) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
@@ -25931,6 +25932,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                   onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
                   campaignSystem={campaignSystem}
                   campaignId={campaignId}
+                  availableRunes={inventoryRunes}
+                  emptyPickerLabel="No runes in this character's inventory"
                 />
               </div>
             )}

@@ -25,3 +25,10 @@ because their save paths pass the formData value straight through.
 Also: new copy paths (shop add-from-template, server shop-buy item creation) do NOT
 automatically carry `socketedRunes` — each spread/whitelist must explicitly include
 it or the runes silently drop on copy.
+
+**Slot-grid rendering trap:** when runes render as a fixed grid of `v3RuneSlotCount(rarity)`
+cells indexed by slotIndex, never render only `0..cap-1`. Capacity can shrink below the
+socketed count (rarity lowered after attaching), stranding overflow runes (slotIndex >= cap)
+as invisible + unremovable while their baked stats persist. Render
+`max(cap, highestSlotIndex+1)` cells; show filled cells always, cap the empty add-slots at
+`cap`. Applies to both V3RuneAttachEditor (client) and the ItemDialog "Default runes" grid.

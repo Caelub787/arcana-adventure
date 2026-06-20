@@ -367,6 +367,8 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
 
   // Load library rune items so a GM can pre-load default runes onto a V3 item.
   const [runeItems, setRuneItems] = React.useState<any[]>([]);
+  const [runePickerSlot, setRunePickerSlot] = React.useState<number | null>(null);
+  const [runeSearch, setRuneSearch] = React.useState("");
   React.useEffect(() => {
     if (!open || !aav3) { setRuneItems([]); return; }
     host.transport.list<any>("item")
@@ -900,58 +902,137 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   ({draft.rarity ?? "common"} = {v3RuneSlots(draft.rarity)}).
                   Used {(draft.socketedRunes ?? []).length} / {v3RuneSlots(draft.rarity)}.
                 </p>
-                {(draft.socketedRunes ?? []).map(rune => (
-                  <div
-                    key={rune.slotIndex}
-                    className="ld-row" style={{ justifyContent: "space-between" }}
-                    data-testid={`row-default-rune-${rune.slotIndex}`}
-                  >
-                    <span>
-                      <strong>{rune.name}</strong>
-                      {rune.statEffects?.length ? (
-                        <span className="ld-subtle">
-                          {" "}— {rune.statEffects.map(e => `${e.amount > 0 ? "+" : ""}${e.amount} ${e.target}`).join(", ")}
-                        </span>
-                      ) : null}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      onClick={() => set(detachRuneFromDraft(draft, rune.slotIndex))}
-                      data-testid={`button-remove-default-rune-${rune.slotIndex}`}
-                    >Remove</Button>
-                  </div>
-                ))}
-                {(draft.socketedRunes ?? []).length < v3RuneSlots(draft.rarity) && (
-                  <div>
-                    <Label>Add a rune</Label>
-                    <Select
-                      value=""
-                      onValueChange={(id) => {
-                        if (!id) return;
-                        const rune = runeItems.find(r => r.id === id);
-                        if (!rune) return;
-                        const res = attachRuneToDraft(draft, rune);
-                        if (res.error) { host.notify("warning", res.error); return; }
-                        set(res.updates!);
-                      }}
-                      data-testid="select-add-default-rune"
-                    >
-                      <SelectItem value="">Choose a rune…</SelectItem>
-                      {runeItems
-                        .filter(r => {
-                          const t = r.runeTargetItemType || "any";
-                          return t === "any" || t === draft.itemType;
-                        })
-                        .map(r => (
-                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                        ))}
-                    </Select>
-                  </div>
-                )}
-                {v3RuneSlots(draft.rarity) === 0 && (
+                {v3RuneSlots(draft.rarity) === 0 && (draft.socketedRunes ?? []).length === 0 ? (
                   <p className="ld-subtle" data-testid="text-no-rune-slots">
                     This rarity has no rune slots. Raise the rarity to add runes.
                   </p>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} data-testid="rune-slot-grid">
+                      {Array.from({ length: Math.max(v3RuneSlots(draft.rarity), (draft.socketedRunes ?? []).reduce((m, r) => Math.max(m, r.slotIndex + 1), 0)) }).map((_, i) => {
+                        const rune = (draft.socketedRunes ?? []).find(r => r.slotIndex === i);
+                        if (rune) {
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                position: "relative", width: 80, height: 80, padding: 4,
+                                borderRadius: 8, border: "2px solid rgba(180,83,9,0.6)",
+                                background: "#292524", display: "flex", flexDirection: "column",
+                                alignItems: "center", justifyContent: "center", textAlign: "center",
+                              }}
+                              data-testid={`rune-slot-filled-${i}`}
+                              title={rune.statEffects?.length
+                                ? rune.statEffects.map(e => `${e.amount > 0 ? "+" : ""}${e.amount} ${e.target}`).join(", ")
+                                : rune.name}
+                            >
+                              {rune.image ? (
+                                <img src={rune.image} alt={rune.name} style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4, marginBottom: 4 }} />
+                              ) : (
+                                <span style={{ fontSize: 20, marginBottom: 4 }}>💎</span>
+                              )}
+                              <span style={{ fontSize: 10, lineHeight: 1.1, color: "#e7e5e4", overflow: "hidden" }}>{rune.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => { setRunePickerSlot(null); set(detachRuneFromDraft(draft, i)); }}
+                                style={{
+                                  position: "absolute", top: -6, right: -6, width: 20, height: 20,
+                                  borderRadius: "50%", background: "#1c1917", border: "1px solid #57534e",
+                                  color: "#a8a29e", cursor: "pointer", lineHeight: 1, fontSize: 12,
+                                }}
+                                data-testid={`button-remove-default-rune-${i}`}
+                              >×</button>
+                            </div>
+                          );
+                        }
+                        if (i >= v3RuneSlots(draft.rarity)) return null;
+                        const active = runePickerSlot === i;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => { setRunePickerSlot(active ? null : i); setRuneSearch(""); }}
+                            style={{
+                              width: 80, height: 80, borderRadius: 8, cursor: "pointer",
+                              border: active ? "2px solid rgba(180,83,9,0.8)" : "2px dashed #57534e",
+                              background: active ? "#292524" : "rgba(28,25,23,0.5)",
+                              color: "#78716c", fontSize: 28, lineHeight: 1,
+                            }}
+                            data-testid={`rune-slot-empty-${i}`}
+                          >+</button>
+                        );
+                      })}
+                    </div>
+                    {runePickerSlot !== null && (
+                      <div
+                        style={{
+                          border: "1px solid #44403c", borderRadius: 8, padding: 8,
+                          background: "#1c1917",
+                        }}
+                        data-testid="rune-picker-panel"
+                      >
+                        <Input
+                          value={runeSearch}
+                          onChange={e => setRuneSearch(e.target.value)}
+                          placeholder="Search runes…"
+                          data-testid="input-rune-search"
+                          autoFocus
+                        />
+                        <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 8 }}>
+                          {(() => {
+                            const compat = runeItems
+                              .filter(r => {
+                                const t = r.runeTargetItemType || "any";
+                                return t === "any" || t === draft.itemType;
+                              })
+                              .filter(r => (r.name || "").toLowerCase().includes(runeSearch.toLowerCase()));
+                            if (compat.length === 0) {
+                              return <p className="ld-subtle" data-testid="text-no-runes-available" style={{ textAlign: "center", padding: 12 }}>No compatible runes</p>;
+                            }
+                            return compat.map(r => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                onClick={() => {
+                                  const res = attachRuneToDraft(draft, r);
+                                  if (res.error) { host.notify("warning", res.error); return; }
+                                  set(res.updates!);
+                                  setRunePickerSlot(null);
+                                  setRuneSearch("");
+                                }}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                  padding: 6, borderRadius: 4, background: "transparent",
+                                  border: "none", cursor: "pointer", textAlign: "left", color: "#e7e5e4",
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "#292524")}
+                                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                                data-testid={`rune-option-${r.id}`}
+                              >
+                                <span style={{
+                                  width: 28, height: 28, borderRadius: 4, background: "#292524",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  overflow: "hidden", flexShrink: 0,
+                                }}>
+                                  {r.image ? (
+                                    <img src={r.image} alt={r.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                  ) : <span style={{ fontSize: 14 }}>💎</span>}
+                                </span>
+                                <span style={{ minWidth: 0, flex: 1 }}>
+                                  <span style={{ display: "block", fontSize: 13 }}>{r.name}</span>
+                                  {Array.isArray(r.runeStatEffects) && r.runeStatEffects.length ? (
+                                    <span style={{ display: "block", fontSize: 11, color: "#fbbf24" }}>
+                                      {r.runeStatEffects.map((e: any) => `${e.amount > 0 ? "+" : ""}${e.amount} ${e.target}`).join(", ")}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </Stack>
             </Section>
