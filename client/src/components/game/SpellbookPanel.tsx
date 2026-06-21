@@ -5,7 +5,6 @@ import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { V3SpellCrafter } from "./V3SpellCrafter";
 import { castV3Spell, v3ReachExtraMana, type V3CastCharacter } from "@/lib/v3cast";
@@ -61,16 +60,23 @@ export function V3SpellDetailDialog({
   spell,
   castCharacter,
   onCast,
+  bringToFront,
+  floatingZIndices,
+  panelKey: panelKeyProp,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spell: V3Spell | null;
   castCharacter?: V3CastCharacter;
   onCast?: () => void;
+  bringToFront?: (key: string) => void;
+  floatingZIndices?: Record<string, number>;
+  panelKey?: string;
 }) {
   const [level, setLevel] = useState(1);
   const [reach, setReach] = useState<string>(spell?.composition?.reach || "");
-  if (!spell) return null;
+  const panelKey = panelKeyProp ?? "v3-spell-detail";
+  if (!open || !spell) return null;
   const comp = spell.composition;
   const awaiting = spell.status === "awaiting_gm";
   const lv = Math.max(1, Math.floor(level || 1));
@@ -83,12 +89,10 @@ export function V3SpellDetailDialog({
   const totalMana = Math.max(0, baseMana + extraMana + reachExtra);
   const canCast = !!castCharacter && !awaiting;
 
-  const handleOpenChange = (o: boolean) => {
-    if (!o) {
-      setLevel(1);
-      setReach(spell?.composition?.reach || "");
-    }
-    onOpenChange(o);
+  const handleClose = () => {
+    setLevel(1);
+    setReach(spell?.composition?.reach || "");
+    onOpenChange(false);
   };
 
   const handleCast = () => {
@@ -103,128 +107,136 @@ export function V3SpellDetailDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-md" data-testid="dialog-v3-spell-detail">
-        <DialogHeader>
-          <DialogTitle className="text-purple-300 flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            {spell.name || (awaiting ? "Unnamed spell" : "Spell")}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 text-sm">
-          {spell.image && (
-            <img src={spell.image} alt={spell.name} className="w-full h-32 object-cover rounded" />
-          )}
-          {awaiting && (
-            <div className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/30 px-2 py-1 rounded w-fit">
-              <Clock className="h-3 w-3" /> Awaiting GM authoring
-            </div>
-          )}
-          {spell.description && <p className="text-stone-300">{spell.description}</p>}
-          <div className="flex gap-3 text-xs text-stone-400">
-            <span>Mana: <span className="text-blue-300">{spell.manaCost}</span></span>
-            <span>Craft DC: <span className="text-amber-300">{spell.craftDc}</span></span>
+    <FloatingPanel
+      open={open}
+      onClose={handleClose}
+      title={
+        <span className="flex items-center gap-2 text-purple-300">
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span className="truncate">{spell.name || (awaiting ? "Unnamed spell" : "Spell")}</span>
+        </span>
+      }
+      defaultSize={{ width: 400, height: 540 }}
+      minWidth={320}
+      minHeight={360}
+      panelKey={panelKey}
+      zIndex={floatingZIndices?.[panelKey] ?? 10060}
+      onBringToFront={() => bringToFront?.(panelKey)}
+      data-testid="dialog-v3-spell-detail"
+    >
+      <div className="space-y-3 text-sm p-1 overflow-y-auto h-full">
+        {spell.image && (
+          <img src={spell.image} alt={spell.name} className="w-full h-32 object-cover rounded" />
+        )}
+        {awaiting && (
+          <div className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/30 px-2 py-1 rounded w-fit">
+            <Clock className="h-3 w-3" /> Awaiting GM authoring
           </div>
-          {comp && (
-            <div className="space-y-1 border-t border-stone-700 pt-2">
-              {comp.core && (
-                <p className="text-xs"><span className="text-stone-500">Core:</span> <span className="text-purple-300">{V3_ELEMENT_MAP[comp.core]?.name ?? comp.core}</span></p>
-              )}
-              {comp.secondaries && comp.secondaries.length > 0 && (
-                <p className="text-xs">
-                  <span className="text-stone-500">Secondary:</span>{" "}
-                  {comp.secondaries.map((s, i) => (
-                    <span key={i} className="text-stone-300">
-                      {V3_ELEMENT_MAP[s.element]?.name ?? s.element}
-                      {s.role ? ` (${V3_ROLE_MAP[s.role]?.name ?? s.role})` : ""}
-                      {i < comp.secondaries.length - 1 ? ", " : ""}
-                    </span>
-                  ))}
-                </p>
-              )}
-              {comp.intent && <p className="text-xs"><span className="text-stone-500">Intent:</span> <span className="text-stone-300">{V3_INTENT_MAP[comp.intent]?.name ?? comp.intent}</span></p>}
-              {comp.delivery && <p className="text-xs"><span className="text-stone-500">Delivery:</span> <span className="text-stone-300">{V3_DELIVERY_MAP[comp.delivery]?.name ?? comp.delivery}</span></p>}
-              {comp.reach && <p className="text-xs"><span className="text-stone-500">Reach:</span> <span className="text-stone-300">{V3_REACH_MAP[comp.reach]?.name ?? comp.reach}</span></p>}
-              {comp.duration && <p className="text-xs"><span className="text-stone-500">Duration:</span> <span className="text-stone-300">{V3_DURATION_MAP[comp.duration]?.name ?? comp.duration}</span></p>}
-            </div>
-          )}
-
-          {canCast && (
-            <div className="space-y-2 border-t border-stone-700 pt-3" data-testid="section-v3-spell-cast">
-              {craftedReach && (
-                <div className="space-y-1" data-testid="section-v3-spell-reach">
-                  <span className="text-xs uppercase tracking-wide text-stone-500">Range</span>
-                  <Select value={chosenReach} onValueChange={setReach}>
-                    <SelectTrigger className="h-8 bg-stone-950 border-stone-600 text-stone-200" data-testid="select-v3-reach">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {V3_REACHES.map((r) => (
-                        <SelectItem key={r.key} value={r.key} className="text-xs">
-                          {r.name} ({r.description})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wide text-stone-500">Cast Level</span>
-                <span className="flex items-center gap-1 text-purple-300 font-semibold" data-testid="text-v3-dice-readout">
-                  <Dices className="h-4 w-4" /> {diceLabel}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
-                  onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1) - 1))}
-                  disabled={lv <= 1}
-                  data-testid="button-v3-level-minus"
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <Input
-                  type="number"
-                  min={1}
-                  value={lv}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
-                  }}
-                  className="h-8 w-20 text-center bg-stone-950 border-stone-600"
-                  data-testid="input-v3-level"
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
-                  onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1)) + 1)}
-                  data-testid="button-v3-level-plus"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-stone-400" data-testid="text-v3-total-mana">
-                Total mana: <span className="text-blue-300">{totalMana}</span>
-                <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""}{reachExtra !== 0 ? ` ${reachExtra > 0 ? "+" : "−"} ${Math.abs(reachExtra)} for range` : ""})</span>
+        )}
+        {spell.description && <p className="text-stone-300">{spell.description}</p>}
+        <div className="flex gap-3 text-xs text-stone-400">
+          <span>Mana: <span className="text-blue-300">{spell.manaCost}</span></span>
+          <span>Craft DC: <span className="text-amber-300">{spell.craftDc}</span></span>
+        </div>
+        {comp && (
+          <div className="space-y-1 border-t border-stone-700 pt-2">
+            {comp.core && (
+              <p className="text-xs"><span className="text-stone-500">Core:</span> <span className="text-purple-300">{V3_ELEMENT_MAP[comp.core]?.name ?? comp.core}</span></p>
+            )}
+            {comp.secondaries && comp.secondaries.length > 0 && (
+              <p className="text-xs">
+                <span className="text-stone-500">Secondary:</span>{" "}
+                {comp.secondaries.map((s, i) => (
+                  <span key={i} className="text-stone-300">
+                    {V3_ELEMENT_MAP[s.element]?.name ?? s.element}
+                    {s.role ? ` (${V3_ROLE_MAP[s.role]?.name ?? s.role})` : ""}
+                    {i < comp.secondaries.length - 1 ? ", " : ""}
+                  </span>
+                ))}
               </p>
+            )}
+            {comp.intent && <p className="text-xs"><span className="text-stone-500">Intent:</span> <span className="text-stone-300">{V3_INTENT_MAP[comp.intent]?.name ?? comp.intent}</span></p>}
+            {comp.delivery && <p className="text-xs"><span className="text-stone-500">Delivery:</span> <span className="text-stone-300">{V3_DELIVERY_MAP[comp.delivery]?.name ?? comp.delivery}</span></p>}
+            {comp.reach && <p className="text-xs"><span className="text-stone-500">Reach:</span> <span className="text-stone-300">{V3_REACH_MAP[comp.reach]?.name ?? comp.reach}</span></p>}
+            {comp.duration && <p className="text-xs"><span className="text-stone-500">Duration:</span> <span className="text-stone-300">{V3_DURATION_MAP[comp.duration]?.name ?? comp.duration}</span></p>}
+          </div>
+        )}
+
+        {canCast && (
+          <div className="space-y-2 border-t border-stone-700 pt-3" data-testid="section-v3-spell-cast">
+            {craftedReach && (
+              <div className="space-y-1" data-testid="section-v3-spell-reach">
+                <span className="text-xs uppercase tracking-wide text-stone-500">Range</span>
+                <Select value={chosenReach} onValueChange={setReach}>
+                  <SelectTrigger className="h-8 bg-stone-950 border-stone-600 text-stone-200" data-testid="select-v3-reach">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {V3_REACHES.map((r) => (
+                      <SelectItem key={r.key} value={r.key} className="text-xs">
+                        {r.name} ({r.description})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase tracking-wide text-stone-500">Cast Level</span>
+              <span className="flex items-center gap-1 text-purple-300 font-semibold" data-testid="text-v3-dice-readout">
+                <Dices className="h-4 w-4" /> {diceLabel}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
-                className="w-full bg-purple-700 hover:bg-purple-600 text-white"
-                onClick={handleCast}
-                data-testid="button-v3-roll-spell"
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+                onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1) - 1))}
+                disabled={lv <= 1}
+                data-testid="button-v3-level-minus"
               >
-                <Dices className="h-4 w-4 mr-2" /> Roll {diceLabel}
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Input
+                type="number"
+                min={1}
+                value={lv}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
+                }}
+                className="h-8 w-20 text-center bg-stone-950 border-stone-600"
+                data-testid="input-v3-level"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 border-stone-600 text-stone-300 hover:bg-stone-800"
+                onClick={() => setLevel((l) => Math.max(1, Math.floor(l || 1)) + 1)}
+                data-testid="button-v3-level-plus"
+              >
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            <p className="text-xs text-stone-400" data-testid="text-v3-total-mana">
+              Total mana: <span className="text-blue-300">{totalMana}</span>
+              <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""}{reachExtra !== 0 ? ` ${reachExtra > 0 ? "+" : "−"} ${Math.abs(reachExtra)} for range` : ""})</span>
+            </p>
+            <Button
+              type="button"
+              className="w-full bg-purple-700 hover:bg-purple-600 text-white"
+              onClick={handleCast}
+              data-testid="button-v3-roll-spell"
+            >
+              <Dices className="h-4 w-4 mr-2" /> Roll {diceLabel}
+            </Button>
+          </div>
+        )}
+      </div>
+    </FloatingPanel>
   );
 }
 

@@ -18644,6 +18644,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const stackItems = (items: any[]) => {
     const stacks = new Map<string, any>();
     for (const item of items) {
+      // Items with socketed runes are treated as distinct — build a stable
+      // signature from their rune loadout so they never merge with plain copies
+      // or copies that carry different runes (aa-v3 only, no-op for V2).
+      const runeSignature = Array.isArray(item.socketedRunes) && item.socketedRunes.length > 0
+        ? item.socketedRunes.map((r: any) => `${r.slotIndex}:${r.runeItemId ?? r.name}`).sort().join('|')
+        : null;
       const key = JSON.stringify({
         name: item.name,
         damage: item.damage,
@@ -18663,6 +18669,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         isContainer: item.isContainer,
         carryCapacity: item.carryCapacity,
         isEquipped: item.isEquipped,
+        runeSignature,
       });
       if (stacks.has(key)) {
         const stack = stacks.get(key)!;
@@ -26561,11 +26568,13 @@ interface ItemDetailDialogProps {
 function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; character: any; items: any[]; canEdit: boolean }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [openSlot, setOpenSlot] = useState<number | null>(null);
+  const [openRuneSlot, setOpenRuneSlot] = useState<number | null>(null);
 
   const slotCount = v3RuneSlotCount(item?.rarity);
   const socketed: V3SocketedRune[] = Array.isArray(item?.socketedRunes) ? item.socketedRunes : [];
-  const freeSlots = Math.max(0, slotCount - socketed.length);
+  // Show at least slotCount cells; also keep overflow-socketed runes visible/removable
+  const cellCount = Math.max(slotCount, socketed.reduce((m, r) => Math.max(m, r.slotIndex + 1), 0));
 
   // Owned runes that can target this host item's type.
   const ownedRunes = useMemo(() => {
@@ -26589,7 +26598,7 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
     try {
       await api.socketRune(character.id, item.id, runeItemId);
       invalidate();
-      setPickerOpen(false);
+      setOpenSlot(null);
       toast({ title: 'Rune socketed' });
     } catch (err: any) {
       toast({ title: 'Could not socket rune', description: err?.message || 'Failed', variant: 'destructive' });
@@ -26645,72 +26654,123 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
         <span className="text-[11px] text-stone-500" data-testid="text-v3-rune-slots">{socketed.length} / {slotCount} slots</span>
       </div>
 
-      {socketed.length === 0 && <p className="text-xs text-stone-500">No runes socketed.</p>}
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: cellCount }).map((_, i) => {
+          const rune = socketed.find(r => r.slotIndex === i);
 
-      {socketed.map((rune) => (
-        <div key={rune.slotIndex} className="rounded border border-stone-700 bg-stone-900/60 p-2 space-y-1" data-testid={`row-v3-socketed-rune-${rune.slotIndex}`}>
-          <div className="flex items-center gap-2">
-            {rune.image ? (
-              <img src={rune.image} alt={rune.name} className="h-8 w-8 rounded object-cover flex-shrink-0" />
-            ) : (
-              <div className="h-8 w-8 rounded bg-stone-800 flex items-center justify-center flex-shrink-0"><Sparkles className="h-4 w-4 text-sky-400" /></div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-stone-200 truncate">{rune.name}</p>
-              {rune.description && <p className="text-[11px] text-stone-500 truncate">{rune.description}</p>}
-            </div>
-            {rune.useMode === 'skill_check' && (
-              <Button type="button" size="sm" className="bg-sky-700 hover:bg-sky-600 text-white flex-shrink-0" onClick={() => useRuneSkill(rune)} data-testid={`button-use-rune-${rune.slotIndex}`}>Use</Button>
-            )}
-          </div>
-          {(Array.isArray(rune.statEffects) && rune.statEffects.length > 0 || (rune.weaponDamageLevelBonus || 0) > 0) && (
-            <div className="flex flex-wrap gap-1">
-              {(rune.statEffects || []).map((e, i) => e?.target ? (
-                <Badge key={i} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">{v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}</Badge>
-              ) : null)}
-              {(rune.weaponDamageLevelBonus || 0) > 0 && (
-                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">+{rune.weaponDamageLevelBonus} base dmg level</Badge>
-              )}
-            </div>
-          )}
-          {canEdit && (
-            rune.removable === false ? (
-              <p className="text-[10px] text-stone-500">Unremovable</p>
-            ) : (
-              <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] border-red-900 text-red-300 hover:bg-red-950" disabled={busy} onClick={() => handleRemove(rune.slotIndex, rune.removeDurabilityCost || 0)} data-testid={`button-remove-rune-${rune.slotIndex}`}>
-                Remove{(rune.removeDurabilityCost || 0) > 0 ? ` (-${rune.removeDurabilityCost} max dur)` : ''}
-              </Button>
-            )
-          )}
-        </div>
-      ))}
-
-      {canEdit && freeSlots > 0 && (
-        !pickerOpen ? (
-          <Button type="button" size="sm" variant="outline" className="w-full border-sky-800 text-sky-300 hover:bg-sky-950" onClick={() => setPickerOpen(true)} disabled={busy} data-testid="button-open-rune-picker">
-            <Plus className="h-4 w-4 mr-1" /> Socket Rune ({freeSlots} free)
-          </Button>
-        ) : (
-          <div className="rounded border border-stone-700 bg-stone-900 p-2 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-stone-400">Choose a rune</span>
-              <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setPickerOpen(false)}>Cancel</Button>
-            </div>
-            {ownedRunes.length === 0 ? (
-              <p className="text-xs text-stone-500">No compatible runes in your inventory.</p>
-            ) : (
-              <div className="max-h-40 overflow-y-auto space-y-1">
-                {ownedRunes.map((r: any) => (
-                  <button key={r.id} type="button" disabled={busy} onClick={() => handleSocket(r.id)} className="w-full flex items-center justify-between p-2 hover:bg-stone-800 rounded text-left disabled:opacity-50" data-testid={`button-pick-rune-${r.id}`}>
-                    <span className="text-sm text-stone-200 truncate">{r.name}</span>
-                    <Plus className="h-4 w-4 text-sky-400 flex-shrink-0" />
+          if (rune) {
+            return (
+              <Popover key={i} open={openRuneSlot === i} onOpenChange={(o) => setOpenRuneSlot(o ? i : null)}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="relative w-16 h-16 rounded-lg border-2 border-sky-700/70 bg-stone-800 flex flex-col items-center justify-center p-1 text-center hover:border-sky-500 transition-colors"
+                    data-testid={`rune-slot-filled-${i}`}
+                    title={rune.name}
+                  >
+                    {rune.image ? (
+                      <img src={rune.image} alt={rune.name} className="w-8 h-8 object-cover rounded mb-0.5" />
+                    ) : (
+                      <Sparkles className="w-6 h-6 text-sky-400 mb-0.5" />
+                    )}
+                    <span className="text-[9px] leading-tight text-stone-300 line-clamp-2 w-full text-center">{rune.name}</span>
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      )}
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-3 bg-stone-900 border-stone-700" align="start">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-stone-200">{rune.name}</p>
+                    {rune.description && <p className="text-[11px] text-stone-400">{rune.description}</p>}
+                    {(Array.isArray(rune.statEffects) && rune.statEffects.length > 0 || (rune.weaponDamageLevelBonus || 0) > 0) && (
+                      <div className="flex flex-wrap gap-1">
+                        {(rune.statEffects || []).map((e, j) => e?.target ? (
+                          <Badge key={j} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">
+                            {v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}
+                          </Badge>
+                        ) : null)}
+                        {(rune.weaponDamageLevelBonus || 0) > 0 && (
+                          <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">+{rune.weaponDamageLevelBonus} dmg lvl</Badge>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5 pt-1 border-t border-stone-700">
+                      {rune.useMode === 'skill_check' && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 text-xs bg-sky-700 hover:bg-sky-600 text-white"
+                          onClick={() => { useRuneSkill(rune); setOpenRuneSlot(null); }}
+                          data-testid={`button-use-rune-${i}`}
+                        >
+                          Use
+                        </Button>
+                      )}
+                      {canEdit && (
+                        rune.removable === false ? (
+                          <p className="text-[10px] text-stone-500">Unremovable</p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] border-red-900 text-red-300 hover:bg-red-950"
+                            disabled={busy}
+                            onClick={() => { setOpenRuneSlot(null); handleRemove(rune.slotIndex, rune.removeDurabilityCost || 0); }}
+                            data-testid={`button-remove-rune-${i}`}
+                          >
+                            Remove{(rune.removeDurabilityCost || 0) > 0 ? ` (-${rune.removeDurabilityCost} dur)` : ''}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            );
+          }
+
+          if (i >= slotCount) return null;
+
+          return (
+            <Popover key={i} open={openSlot === i} onOpenChange={(o) => { setOpenSlot(o ? i : null); }}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-stone-600 bg-stone-900/50 hover:border-sky-700/60 hover:bg-stone-800 flex items-center justify-center transition-colors disabled:opacity-40"
+                  disabled={!canEdit || busy}
+                  data-testid={`rune-slot-empty-${i}`}
+                  title="Socket a rune"
+                >
+                  <Plus className="w-5 h-5 text-stone-500" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2 bg-stone-900 border-stone-700" align="start">
+                <p className="text-xs text-stone-400 mb-2">Choose a rune to socket</p>
+                {ownedRunes.length === 0 ? (
+                  <p className="text-xs text-stone-500">No compatible runes in your inventory.</p>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {ownedRunes.map((r: any) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => { handleSocket(r.id); setOpenSlot(null); }}
+                        className="w-full flex items-center gap-2 p-1.5 hover:bg-stone-800 rounded text-left disabled:opacity-50"
+                        data-testid={`button-pick-rune-${r.id}`}
+                      >
+                        <div className="w-7 h-7 rounded bg-stone-800 flex items-center justify-center overflow-hidden shrink-0">
+                          {r.image ? <img src={r.image} alt={r.name} className="w-full h-full object-cover" /> : <Sparkles className="w-4 h-4 text-sky-400" />}
+                        </div>
+                        <span className="text-sm text-stone-200 truncate">{r.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -27579,20 +27639,22 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             </div>
 
-            <div>
-              <Label className="text-xs text-stone-400">Description</Label>
-              {isEditing ? (
-                <Textarea 
-                  value={currentData.description || ''} 
-                  onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                  className="bg-stone-800 border-stone-700 min-h-[60px]"
-                  placeholder="Item description..."
-                  data-testid="textarea-edit-description"
-                />
-              ) : (
-                <p className="text-stone-200 text-sm">{currentData.description || 'No description'}</p>
-              )}
-            </div>
+            {(isEditing || currentData.description || !isAAV3) && (
+              <div>
+                <Label className="text-xs text-stone-400">Description</Label>
+                {isEditing ? (
+                  <Textarea 
+                    value={currentData.description || ''} 
+                    onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+                    className="bg-stone-800 border-stone-700 min-h-[60px]"
+                    placeholder="Item description..."
+                    data-testid="textarea-edit-description"
+                  />
+                ) : (
+                  <p className="text-stone-200 text-sm">{currentData.description || (!isAAV3 ? 'No description' : '')}</p>
+                )}
+              </div>
+            )}
 
             {!isAAV3 && (currentData.aoe || isEditing) && (
               <div className="pt-4 border-t border-stone-700">
@@ -27687,7 +27749,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             )}
             
-            {currentData.itemType === 'weapon' && (
+            {currentData.itemType === 'weapon' && !isAAV3 && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Weapon Settings</h3>
                 <div className="space-y-4">
@@ -27975,6 +28037,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             )}
 
+            {!isAAV3 && (
             <div className="pt-4 border-t border-stone-700">
               <h3 className="text-sm font-bold text-stone-300 mb-2">DC Bonus</h3>
               {isEditing && canEditAllFields ? (
@@ -28010,6 +28073,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 )
               )}
             </div>
+            )}
 
             <div className="pt-4 border-t border-stone-700">
               <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
@@ -28162,7 +28226,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             </div>
 
-            {(isOwner || isGM) && !currentData.isContainer && !isEditing && (
+            {(isOwner || isGM) && !currentData.isContainer && !isEditing && !isAAV3 && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
                 <div className="space-y-2">
@@ -28222,7 +28286,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               />
             )}
 
-            {!isEditing && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
+            {!isEditing && !isAAV3 && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Quick Actions</h3>
                 <div className="space-y-2">
