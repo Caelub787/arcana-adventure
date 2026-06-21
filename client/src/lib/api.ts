@@ -2743,6 +2743,39 @@ class ApiClient {
     return this.request(`/admin/v3-technique-groups/${id}`, { method: 'DELETE' });
   }
 
+  // AA V3 Action Token Types (admin CRUD + character assignments)
+  async getAdminV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
+    return this.request(`/admin/v3-action-tokens`);
+  }
+
+  async getV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
+    return this.request(`/v3/action-tokens`);
+  }
+
+  async createV3ActionTokenType(data: { name: string; image?: string | null; description?: string | null }): Promise<V3ActionTokenType> {
+    return this.request(`/admin/v3-action-tokens`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateV3ActionTokenType(id: string, data: Partial<{ name: string; image: string | null; description: string | null }>): Promise<V3ActionTokenType> {
+    return this.request(`/admin/v3-action-tokens/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteV3ActionTokenType(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-action-tokens/${id}`, { method: 'DELETE' });
+  }
+
+  async getCharacterActionTokens(characterId: string): Promise<CharacterActionTokenWithType[]> {
+    return this.request(`/characters/${characterId}/action-tokens`);
+  }
+
+  async addCharacterActionToken(characterId: string, tokenTypeId: string): Promise<CharacterActionTokenWithType> {
+    return this.request(`/characters/${characterId}/action-tokens`, { method: 'POST', body: JSON.stringify({ tokenTypeId }) });
+  }
+
+  async removeCharacterActionToken(characterId: string, assignmentId: string): Promise<{ success: boolean }> {
+    return this.request(`/characters/${characterId}/action-tokens/${assignmentId}`, { method: 'DELETE' });
+  }
+
   async addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<any> {
     return this.request(`/admin/v3-technique-groups/${groupId}/members`, { method: 'POST', body: JSON.stringify({ techniqueId }) });
   }
@@ -2855,6 +2888,23 @@ export interface V3TechniqueGroup {
   system: string;
   createdAt: string;
   techniqueIds: string[];
+}
+
+export interface V3ActionTokenType {
+  id: string;
+  name: string;
+  image: string | null;
+  description: string | null;
+  system: string;
+  createdAt: string;
+}
+
+export interface CharacterActionTokenWithType {
+  id: string;
+  characterId: string;
+  tokenTypeId: string;
+  createdAt: string;
+  tokenType?: V3ActionTokenType;
 }
 
 // Returned by admin approve/create when another official (canonical) spell

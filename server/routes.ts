@@ -94,6 +94,26 @@ async function migrateEntityTypesToTags() {
           .where(eq(entities.id, entity.id));
       }
     }
+
+    // V3 Action Tokens
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS v3_action_token_types (
+        id varchar PRIMARY KEY,
+        name text NOT NULL,
+        image text,
+        description text,
+        system text NOT NULL DEFAULT 'aa-v3',
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS character_action_tokens (
+        id varchar PRIMARY KEY,
+        character_id varchar NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+        token_type_id varchar NOT NULL REFERENCES v3_action_token_types(id) ON DELETE CASCADE,
+        created_at timestamp DEFAULT now()
+      )
+    `);
   } catch (err) {
     console.error("[Migration] Error migrating entity types:", err);
   }
@@ -7354,6 +7374,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     return out;
   };
+
+  // --- V3 Action Token Types CRUD (admin) ---
+  app.get("/api/admin/v3-action-tokens", requireAdmin, async (_req, res) => {
+    try {
+      res.json(await storage.getV3ActionTokenTypes());
+    } catch (err: any) {
+      console.error("[V3 Action Tokens List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load action token types" });
+    }
+  });
+
+  app.post("/api/admin/v3-action-tokens", requireAdmin, async (req, res) => {
+    try {
+      const { name, image, description } = req.body || {};
+      if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const created = await storage.createV3ActionTokenType({
+        name: String(name).trim(),
+        image: image || null,
+        description: description || null,
+        system: "aa-v3",
+      });
+      res.json(created);
+    } catch (err: any) {
+      console.error("[V3 Action Tokens Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create action token type" });
+    }
+  });
+
+  app.patch("/api/admin/v3-action-tokens/:id", requireAdmin, async (req, res) => {
+    try {
+      const { name, image, description } = req.body || {};
+      const patch: any = {};
+      if (name !== undefined) patch.name = String(name).trim();
+      if (image !== undefined) patch.image = image || null;
+      if (description !== undefined) patch.description = description || null;
+      const updated = await storage.updateV3ActionTokenType(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Action token type not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Action Tokens Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update action token type" });
+    }
+  });
+
+  app.delete("/api/admin/v3-action-tokens/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteV3ActionTokenType(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Action Tokens Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete action token type" });
+    }
+  });
+
+  // Public read for all V3 action token types (needed by GM picker in campaign)
+  app.get("/api/v3/action-tokens", requireAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getV3ActionTokenTypes());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load action token types" });
+    }
+  });
+
+  // Character action token assignments (GM-only mutations, read for campaign members)
+  app.get("/api/characters/:id/action-tokens", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'view');
+      if (!access.allowed) return res.status(access.status || 403).json({ error: access.error || "Forbidden" });
+      const assignments = await storage.getCharacterActionTokens(req.params.id);
+      const types = await storage.getV3ActionTokenTypes();
+      const typeMap = new Map(types.map(t => [t.id, t]));
+      const result = assignments.map(a => ({ ...a, tokenType: typeMap.get(a.tokenTypeId) }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load character action tokens" });
+    }
+  });
+
+  app.post("/api/characters/:id/action-tokens", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+      const userId = req.session.userId!;
+      const isGM = character.campaignId ? await storage.isGM(userId, character.campaignId) : false;
+      const isAdmin = (await storage.getUser(userId))?.isAdmin;
+      if (!isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can assign action tokens" });
+      const { tokenTypeId } = req.body || {};
+      if (!tokenTypeId) return res.status(400).json({ error: "tokenTypeId is required" });
+      const tokenType = await storage.getV3ActionTokenType(tokenTypeId);
+      if (!tokenType) return res.status(404).json({ error: "Action token type not found" });
+      const created = await storage.addCharacterActionToken(req.params.id, tokenTypeId);
+      res.json({ ...created, tokenType });
+    } catch (err: any) {
+      console.error("[Character Action Tokens Add] Error:", err?.message);
+      res.status(500).json({ error: "Failed to assign action token" });
+    }
+  });
+
+  app.delete("/api/characters/:id/action-tokens/:assignmentId", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+      const userId = req.session.userId!;
+      const isGM = character.campaignId ? await storage.isGM(userId, character.campaignId) : false;
+      const isAdmin = (await storage.getUser(userId))?.isAdmin;
+      if (!isGM && !isAdmin) return res.status(403).json({ error: "Only GMs can remove action tokens" });
+      // Verify the assignment actually belongs to this character (prevent cross-character deletion)
+      const assignments = await storage.getCharacterActionTokens(req.params.id);
+      const assignment = assignments.find(a => a.id === req.params.assignmentId);
+      if (!assignment) return res.status(404).json({ error: "Assignment not found on this character" });
+      await storage.removeCharacterActionToken(req.params.assignmentId);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Character Action Tokens Remove] Error:", err?.message);
+      res.status(500).json({ error: "Failed to remove action token" });
+    }
+  });
 
   // --- Techniques CRUD (admin) ---
   app.get("/api/admin/v3-techniques", requireAdmin, async (_req, res) => {

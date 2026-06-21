@@ -2369,6 +2369,35 @@ export const insertV3TechniqueSchema = createInsertSchema(v3Techniques).omit({
 export type InsertV3Technique = z.infer<typeof insertV3TechniqueSchema>;
 export type V3Technique = typeof v3Techniques.$inferSelect;
 
+// AA V3 only: admin-defined Action Token types. Each type has a name, a
+// profile image, and a description. GMs can assign these to specific characters.
+export const v3ActionTokenTypes = pgTable("v3_action_token_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  image: text("image"),
+  description: text("description"),
+  system: text("system").notNull().default("aa-v3"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertV3ActionTokenTypeSchema = createInsertSchema(v3ActionTokenTypes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertV3ActionTokenType = z.infer<typeof insertV3ActionTokenTypeSchema>;
+export type V3ActionTokenType = typeof v3ActionTokenTypes.$inferSelect;
+
+// Per-character action token assignments: a character can have zero or more
+// Action Token types assigned by a GM. Using a token does NOT remove it.
+export const characterActionTokens = pgTable("character_action_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  tokenTypeId: varchar("token_type_id").notNull().references(() => v3ActionTokenTypes.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  charIdx: index("character_action_tokens_char_idx").on(t.characterId),
+}));
+export type CharacterActionToken = typeof characterActionTokens.$inferSelect;
+
 // AA V3 only: a named group/bundle of techniques. Weapons assign one or more
 // groups (items.v3TechniqueGroupIds) and thereby grant all member techniques.
 export const v3TechniqueGroups = pgTable("v3_technique_groups", {

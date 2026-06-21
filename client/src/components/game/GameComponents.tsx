@@ -30,7 +30,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16878,6 +16878,209 @@ function V3AttrsAndSkillsTab({
   );
 }
 
+// =============================================================
+// V3 Action Tokens Section — shown in Overview tab for V3 chars
+// =============================================================
+interface V3ActionTokensSectionProps {
+  characterId: string;
+  characterName: string;
+  characterUserId: string;
+  isGM: boolean;
+  campaignId: string;
+}
+
+function V3ActionTokensSection({ characterId, characterName, characterUserId, isGM, campaignId }: V3ActionTokensSectionProps) {
+  const queryClient = useQueryClient();
+  const [activeTokenId, setActiveTokenId] = useState<string | null>(null);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+
+  const { data: assignedTokens = [] } = useQuery<CharacterActionTokenWithType[]>({
+    queryKey: ['character-action-tokens', characterId],
+    queryFn: () => api.getCharacterActionTokens(characterId),
+    enabled: !!characterId,
+  });
+
+  const { data: allTokenTypes = [] } = useQuery({
+    queryKey: ['v3-action-tokens'],
+    queryFn: () => api.getV3ActionTokenTypes(),
+    enabled: isGM,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['character-action-tokens', characterId] });
+  };
+
+  const assignMutation = useMutation({
+    mutationFn: (tokenTypeId: string) => api.addCharacterActionToken(characterId, tokenTypeId),
+    onSuccess: () => { invalidate(); },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (assignmentId: string) => api.removeCharacterActionToken(characterId, assignmentId),
+    onSuccess: () => { invalidate(); },
+  });
+
+  const activeToken = assignedTokens.find(t => t.id === activeTokenId);
+
+  const handleUse = () => {
+    if (!activeToken?.tokenType) return;
+    const tokenName = activeToken.tokenType.name;
+    const desc = activeToken.tokenType.description;
+    const chatMsg = desc ? `${characterName} uses ${tokenName}! ${desc}` : `${characterName} uses ${tokenName}!`;
+    // Use 'custom' type so the notification broadcasts to all clients at the table
+    triggerRollNotification({
+      type: 'custom',
+      label: tokenName,
+      result: 0,
+      total: 0,
+      username: characterName,
+      characterName,
+      calculationBreakdown: desc ? `${characterName} uses ${tokenName} — ${desc}` : `${characterName} uses ${tokenName}!`,
+    });
+    if (campaignId) {
+      gameWs.sendChatMessage(characterUserId, characterName, chatMsg, 'system');
+    }
+    setActiveTokenId(null);
+  };
+
+  const assignedTypeIds = new Set(assignedTokens.map(t => t.tokenTypeId));
+  const availableToAssign = (allTokenTypes as any[]).filter(t => !assignedTypeIds.has(t.id));
+
+  return (
+    <div className="mt-3 space-y-2" data-testid="section-action-tokens">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide flex items-center gap-1">
+          <Sparkles className="h-3 w-3" /> Action Tokens
+        </p>
+        {isGM && (
+          <button
+            className="text-[10px] text-stone-500 hover:text-amber-400 transition-colors"
+            onClick={() => setAssignDialogOpen(true)}
+            data-testid="button-assign-action-token"
+          >
+            + Assign
+          </button>
+        )}
+      </div>
+
+      {assignedTokens.length === 0 ? (
+        <p className="text-[11px] text-stone-500 italic">No action tokens assigned.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {assignedTokens.map((t) => (
+            <button
+              key={t.id}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-900/30 border border-amber-700/50 hover:bg-amber-900/50 hover:border-amber-600 transition-colors group"
+              onClick={() => setActiveTokenId(t.id)}
+              data-testid={`button-action-token-${t.id}`}
+            >
+              {t.tokenType?.image ? (
+                <img src={t.tokenType.image} alt={t.tokenType?.name} className="h-5 w-5 rounded object-cover" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+              )}
+              <span className="text-xs text-amber-300">{t.tokenType?.name || 'Token'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Floating panel for using a token */}
+      {activeTokenId && activeToken && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center pb-24 pointer-events-none" data-testid="panel-action-token">
+          <div className="pointer-events-auto w-full max-w-sm mx-4 bg-stone-950 border border-amber-700/60 rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                {activeToken.tokenType?.image ? (
+                  <img src={activeToken.tokenType.image} alt={activeToken.tokenType?.name} className="h-9 w-9 rounded object-cover border border-amber-700/40" />
+                ) : (
+                  <div className="h-9 w-9 rounded bg-amber-900/40 border border-amber-700/40 flex items-center justify-center">
+                    <Sparkles className="h-5 w-5 text-amber-500" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-semibold text-amber-400">{activeToken.tokenType?.name}</p>
+                  {activeToken.tokenType?.description && (
+                    <p className="text-[11px] text-stone-400 leading-tight max-w-[220px] line-clamp-2">{activeToken.tokenType.description}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {isGM && (
+                  <button
+                    className="p-1 text-red-500 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors"
+                    onClick={() => { removeMutation.mutate(activeToken.id); setActiveTokenId(null); }}
+                    title="Remove token from character"
+                    data-testid="button-remove-action-token"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  className="p-1 text-stone-500 hover:text-stone-300 hover:bg-stone-800 rounded transition-colors"
+                  onClick={() => setActiveTokenId(null)}
+                  data-testid="button-close-action-token-panel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <Button
+                className="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 font-semibold"
+                onClick={handleUse}
+                data-testid="button-use-action-token"
+              >
+                <Sparkles className="h-4 w-4 mr-2" /> Use {activeToken.tokenType?.name}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GM: assign token dialog */}
+      {isGM && (
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500">Assign Action Token</DialogTitle>
+            </DialogHeader>
+            {availableToAssign.length === 0 ? (
+              <p className="text-stone-400 text-sm">All token types are already assigned, or none exist. Create some in the admin panel.</p>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {availableToAssign.map((t: any) => (
+                  <button
+                    key={t.id}
+                    className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-stone-800 transition-colors text-left"
+                    onClick={() => { assignMutation.mutate(t.id); setAssignDialogOpen(false); }}
+                    data-testid={`button-assign-token-type-${t.id}`}
+                  >
+                    {t.image ? (
+                      <img src={t.image} alt={t.name} className="h-9 w-9 rounded object-cover border border-stone-700" />
+                    ) : (
+                      <div className="h-9 w-9 rounded bg-amber-900/30 border border-amber-700/40 flex items-center justify-center">
+                        <Sparkles className="h-4 w-4 text-amber-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-stone-200">{t.name}</p>
+                      {t.description && <p className="text-xs text-stone-500 line-clamp-1">{t.description}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" className="border-stone-700" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
@@ -19914,7 +20117,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </div>
 
-                {(isOwner || isGM) && (
+                {(isOwner || isGM) && !isAAV3 && (
                   <div className="flex items-center gap-2 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer group">
                       <input
@@ -19929,6 +20132,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       </span>
                     </label>
                   </div>
+                )}
+
+                {isAAV3 && (
+                  <V3ActionTokensSection
+                    characterId={liveCharacter.id}
+                    characterName={liveCharacter.name || 'Character'}
+                    characterUserId={liveCharacter.userId || ''}
+                    isGM={isGM}
+                    campaignId={campaignId || ''}
+                  />
                 )}
 
                 {/* Edit Mode Buttons */}

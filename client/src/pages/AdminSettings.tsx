@@ -59,7 +59,7 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -1017,6 +1017,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'element-requirements' ? 'Element Requirements (A.A. V3)' : 
                currentView === 'techniques' ? 'Techniques (A.A. V3)' : 
                currentView === 'technique-groups' ? 'Weapon Techniques (A.A. V3)' : 
+               currentView === 'action-tokens' ? 'Action Tokens (A.A. V3)' :
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1055,6 +1056,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
         {currentView === 'technique-groups' && (
           <V3TechniqueGroupsView systemSlug={systemSlug} />
+        )}
+
+        {currentView === 'action-tokens' && (
+          <V3ActionTokensView />
         )}
 
         {currentView === 'items' && (
@@ -3109,6 +3114,162 @@ function DashCard({
   );
 }
 
+// ============================================================
+// V3 Action Tokens admin view
+// ============================================================
+function V3ActionTokensView() {
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [imageBrowserOpen, setImageBrowserOpen] = useState(false);
+  const [draft, setDraft] = useState<{ id: string | null; name: string; image: string | null; description: string }>({
+    id: null, name: '', image: null, description: '',
+  });
+
+  const { data: tokenTypes = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-action-tokens'],
+    queryFn: () => api.getAdminV3ActionTokenTypes(),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-action-tokens'] });
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = { name: draft.name, image: draft.image, description: draft.description || null };
+      return draft.id ? api.updateV3ActionTokenType(draft.id, payload) : api.createV3ActionTokenType(payload);
+    },
+    onSuccess: () => {
+      toast({ title: draft.id ? 'Action Token updated' : 'Action Token created' });
+      setDialogOpen(false);
+      setDraft({ id: null, name: '', image: null, description: '' });
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteV3ActionTokenType(id),
+    onSuccess: () => { toast({ title: 'Action Token removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const openCreate = () => {
+    setDraft({ id: null, name: '', image: null, description: '' });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (t: any) => {
+    setDraft({ id: t.id, name: t.name, image: t.image ?? null, description: t.description ?? '' });
+    setDialogOpen(true);
+  };
+
+  return (
+    <div className="space-y-4" data-testid="view-action-tokens">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-stone-950" data-testid="button-add-action-token">
+          <Plus className="h-4 w-4 mr-1" /> New Action Token
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : tokenTypes.length === 0 ? (
+        <p className="text-stone-400">No action token types defined yet.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(tokenTypes as any[]).map((t) => (
+            <Card key={t.id} className="bg-stone-900 border-stone-700" data-testid={`card-action-token-${t.id}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start gap-2">
+                  {t.image ? (
+                    <img src={t.image} alt={t.name} className="h-10 w-10 rounded object-cover border border-stone-700 flex-shrink-0" />
+                  ) : (
+                    <div className="h-10 w-10 rounded bg-amber-900/40 border border-amber-700/50 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-5 w-5 text-amber-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-amber-400 text-sm truncate">{t.name}</CardTitle>
+                    {t.description && <p className="text-stone-500 text-xs mt-0.5 line-clamp-2">{t.description}</p>}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="text-xs border-stone-700 hover:bg-stone-800" onClick={() => openEdit(t)} data-testid={`button-edit-action-token-${t.id}`}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs border-red-800 text-red-400 hover:bg-red-900/30" onClick={() => deleteMutation.mutate(t.id)} data-testid={`button-delete-action-token-${t.id}`}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">{draft.id ? 'Edit Action Token' : 'New Action Token'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label className="text-stone-300 mb-1 block">Name *</Label>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                className="bg-stone-900 border-stone-700 text-stone-200"
+                placeholder="e.g. Second Wind"
+                data-testid="input-action-token-name"
+              />
+            </div>
+            <div>
+              <Label className="text-stone-300 mb-1 block">Profile Image</Label>
+              <div className="flex items-center gap-2">
+                {draft.image && (
+                  <img src={draft.image} alt="preview" className="h-12 w-12 rounded object-cover border border-stone-700" />
+                )}
+                <Button type="button" variant="outline" size="sm" className="border-stone-700 hover:bg-stone-800" onClick={() => setImageBrowserOpen(true)} data-testid="button-action-token-image">
+                  <ImageIcon className="h-3.5 w-3.5 mr-1" /> {draft.image ? 'Change Image' : 'Pick Image'}
+                </Button>
+                {draft.image && (
+                  <Button type="button" variant="outline" size="sm" className="border-stone-700 hover:bg-stone-800 text-red-400" onClick={() => setDraft((d) => ({ ...d, image: null }))} data-testid="button-clear-action-token-image">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div>
+              <Label className="text-stone-300 mb-1 block">Description</Label>
+              <Textarea
+                value={draft.description}
+                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                className="bg-stone-900 border-stone-700 text-stone-200 min-h-[80px]"
+                placeholder="Describe what this action token does…"
+                data-testid="textarea-action-token-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="border-stone-700" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-amber-600 hover:bg-amber-700 text-stone-950" onClick={() => saveMutation.mutate()} disabled={!draft.name.trim() || saveMutation.isPending} data-testid="button-save-action-token">
+              {saveMutation.isPending ? 'Saving…' : draft.id ? 'Save Changes' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ImageBrowser
+        open={imageBrowserOpen}
+        onOpenChange={setImageBrowserOpen}
+        onSelect={(data) => setDraft((d) => ({ ...d, image: data }))}
+        title="Select Token Image"
+      />
+    </div>
+  );
+}
+
 function DashSection({
   title,
   icon: Icon,
@@ -3188,6 +3349,22 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               iconBg="bg-rose-700/20"
               iconColor="text-rose-500"
               titleColor="text-rose-500"
+            />
+          </DashSection>
+        )}
+
+        {isAdmin && (
+          <DashSection title="Actions & Abilities" icon={Sparkles} color="text-amber-400">
+            <DashCard
+              onClick={() => onNavigate('action-tokens')}
+              testId="card-action-tokens"
+              icon={Sparkles}
+              title="Action Tokens"
+              description="Define reusable action token types (e.g. Second Wind, Rage) that GMs can assign to characters"
+              hoverBorder="hover:border-amber-600"
+              iconBg="bg-amber-700/20"
+              iconColor="text-amber-500"
+              titleColor="text-amber-500"
             />
           </DashSection>
         )}

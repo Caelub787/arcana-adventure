@@ -82,6 +82,8 @@ import {
   type V3Technique, type InsertV3Technique, v3Techniques,
   type V3TechniqueGroup, type InsertV3TechniqueGroup, v3TechniqueGroups,
   type V3TechniqueGroupMember, v3TechniqueGroupMembers,
+  type V3ActionTokenType, type InsertV3ActionTokenType, v3ActionTokenTypes,
+  type CharacterActionToken, characterActionTokens,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
@@ -403,6 +405,17 @@ export interface IStorage {
   createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement>;
   updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined>;
   deleteV3ElementRequirement(id: string): Promise<void>;
+
+  // AA V3 action token types (admin-managed)
+  getV3ActionTokenTypes(): Promise<V3ActionTokenType[]>;
+  getV3ActionTokenType(id: string): Promise<V3ActionTokenType | undefined>;
+  createV3ActionTokenType(data: InsertV3ActionTokenType): Promise<V3ActionTokenType>;
+  updateV3ActionTokenType(id: string, data: Partial<InsertV3ActionTokenType>): Promise<V3ActionTokenType | undefined>;
+  deleteV3ActionTokenType(id: string): Promise<void>;
+  // Character action token assignments
+  getCharacterActionTokens(characterId: string): Promise<CharacterActionToken[]>;
+  addCharacterActionToken(characterId: string, tokenTypeId: string): Promise<CharacterActionToken>;
+  removeCharacterActionToken(id: string): Promise<void>;
 
   // AA V3 weapon techniques (Task #180)
   getV3Techniques(): Promise<V3Technique[]>;
@@ -3508,6 +3521,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteV3ElementRequirement(id: string): Promise<void> {
     await db.delete(v3ElementRequirements).where(eq(v3ElementRequirements.id, id));
+  }
+
+  // AA V3 action token types -------------------------------------------------
+  async getV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
+    return await db.select().from(v3ActionTokenTypes).orderBy(v3ActionTokenTypes.name);
+  }
+
+  async getV3ActionTokenType(id: string): Promise<V3ActionTokenType | undefined> {
+    const [row] = await db.select().from(v3ActionTokenTypes).where(eq(v3ActionTokenTypes.id, id));
+    return row;
+  }
+
+  async createV3ActionTokenType(data: InsertV3ActionTokenType): Promise<V3ActionTokenType> {
+    const [row] = await db.insert(v3ActionTokenTypes).values(data).returning();
+    return row;
+  }
+
+  async updateV3ActionTokenType(id: string, data: Partial<InsertV3ActionTokenType>): Promise<V3ActionTokenType | undefined> {
+    const [row] = await db.update(v3ActionTokenTypes).set(data).where(eq(v3ActionTokenTypes.id, id)).returning();
+    return row;
+  }
+
+  async deleteV3ActionTokenType(id: string): Promise<void> {
+    await db.delete(v3ActionTokenTypes).where(eq(v3ActionTokenTypes.id, id));
+  }
+
+  async getCharacterActionTokens(characterId: string): Promise<CharacterActionToken[]> {
+    return await db.select().from(characterActionTokens).where(eq(characterActionTokens.characterId, characterId));
+  }
+
+  async addCharacterActionToken(characterId: string, tokenTypeId: string): Promise<CharacterActionToken> {
+    const [row] = await db.insert(characterActionTokens).values({ characterId, tokenTypeId }).returning();
+    return row;
+  }
+
+  async removeCharacterActionToken(id: string): Promise<void> {
+    await db.delete(characterActionTokens).where(eq(characterActionTokens.id, id));
   }
 
   // AA V3 weapon techniques (Task #180) -------------------------------------
