@@ -15682,6 +15682,8 @@ interface CharacterSheetProps {
   floatingZIndices?: Record<string, number>;
   campaignSystem?: string;
   trustedPlayer?: boolean;
+  onOpenItemDetail?: (item: any) => void;
+  onOpenSpellbook?: (item: any) => void;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -17101,7 +17103,158 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false }: CharacterSheetProps) {
+// Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
+// Campaign page) so it keeps living when the character sheet is closed. It owns
+// its own items query + update/delete mutations so the host page stays thin.
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose }: {
+  character: any;
+  item: any;
+  isGM: boolean;
+  isOwner: boolean;
+  campaignSystem?: string;
+  bringToFront?: (panelKey: string) => void;
+  floatingZIndices?: Record<string, number>;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const charPanelSuffix = character?.id ? '-' + character.id : '';
+  const { data: items = [] } = useQuery({
+    queryKey: ['items', character.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character?.id,
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateItem(id, data),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) =>
+        old.map((it: any) => it.id === id ? { ...it, ...data } : it)
+      );
+      return { previousItems };
+    },
+    onError: (_e, _v, context) => {
+      if (context?.previousItems) queryClient.setQueryData(['items', character.id], context.previousItems);
+    },
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
+    },
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: string) => api.deleteItem(id),
+    onMutate: async (deletedId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      queryClient.setQueryData(['items', character.id], (old: any[]) => {
+        if (!old) return [];
+        const idsToRemove = new Set<string>([deletedId]);
+        const findChildren = (parentId: string) => {
+          old.forEach((it: any) => {
+            if (it.containerId === parentId) { idsToRemove.add(it.id); findChildren(it.id); }
+          });
+        };
+        findChildren(deletedId);
+        return old.filter((it: any) => !idsToRemove.has(it.id));
+      });
+      return { previousItems };
+    },
+    onError: (_e, _id, context) => {
+      if (context?.previousItems) queryClient.setQueryData(['items', character.id], context.previousItems);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      onClose();
+    },
+  });
+
+  const liveItem = item ? { ...item, ...(items?.find((it: any) => it.id === item.id) || {}) } : item;
+
+  return (
+    <ItemDetailDialog
+      item={liveItem}
+      open={true}
+      onOpenChange={(open: boolean) => { if (!open) onClose(); }}
+      isGM={isGM}
+      isOwner={isOwner}
+      character={character}
+      items={items}
+      onUpdate={(data: any) => updateItemMutation.mutate({ id: item.id, data })}
+      onDelete={() => deleteItemMutation.mutate(item.id)}
+      bringToFront={bringToFront}
+      floatingZIndices={floatingZIndices}
+      campaignSystem={campaignSystem}
+      charPanelSuffix={charPanelSuffix}
+    />
+  );
+}
+
+// Self-contained spellbook panel hosted OUTSIDE the character sheet (see above).
+export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringToFront, floatingZIndices, onClose }: {
+  character: any;
+  item: any;
+  isGM: boolean;
+  isOwner: boolean;
+  bringToFront?: (panelKey: string) => void;
+  floatingZIndices?: Record<string, number>;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const charPanelSuffix = character?.id ? '-' + character.id : '';
+  const { data: items = [] } = useQuery({
+    queryKey: ['items', character.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character?.id,
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateItem(id, data),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
+    },
+  });
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: string) => api.deleteItem(id),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    },
+  });
+
+  const liveItem = item ? { ...item, ...(items?.find((it: any) => it.id === item.id) || {}) } : item;
+
+  return (
+    <SpellbookPanel
+      open={true}
+      onClose={onClose}
+      item={liveItem}
+      character={character}
+      canEdit={isOwner || isGM}
+      bringToFront={bringToFront}
+      floatingZIndices={floatingZIndices}
+      charPanelSuffix={charPanelSuffix}
+      onSpellCast={liveItem?.itemType === 'scroll' ? () => {
+        const qty = liveItem.quantity ?? 1;
+        if (qty > 1) {
+          updateItemMutation.mutate({ id: liveItem.id, data: { quantity: qty - 1 } });
+        } else {
+          deleteItemMutation.mutate(liveItem.id);
+        }
+        onClose();
+      } : undefined}
+    />
+  );
+}
+
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -18728,6 +18881,26 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     setShowSpellbook(true);
     bringToFront?.(`spellbook${charPanelSuffix}`);
   };
+
+  // When this sheet is hosted by a parent that owns detached panels (Campaign),
+  // forward item-detail / spellbook opens up so they live independently of this
+  // sheet's lifecycle (closing the sheet won't close them). Local state is reset
+  // so the in-sheet copies don't also render.
+  useEffect(() => {
+    if (onOpenItemDetail && showItemDetail && selectedItem) {
+      onOpenItemDetail(selectedItem);
+      setShowItemDetail(false);
+      setSelectedItem(null);
+    }
+  }, [onOpenItemDetail, showItemDetail, selectedItem]);
+
+  useEffect(() => {
+    if (onOpenSpellbook && showSpellbook && selectedSpellbook) {
+      onOpenSpellbook(selectedSpellbook);
+      setShowSpellbook(false);
+      setSelectedSpellbook(null);
+    }
+  }, [onOpenSpellbook, showSpellbook, selectedSpellbook]);
 
   // Fetch spells
   const { data: spells = [] } = useQuery({
@@ -23240,7 +23413,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         </div>
       </Tabs>
 
-      {/* Item Detail Dialog */}
+      {/* Item Detail Dialog (in-sheet fallback; when onOpenItemDetail is provided
+          the parent hosts a detached copy so it survives closing this sheet) */}
+      {!onOpenItemDetail && (
       <ItemDetailDialog
         item={selectedItem ? { ...selectedItem, ...(items?.find((it: any) => it.id === selectedItem.id) || {}) } : selectedItem}
         open={showItemDetail}
@@ -23262,8 +23437,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         campaignSystem={campaignSystem}
         charPanelSuffix={charPanelSuffix}
       />
+      )}
 
-      {isAAV3 && showSpellbook && selectedSpellbook && (
+      {!onOpenSpellbook && isAAV3 && showSpellbook && selectedSpellbook && (
         <SpellbookPanel
           open={showSpellbook}
           onClose={() => setShowSpellbook(false)}

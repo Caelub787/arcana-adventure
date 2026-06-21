@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode, type RulerShape, type RulerMarker } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, type SelectionMode, type RulerShape, type RulerMarker } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -6674,6 +6674,27 @@ export default function Campaign() {
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
   };
+
+  // Item-detail / spellbook panels are hosted here (not inside the character
+  // sheet) so they stay open/independent when a character sheet is closed.
+  // One of each per character; opening a new one for the same character replaces it.
+  const [detachedItemPanels, setDetachedItemPanels] = useState<any[]>([]);
+  const [detachedSpellbookPanels, setDetachedSpellbookPanels] = useState<any[]>([]);
+
+  const openDetachedItemDetail = (character: any, item: any) => {
+    setDetachedItemPanels(prev => [...prev.filter(p => p.character.id !== character.id), { character, item }]);
+    bringToFront(`item-detail-${character.id}`);
+  };
+  const closeDetachedItemDetail = (charId: string) => {
+    setDetachedItemPanels(prev => prev.filter(p => p.character.id !== charId));
+  };
+  const openDetachedSpellbook = (character: any, item: any) => {
+    setDetachedSpellbookPanels(prev => [...prev.filter(p => p.character.id !== character.id), { character, item }]);
+    bringToFront(`spellbook-${character.id}`);
+  };
+  const closeDetachedSpellbook = (charId: string) => {
+    setDetachedSpellbookPanels(prev => prev.filter(p => p.character.id !== charId));
+  };
   
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
@@ -12645,6 +12666,8 @@ export default function Campaign() {
                 bringToFront={bringToFront}
                 floatingZIndices={floatingZIndicesRef.current}
                 campaignSystem={(campaign as any)?.system}
+                onOpenItemDetail={(item) => openDetachedItemDetail(openCharacterSheets[0], item)}
+                onOpenSpellbook={(item) => openDetachedSpellbook(openCharacterSheets[0], item)}
                 trustedPlayer={(() => {
                   const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                   return !!m?.trustedPlayer;
@@ -12689,6 +12712,8 @@ export default function Campaign() {
               bringToFront={bringToFront}
               floatingZIndices={floatingZIndicesRef.current}
               campaignSystem={(campaign as any)?.system}
+              onOpenItemDetail={(item) => openDetachedItemDetail(sheet, item)}
+              onOpenSpellbook={(item) => openDetachedSpellbook(sheet, item)}
               trustedPlayer={(() => {
                 const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                 return !!m?.trustedPlayer;
@@ -12696,6 +12721,41 @@ export default function Campaign() {
             />
           </FloatingPanel>
         ))
+      ))}
+
+      {/* Detached item-detail panels (hosted here so they survive closing the character sheet) */}
+      {detachedItemPanels.map((p) => (
+        <DetachedItemDetailPanel
+          key={`detached-item-${p.character.id}`}
+          character={p.character}
+          item={p.item}
+          isGM={role === 'gm'}
+          isOwner={
+            p.character.userId === user?.id ||
+            myPermissions?.permissions?.[p.character.id] === 'edit'
+          }
+          campaignSystem={(campaign as any)?.system}
+          bringToFront={bringToFront}
+          floatingZIndices={floatingZIndicesRef.current}
+          onClose={() => closeDetachedItemDetail(p.character.id)}
+        />
+      ))}
+
+      {/* Detached spellbook panels (hosted here so they survive closing the character sheet) */}
+      {detachedSpellbookPanels.map((p) => (
+        <DetachedSpellbookPanel
+          key={`detached-spellbook-${p.character.id}`}
+          character={p.character}
+          item={p.item}
+          isGM={role === 'gm'}
+          isOwner={
+            p.character.userId === user?.id ||
+            myPermissions?.permissions?.[p.character.id] === 'edit'
+          }
+          bringToFront={bringToFront}
+          floatingZIndices={floatingZIndicesRef.current}
+          onClose={() => closeDetachedSpellbook(p.character.id)}
+        />
       ))}
       
       {/* Initiative Tracker Dialog */}

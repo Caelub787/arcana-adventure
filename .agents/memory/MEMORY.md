@@ -6,3 +6,4 @@
 - [V3 weapon base attack & techniques](v3-weapon-techniques.md) — V3-only leveled base attack + technique groups; reuse evaluateV3ElementEligibility + level-dice ladder; cast via v3weaponcast.ts; one V3WeaponUsePanel in both player surfaces.
 - [Client Item/ItemDraft types are hand-maintained](client-item-types-handmaintained.md) — adding an `items` schema column does NOT auto-flow to client `Item` (lib/api.ts) or `ItemDraft` (library-dialogs ItemDialog.tsx); update both or tsc breaks.
 - [V3 rune baked-column conflicts](v3-rune-baked-columns.md) — runes bake into shared item columns; dcBonusValue doubles as a manual field, so save-normalization must preserve the rune contribution; copy paths must explicitly carry socketedRunes.
+- [Detached floating panels](detached-floating-panels.md) — panels opened from CharacterSheet must be hosted by Campaign (not as sheet children) so closing the sheet doesn't unmount them.
