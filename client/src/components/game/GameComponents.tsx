@@ -8721,8 +8721,6 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
     { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
-    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 },
-    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 }
   ];
 
   const activeHotbarConfig = hotbarTypes.find(h => h.type === activeHotbar);
