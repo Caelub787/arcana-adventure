@@ -8010,6 +8010,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (!updatedItem.isDetonatable && detonateRoll) {
           await storage.deleteRollEntry(detonateRoll.id);
         }
+
+        // Keep weapon technique-group assignments in sync with inventory copies.
+        // When a GM/admin changes which technique groups a library weapon grants,
+        // every player's inventory copy (items.templateItemId === this template)
+        // must follow along — mirrors the roll-template propagation system. We
+        // only fan out when v3TechniqueGroupIds was actually part of the patch so
+        // unrelated edits don't stomp per-instance state.
+        if ('v3TechniqueGroupIds' in patchBody) {
+          const newGroupIds: string[] = Array.isArray((updatedItem as any).v3TechniqueGroupIds)
+            ? (updatedItem as any).v3TechniqueGroupIds
+            : [];
+          const linkedCopies = await db.select().from(items)
+            .where(eq(items.templateItemId, updatedItem.id));
+          for (const copy of linkedCopies) {
+            const updatedCopy = await storage.updateItem(copy.id, { v3TechniqueGroupIds: newGroupIds } as any);
+            if (copy.characterId) {
+              const owner = await storage.getCharacter(copy.characterId);
+              if (owner?.campaignId) {
+                broadcastToCampaign(owner.campaignId, {
+                  type: "item_updated",
+                  characterId: copy.characterId,
+                  item: updatedCopy,
+                });
+              }
+            }
+          }
+        }
       }
       
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });

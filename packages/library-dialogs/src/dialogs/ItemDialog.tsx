@@ -579,6 +579,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     emptyText="No technique groups defined yet."
                     testIdPrefix="technique-groups"
                   />
+                  <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                    Changes here automatically sync to copies already in players' inventories.
+                  </p>
                 </div>
               )}
             </Section>
