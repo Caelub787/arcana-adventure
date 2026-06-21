@@ -148,6 +148,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
   const [effectsError, setEffectsError] = React.useState<string | null>(null);
 
   const aav2 = isAAv2(campaignSystem ?? draft.system);
+  const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
   const damageTypes = getEffectTypes(campaignSystem ?? draft.system);
   const damageTypeLabel = getEffectTypeLabel(campaignSystem ?? draft.system);
   const editing = mode ? mode === "edit" : !!initialValue?.id;
@@ -368,6 +369,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
 
           <Section title="Damage & cost">
             <Stack gap="sm">
+              {!aav3 && (
               <Grid2>
                 <div>
                   <Label>Damage Dice</Label>
@@ -390,6 +392,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Select>
                 </div>
               </Grid2>
+              )}
               <Grid2>
                 <div>
                   <Label>Healing Dice</Label>
@@ -400,6 +403,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     data-testid="input-spell-healing-dice"
                   />
                 </div>
+                {!aav3 && (
                 <div>
                   <Label>Flat Modifier</Label>
                   <Input
@@ -410,6 +414,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     data-testid="input-spell-mod"
                   />
                 </div>
+                )}
               </Grid2>
               {draft.damageType === "Energy" && (
                 <Row>
@@ -472,6 +477,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Select>
                 </div>
               </Grid2>
+              {!aav3 && (
               <Grid2>
                 <div>
                   <Label>Range (ft)</Label>
@@ -496,6 +502,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Select>
                 </div>
               </Grid2>
+              )}
             </Stack>
           </Section>
 
@@ -509,6 +516,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                 />
                 <Label>Attack? (If checked: Attack/Damage rolls. If not: Use/Effect rolls)</Label>
               </Row>
+              {!aav3 && (<>
               <Row>
                 <Checkbox
                   checked={!!draft.isAoe}
@@ -563,6 +571,7 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                   </Row>
                 </>
               )}
+              </>)}
             </Stack>
           </Section>
 

@@ -8509,6 +8509,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   <p className="text-sm text-stone-300 leading-relaxed">{itemData.description}</p>
                 )}
                 <div className="grid grid-cols-2 gap-2 text-xs">
+                  {campaignSystem !== 'aa-v3' && (<>
                   {itemData.damage && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Damage</span>
@@ -8527,6 +8528,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       <span className="text-stone-200 capitalize">{itemData.attribute}</span>
                     </div>
                   )}
+                  </>)}
                   {itemData.quantity != null && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Quantity</span>
@@ -8550,6 +8552,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   <p className="text-sm text-stone-300 leading-relaxed">{spellData.description}</p>
                 )}
                 <div className="grid grid-cols-2 gap-2 text-xs">
+                  {campaignSystem !== 'aa-v3' && (<>
                   {spellData.damage && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Damage</span>
@@ -8572,13 +8575,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       </div>
                     ) : null;
                   })()}
+                  </>)}
                   {spellData.castingTime && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Casting Time</span>
                       <span className="text-stone-200">{spellData.castingTime}</span>
                     </div>
                   )}
-                  {spellData.aoe && (
+                  {campaignSystem !== 'aa-v3' && spellData.aoe && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">AoE</span>
                       <span className="text-stone-200">{spellData.aoe}</span>
@@ -22906,6 +22910,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           open={showManageTemplates}
           onOpenChange={setShowManageTemplates}
           campaignId={campaignId}
+          campaignSystem={campaignSystem}
         />
       )}
 
@@ -25588,6 +25593,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                 Rules visible to players
               </Label>
             </div>
+            {campaignSystem !== 'aa-v3' && (
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -25621,6 +25627,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                 </div>
               </div>
             </div>
+            )}
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -26044,7 +26051,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
 }
 
 // Manage Campaign Templates Dialog (GM Only)
-function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; campaignId?: string }) {
+function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem }: { open: boolean; onOpenChange: (open: boolean) => void; campaignId?: string; campaignSystem?: string }) {
   const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newItem, setNewItem] = useState<{
@@ -26265,6 +26272,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   <Label>Description</Label>
                   <Textarea value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} className="bg-stone-800 border-stone-700 min-h-[60px]" />
                 </div>
+                {campaignSystem !== 'aa-v3' && (
                 <div className="border-t border-stone-700 pt-4">
                   <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
                   <div className="grid grid-cols-2 gap-4">
@@ -26278,6 +26286,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                     </div>
                   </div>
                 </div>
+                )}
                 {newItem.itemType === 'ammunition' && (
                   <div className="border-t border-stone-700 pt-4">
                     <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
@@ -27519,7 +27528,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               )}
             </div>
 
-            {(currentData.aoe || isEditing) && (
+            {!isAAV3 && (currentData.aoe || isEditing) && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
                 <div className="grid grid-cols-2 gap-4">

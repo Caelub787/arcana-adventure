@@ -517,6 +517,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
           {isWeaponLike && (
             <Section title="Combat / weapon">
               <Grid3>
+                {!aav3 && (<>
                 <div><Label>Damage</Label>
                   <Input value={draft.damage ?? ""} placeholder="1d8" onChange={e => set({ damage: e.target.value })} />
                 </div>
@@ -542,6 +543,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     {ATTRIBUTES.map(a => <SelectItem key={a} value={a}>{a || "—"}</SelectItem>)}
                   </Select>
                 </div>
+                </>)}
                 <Row><Checkbox checked={!!draft.isHeavy} onCheckedChange={v => set({ isHeavy: v })} /><Label>Heavy weapon</Label></Row>
                 <Row><Checkbox checked={!!draft.canApplyEffects} onCheckedChange={v => set({ canApplyEffects: v })} /><Label>Can apply token effects</Label></Row>
                 <div />
