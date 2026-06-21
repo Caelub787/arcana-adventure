@@ -174,17 +174,6 @@ export const GUIDES: Record<string, Guide> = {
     ],
     finalCaption: "Compass is now editing this node with you.",
   },
-  "open-account-menu": {
-    id: "open-account-menu",
-    title: "Open your account menu",
-    steps: [
-      {
-        selectors: ['[data-guide="account-menu"]'],
-        caption: "Tap your avatar to manage your account or sign out.",
-      },
-    ],
-    finalCaption: "That's where account stuff lives.",
-  },
 };
 
 export type GuideId = keyof typeof GUIDES;

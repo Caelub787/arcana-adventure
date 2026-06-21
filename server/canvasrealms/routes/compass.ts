@@ -28,7 +28,6 @@ const GUIDE_IDS = [
   "create-node",
   "open-node",
   "open-document-compass",
-  "open-account-menu",
 ] as const;
 
 // Short human-readable description of each guide so the model can pick the
@@ -47,8 +46,6 @@ const GUIDE_DESCRIPTIONS: Record<(typeof GUIDE_IDS)[number], string> = {
     "Open an existing node from the current realm: highlights a node row in the library, with a fallback to + New when the realm has none yet.",
   "open-document-compass":
     "Edit the open node with Compass: highlights the Compass button inside the document editor for expand/rewrite/continue. Only pick this when a node is already open.",
-  "open-account-menu":
-    "Open the account menu: highlights the avatar in the top bar for account management and sign out.",
 };
 
 const GUIDE_CATALOG = GUIDE_IDS.map(

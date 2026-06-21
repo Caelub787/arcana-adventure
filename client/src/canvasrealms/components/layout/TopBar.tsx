@@ -1,24 +1,8 @@
 import { useState } from "react";
 import { useAppStore } from "@cr/lib/store";
 import { useRealmRole } from "@cr/lib/useRealmRole";
-import { ChangeUsernameDialog } from "@cr/components/layout/ChangeUsernameDialog";
 import { PresenceStack } from "@cr/components/layout/PresenceStack";
-import { SettingsDialog } from "@cr/components/layout/SettingsDialog";
 import { Button } from "@cr/components/ui/button";
-import { useUser } from "@cr/lib/useUser";
-import { getDisplayName } from "@cr/lib/displayName";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@cr/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@cr/components/ui/dropdown-menu";
 import {
   Network,
   Globe,
@@ -27,9 +11,6 @@ import {
   Sparkles,
   Eye,
   Zap,
-  AtSign,
-  LogOut,
-  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   useGetRealm,
@@ -147,10 +128,6 @@ export function TopBar() {
         </Button>
 
         <PresenceStack />
-
-        <div data-guide="account-menu">
-          <UserDisplay />
-        </div>
       </div>
 
     </header>
@@ -333,72 +310,3 @@ function ApplyAllAutoLinksButton({ realmId }: { realmId: string }) {
   );
 }
 
-function UserDisplay() {
-  const { isLoaded, user } = useUser();
-  const [usernameOpen, setUsernameOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const displayName = getDisplayName(user, "Account");
-  const initials = displayName
-    .split(/\s+/)
-    .map((part) => part.charAt(0))
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "U";
-
-  const handleSignOut = async () => {
-    try {
-      await fetch("/api/logout", {
-        method: "POST",
-        credentials: "same-origin",
-      });
-    } catch {
-      // ignore — navigate regardless
-    }
-    window.location.href = "/worldbuilder";
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Account menu"
-          >
-            <Avatar className="w-8 h-8 ring-1 ring-border/50">
-              {user?.imageUrl ? (
-                <AvatarImage src={user.imageUrl} alt={displayName} />
-              ) : null}
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-            </Avatar>
-          </button>
-        </DropdownMenuTrigger>
-        {isLoaded && user && (
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-              <SettingsIcon className="w-4 h-4 mr-2" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setUsernameOpen(true)}>
-              <AtSign className="w-4 h-4 mr-2" />
-              Change username
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void handleSignOut()}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        )}
-      </DropdownMenu>
-      <ChangeUsernameDialog
-        open={usernameOpen}
-        onOpenChange={setUsernameOpen}
-      />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-    </div>
-  );
-}
