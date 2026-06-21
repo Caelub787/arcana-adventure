@@ -6,20 +6,36 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe } from "lucide-react";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe, Download, Smartphone } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import NotificationsBell from "@/components/NotificationsBell";
+import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
   const { user, isAdmin, logout } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { canInstall, isInstalled, isIOS, promptInstall } = usePwaInstall();
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [showTermsView, setShowTermsView] = useState(false);
+
+  const handleInstallClick = async () => {
+    if (canInstall) {
+      const accepted = await promptInstall();
+      if (accepted) {
+        toast({ title: "Installing Arcana Adventure…" });
+      }
+    } else {
+      setShowInstallGuide(true);
+    }
+  };
   
   // Load campaigns from API with React Query
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
@@ -230,8 +246,39 @@ export default function Home() {
 
         </motion.div>
 
+        {/* Install App Banner */}
+        {!isInstalled && (canInstall || isIOS) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="mt-8 w-full max-w-full px-4"
+          >
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-amber-800/40 bg-amber-950/30 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-center gap-3 min-w-0">
+                <Smartphone className="h-5 w-5 shrink-0 text-amber-500" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-amber-300">Install Arcana Adventure</p>
+                  <p className="text-xs text-stone-400 truncate">
+                    {isIOS ? "Add to your home screen for the best experience" : "Install as an app for quick access"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleInstallClick}
+                className="shrink-0 bg-amber-600 text-stone-950 hover:bg-amber-500 gap-1.5"
+                data-testid="button-install-app-banner"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Install
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
         {/* Footer with Terms Link */}
-        <div className="mt-12 flex flex-col items-center gap-2">
+        <div className="mt-8 flex flex-col items-center gap-2">
           <button
             onClick={() => setShowTermsView(true)}
             className="text-xs text-stone-500 hover:text-amber-400 transition-colors underline"
@@ -243,6 +290,58 @@ export default function Home() {
           <div className="text-xs text-stone-600 font-mono">v0.1 Beta • Mystereed</div>
         </div>
       </div>
+
+      {/* Install Guide Dialog (iOS / fallback) */}
+      <Dialog open={showInstallGuide} onOpenChange={setShowInstallGuide}>
+        <DialogContent
+          className="border-stone-800 bg-stone-950 text-stone-200 sm:max-w-md"
+          data-testid="dialog-install-guide"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Install Arcana Adventure</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-stone-300">
+            {isIOS ? (
+              <>
+                <p>Add Arcana Adventure to your home screen so it opens like a regular app:</p>
+                <ol className="list-decimal space-y-2 pl-5 text-stone-400">
+                  <li>Tap the <span className="text-amber-400">Share</span> button at the bottom of Safari.</li>
+                  <li>Scroll down and tap <span className="text-amber-400">Add to Home Screen</span>.</li>
+                  <li>Tap <span className="text-amber-400">Add</span> in the top-right corner.</li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <p>You can install Arcana Adventure as an app on this device:</p>
+                <ul className="list-disc space-y-2 pl-5 text-stone-400">
+                  <li>
+                    On a computer, click the <span className="text-amber-400">Install</span> icon in your
+                    browser's address bar (Chrome or Edge), or open the browser menu and choose{" "}
+                    <span className="text-amber-400">Install Arcana Adventure</span>.
+                  </li>
+                  <li>
+                    On Android, open the browser menu and tap{" "}
+                    <span className="text-amber-400">Add to Home screen</span> /{" "}
+                    <span className="text-amber-400">Install app</span>.
+                  </li>
+                </ul>
+                <p className="text-xs text-stone-500">
+                  The install option appears once you're on the published site. Once installed, it opens in its own window.
+                </p>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => setShowInstallGuide(false)}
+              className="bg-amber-600 text-stone-950 hover:bg-amber-500"
+              data-testid="button-install-guide-close"
+            >
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Terms Acceptance Popup - Cannot be dismissed without accepting */}
       <Dialog open={showTermsPopup} onOpenChange={() => {}}>
