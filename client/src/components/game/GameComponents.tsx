@@ -27969,7 +27969,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   </div>
                 )}
               </div>
-              <div className="flex flex-col gap-2 flex-1">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 content-start">
                 <div>
                   <div className="flex items-center gap-2">
                     <Label className="text-xs text-stone-400">Type</Label>
