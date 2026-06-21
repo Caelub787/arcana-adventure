@@ -1090,6 +1090,12 @@ class ApiClient {
     return this.request(`/items/${id}`, { method: 'DELETE' });
   }
 
+  async syncItemTechniques(characterId: string, itemId: string): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${itemId}/sync-techniques`, {
+      method: 'POST',
+    });
+  }
+
   // AA V3 runes & multi-purpose scrolls (Task #198)
   async socketRune(characterId: string, itemId: string, runeItemId: string): Promise<Item> {
     return this.request(`/characters/${characterId}/items/${itemId}/socket-rune`, {

@@ -12436,6 +12436,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AA V3 only: pull the weapon's technique-group assignments from its source
+  // library template. Older inventory copies (added before techniques were
+  // copied on grant) carry an empty `v3TechniqueGroupIds`; this re-syncs them
+  // from the template via `templateItemId` so the weapon shows its techniques
+  // without the player removing and re-adding it. Also picks up any later
+  // changes a GM makes to the template's groups.
+  app.post("/api/characters/:characterId/items/:itemId/sync-techniques", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      }
+
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || item.characterId !== req.params.characterId) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+      if (!item.templateItemId) {
+        return res.status(400).json({ error: "This item is not linked to a library template" });
+      }
+
+      const template = await storage.getItem(item.templateItemId);
+      if (!template) {
+        return res.status(404).json({ error: "Source template no longer exists" });
+      }
+
+      const templateGroups: string[] = Array.isArray((template as any).v3TechniqueGroupIds)
+        ? (template as any).v3TechniqueGroupIds
+        : [];
+
+      const updatedItem = await storage.updateItem(req.params.itemId, {
+        v3TechniqueGroupIds: templateGroups,
+      } as any);
+      if (!updatedItem) return res.status(404).json({ error: "Item not found" });
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "item_updated",
+          characterId: req.params.characterId,
+          item: updatedItem,
+        });
+      }
+
+      res.json(updatedItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to sync techniques from template" });
+    }
+  });
+
   // ---- AA V3 runes & multi-purpose scrolls (Task #198) ----------------------
   // All gated to aa-v3 campaigns; validate-then-write (Neon HTTP has no
   // interactive transactions, so all checks run before any write).

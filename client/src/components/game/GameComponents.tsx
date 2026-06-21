@@ -27387,7 +27387,23 @@ function V3ConsumableUsePanel({ item, character, canUse }: { item: any; characte
 function V3WeaponUsePanel({ item, character, items }: { item: any; character: any; items: any[] }) {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState(1);
+  const [syncing, setSyncing] = useState(false);
   const lv = Math.max(1, Math.floor(level || 1));
+
+  const handleSyncTechniques = async () => {
+    if (!character?.id || !item?.id) return;
+    setSyncing(true);
+    try {
+      await api.syncItemTechniques(character.id, item.id);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      toast({ title: 'Techniques synced', description: 'Pulled the latest technique groups from the library template.' });
+    } catch (err: any) {
+      toast({ title: 'Sync failed', description: err?.message || 'Could not sync techniques from template', variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const { data: techniques = [] } = useQuery({
     queryKey: ['v3-techniques'],
@@ -27485,6 +27501,21 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
       >
         <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(effectiveDiceLevel)})
       </Button>
+
+      {item?.templateItemId && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full border-stone-600 text-stone-300 hover:bg-stone-800"
+          onClick={handleSyncTechniques}
+          disabled={syncing}
+          data-testid="button-v3-weapon-sync-techniques"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing…' : 'Sync techniques from library'}
+        </Button>
+      )}
 
       {unlocked.length > 0 && (
         <div className="space-y-2 pt-2">
