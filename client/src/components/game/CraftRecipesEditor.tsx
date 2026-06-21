@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
@@ -153,7 +154,7 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
     reorderMut.mutate({ id: b.id, sortOrder: aOrder });
   };
 
-  const handleAdd = () => createMut.mutate({ ...newRecipe(), sortOrder: recipes.length });
+  const handleAdd = () => createMut.mutate({ ...newRecipe(), noRoll: systemSlug === 'aa-v3' ? true : false, sortOrder: recipes.length });
 
   if (!isTemplateMode && !itemId) {
     return <p className="text-xs text-stone-500">Save the Crafter item first to add recipes.</p>;
@@ -199,6 +200,87 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
   );
 }
 
+// Searchable item picker (V3) — mirrors the "add item to inventory" library
+// browser style (search box + scrollable card list) instead of a dropdown.
+function ItemSearchPicker({ value, systemItems, onChange }: {
+  value: string | null | undefined;
+  systemItems: any[];
+  onChange: (v: string | null, name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selected = value ? systemItems.find(s => s.id === value) : null;
+  const q = search.trim().toLowerCase();
+  const filtered = q ? systemItems.filter(s => (s.name || '').toLowerCase().includes(q)) : systemItems;
+  const pick = (id: string | null, name: string) => {
+    onChange(id, name);
+    setOpen(false);
+    setSearch('');
+  };
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between bg-stone-800 border-stone-700 h-8 text-xs font-normal"
+          data-testid="button-item-picker"
+        >
+          <span className={selected ? 'text-stone-200 truncate' : 'text-stone-500'}>
+            {selected ? selected.name : 'Select item…'}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0 bg-stone-900 border-stone-700" align="start">
+        <div className="p-2 border-b border-stone-700">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              autoFocus
+              placeholder="Search items..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              data-testid="input-item-picker-search"
+            />
+          </div>
+        </div>
+        <div className="max-h-60 overflow-y-auto py-1">
+          <button
+            type="button"
+            onClick={() => pick(null, '')}
+            className="w-full text-left px-3 py-1.5 text-xs text-stone-400 hover:bg-stone-800"
+            data-testid="button-item-picker-none"
+          >
+            — none —
+          </button>
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => pick(s.id, s.name || '')}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800"
+              data-testid={`button-item-picker-option-${s.id}`}
+            >
+              {s.image ? (
+                <img src={s.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+              ) : (
+                <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-stone-200 truncate">{s.name}</div>
+                {s.itemType && <div className="text-[10px] text-stone-500 capitalize">{s.itemType}</div>}
+              </div>
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-stone-500 italic">No items found</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function RecipeRow({
   recipe,
   systemSlug,
@@ -226,7 +308,7 @@ function RecipeRow({
     diceFormula: recipe.diceFormula || '1d20',
     mod: recipe.mod ?? 0,
     attribute: recipe.attribute || 'craft',
-    noRoll: !!recipe.noRoll,
+    noRoll: systemSlug === 'aa-v3' ? true : !!recipe.noRoll,
     outputItemId: recipe.outputItemId || null,
     outputQuantity: recipe.outputQuantity ?? 1,
     ingredients: (recipe.ingredients || []).map((i: any) => ({
@@ -248,7 +330,11 @@ function RecipeRow({
     costHp: recipe.costHp ?? 0,
   }));
 
-  const itemPicker = (value: string | null | undefined, onChange: (v: string | null, name: string) => void) => (
+  const isV3 = systemSlug === 'aa-v3';
+
+  const itemPicker = (value: string | null | undefined, onChange: (v: string | null, name: string) => void) => isV3 ? (
+    <ItemSearchPicker value={value} systemItems={systemItems} onChange={onChange} />
+  ) : (
     <Select value={value || '__none__'} onValueChange={(v) => {
       if (v === '__none__') return onChange(null, '');
       const found = systemItems.find(s => s.id === v);
@@ -273,7 +359,8 @@ function RecipeRow({
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           <span className="font-semibold">{draft.name || '(unnamed)'}</span>
           <span className="text-xs text-stone-500">
-            {draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'} · {draft.outcomes.length} outcome{draft.outcomes.length === 1 ? '' : 's'}
+            {draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}
+            {systemSlug !== 'aa-v3' && ` · ${draft.outcomes.length} outcome${draft.outcomes.length === 1 ? '' : 's'}`}
           </span>
         </button>
         <div className="flex items-center gap-1">
@@ -304,13 +391,15 @@ function RecipeRow({
               <Label className="text-xs">Output Quantity</Label>
               <Input type="number" min={1} value={draft.outputQuantity} onChange={(e) => setDraft({ ...draft, outputQuantity: Math.max(1, parseInt(e.target.value) || 1) })} className="bg-stone-800 border-stone-700 h-8" />
             </div>
-            <div className="flex items-end gap-2">
-              <Switch checked={draft.noRoll} onCheckedChange={(c) => setDraft({ ...draft, noRoll: !!c })} />
-              <Label className="text-xs">No roll (auto-success)</Label>
-            </div>
+            {!isV3 && (
+              <div className="flex items-end gap-2">
+                <Switch checked={draft.noRoll} onCheckedChange={(c) => setDraft({ ...draft, noRoll: !!c })} />
+                <Label className="text-xs">No roll (auto-success)</Label>
+              </div>
+            )}
           </div>
 
-          {!draft.noRoll && (
+          {!isV3 && !draft.noRoll && (
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label className="text-xs">Dice</Label>
@@ -367,7 +456,8 @@ function RecipeRow({
             </div>
           </div>
 
-          {/* Outcomes */}
+          {/* Outcomes — roll-driven, hidden for V3 (auto-success, no roll) */}
+          {!isV3 && (
           <div className="border border-stone-700 rounded p-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-amber-500">Outcomes</span>
@@ -486,6 +576,7 @@ function RecipeRow({
               {draft.outcomes.length === 0 && <p className="text-xs text-stone-500 italic">No outcomes — default success will be used</p>}
             </div>
           </div>
+          )}
 
           {/* Custom Skill Restriction */}
           <div className="border border-stone-700 rounded p-2">

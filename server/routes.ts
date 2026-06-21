@@ -8487,6 +8487,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const recipe = await storage.getCraftRecipe(recipeId);
       if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      // V3 crafting never requires a roll — it always auto-succeeds. Coerce
+      // here so even older recipes saved with noRoll=false skip the roll.
+      const isV3Craft = (campaign?.system === 'aa-v3') || (!campaign && crafter.system === 'aa-v3');
+      const effectiveNoRoll = !!recipe.noRoll || isV3Craft;
       // Recipe must be attached to the source library item for this crafter
       const sourceId = crafter.templateItemId || crafter.id;
       if (recipe.parentItemId !== sourceId) {
@@ -8575,7 +8579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return map[recipe.attribute] ?? 0;
       })();
 
-      if (!recipe.noRoll) {
+      if (!effectiveNoRoll) {
         // Parse simple "NdM" formula, plus an optional 1d20 detection for nat1/nat20.
         const formula = (recipe.diceFormula || '1d20').trim();
         const m = formula.match(/^(\d+)d(\d+)$/i);
@@ -8599,9 +8603,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Pick outcome — nat1/nat20 take precedence (only meaningful on 1d20).
       // When noRoll is true, skip outcome matching entirely (deterministic
       // auto-success uses the recipe's defaults).
-      const isD20 = !recipe.noRoll && /^1d20$/i.test((recipe.diceFormula || '').trim());
+      const isD20 = !effectiveNoRoll && /^1d20$/i.test((recipe.diceFormula || '').trim());
       const ordered = [...recipe.outcomes].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      let chosen = recipe.noRoll ? null : (
+      let chosen = effectiveNoRoll ? null : (
         ordered.find(o => o.triggerKind === 'nat20' && isD20 && mainDie === 20)
         || ordered.find(o => o.triggerKind === 'nat1' && isD20 && mainDie === 1)
         || ordered.find(o => o.triggerKind === 'range'
@@ -8747,7 +8751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : '';
         const lines = [
           `🛠️ ${character.name} crafted "${recipe.name}"`,
-          recipe.noRoll ? '(no roll required)' : `Roll: ${rollText}`,
+          effectiveNoRoll ? '(no roll required)' : `Roll: ${rollText}`,
           `Outcome: ${outcomeLabel}`,
           createdOutput ? `Produced: ${createdOutput.quantity}× ${createdOutput.name}` : 'No item produced',
           consume ? '' : '(ingredients preserved)',
@@ -8767,7 +8771,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({
         success: true,
-        roll: recipe.noRoll ? null : { mainDie, total, formula: recipe.diceFormula, mod: recipe.mod, attribute: recipe.attribute, attrMod, text: rollText },
+        roll: effectiveNoRoll ? null : { mainDie, total, formula: recipe.diceFormula, mod: recipe.mod, attribute: recipe.attribute, attrMod, text: rollText },
         outcome: chosen ? {
           id: chosen.id,
           triggerKind: chosen.triggerKind,
