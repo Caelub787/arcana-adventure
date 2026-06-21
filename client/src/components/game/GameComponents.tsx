@@ -25635,6 +25635,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
         runeRemoveDurabilityCost: template.runeRemoveDurabilityCost ?? 1,
         runeUnremovable: template.runeUnremovable || false,
         runeWeaponDamageLevelBonus: template.runeWeaponDamageLevelBonus || 0,
+        v3TechniqueGroupIds: template.v3TechniqueGroupIds || [],
         sourceTemplateId: template.id,
       };
       onSave(itemData);

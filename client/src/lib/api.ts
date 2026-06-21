@@ -282,6 +282,8 @@ export interface Item {
   runeSkillAdjustment?: number | null;
   runeWeaponDamageLevelBonus?: number | null;
   socketedRunes?: import("@shared/v3").V3SocketedRune[];
+  // AA V3 only: technique groups assigned to this weapon item.
+  v3TechniqueGroupIds?: string[] | null;
 }
 
 export interface Spell {
