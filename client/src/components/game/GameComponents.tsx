@@ -675,7 +675,8 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
     let topY = targetY;
     let shapeEl: React.ReactNode;
     if (marker.shape === 'circle') {
-      const radiusPx = sizeFeet * pxPerFoot;
+      // sizeFeet is the diameter (end-to-end), so the drawn radius is half of it.
+      const radiusPx = (sizeFeet / 2) * pxPerFoot;
       topY = targetY - radiusPx;
       shapeEl = <circle cx={targetX} cy={targetY} r={radiusPx} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray={dash} />;
     } else {
@@ -689,7 +690,7 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
         {shapeEl}
         {hasCaster && <text x={midX} y={midY - 4} textAnchor="middle" style={labelStyle}>{distFeet} ft</text>}
         <text x={targetX} y={topY - 6} textAnchor="middle" style={labelStyle}>
-          {marker.shape === 'circle' ? `${sizeFeet} ft R` : `${sizeFeet} ft`}
+          {`${sizeFeet} ft`}
         </text>
       </g>
     );

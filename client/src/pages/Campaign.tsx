@@ -12505,7 +12505,7 @@ export default function Campaign() {
                  )}
                  {rulerShape === 'circle' && (
                    <label className="flex items-center gap-1 text-xs text-stone-300">
-                     Radius
+                     Diameter
                      <input type="number" min={0} step={5} value={rulerDims.circleRadius}
                        onChange={(e) => setRulerDims(d => ({ ...d, circleRadius: Number(e.target.value) || 0 }))}
                        className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
