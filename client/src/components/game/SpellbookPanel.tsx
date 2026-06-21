@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { api, type V3Spell } from "@/lib/api";
 import { FloatingPanel } from "@/components/ui/floating-panel";
@@ -76,6 +76,13 @@ export function V3SpellDetailDialog({
   const [level, setLevel] = useState(1);
   const [reach, setReach] = useState<string>(spell?.composition?.reach || "");
   const panelKey = panelKeyProp ?? "v3-spell-detail";
+
+  useEffect(() => {
+    if (open && spell) {
+      bringToFront?.(panelKey);
+    }
+  }, [open, spell?.id, panelKey]);
+
   if (!open || !spell) return null;
   const comp = spell.composition;
   const awaiting = spell.status === "awaiting_gm";

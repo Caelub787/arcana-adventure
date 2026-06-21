@@ -441,12 +441,16 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
         </div>
       </div>
 
+      <div
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+        data-panel-content
+        style={{ display: isMinimized ? 'none' : '' }}
+      >
+        {children}
+      </div>
+
       {!isMinimized && (
         <>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content>
-            {children}
-          </div>
-
           <div
             className={`${resizeHandleBase} top-0 cursor-n-resize`}
             style={{ height: edgeThickness, left: cornerSize, right: cornerSize, top: 0, touchAction: 'none' }}
