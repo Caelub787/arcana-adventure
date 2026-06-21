@@ -26771,6 +26771,49 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
           );
         })}
       </div>
+
+      {socketed.length > 0 && (
+        <div className="space-y-1.5" data-testid="list-v3-rune-summary">
+          {socketed
+            .slice()
+            .sort((a, b) => a.slotIndex - b.slotIndex)
+            .map((rune, idx) => {
+              const statBadges = (rune.statEffects || []).filter((e) => e?.target);
+              const hasDmgBonus = (rune.weaponDamageLevelBonus || 0) > 0;
+              return (
+                <div
+                  key={`${rune.slotIndex}-${idx}`}
+                  className="flex items-center gap-2 rounded border border-stone-700/70 bg-stone-900/50 px-2 py-1.5"
+                  data-testid={`row-v3-rune-summary-${rune.slotIndex}`}
+                >
+                  {rune.image ? (
+                    <img src={rune.image} alt={rune.name} className="w-5 h-5 object-cover rounded flex-shrink-0" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                  )}
+                  <span className="text-xs text-stone-200 font-medium truncate flex-shrink-0 max-w-[40%]" title={rune.name}>
+                    {rune.name}
+                  </span>
+                  <div className="flex flex-wrap gap-1 min-w-0">
+                    {statBadges.map((e, j) => (
+                      <Badge key={j} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">
+                        {v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}
+                      </Badge>
+                    ))}
+                    {hasDmgBonus && (
+                      <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">
+                        +{rune.weaponDamageLevelBonus} dmg lvl
+                      </Badge>
+                    )}
+                    {statBadges.length === 0 && !hasDmgBonus && (
+                      <span className="text-[10px] text-stone-500">No stat effects</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
     </div>
   );
 }
