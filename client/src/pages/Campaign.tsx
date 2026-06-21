@@ -35,7 +35,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
-import { FloatingPanel } from "@/components/ui/floating-panel";
+import { FloatingPanel, bringFloatingPanelToFront } from "@/components/ui/floating-panel";
 import AdminSettings from "@/pages/AdminSettings";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
@@ -6867,13 +6867,12 @@ export default function Campaign() {
   const [sandboxHotbarVisible, setSandboxHotbarVisible] = useState(true);
   const [hotbarConfigSlot, setHotbarConfigSlot] = useState<number | null>(null);
 
-  const floatingZCounterRef = useRef(10600);
   const floatingZIndicesRef = useRef<Record<string, number>>({});
+  // Delegate to the single shared stacking counter in FloatingPanel so the
+  // call-site-wired panels and self-raising panels never drift apart.
   const bringToFront = useCallback((panelKey: string) => {
-    floatingZCounterRef.current += 1;
-    floatingZIndicesRef.current[panelKey] = floatingZCounterRef.current;
-    const el = document.querySelector(`[data-panel-key="${panelKey}"]`) as HTMLElement;
-    if (el) el.style.zIndex = String(floatingZCounterRef.current);
+    const z = bringFloatingPanelToFront(panelKey);
+    floatingZIndicesRef.current[panelKey] = z;
   }, []);
 
   // Map pin editor state

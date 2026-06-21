@@ -404,6 +404,7 @@ export function SpellbookPanel({
       spell={detailSpell}
       castCharacter={character}
       onCast={onSpellCast}
+      panelKey={`v3-spell-detail${charPanelSuffix}`}
     />
     </>
   );

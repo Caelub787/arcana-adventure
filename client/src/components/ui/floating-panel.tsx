@@ -3,6 +3,40 @@ import { createPortal } from "react-dom";
 import { X, GripHorizontal, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// --- Shared stacking source of truth ----------------------------------------
+// A single module-level counter guarantees that whenever ANY floating panel
+// opens (or is interacted with) it can acquire a z-index strictly above every
+// other currently-open panel — WITHOUT the call site having to wire anything
+// up. Call sites may still pass `panelKey` / `zIndex` / `onBringToFront`; those
+// keep working and feed into this same counter, so the two systems never drift.
+let sharedZCounter = 10600;
+const sharedZRegistry: Record<string, number> = {};
+
+// Acquire the next-highest z-index and (optionally) record/apply it for a panel.
+// `baseline` lets a panel that was given an explicit high zIndex (e.g. a
+// quick-search panel at 20000) push the counter above that value so subsequent
+// panels still open above it.
+export function bringFloatingPanelToFront(panelKey?: string, baseline?: number): number {
+  sharedZCounter = Math.max(sharedZCounter, baseline ?? 0) + 1;
+  const z = sharedZCounter;
+  if (panelKey) {
+    sharedZRegistry[panelKey] = z;
+    if (typeof document !== "undefined") {
+      const safeKey =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(panelKey)
+          : panelKey.replace(/"/g, '\\"');
+      const el = document.querySelector(`[data-panel-key="${safeKey}"]`) as HTMLElement | null;
+      if (el) el.style.zIndex = String(z);
+    }
+  }
+  return z;
+}
+
+export function getFloatingPanelZ(panelKey?: string): number | undefined {
+  return panelKey ? sharedZRegistry[panelKey] : undefined;
+}
+
 interface FloatingPanelProps {
   open: boolean;
   onClose: () => void;
@@ -145,10 +179,26 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     }
   }, [isFullscreen]);
 
+  // Acquire the next-highest z-index from the single shared counter and apply
+  // it directly. This is what guarantees "rise to top" regardless of whether
+  // the call site wired up panelKey / onBringToFront.
+  const acquireTopZ = React.useCallback(() => {
+    const z = bringFloatingPanelToFront(panelKey, zIndexRef.current);
+    zIndexRef.current = z;
+    const el = panelRef.current;
+    if (el) el.style.zIndex = String(isFullscreen ? Math.max(z, 10500) : z);
+  }, [panelKey, isFullscreen]);
+
   React.useEffect(() => {
     zIndexRef.current = Math.max(zIndexRef.current, zIndex);
     applyZIndex();
   }, [zIndex, applyZIndex]);
+
+  // On open (mount), always rise above every other currently-open panel.
+  React.useEffect(() => {
+    acquireTopZ();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyTransform = React.useCallback(() => {
     const el = panelRef.current;
@@ -345,8 +395,9 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
 
   const handleBringToFront = React.useCallback((e: React.PointerEvent | React.MouseEvent) => {
     e.stopPropagation();
+    acquireTopZ();
     onBringToFront?.();
-  }, [onBringToFront]);
+  }, [acquireTopZ, onBringToFront]);
 
   if (!open) return null;
 

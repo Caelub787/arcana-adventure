@@ -8604,7 +8604,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       )}
 
       {hotbar?.v3SpellId && v3SpellData && (
-        <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} castCharacter={character} />
+        <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} castCharacter={character} panelKey={`v3-spell-detail-hotbar-${hotbar?.id ?? v3SpellData.id}`} />
       )}
 
       {isMagicItemClickable && showMagicPanel && itemData && (
@@ -14875,6 +14875,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
           open={showV3Detail}
           onOpenChange={setShowV3Detail}
           castCharacter={character}
+          panelKey={`v3-spell-detail-hotbar-${hotbar?.id ?? v3SpellData.id}`}
         />
       )}
     </div>
