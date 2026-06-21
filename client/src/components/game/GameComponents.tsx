@@ -18620,10 +18620,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         queryClient.setQueryData(['items', character.id], context.previousItems);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _err, variables) => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
-      setShowItemDetail(false);
-      setSelectedItem(null);
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
     }
   });
 
@@ -23221,7 +23222,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
       {/* Item Detail Dialog */}
       <ItemDetailDialog
-        item={selectedItem}
+        item={selectedItem ? { ...selectedItem, ...(items?.find((it: any) => it.id === selectedItem.id) || {}) } : selectedItem}
         open={showItemDetail}
         onOpenChange={(open) => {
           setShowItemDetail(open);
@@ -25436,7 +25437,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
         runeUseMode: template.runeUseMode || 'none',
         runeSkillKey: template.runeSkillKey ?? null,
         runeSkillAdjustment: template.runeSkillAdjustment || 0,
-        runeRemoveDurabilityCost: template.runeRemoveDurabilityCost || 0,
+        runeRemoveDurabilityCost: template.runeRemoveDurabilityCost ?? 1,
         runeUnremovable: template.runeUnremovable || false,
         runeWeaponDamageLevelBonus: template.runeWeaponDamageLevelBonus || 0,
         sourceTemplateId: template.id,
@@ -27090,41 +27091,19 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
           {socketed
             .slice()
             .sort((a, b) => a.slotIndex - b.slotIndex)
-            .map((rune, idx) => {
-              const statBadges = (rune.statEffects || []).filter((e) => e?.target);
-              const hasDmgBonus = (rune.weaponDamageLevelBonus || 0) > 0;
-              return (
+            .map((rune, idx) => (
                 <div
                   key={`${rune.slotIndex}-${idx}`}
-                  className="flex items-center gap-2 rounded border border-stone-700/70 bg-stone-900/50 px-2 py-1.5"
+                  className="rounded border border-stone-700/70 bg-stone-900/50 px-2 py-1.5"
                   data-testid={`row-v3-rune-summary-${rune.slotIndex}`}
                 >
-                  {rune.image ? (
-                    <img src={rune.image} alt={rune.name} className="w-5 h-5 object-cover rounded flex-shrink-0" />
+                  {rune.description ? (
+                    <p className="text-xs text-stone-300 whitespace-pre-wrap">{rune.description}</p>
                   ) : (
-                    <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                    <p className="text-[11px] italic text-stone-500">No description</p>
                   )}
-                  <span className="text-xs text-stone-200 font-medium truncate flex-shrink-0 max-w-[40%]" title={rune.name}>
-                    {rune.name}
-                  </span>
-                  <div className="flex flex-wrap gap-1 min-w-0">
-                    {statBadges.map((e, j) => (
-                      <Badge key={j} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">
-                        {v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}
-                      </Badge>
-                    ))}
-                    {hasDmgBonus && (
-                      <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">
-                        +{rune.weaponDamageLevelBonus} dmg lvl
-                      </Badge>
-                    )}
-                    {statBadges.length === 0 && !hasDmgBonus && (
-                      <span className="text-[10px] text-stone-500">No stat effects</span>
-                    )}
-                  </div>
                 </div>
-              );
-            })}
+            ))}
         </div>
       )}
     </div>
@@ -28008,16 +27987,21 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       <Label className="text-xs text-stone-400">Durability</Label>
                       {isEditing && canEditItem ? (
                         <div className="space-y-1">
-                          <Slider value={[currentData.durability]} onValueChange={(v) => setEditData({ ...editData, durability: v[0] })} min={0} max={10} step={1} className="mt-1" data-testid="slider-durability" />
-                          <div className="text-xs text-stone-400">{currentData.durability}/10</div>
+                          <Slider value={[currentData.durability]} onValueChange={(v) => setEditData({ ...editData, durability: v[0] })} min={0} max={currentData.maxDurability ?? 10} step={1} className="mt-1" data-testid="slider-durability" />
+                          <div className="text-xs text-stone-400">{currentData.durability}/{currentData.maxDurability ?? 10}</div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
                           <div className="flex-1 h-2 bg-stone-700 rounded overflow-hidden min-w-0">
-                            <div className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${(currentData.durability / 10) * 100}%` }} />
+                            <div className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${Math.min(100, (currentData.durability / Math.max(1, currentData.maxDurability ?? 10)) * 100)}%` }} />
                           </div>
-                          <span className="text-xs text-stone-200 whitespace-nowrap">{currentData.durability}/10</span>
+                          <span className="text-xs text-stone-200 whitespace-nowrap">{currentData.durability}/{currentData.maxDurability ?? 10}</span>
                         </div>
+                      )}
+                      {(currentData.maxDurability ?? 10) < 10 && (
+                        <p className="text-[11px] text-amber-400/90 mt-1" data-testid="text-durability-lowered">
+                          Max durability lowered to {currentData.maxDurability ?? 10} (was 10) by removed runes.
+                        </p>
                       )}
                     </div>
                     <div>

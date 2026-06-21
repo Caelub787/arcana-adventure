@@ -558,7 +558,7 @@ export const items = pgTable("items", {
   // Stat effects applied to the host while the rune is socketed. Each is a
   // {target, amount} where target is a host-item stat key (see V3_RUNE_STAT_TARGETS).
   runeStatEffects: jsonb("rune_stat_effects").$type<{ target: string; amount: number }[]>().default(sql`'[]'::jsonb`),
-  runeRemoveDurabilityCost: integer("rune_remove_durability_cost").default(0), // max-durability lost when removed
+  runeRemoveDurabilityCost: integer("rune_remove_durability_cost").default(1), // max-durability lost when removed
   runeUnremovable: boolean("rune_unremovable").default(false).notNull(),
   runeUseMode: text("rune_use_mode").default("none"), // 'none' (RP only) | 'skill_check'
   runeSkillKey: text("rune_skill_key"), // skill_check mode: which V3 skill

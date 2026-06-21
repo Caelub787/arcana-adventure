@@ -12469,7 +12469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         skillAdjustment: (rune as any).runeSkillAdjustment ?? 0,
         weaponDamageLevelBonus: (rune as any).runeWeaponDamageLevelBonus ?? 0,
         removable: !(rune as any).runeUnremovable,
-        removeDurabilityCost: (rune as any).runeRemoveDurabilityCost ?? 0,
+        removeDurabilityCost: (rune as any).runeRemoveDurabilityCost ?? 1,
       };
 
       // Apply stat effects onto the host's real columns so existing consumers

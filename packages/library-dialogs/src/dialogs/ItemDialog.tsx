@@ -838,8 +838,8 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     <Input
                       type="number"
                       min={0}
-                      value={draft.runeRemoveDurabilityCost ?? 0}
-                      onChange={e => set({ runeRemoveDurabilityCost: optionalNum(e.target.value) ?? 0 })}
+                      value={draft.runeRemoveDurabilityCost ?? 1}
+                      onChange={e => set({ runeRemoveDurabilityCost: optionalNum(e.target.value) ?? 1 })}
                       data-testid="input-rune-remove-cost"
                     />
                   </div>
