@@ -27994,8 +27994,104 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   <Label className="text-xs text-stone-400">Quantity</Label>
                   <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
                 </div>
+                {isAAV3 && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-stone-400">Weight</Label>
+                      {isEditing && canEditAllFields ? (
+                        <Input type="number" step="0.01" min="0" value={currentData.itemWeight ?? ''} onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })} className="bg-stone-800 border-amber-700" />
+                      ) : (
+                        <p className="text-stone-200 text-sm">{currentData.itemWeight} lbs <span className="text-stone-400 text-xs">(total: {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(2)} lbs)</span></p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Durability</Label>
+                      {isEditing && canEditItem ? (
+                        <div className="space-y-1">
+                          <Slider value={[currentData.durability]} onValueChange={(v) => setEditData({ ...editData, durability: v[0] })} min={0} max={10} step={1} className="mt-1" data-testid="slider-durability" />
+                          <div className="text-xs text-stone-400">{currentData.durability}/10</div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 h-2 bg-stone-700 rounded overflow-hidden min-w-0">
+                            <div className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${(currentData.durability / 10) * 100}%` }} />
+                          </div>
+                          <span className="text-xs text-stone-200 whitespace-nowrap">{currentData.durability}/10</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Price</Label>
+                      {isEditing && canEditAllFields ? (
+                        <div className="flex gap-1">
+                          <Input type="number" min="0" value={currentData.price ?? ''} onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? '' : parseInt(e.target.value) })} className="bg-stone-800 border-amber-700 flex-1" data-testid="input-price" />
+                          <Select value={currentData.currency || 'copper'} onValueChange={(v) => setEditData({ ...editData, currency: v })}>
+                            <SelectTrigger className="bg-stone-800 border-amber-700 w-24" data-testid="select-currency"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="copper">Copper</SelectItem>
+                              <SelectItem value="silver">Silver</SelectItem>
+                              <SelectItem value="gold">Gold</SelectItem>
+                              <SelectItem value="platinum">Platinum</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : (
+                        <p className="text-stone-200 text-sm">{currentData.price || 0} <span className={`capitalize ${currentData.currency === 'platinum' ? 'text-cyan-400' : currentData.currency === 'gold' ? 'text-amber-400' : currentData.currency === 'silver' ? 'text-stone-300' : 'text-orange-400'}`}>{currentData.currency || 'copper'}</span></p>
+                      )}
+                    </div>
+                    {currentData.itemType === 'armor' && (
+                      <div>
+                        <Label className="text-xs text-stone-400">Armor Slot</Label>
+                        {isEditing && canEditAllFields ? (
+                          <Select value={currentData.armorSlot || ''} onValueChange={(v) => setEditData({ ...editData, armorSlot: v })}>
+                            <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-armor-slot"><SelectValue placeholder="Select slot..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="helm">Helm</SelectItem>
+                              <SelectItem value="chest">Chest</SelectItem>
+                              <SelectItem value="arm">Arm</SelectItem>
+                              <SelectItem value="legs">Legs</SelectItem>
+                              <SelectItem value="boots">Boots</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-stone-200 capitalize">{currentData.armorSlot || 'Not specified'}</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
+
+            {isAAV3 && currentData.itemType === 'armor' && (
+              <div>
+                {isEditing && canEditAllFields ? (
+                  <V3ArmorBoostsEditor
+                    boosts={(currentData.v3ArmorBoosts as V3ArmorBoost[]) || []}
+                    onChange={(next) => setEditData({ ...editData, v3ArmorBoosts: next })}
+                  />
+                ) : (
+                  <div>
+                    <Label className="text-xs text-stone-400">Boosts when equipped</Label>
+                    {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).map((b, i) => {
+                          const label = V3_BOOST_TARGETS.find(t => t.value === b.target)?.label ?? b.target;
+                          const amt = Math.trunc(Number(b.amount) || 0);
+                          return (
+                            <span key={i} className="px-2 py-0.5 rounded bg-emerald-900/40 border border-emerald-700 text-emerald-300 text-xs" data-testid={`text-armor-boost-${i}`}>
+                              {label} {amt >= 0 ? `+${amt}` : amt}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-stone-500 text-sm mt-1">None</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {(isEditing || currentData.description || !isAAV3) && (
               <div>
@@ -28213,15 +28309,11 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             )}
 
-            {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
-              <V3WeaponUsePanel item={currentData} character={character} items={items} />
-            )}
-
             {campaignSystem === 'aa-v3' && !isEditing && currentData.itemType !== 'rune' && (
               <V3RuneSocketPanel item={currentData} character={character} items={items} canEdit={isOwner || isGM} />
             )}
 
-            {currentData.itemType === 'armor' && (
+            {currentData.itemType === 'armor' && !isAAV3 && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Armor Settings</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -28433,7 +28525,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             </div>
             )}
 
-            <div className="pt-4 border-t border-stone-700">
+            {!isAAV3 && <div className="pt-4 border-t border-stone-700">
               <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -28582,7 +28674,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   )}
                 </div>
               </div>
-            </div>
+            </div>}
 
             {(isOwner || isGM) && !currentData.isContainer && !isEditing && !isAAV3 && (
               <div className="pt-4 border-t border-stone-700">
@@ -28693,6 +28785,10 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               characterMana={character?.mana ?? 0}
               characterItems={items as any[]}
             />
+
+            {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
+              <V3WeaponUsePanel item={currentData} character={character} items={items} />
+            )}
 
             <div className="flex gap-2 pt-4">
               {isEditing ? (
