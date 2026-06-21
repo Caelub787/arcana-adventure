@@ -11563,6 +11563,7 @@ function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: stri
         <CrafterRecipeTemplateEditDialog
           open={!!editingId}
           templateId={editingId}
+          systemSlug={systemSlug}
           onOpenChange={(o) => { if (!o) setEditingId(null); }}
         />
       )}
@@ -11608,9 +11609,10 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
   );
 }
 
-function CrafterRecipeTemplateEditDialog({ open, templateId, onOpenChange }: {
+function CrafterRecipeTemplateEditDialog({ open, templateId, systemSlug, onOpenChange }: {
   open: boolean;
   templateId: string;
+  systemSlug: string;
   onOpenChange: (o: boolean) => void;
 }) {
   const queryClient = useQueryClient();
