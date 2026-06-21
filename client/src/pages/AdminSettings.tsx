@@ -12055,17 +12055,19 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        checked={formData.isHeavy}
-                        onCheckedChange={(checked) => setFormData({ ...formData, isHeavy: !!checked })}
-                        data-testid="checkbox-heavy"
-                      />
-                      <Label>Two-Handed / Heavy Weapon</Label>
+                  {systemSlug !== 'aa-v3' && (
+                    <div className="col-span-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={formData.isHeavy}
+                          onCheckedChange={(checked) => setFormData({ ...formData, isHeavy: !!checked })}
+                          data-testid="checkbox-heavy"
+                        />
+                        <Label>Two-Handed / Heavy Weapon</Label>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
                     </div>
-                    <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
-                  </div>
+                  )}
                 </>
               )}
 

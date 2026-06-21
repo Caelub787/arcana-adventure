@@ -544,7 +544,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   </Select>
                 </div>
                 </>)}
-                <Row><Checkbox checked={!!draft.isHeavy} onCheckedChange={v => set({ isHeavy: v })} /><Label>Heavy weapon</Label></Row>
+                {!aav3 && <Row><Checkbox checked={!!draft.isHeavy} onCheckedChange={v => set({ isHeavy: v })} /><Label>Heavy weapon</Label></Row>}
                 <Row><Checkbox checked={!!draft.canApplyEffects} onCheckedChange={v => set({ canApplyEffects: v })} /><Label>Can apply token effects</Label></Row>
                 <div />
               </Grid3>

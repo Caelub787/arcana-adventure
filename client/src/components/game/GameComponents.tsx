@@ -4818,12 +4818,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         );
         
         if (nextAmmo) {
-          // Update hotbar to point to next matching ammunition
-          const ammoHotbar = allHotbars?.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+          // Update hotbar to point to next matching ammunition (slot 1 in V3, slot 2 in V2)
+          const ammoSlotIndex = campaignSystem === 'aa-v3' ? 1 : 2;
+          const ammoHotbar = allHotbars?.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === ammoSlotIndex);
           if (ammoHotbar) {
             await api.upsertHotbar(character.id, { 
               hotbarType: 'weapons', 
-              slotNumber: 2, 
+              slotNumber: ammoSlotIndex, 
               itemId: nextAmmo.id 
             });
           }
@@ -4922,10 +4923,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     return weapon?.weaponCategory && RANGED_WEAPON_CATEGORIES.includes(weapon.weaponCategory.toLowerCase());
   };
 
-  // Get equipped ammunition from slot 2 of weapons hotbar
+  // Get equipped ammunition from the ammo slot (slot 1 in V3, slot 2 in V2)
   const getEquippedAmmunition = (): any | null => {
     if (!allHotbars || !allItems) return null;
-    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+    const ammoSlotIndex = campaignSystem === 'aa-v3' ? 1 : 2;
+    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === ammoSlotIndex);
     if (!ammoHotbar?.itemId) return null;
     return allItems.find((i: any) => i.id === ammoHotbar.itemId);
   };
@@ -8714,7 +8716,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
   if (!character) return null;
 
   const hotbarTypes = [
-    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
+    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: campaignSystem === 'aa-v3' ? 2 : 3 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
     { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
@@ -12910,48 +12912,93 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
       
       // Special handling for weapons hotbar
       if (hotbarType === 'weapons') {
-        // Slot 2 is reserved for ammunition only
-        if (slotNumber === 2) {
-          if (item.itemType !== 'ammunition') {
-            toast({
-              title: "Ammunition Only",
-              description: "The ammo slot only accepts ammunition items",
-              variant: "destructive"
-            });
-            return;
-          }
-          // Check compatibility with equipped ranged weapon (only if weapon requires ammo)
-          const rangedWeapon = getPrimaryRangedWeapon();
-          if (rangedWeapon?.weaponCategory && requiresAmmunition(rangedWeapon.weaponCategory)) {
-            const requiredAmmoType = getCompatibleAmmoType(rangedWeapon.weaponCategory);
-            if (requiredAmmoType && item.ammunitionType !== requiredAmmoType) {
+        if (isAAV3) {
+          // V3: slot 0 = weapon, slot 1 = ammo (2 slots total)
+          if (slotNumber === 1) {
+            if (item.itemType !== 'ammunition') {
               toast({
-                title: "Incompatible Ammunition",
-                description: `Your ${rangedWeapon.name} requires ${requiredAmmoType}s, but this is ${item.ammunitionType || 'unknown type'}`,
+                title: "Ammunition Only",
+                description: "The ammo slot only accepts ammunition items",
+                variant: "destructive"
+              });
+              return;
+            }
+            // Check compatibility with the weapon in slot 0
+            const equippedWeapon = getWeaponSlot0();
+            if (equippedWeapon?.weaponCategory && requiresAmmunition(equippedWeapon.weaponCategory)) {
+              const requiredAmmoType = getCompatibleAmmoType(equippedWeapon.weaponCategory);
+              if (requiredAmmoType && item.ammunitionType !== requiredAmmoType) {
+                toast({
+                  title: "Incompatible Ammunition",
+                  description: `Your ${equippedWeapon.name} requires ${requiredAmmoType}s, but this is ${item.ammunitionType || 'unknown type'}`,
+                  variant: "destructive"
+                });
+                return;
+              }
+            }
+          } else {
+            // slot 0 = weapon only
+            if (item.itemType === 'ammunition') {
+              toast({
+                title: "Wrong Slot",
+                description: "Ammunition goes in the Ammo slot",
+                variant: "destructive"
+              });
+              return;
+            }
+            if (item.itemType !== 'weapon') {
+              toast({
+                title: "Invalid Item Type",
+                description: "Only weapons can be equipped in the weapon slot",
                 variant: "destructive"
               });
               return;
             }
           }
-          // If no ranged weapon or weapon doesn't require ammo, allow any ammunition type
         } else {
-          // Slots 0 and 1 are for weapons, not ammunition
-          if (item.itemType === 'ammunition') {
-            toast({
-              title: "Wrong Slot",
-              description: "Ammunition goes in the Ammo slot (far-right)",
-              variant: "destructive"
-            });
-            return;
-          }
-          // Check if it's a valid weapon
-          if (item.itemType !== 'weapon') {
-            toast({
-              title: "Invalid Item Type",
-              description: `Only weapons can be equipped in weapon slots`,
-              variant: "destructive"
-            });
-            return;
+          // V2: slot 0 = left hand, slot 1 = right hand, slot 2 = ammo
+          if (slotNumber === 2) {
+            if (item.itemType !== 'ammunition') {
+              toast({
+                title: "Ammunition Only",
+                description: "The ammo slot only accepts ammunition items",
+                variant: "destructive"
+              });
+              return;
+            }
+            // Check compatibility with equipped ranged weapon (only if weapon requires ammo)
+            const rangedWeapon = getPrimaryRangedWeapon();
+            if (rangedWeapon?.weaponCategory && requiresAmmunition(rangedWeapon.weaponCategory)) {
+              const requiredAmmoType = getCompatibleAmmoType(rangedWeapon.weaponCategory);
+              if (requiredAmmoType && item.ammunitionType !== requiredAmmoType) {
+                toast({
+                  title: "Incompatible Ammunition",
+                  description: `Your ${rangedWeapon.name} requires ${requiredAmmoType}s, but this is ${item.ammunitionType || 'unknown type'}`,
+                  variant: "destructive"
+                });
+                return;
+              }
+            }
+            // If no ranged weapon or weapon doesn't require ammo, allow any ammunition type
+          } else {
+            // Slots 0 and 1 are for weapons, not ammunition
+            if (item.itemType === 'ammunition') {
+              toast({
+                title: "Wrong Slot",
+                description: "Ammunition goes in the Ammo slot (far-right)",
+                variant: "destructive"
+              });
+              return;
+            }
+            // Check if it's a valid weapon
+            if (item.itemType !== 'weapon') {
+              toast({
+                title: "Invalid Item Type",
+                description: `Only weapons can be equipped in weapon slots`,
+                variant: "destructive"
+              });
+              return;
+            }
           }
         }
       } else if (hotbarType in validTypeMapping && !validTypeMapping[hotbarType].includes(item.itemType)) {
@@ -12963,8 +13010,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         return;
       }
 
-      // Block slot 1 (Right hand) if heavy weapon is equipped or being equipped
-      if (hotbarType === 'weapons' && slotNumber === 1 && heavyEquipped) {
+      // Block slot 1 (Right hand) if heavy weapon is equipped or being equipped (V2 only)
+      if (!isAAV3 && hotbarType === 'weapons' && slotNumber === 1 && heavyEquipped) {
         toast({
           title: "Slot Blocked",
           description: "Two-handed weapon is equipped - this slot is blocked",
@@ -12973,8 +13020,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         return;
       }
 
-      // For weapons hotbar slots 0 and 1, check if heavy weapon is already equipped
-      if (hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 1)) {
+      // For weapons hotbar slots 0 and 1, check if heavy weapon is already equipped (V2 only)
+      if (!isAAV3 && hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 1)) {
         // Check if the item in slot 0 is a heavy weapon
         if (heavyEquipped) {
           toast({
@@ -12986,9 +13033,9 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         }
       }
 
-      // Two-handed weapon logic - occupy slot 0 only, slot 1 becomes blocked
+      // Two-handed weapon logic - occupy slot 0 only, slot 1 becomes blocked (V2 only)
       // Check both isHeavy (new) and weight === 'heavy' (legacy) for backward compatibility
-      if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
+      if (!isAAV3 && hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
         // Heavy weapons can only go in slot 0 (left hand), blocks slot 1
         if (slotNumber === 2) {
           toast({
@@ -13048,8 +13095,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         return;
       }
 
-      // Slot 2 in weapons hotbar is for ammunition only
-      if (hotbarType === 'weapons' && slotNumber === 2 && item.itemType !== 'ammunition') {
+      // Slot 2 in weapons hotbar is for ammunition only (V2 only)
+      if (!isAAV3 && hotbarType === 'weapons' && slotNumber === 2 && item.itemType !== 'ammunition') {
         toast({
           title: "Invalid Slot",
           description: "Only ammunition can be equipped in the third slot",
@@ -13133,6 +13180,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
   // Helper to get slot display name
   const getSlotLabel = (hotbarType: string, slotNum: number): string => {
     if (hotbarType === 'weapons') {
+      if (isAAV3) return slotNum === 0 ? 'Weapon' : 'Ammunition';
       return slotNum === 0 ? 'Left Hand' : slotNum === 1 ? 'Right Hand' : 'Ammunition';
     }
     if (hotbarType === 'armor') {
@@ -13144,7 +13192,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
 
   // Helper to get max slots for hotbar type
   const getMaxSlots = (hotbarType: string): number => {
-    if (hotbarType === 'weapons') return 3;
+    if (hotbarType === 'weapons') return isAAV3 ? 2 : 3;
     if (hotbarType === 'armor') return 5;
     return 5;
   };
@@ -13213,14 +13261,16 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 flex-wrap">
-            {[0, 1, 2].map(slotNum => {
-              // Slot 1 is blocked when a heavy (2-handed) weapon is equipped
-              const isSlot1Blocked = slotNum === 1 && heavyEquipped;
+            {Array.from({ length: isAAV3 ? 2 : 3 }).map((_, slotNum) => {
+              // Slot 1 (right hand) is blocked in V2 when a heavy (2-handed) weapon is equipped
+              const isSlot1Blocked = !isAAV3 && slotNum === 1 && heavyEquipped;
               
               return (
                 <div key={slotNum} className="flex flex-col items-center gap-1">
                   <Label className="text-xs text-stone-400">
-                    {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo'}
+                    {isAAV3
+                      ? (slotNum === 0 ? 'Weapon' : 'Ammo')
+                      : (slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo')}
                   </Label>
                   <HotbarSlot
                     type="weapons"
@@ -13234,13 +13284,16 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                     onRemove={handleRemove}
                     isBlocked={isSlot1Blocked}
                     blockReason="Two-handed weapon equipped - this slot is blocked"
+                    campaignSystem={campaignSystem}
                   />
                 </div>
               );
             })}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Left/Right for weapons, Far-right for ammunition. Heavy (two-handed) weapons use the left slot and block the right.
+            {isAAV3
+              ? 'Weapon slot for your equipped weapon, Ammo slot for ammunition.'
+              : 'Left/Right for weapons, Far-right for ammunition. Heavy (two-handed) weapons use the left slot and block the right.'}
           </p>
           
           {/* Draggable Weapons */}
@@ -13813,8 +13866,15 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-4">
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
-              const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
-              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition';
+              const isSlot1Blocked = !isAAV3 && equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
+              // In V3: slot 1 = ammo-only, slot 0 = weapon-only; in V2: slot 2 = ammo-only
+              const isAmmoSlotMismatch = equipPickerData.hotbarType === 'weapons' && (
+                isAAV3
+                  ? (slotNum === 1 && equipPickerData.payload?.item?.itemType !== 'ammunition') ||
+                    (slotNum === 0 && equipPickerData.payload?.item?.itemType === 'ammunition')
+                  : slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition'
+              );
+              const isSlot2AmmoOnly = isAmmoSlotMismatch;
               
               // For armor hotbar, only allow armor to go in its matching slot
               const armorSlotMapping: Record<string, number> = { helm: 0, chest: 1, arm: 2, legs: 3, boots: 4 };
@@ -13873,9 +13933,10 @@ interface HotbarSlotProps {
   blockReason?: string;
   allHotbars?: Hotbar[];
   allItems?: any[];
+  campaignSystem?: string;
 }
 
-function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems }: HotbarSlotProps) {
+function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems, campaignSystem }: HotbarSlotProps) {
   const queryClient = useQueryClient();
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
@@ -13937,10 +13998,11 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     return weapon?.weaponCategory && RANGED_WEAPON_CATEGORIES.includes(weapon.weaponCategory.toLowerCase());
   };
 
-  // Get equipped ammunition from slot 2 of weapons hotbar
+  // Get equipped ammunition from the ammo slot (slot 1 in V3, slot 2 in V2)
   const getEquippedAmmunition = (): any | null => {
     if (!allHotbars || !allItems) return null;
-    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+    const ammoSlotIndex = campaignSystem === 'aa-v3' ? 1 : 2;
+    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === ammoSlotIndex);
     if (!ammoHotbar?.itemId) return null;
     return allItems.find((i: any) => i.id === ammoHotbar.itemId);
   };
@@ -25779,15 +25841,17 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-2 flex items-center gap-2">
-                    <Checkbox 
-                      id="isHeavy" 
-                      checked={formData.isHeavy || false} 
-                      onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
-                      data-testid="checkbox-is-heavy"
-                    />
-                    <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed / Heavy Weapon (requires both hands)</Label>
-                  </div>
+                  {!isAAV3 && (
+                    <div className="col-span-2 flex items-center gap-2">
+                      <Checkbox 
+                        id="isHeavy" 
+                        checked={formData.isHeavy || false} 
+                        onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
+                        data-testid="checkbox-is-heavy"
+                      />
+                      <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed / Heavy Weapon (requires both hands)</Label>
+                    </div>
+                  )}
                   <div className="col-span-2 border-t border-stone-600 pt-3 mt-2 space-y-3">
                     <div className="flex items-center gap-2">
                       <Checkbox 
@@ -27040,6 +27104,7 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
 }
 
 export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '' }: ItemDetailDialogProps) {
+  const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
@@ -27103,7 +27168,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   const handleEquipToSlot = (hotbarType: string, slotNumber: number) => {
     if (!item) return;
 
-    if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
+    if (!isAAV3 && hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
       upsertHotbarMutation.mutate({ hotbarType, slotNumber: 0, itemId: item.id });
       upsertHotbarMutation.mutate({ hotbarType, slotNumber: 2, itemId: item.id });
     } else {
@@ -27117,7 +27182,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
     const slots: { label: string; hotbarType: string; slotNumber: number }[] = [];
     
     if (item.itemType === 'weapon') {
-      if (item.isHeavy || item.weight === 'heavy') {
+      if (isAAV3) {
+        slots.push({ label: 'Weapon', hotbarType: 'weapons', slotNumber: 0 });
+      } else if (item.isHeavy || item.weight === 'heavy') {
         slots.push({ label: 'Weapons (Both Hands)', hotbarType: 'weapons', slotNumber: 0 });
       } else {
         slots.push({ label: 'Weapons - Left Hand', hotbarType: 'weapons', slotNumber: 0 });
@@ -27367,7 +27434,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   const currentData = isEditing ? editData : item;
   const canEditItem = isOwner || isGM;
   const canEditAllFields = isGM;
-  const isAAV3 = campaignSystem === 'aa-v3';
 
   if (!open || !item) return null;
   return (
@@ -27643,15 +27709,17 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Checkbox 
-                          id="editIsHeavy" 
-                          checked={currentData.isHeavy || false} 
-                          onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
-                          data-testid="checkbox-edit-is-heavy"
-                        />
-                        <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
-                      </div>
+                      {!isAAV3 && (
+                        <div className="flex items-center gap-2">
+                          <Checkbox 
+                            id="editIsHeavy" 
+                            checked={currentData.isHeavy || false} 
+                            onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
+                            data-testid="checkbox-edit-is-heavy"
+                          />
+                          <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         <Checkbox 
                           id="editIsDetonatable" 
