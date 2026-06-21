@@ -265,6 +265,11 @@ export interface ItemDraft {
   isDetonatable?: boolean;
   detonateAoeShape?: string | null;
   detonateAoeRange?: number | null;
+  // AA V3 consumable "use effect": signed HP/Mana/Energy deltas + description.
+  consumableHpChange?: number | null;
+  consumableManaChange?: number | null;
+  consumableEnergyChange?: number | null;
+  consumableEffectDescription?: string | null;
   canApplyEffects?: boolean;
   maxSpells?: number | null;
   isTemplate?: boolean;
@@ -656,6 +661,26 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     <Input type="number" value={draft.detonateAoeRange ?? 15} onChange={e => set({ detonateAoeRange: optionalNum(e.target.value) ?? 15 })} />
                   </div>
                 </Grid2>
+              )}
+              {aav3 && (
+                <Stack gap="sm" style={{ marginTop: 8 }}>
+                  <Label>Use effect</Label>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>When a player uses this consumable, apply these to their character. Positive numbers add, negative subtract. Leave at 0 for none.</div>
+                  <Grid3>
+                    <div><Label>HP change</Label>
+                      <Input type="number" value={draft.consumableHpChange ?? 0} onChange={e => set({ consumableHpChange: optionalNum(e.target.value) ?? 0 })} />
+                    </div>
+                    <div><Label>Mana change</Label>
+                      <Input type="number" value={draft.consumableManaChange ?? 0} onChange={e => set({ consumableManaChange: optionalNum(e.target.value) ?? 0 })} />
+                    </div>
+                    <div><Label>Energy change</Label>
+                      <Input type="number" value={draft.consumableEnergyChange ?? 0} onChange={e => set({ consumableEnergyChange: optionalNum(e.target.value) ?? 0 })} />
+                    </div>
+                  </Grid3>
+                  <div><Label>Effect description</Label>
+                    <Input value={draft.consumableEffectDescription ?? ""} onChange={e => set({ consumableEffectDescription: e.target.value })} placeholder="e.g. Restores vitality and focus" />
+                  </div>
+                </Stack>
               )}
             </Section>
           )}

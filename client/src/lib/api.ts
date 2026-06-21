@@ -258,6 +258,11 @@ export interface Item {
   detonateAoeShape?: string;
   detonateAoeRange?: number;
   isDamaging?: boolean;
+  // AA V3 consumable "use effect" — signed HP/Mana/Energy deltas + description.
+  consumableHpChange?: number;
+  consumableManaChange?: number;
+  consumableEnergyChange?: number;
+  consumableEffectDescription?: string | null;
   // AA V3 scrolls & runes (Task #198)
   maxDurability?: number;
   dcBonusValue?: number;

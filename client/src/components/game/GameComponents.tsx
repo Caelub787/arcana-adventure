@@ -27128,6 +27128,81 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
   );
 }
 
+// AA V3 consumable usage surface: shows the configured HP/Mana/Energy "use
+// effect" + description and a Use button that applies the deltas to the
+// character and consumes one of the item. V3-only — callers gate this behind
+// campaignSystem === 'aa-v3'.
+function V3ConsumableUsePanel({ item, character, canUse }: { item: any; character: any; canUse: boolean }) {
+  const queryClient = useQueryClient();
+  const hp = Math.trunc(Number(item?.consumableHpChange) || 0);
+  const mana = Math.trunc(Number(item?.consumableManaChange) || 0);
+  const energy = Math.trunc(Number(item?.consumableEnergyChange) || 0);
+  const desc = item?.consumableEffectDescription || '';
+  const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
+  const effects = [
+    hp !== 0 ? { label: 'HP', val: hp, color: 'text-red-300' } : null,
+    mana !== 0 ? { label: 'Mana', val: mana, color: 'text-sky-300' } : null,
+    energy !== 0 ? { label: 'Energy', val: energy, color: 'text-yellow-300' } : null,
+  ].filter(Boolean) as { label: string; val: number; color: string }[];
+
+  const handleUse = async () => {
+    if (!character?.id) return;
+    const name = character.name || 'Unknown';
+    if (hp !== 0) gameWs.sendCombatDamage(character.id, Math.abs(hp), undefined, name, hp > 0);
+    if (mana !== 0) gameWs.sendCombatMana(character.id, Math.abs(mana), name, mana > 0);
+    if (energy !== 0) gameWs.sendCombatEnergy(character.id, Math.abs(energy), name, energy > 0);
+
+    const parts = effects.map((e) => `${e.label} ${fmt(e.val)}`);
+    const summary = parts.length > 0 ? parts.join(', ') : 'no stat change';
+    gameWs.sendChatMessage(character.userId || '', name, `Used ${item?.name || 'consumable'} (${summary}).`, 'system');
+
+    try {
+      const qty = item?.quantity || 1;
+      if (qty <= 1) {
+        await api.deleteItem(item.id);
+      } else {
+        await api.updateItem(item.id, { quantity: qty - 1 });
+      }
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    } catch (e) {
+      console.error('Failed to consume consumable:', e);
+    }
+  };
+
+  return (
+    <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-v3-consumable-use">
+      <h3 className="text-sm font-bold text-green-300 flex items-center gap-2">
+        <Heart className="h-4 w-4" /> Use Effect
+      </h3>
+      {effects.length > 0 ? (
+        <div className="flex flex-wrap gap-2" data-testid="text-consumable-effects">
+          {effects.map((e) => (
+            <span key={e.label} className={`text-xs px-2 py-1 rounded border border-stone-700 bg-stone-800 ${e.color}`}>
+              {e.label} {fmt(e.val)}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-stone-500" data-testid="text-consumable-effects">No stat changes.</p>
+      )}
+      {desc && <p className="text-sm text-stone-300" data-testid="text-consumable-description">{desc}</p>}
+      {canUse && (
+        <Button
+          type="button"
+          className="w-full bg-green-700 hover:bg-green-600 text-white"
+          onClick={handleUse}
+          data-testid="button-use-consumable"
+        >
+          <Heart className="h-4 w-4 mr-2" /> Use
+        </Button>
+      )}
+    </div>
+  );
+}
+
 // AA V3 weapon usage surface (Task #180): a leveled base attack plus the
 // techniques unlocked by the technique groups assigned to the weapon. Rendered
 // inside the weapon ItemDetailDialog and the battlemap hotbar info panel.
@@ -28776,6 +28851,32 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             )}
 
+            {campaignSystem === 'aa-v3' && currentData.itemType === 'consumable' && isEditing && (
+              <div className="pt-4 border-t border-stone-700 space-y-2" data-testid="section-v3-consumable-edit">
+                <h3 className="text-sm font-bold text-green-300">Use Effect</h3>
+                <p className="text-xs text-stone-500">When used, applies these to the character. Positive adds, negative subtracts. Leave 0 for none.</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs text-stone-400">HP</Label>
+                    <Input type="number" value={currentData.consumableHpChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableHpChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-hp" />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Mana</Label>
+                    <Input type="number" value={currentData.consumableManaChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableManaChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-mana" />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Energy</Label>
+                    <Input type="number" value={currentData.consumableEnergyChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableEnergyChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-energy" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-stone-400">Effect description</Label>
+                  <Textarea value={currentData.consumableEffectDescription || ''} onChange={(e) => setEditData({ ...editData, consumableEffectDescription: e.target.value })} className="bg-stone-800 border-stone-700 min-h-[50px]" placeholder="Describe what using this does..." data-testid="textarea-consumable-effect" />
+                </div>
+              </div>
+            )}
+
+            {campaignSystem !== 'aa-v3' && (
             <RollEntriesEditor 
               ownerType="item" 
               ownerId={item.id} 
@@ -28787,9 +28888,14 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               characterMana={character?.mana ?? 0}
               characterItems={items as any[]}
             />
+            )}
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
               <V3WeaponUsePanel item={currentData} character={character} items={items} />
+            )}
+
+            {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && !isEditing && (
+              <V3ConsumableUsePanel item={currentData} character={character} canUse={isOwner || isGM} />
             )}
 
             <div className="flex gap-2 pt-4">

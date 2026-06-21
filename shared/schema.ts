@@ -531,6 +531,12 @@ export const items = pgTable("items", {
   isDetonatable: boolean("is_detonatable").default(false).notNull(),
   detonateAoeShape: text("detonate_aoe_shape"),
   detonateAoeRange: integer("detonate_aoe_range").default(15),
+  // AA V3 consumable "use effect" — signed deltas applied to the consumer when
+  // the item is used (positive = gain, negative = loss). 0 = no change.
+  consumableHpChange: integer("consumable_hp_change").default(0),
+  consumableManaChange: integer("consumable_mana_change").default(0),
+  consumableEnergyChange: integer("consumable_energy_change").default(0),
+  consumableEffectDescription: text("consumable_effect_description"),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
   // Spellbook capacity (AA V3 only): maximum number of crafted/pre-loaded spells
