@@ -151,9 +151,6 @@ describe("aggregateRuneStatEffects", () => {
 describe("v3RuneStatTargetLabel", () => {
   it("returns the human label for a known stat target", () => {
     expect(v3RuneStatTargetLabel("carryCapacity")).toBe("Carry Capacity");
-    expect(v3RuneStatTargetLabel("damageReduction")).toBe("Damage Reduction");
-    expect(v3RuneStatTargetLabel("dcBonusValue")).toBe("DC Bonus");
-    expect(v3RuneStatTargetLabel("mod")).toBe("Attack/Roll Mod");
     expect(v3RuneStatTargetLabel("range")).toBe("Range (ft)");
     expect(v3RuneStatTargetLabel("price")).toBe("Price");
     expect(v3RuneStatTargetLabel("itemWeight")).toBe("Weight (lb)");

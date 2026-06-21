@@ -49,9 +49,6 @@ const V3_RUNE_TARGET_ITEM_TYPE_OPTIONS: { value: string; label: string }[] = [
 // AA V3 rune stat-effect targets (mirrors V3_RUNE_STAT_TARGETS in shared/v3.ts).
 const V3_RUNE_STAT_TARGET_OPTIONS: { value: string; label: string }[] = [
   { value: "carryCapacity", label: "Carry Capacity" },
-  { value: "damageReduction", label: "Damage Reduction" },
-  { value: "dcBonusValue", label: "DC Bonus" },
-  { value: "mod", label: "Attack/Roll Mod" },
   { value: "range", label: "Range (ft)" },
   { value: "price", label: "Price" },
   { value: "itemWeight", label: "Weight (lb)" },
@@ -461,11 +458,13 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
                 </div>
+                {aav3 && it === "rune" ? <div /> : (
                 <div><Label>Rarity</Label>
                   <Select value={draft.rarity ?? "common"} onValueChange={v => set({ rarity: v })}>
                     {RARITIES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                   </Select>
                 </div>
+                )}
                 <div><Label>Size</Label>
                   <Select value={draft.size ?? ""} onValueChange={v => set({ size: v || null })}>
                     <SelectItem value="">—</SelectItem>
@@ -545,7 +544,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 </div>
                 </>)}
                 {!aav3 && <Row><Checkbox checked={!!draft.isHeavy} onCheckedChange={v => set({ isHeavy: v })} /><Label>Heavy weapon</Label></Row>}
-                <Row><Checkbox checked={!!draft.canApplyEffects} onCheckedChange={v => set({ canApplyEffects: v })} /><Label>Can apply token effects</Label></Row>
+                {!aav3 && <Row><Checkbox checked={!!draft.canApplyEffects} onCheckedChange={v => set({ canApplyEffects: v })} /><Label>Can apply token effects</Label></Row>}
                 <div />
               </Grid3>
               {it === "ammunition" && (

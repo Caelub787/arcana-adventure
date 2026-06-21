@@ -243,9 +243,6 @@ export interface V3RuneStatTarget {
 // key would crash the Drizzle update.
 export const V3_RUNE_STAT_TARGETS: V3RuneStatTarget[] = [
   { value: "carryCapacity", label: "Carry Capacity" },
-  { value: "damageReduction", label: "Damage Reduction" },
-  { value: "dcBonusValue", label: "DC Bonus" },
-  { value: "mod", label: "Attack/Roll Mod" },
   { value: "range", label: "Range (ft)" },
   { value: "price", label: "Price" },
   { value: "itemWeight", label: "Weight (lb)" },

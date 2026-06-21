@@ -25431,6 +25431,14 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
         v3ArmorBoosts: template.v3ArmorBoosts || [],
         canApplyEffects: template.canApplyEffects || false,
         socketedRunes: template.socketedRunes || [],
+        runeTargetItemType: template.runeTargetItemType || 'any',
+        runeStatEffects: template.runeStatEffects || [],
+        runeUseMode: template.runeUseMode || 'none',
+        runeSkillKey: template.runeSkillKey ?? null,
+        runeSkillAdjustment: template.runeSkillAdjustment || 0,
+        runeRemoveDurabilityCost: template.runeRemoveDurabilityCost || 0,
+        runeUnremovable: template.runeUnremovable || false,
+        runeWeaponDamageLevelBonus: template.runeWeaponDamageLevelBonus || 0,
         sourceTemplateId: template.id,
       };
       onSave(itemData);
@@ -27941,6 +27949,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     <p className="text-stone-200 capitalize">{currentData.itemType}</p>
                   )}
                 </div>
+                {!(isAAV3 && currentData.itemType === 'rune') && (
                 <div>
                   <div className="flex items-center gap-2">
                     <Label className="text-xs text-stone-400">Rarity</Label>
@@ -27980,6 +27989,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     }`}>{currentData.rarity}</p>
                   )}
                 </div>
+                )}
                 <div>
                   <Label className="text-xs text-stone-400">Quantity</Label>
                   <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
