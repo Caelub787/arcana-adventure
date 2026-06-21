@@ -15029,6 +15029,87 @@ function DeleteQuantityDialog({ open, onOpenChange, item, onDelete }: DeleteQuan
   );
 }
 
+// AA V3 only: a single read-only rune indicator shown at the bottom of an
+// inventory item row. Hovering (desktop) or pressing-and-holding (touch) opens
+// a small popup with the rune's name, description, and stat-effect badges —
+// reusing the same label/badge formatting as the item sheet's rune panel.
+function V3InventoryRuneIndicator({ rune }: { rune: V3SocketedRune }) {
+  const [open, setOpen] = useState(false);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statBadges = (rune.statEffects || []).filter((e) => e?.target);
+  const hasDmgBonus = (rune.weaponDamageLevelBonus || 0) > 0;
+
+  const clearPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <span
+          role="button"
+          tabIndex={0}
+          className="inline-flex items-center justify-center w-5 h-5 rounded border border-sky-700/70 bg-stone-800 overflow-hidden cursor-help shrink-0"
+          data-testid={`inventory-rune-indicator-${rune.slotIndex}`}
+          title={rune.name}
+          onClick={(e) => { e.stopPropagation(); }}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            clearPress();
+            pressTimerRef.current = setTimeout(() => setOpen(true), 500);
+          }}
+          onTouchEnd={(e) => { e.stopPropagation(); clearPress(); }}
+          onTouchMove={clearPress}
+        >
+          {rune.image ? (
+            <img src={rune.image} alt={rune.name} className="w-full h-full object-cover" />
+          ) : (
+            <Sparkles className="w-3 h-3 text-sky-400" />
+          )}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-3 bg-stone-900 border-stone-700"
+        align="start"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            {rune.image ? (
+              <img src={rune.image} alt={rune.name} className="w-6 h-6 object-cover rounded flex-shrink-0" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0" />
+            )}
+            <p className="text-sm font-medium text-stone-200">{rune.name}</p>
+          </div>
+          {rune.description && <p className="text-[11px] text-stone-400">{rune.description}</p>}
+          {(statBadges.length > 0 || hasDmgBonus) ? (
+            <div className="flex flex-wrap gap-1">
+              {statBadges.map((e, j) => (
+                <Badge key={j} variant="outline" className="text-[10px] text-emerald-300 border-emerald-800">
+                  {v3RuneStatTargetLabel(e.target)} {e.amount >= 0 ? `+${e.amount}` : e.amount}
+                </Badge>
+              ))}
+              {hasDmgBonus && (
+                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-800">
+                  +{rune.weaponDamageLevelBonus} dmg lvl
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <span className="text-[10px] text-stone-500">No stat effects</span>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // Recursive inventory item row component with drag & drop support
 interface InventoryItemRowProps {
   item: any;
@@ -15315,6 +15396,17 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                   </span>
                 )}
               </div>
+              {/* AA V3 only: rune indicators for items with socketed runes */}
+              {isAAV3 && Array.isArray(item.socketedRunes) && item.socketedRunes.length > 0 && (
+                <div className="flex items-center gap-1 mt-1.5 flex-wrap" data-testid={`inventory-rune-indicators-${item.id}`}>
+                  {(item.socketedRunes as V3SocketedRune[])
+                    .slice()
+                    .sort((a, b) => a.slotIndex - b.slotIndex)
+                    .map((rune, idx) => (
+                      <V3InventoryRuneIndicator key={`${rune.slotIndex}-${idx}`} rune={rune} />
+                    ))}
+                </div>
+              )}
             </div>
           </div>
           
