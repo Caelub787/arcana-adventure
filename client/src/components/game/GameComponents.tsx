@@ -27002,11 +27002,10 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
                     title={rune.name}
                   >
                     {rune.image ? (
-                      <img src={rune.image} alt={rune.name} className="w-8 h-8 object-cover rounded mb-0.5" />
+                      <img src={rune.image} alt={rune.name} className="w-12 h-12 object-cover rounded" />
                     ) : (
-                      <Sparkles className="w-6 h-6 text-sky-400 mb-0.5" />
+                      <Sparkles className="w-7 h-7 text-sky-400" />
                     )}
-                    <span className="text-[9px] leading-tight text-stone-300 line-clamp-2 w-full text-center">{rune.name}</span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-3 bg-stone-900 border-stone-700" align="start">
