@@ -4,7 +4,7 @@
  * Full create/edit dialog for the `items` table. Mirrors Arcana's
  * AdminSettings ItemFormDialog field-set, including the conditional
  * branches for weapon / ammunition / armor / consumable / utility /
- * container / currency / crafter (AAv2 only).
+ * container / currency / crafter (AAv2 and AAv3).
  *
  * Save flow: bundles `rolls`, `craftRecipes`, and `templateLinks` into
  * a single transport upsert payload. The host's children-aware write path
@@ -455,7 +455,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 <div><Label>Item Type</Label>
                   <Select value={draft.itemType} onValueChange={v => set(v === "scroll" ? { itemType: v, maxSpells: 1 } : { itemType: v })} data-testid="select-item-type">
                     {ITEM_TYPES.filter(t => {
-                      if (t === "crafter") return aav2;
+                      if (t === "crafter") return aav2 || aav3;
                       if (t === "spellbook") return aav3;
                       if (t === "scroll") return aav3;
                       if (t === "rune") return aav3;
@@ -1076,7 +1076,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {aav2 && it === "crafter" && (
+          {(aav2 || aav3) && it === "crafter" && (
             <Section title="Crafting recipes (crafter item)">
               <CraftRecipesEditor
                 value={draft.craftRecipes ?? []}
