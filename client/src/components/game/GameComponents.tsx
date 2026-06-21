@@ -10759,8 +10759,27 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
       
       // Item operations
       if (data.type === 'item_created' || data.type === 'item_updated' || data.type === 'item_deleted') {
-        if (data.characterId) {
+        // For updates, apply the full item payload directly to the cache so the
+        // change appears instantly for every connected client without waiting
+        // for a refetch. The open item sheet on other clients reads from this
+        // same query, so it reflects the change in place.
+        if (data.type === 'item_updated' && data.characterId && data.item) {
+          queryClient.setQueryData<any[]>(['items', data.characterId], (existing) => {
+            if (!existing) return existing;
+            let found = false;
+            const next = existing.map((it) => {
+              if (it.id === data.item.id) {
+                found = true;
+                return { ...it, ...data.item };
+              }
+              return it;
+            });
+            return found ? next : [...existing, data.item];
+          });
+        } else if (data.characterId) {
           queryClient.invalidateQueries({ queryKey: ['items', data.characterId] });
+        }
+        if (data.characterId) {
           queryClient.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
         }
       }
