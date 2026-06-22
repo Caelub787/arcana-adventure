@@ -103,6 +103,13 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
     queryFn: () => api.getSystemItems(systemSlug),
   });
 
+  // V3 Knowledge picker source = admin-created system skills ("Knowledge").
+  const { data: systemSkills = [] } = useQuery<any[]>({
+    queryKey: ['system-skills-picker', systemSlug],
+    queryFn: () => api.getSystemSkills(systemSlug),
+    enabled: systemSlug === 'aa-v3',
+  });
+
   const { data: recipes = [], isLoading } = useQuery<any[]>({
     queryKey,
     queryFn: async () => {
@@ -182,6 +189,7 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
           recipe={r}
           systemSlug={systemSlug}
           systemItems={systemItems}
+          systemSkills={systemSkills}
           expanded={expandedId === r.id}
           onToggle={() => setExpandedId(expandedId === r.id ? null : r.id)}
           onSave={(data) => updateMut.mutate({ id: r.id, data })}
@@ -281,10 +289,82 @@ function ItemSearchPicker({ value, systemItems, onChange }: {
   );
 }
 
+// Name-based searchable picker for V3 Knowledge (admin-created system skills).
+function KnowledgeSearchPicker({ value, systemSkills, onChange }: {
+  value: string | null | undefined;
+  systemSkills: any[];
+  onChange: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+  const filtered = q ? systemSkills.filter(s => (s.name || '').toLowerCase().includes(q)) : systemSkills;
+  const pick = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setSearch('');
+  };
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between bg-stone-800 border-stone-700 h-8 text-xs font-normal"
+          data-testid="button-knowledge-picker"
+        >
+          <span className={value ? 'text-stone-200 truncate' : 'text-stone-500'}>
+            {value || 'Select Knowledge…'}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0 bg-stone-900 border-stone-700" align="start">
+        <div className="p-2 border-b border-stone-700">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              autoFocus
+              placeholder="Search Knowledge..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              data-testid="input-knowledge-picker-search"
+            />
+          </div>
+        </div>
+        <div className="max-h-60 overflow-y-auto py-1">
+          <button
+            type="button"
+            onClick={() => pick('')}
+            className="w-full text-left px-3 py-1.5 text-xs text-stone-400 hover:bg-stone-800"
+            data-testid="button-knowledge-picker-none"
+          >
+            — none —
+          </button>
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => pick(s.name || '')}
+              className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-800 truncate"
+              data-testid={`button-knowledge-picker-option-${s.id}`}
+            >
+              {s.name}
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-stone-500 italic">{systemSkills.length === 0 ? 'No Knowledge defined yet.' : 'No matches'}</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function RecipeRow({
   recipe,
   systemSlug,
   systemItems,
+  systemSkills,
   expanded,
   onToggle,
   onSave,
@@ -295,6 +375,7 @@ function RecipeRow({
   recipe: any;
   systemSlug: string;
   systemItems: any[];
+  systemSkills: any[];
   expanded: boolean;
   onToggle: () => void;
   onSave: (data: DraftRecipe) => void;
@@ -591,13 +672,21 @@ function RecipeRow({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">{systemSlug === 'aa-v3' ? 'Knowledge Name' : 'Custom Skill Name'}</Label>
-                  <Input
-                    value={draft.requiredSkillName || ''}
-                    onChange={(e) => setDraft({ ...draft, requiredSkillName: e.target.value })}
-                    placeholder="e.g. Smithing"
-                    className="bg-stone-800 border-stone-700 h-8"
-                    data-testid="input-required-skill-name"
-                  />
+                  {systemSlug === 'aa-v3' ? (
+                    <KnowledgeSearchPicker
+                      value={draft.requiredSkillName}
+                      systemSkills={systemSkills}
+                      onChange={(name) => setDraft({ ...draft, requiredSkillName: name })}
+                    />
+                  ) : (
+                    <Input
+                      value={draft.requiredSkillName || ''}
+                      onChange={(e) => setDraft({ ...draft, requiredSkillName: e.target.value })}
+                      placeholder="e.g. Smithing"
+                      className="bg-stone-800 border-stone-700 h-8"
+                      data-testid="input-required-skill-name"
+                    />
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs">Min Value</Label>
