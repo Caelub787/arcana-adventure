@@ -535,7 +535,7 @@ export function MainLayout({ embeddedRealmId }: { embeddedRealmId?: string } = {
             )}
           </div>
         </main>
-        <CompassSidebar />
+        <CompassSidebar embedded={embedded} />
         <CompassMobileFab />
       </div>
       <GuideOverlay />

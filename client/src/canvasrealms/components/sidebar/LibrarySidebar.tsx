@@ -284,6 +284,13 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
+  // Embedded (campaign-hosted) mode starts with the sidebar collapsed so the
+  // host panel has room. This override is session-local and never persists, so
+  // the standalone /app sidebar keeps its own remembered collapse state.
+  const [embeddedCollapsed, setEmbeddedCollapsed] = useState(true);
+  const effLibraryCollapsed = embedded ? embeddedCollapsed : libraryCollapsed;
+  const setEffLibraryCollapsed = embedded ? setEmbeddedCollapsed : setLibraryCollapsed;
+
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<NodeKind | null>(null);
   const [kindFilterOpen, setKindFilterOpen] = useState(false);
@@ -1967,7 +1974,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
   // The mobile drawer is unaffected — on mobile we always render the full
   // panel so the drawer toggle keeps working even if collapse was set on
   // a previous desktop session.
-  if (libraryCollapsed && !isMobile) {
+  if (effLibraryCollapsed && !isMobile) {
     return (
       <div className="hidden md:flex w-9 shrink-0 flex-col items-center py-2 bg-sidebar/80 border-r border-sidebar-border safe-pl">
         <Button
@@ -1976,7 +1983,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
           className="h-7 w-7"
           title="Expand library"
           aria-label="Expand library"
-          onClick={() => setLibraryCollapsed(false)}
+          onClick={() => setEffLibraryCollapsed(false)}
         >
           <PanelLeftOpen className="w-4 h-4" />
         </Button>
@@ -2036,7 +2043,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                 className="h-6 w-6 hidden md:inline-flex"
                 title="Collapse library"
                 aria-label="Collapse library"
-                onClick={() => setLibraryCollapsed(true)}
+                onClick={() => setEffLibraryCollapsed(true)}
               >
                 <PanelLeftClose className="w-3.5 h-3.5" />
               </Button>

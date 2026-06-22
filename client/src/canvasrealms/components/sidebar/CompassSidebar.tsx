@@ -466,7 +466,7 @@ const KIND_COLORS: Record<SuggestedNode["kind"], string> = {
   note: "#94a3b8",
 };
 
-export function CompassSidebar() {
+export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}) {
   const {
     isCompassOpen,
     setCompassOpen,
@@ -482,6 +482,13 @@ export function CompassSidebar() {
     canvasCenterRef,
   } = useAppStore();
   const isMobile = useIsMobile();
+
+  // Embedded (campaign-hosted) mode starts the Compass collapsed so the host
+  // panel has room. This override is session-local and never persists, so the
+  // standalone /app Compass keeps its own remembered collapse state.
+  const [embeddedCollapsed, setEmbeddedCollapsed] = useState(true);
+  const effCompassCollapsed = embedded ? embeddedCollapsed : compassCollapsed;
+  const setEffCompassCollapsed = embedded ? setEmbeddedCollapsed : setCompassCollapsed;
 
   const [conversationsByScope, setConversationsByScope] =
     useState<ConversationsByScope>(() => loadConversations());
@@ -2096,11 +2103,11 @@ export function CompassSidebar() {
   // desktop collapse, so without this the mic and TTS playback would
   // keep running in the background with no visible controls.
   useEffect(() => {
-    if (!isCompassOpen || compassCollapsed) {
+    if (!isCompassOpen || effCompassCollapsed) {
       stopVoiceMode();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCompassOpen, compassCollapsed]);
+  }, [isCompassOpen, effCompassCollapsed]);
 
   // When voice falls into the error state from inside the hook (e.g.
   // permission denied mid-session), surface the message and untoggle the
@@ -2116,7 +2123,7 @@ export function CompassSidebar() {
 
   // Skip the collapsed rail on mobile so the drawer toggle keeps working
   // even if collapse was set during a previous desktop session.
-  if (compassCollapsed && !isMobile) {
+  if (effCompassCollapsed && !isMobile) {
     return (
       <div className="hidden lg:flex w-9 shrink-0 flex-col items-center py-2 bg-sidebar border-l border-sidebar-border safe-pr">
         <Button
@@ -2125,7 +2132,7 @@ export function CompassSidebar() {
           className="h-7 w-7"
           title="Expand Compass"
           aria-label="Expand Compass"
-          onClick={() => setCompassCollapsed(false)}
+          onClick={() => setEffCompassCollapsed(false)}
         >
           <PanelRightOpen className="w-4 h-4" />
         </Button>
@@ -2188,7 +2195,7 @@ export function CompassSidebar() {
                 className="h-6 w-6 hidden lg:inline-flex"
                 title="Collapse Compass"
                 aria-label="Collapse Compass"
-                onClick={() => setCompassCollapsed(true)}
+                onClick={() => setEffCompassCollapsed(true)}
               >
                 <PanelRightClose className="w-3.5 h-3.5" />
               </Button>

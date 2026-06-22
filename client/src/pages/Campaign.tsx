@@ -6934,6 +6934,14 @@ export default function Campaign() {
     const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.28 : 320;
     return Math.max(280, Math.min(600, defaultWidth));
   });
+  // The World (Canvas Realms) side panel needs more room than chat/notes, so it
+  // gets its own wider default and is resized independently.
+  const [worldPanelWidth, setWorldPanelWidth] = useState(() => {
+    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.45 : 480;
+    return Math.max(480, Math.min(1000, defaultWidth));
+  });
+  const isWorldSidePanel = activeSidePanel === 'world';
+  const effectivePanelWidth = isWorldSidePanel ? worldPanelWidth : notesPanelWidth;
   
   const handleToggleNotesPanel = useCallback(() => {
     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
@@ -6966,13 +6974,13 @@ export default function Campaign() {
       }
     });
     if (sidePanelOpen) {
-      const panelLeft = window.innerWidth - notesPanelWidth;
+      const panelLeft = window.innerWidth - effectivePanelWidth;
       if (hotbarRect.right > panelLeft) {
         overlaps = true;
       }
     }
     setGmHotbarHidden(overlaps);
-  }, [isMobile, sidePanelOpen, notesPanelWidth]);
+  }, [isMobile, sidePanelOpen, effectivePanelWidth]);
 
   useEffect(() => {
     requestAnimationFrame(checkGmHotbarFit);
@@ -6989,16 +6997,16 @@ export default function Campaign() {
     if (isMobile) return;
     e.preventDefault();
     setIsResizingNotes(true);
-    notesResizeStartRef.current = { x: e.clientX, width: notesPanelWidth };
+    notesResizeStartRef.current = { x: e.clientX, width: effectivePanelWidth };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [isMobile, notesPanelWidth]);
+  }, [isMobile, effectivePanelWidth]);
   
   const handleNotesResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizingNotes || isMobile) return;
     const dx = e.clientX - notesResizeStartRef.current.x;
     const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width - dx));
-    setNotesPanelWidth(newWidth);
-  }, [isResizingNotes, isMobile]);
+    if (isWorldSidePanel) setWorldPanelWidth(newWidth); else setNotesPanelWidth(newWidth);
+  }, [isResizingNotes, isMobile, isWorldSidePanel]);
   
   const handleNotesResizeEnd = useCallback((e: React.PointerEvent) => {
     if (!isResizingNotes) return;
@@ -10049,7 +10057,7 @@ export default function Campaign() {
         {/* Right Side - Settings menu at top, then panel tab icons */}
         <div className="pointer-events-auto flex flex-col gap-2"
           style={{ 
-            marginRight: (sidePanelOpen && !isMobile) ? `${notesPanelWidth + 8}px` : '0px',
+            marginRight: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 8}px` : '0px',
             transition: 'margin-right 0.3s ease'
           }}
         >
@@ -12346,7 +12354,7 @@ export default function Campaign() {
              detonatableGridTarget={detonatableGridTarget}
              onGridTargetClick={handleGridTargetClick}
              notesPanelOpen={sidePanelOpen}
-             notesPanelWidth={notesPanelWidth}
+             notesPanelWidth={effectivePanelWidth}
              
              inCombat={initiativeData?.inCombat ?? false}
              fogToolActive={fogToolActive}
@@ -12425,7 +12433,7 @@ export default function Campaign() {
                onModeChange={handleModeChange}
                character={role === 'gm' ? inspectedChar : character}
                notesPanelOpen={sidePanelOpen}
-               notesPanelWidth={notesPanelWidth}
+               notesPanelWidth={effectivePanelWidth}
                rulerShape={rulerShape}
                onRulerShapeChange={setRulerShape}
              />
@@ -12581,7 +12589,7 @@ export default function Campaign() {
                detonatableGridTarget={detonatableGridTarget}
                onClearDetonatableGridTarget={() => setDetonatableGridTarget(null)}
                notesPanelOpen={sidePanelOpen}
-               notesPanelWidth={notesPanelWidth}
+               notesPanelWidth={effectivePanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
                onClearTarget={() => {
                  setTargetedTokenId(null);
@@ -12608,7 +12616,7 @@ export default function Campaign() {
         return (
           <div 
             className="fixed bottom-[105px] md:bottom-[140px] z-[35] transition-all duration-300"
-            style={{ right: (sidePanelOpen && !isMobile) ? `${notesPanelWidth + 16}px` : '16px' }}
+            style={{ right: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 16}px` : '16px' }}
             data-testid="btn-character-overview"
           >
             <button
@@ -12774,7 +12782,7 @@ export default function Campaign() {
         <div 
           className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
-            width: isMobile ? '100vw' : `${notesPanelWidth}px`,
+            width: isMobile ? '100vw' : `${effectivePanelWidth}px`,
             maxWidth: isMobile ? '100vw' : '90vw' 
           }}
         >
@@ -13247,7 +13255,7 @@ export default function Campaign() {
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           style={{ 
-            left: sidePanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
+            left: sidePanelOpen ? `calc(50% - ${effectivePanelWidth / 2}px)` : '50%',
             transform: 'translateX(-50%)'
           }}
           data-testid="gm-character-hotbar"
