@@ -12646,6 +12646,7 @@ interface HotbarsTabContentProps {
   isGM: boolean;
   isOwner: boolean;
   campaignSystem?: string;
+  onOpenItemDetail?: (item: any) => void;
 }
 
 // Type guard for items with weapon fields
@@ -12661,7 +12662,7 @@ interface ItemWithWeaponFields {
   imageData?: string;
 }
 
-function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: HotbarsTabContentProps) {
+function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenItemDetail }: HotbarsTabContentProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const canEdit = isOwner || isGM;
@@ -13303,6 +13304,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                     isBlocked={isSlot1Blocked}
                     blockReason="Two-handed weapon equipped - this slot is blocked"
                     campaignSystem={campaignSystem}
+                    onOpenItemDetail={onOpenItemDetail}
                   />
                 </div>
               );
@@ -13416,6 +13418,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('magic', slot, data)}
                 onRemove={handleRemove}
+                campaignSystem={campaignSystem}
+                onOpenItemDetail={onOpenItemDetail}
               />
             ))}
           </div>
@@ -13511,6 +13515,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('skills', slot, data)}
                 onRemove={handleRemove}
+                campaignSystem={campaignSystem}
+                onOpenItemDetail={onOpenItemDetail}
               />
             ))}
           </div>
@@ -13664,6 +13670,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('consumables', slot, data)}
                 onRemove={handleRemove}
+                campaignSystem={campaignSystem}
+                onOpenItemDetail={onOpenItemDetail}
               />
             ))}
           </div>
@@ -13734,6 +13742,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('utility', slot, data)}
                 onRemove={handleRemove}
+                campaignSystem={campaignSystem}
+                onOpenItemDetail={onOpenItemDetail}
               />
             ))}
           </div>
@@ -13807,6 +13817,8 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem }: Hotbars
                   canEdit={canEdit}
                   onDrop={(slot, data) => handleDrop('armor', slot, data)}
                   onRemove={handleRemove}
+                  campaignSystem={campaignSystem}
+                  onOpenItemDetail={onOpenItemDetail}
                 />
               </div>
             ))}
@@ -13952,9 +13964,10 @@ interface HotbarSlotProps {
   allHotbars?: Hotbar[];
   allItems?: any[];
   campaignSystem?: string;
+  onOpenItemDetail?: (item: any) => void;
 }
 
-function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems, campaignSystem }: HotbarSlotProps) {
+function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems, campaignSystem, onOpenItemDetail }: HotbarSlotProps) {
   const queryClient = useQueryClient();
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
@@ -14555,13 +14568,15 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (hotbar.itemId && itemData) {
       const durabilityColor = itemData.durability >= 8 ? 'bg-green-500' : itemData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
       const durabilityWidth = (itemData.durability / 10) * 100;
+      const isV3ItemClickable = campaignSystem === 'aa-v3' && !!onOpenItemDetail;
       
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <div 
-                className="w-full h-full flex flex-col items-center justify-center p-0.5"
+                className={`w-full h-full flex flex-col items-center justify-center p-0.5${isV3ItemClickable ? ' cursor-pointer' : ''}`}
+                onClick={isV3ItemClickable ? (e) => { e.stopPropagation(); onOpenItemDetail!(itemData); } : undefined}
               >
                 {itemData.image ? (
                   <div className="relative w-full h-full flex items-center justify-center">
@@ -22989,7 +23004,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
           {/* HOTBARS TAB */}
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
-            <HotbarsTabContent character={character} isGM={isGM} isOwner={isOwner} campaignSystem={campaignSystem} />
+            <HotbarsTabContent
+              character={character}
+              isGM={isGM}
+              isOwner={isOwner}
+              campaignSystem={campaignSystem}
+              onOpenItemDetail={campaignSystem === 'aa-v3' ? (item) => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`); } : undefined}
+            />
           </TabsContent>
 
           {/* BACKGROUND TAB */}
