@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useTopLayerZIndex } from "@/components/ui/floating-panel"
 
 const Dialog = DialogPrimitive.Root
 
@@ -30,11 +31,14 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onInteractOutside, onPointerDownOutside, ...props }, ref) => (
+>(({ className, children, onInteractOutside, onPointerDownOutside, style, ...props }, ref) => {
+  const z = useTopLayerZIndex();
+  return (
   <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay style={{ zIndex: z }} />
     <DialogPrimitive.Content
       ref={ref}
+      style={{ zIndex: z, ...style }}
       onInteractOutside={(e) => {
         e.preventDefault();
         onInteractOutside?.(e);
@@ -59,7 +63,8 @@ const DialogContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-))
+  );
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({

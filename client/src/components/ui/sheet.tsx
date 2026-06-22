@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useTopLayerZIndex } from "@/components/ui/floating-panel"
 
 const Sheet = SheetPrimitive.Root
 
@@ -56,11 +57,14 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, style, ...props }, ref) => {
+  const z = useTopLayerZIndex();
+  return (
   <SheetPortal>
-    <SheetOverlay />
+    <SheetOverlay style={{ zIndex: z }} />
     <SheetPrimitive.Content
       ref={ref}
+      style={{ zIndex: z, ...style }}
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
@@ -71,7 +75,8 @@ const SheetContent = React.forwardRef<
       {children}
     </SheetPrimitive.Content>
   </SheetPortal>
-))
+  );
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({

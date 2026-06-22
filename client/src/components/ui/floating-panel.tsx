@@ -37,6 +37,18 @@ export function getFloatingPanelZ(panelKey?: string): number | undefined {
   return panelKey ? sharedZRegistry[panelKey] : undefined;
 }
 
+// Hook for non-FloatingPanel overlays (Radix dialogs, alert-dialogs, sheets,
+// popovers, dropdown/context menus, selects, tooltips, hover-cards, menubars,
+// etc.) to acquire a z-index from the SAME shared counter the moment they open.
+// Floating panels bump that counter every time they're focused, so any fixed
+// z-index can eventually be climbed past — making an overlay open BEHIND a
+// panel. Drawing from the shared counter guarantees "whatever opens last sits
+// on top of every currently-open floating panel".
+export function useTopLayerZIndex(): number {
+  const [z] = React.useState(() => bringFloatingPanelToFront());
+  return z;
+}
+
 interface FloatingPanelProps {
   open: boolean;
   onClose: () => void;
