@@ -8063,6 +8063,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // One-time cleanup: remove campaign-library item templates that are redundant
+  // exact copies of a system-item template (same name + system). Dry-run by
+  // default; pass { apply: true } to actually delete. Items with character-owned
+  // copies or any campaign-specific changes are always preserved.
+  app.post("/api/admin/cleanup-duplicate-campaign-items", requireAdmin, async (req, res) => {
+    try {
+      const apply = req.body?.apply === true;
+      const system = typeof req.body?.system === 'string' ? req.body.system : undefined;
+      const report = await storage.cleanupDuplicateCampaignTemplateItems({ apply, system });
+      if (apply && report.deleted.length > 0) {
+        broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
+      }
+      res.json(report);
+    } catch (err) {
+      console.error('[cleanup-duplicate-campaign-items] Error:', err);
+      res.status(500).json({ error: "Failed to clean up duplicate campaign items" });
+    }
+  });
+
   // ============================================
   // CRAFTER RECIPE ROUTES (AA V2 only)
   // ============================================

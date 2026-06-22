@@ -100,6 +100,14 @@ export interface SearchableEntity {
   icon?: string;
 }
 
+export interface DuplicateCampaignItemCleanupReport {
+  applied: boolean;
+  scanned: number;
+  duplicatesFound: number;
+  deleted: Array<{ id: string; name: string; campaignId: string | null; systemItemId: string }>;
+  kept: Array<{ id: string; name: string; campaignId: string | null; systemItemId: string; reason: 'has-character-copies' | 'campaign-specific-changes' }>;
+}
+
 export interface IStorage {
   // Entity search for notes reference picker
   searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]>;
@@ -227,6 +235,7 @@ export interface IStorage {
   deleteSpell(id: string): Promise<void>;
   getCampaignTemplateSpells(campaignId: string): Promise<Spell[]>;
   getItemsLinkedToTemplate(templateItemId: string): Promise<Item[]>;
+  cleanupDuplicateCampaignTemplateItems(opts?: { apply?: boolean; system?: string }): Promise<DuplicateCampaignItemCleanupReport>;
   getSystemItemTemplates(system?: string): Promise<Item[]>;
   getSpellsLinkedToTemplate(templateSpellId: string): Promise<Spell[]>;
   getSpellsLinkedToRollTemplate(rollTemplateId: string): Promise<{ id: string; system: string | null }[]>;
@@ -2523,6 +2532,136 @@ export class DatabaseStorage implements IStorage {
     for (const row of joined) map.set(row.item.id, row.item as Item);
     for (const it of legacy) map.set(it.id, it);
     return Array.from(map.values());
+  }
+
+  async cleanupDuplicateCampaignTemplateItems(opts?: { apply?: boolean; system?: string }): Promise<DuplicateCampaignItemCleanupReport> {
+    const apply = opts?.apply ?? false;
+
+    // Fields that legitimately differ between a campaign-local copy and the
+    // canonical system template WITHOUT constituting a "campaign-specific
+    // change". Everything else is compared; any difference => the GM customized
+    // the copy, so we keep it.
+    const IGNORED_ITEM_FIELDS = new Set<string>([
+      'id', 'characterId', 'campaignId', 'worldId', 'createdByUserId',
+      'containerId', 'isTemplate', 'isLiveTemplate', 'isEquipped', 'quantity',
+      'isArchived', 'templateItemId', 'templatePriority', 'templateUseOwnOrder',
+      // Legacy price columns are normalized by convertLegacyItemPrice and may
+      // drift independently of the canonical price/currency; ignore them.
+      'priceCopper', 'priceSilver', 'priceGold', 'pricePlatinum', 'weight',
+    ]);
+
+    const normalizeValue = (v: unknown): string => {
+      if (v === null || v === undefined) return '';
+      if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
+      return String(v);
+    };
+
+    const itemContentSignature = (it: Record<string, unknown>): string => {
+      const keys = Object.keys(it).filter((k) => !IGNORED_ITEM_FIELDS.has(k)).sort();
+      return keys.map((k) => `${k}=${normalizeValue(it[k])}`).join('\u0001');
+    };
+
+    const rollContentSignature = (rolls: RollEntry[]): string => {
+      const norm = rolls.map((r) => {
+        const { id: _id, ownerId: _oid, ownerType: _ot, sortOrder: _so, ...rest } =
+          r as unknown as Record<string, unknown>;
+        const keys = Object.keys(rest).sort();
+        return keys.map((k) => `${k}=${normalizeValue(rest[k])}`).join('\u0001');
+      });
+      norm.sort();
+      return norm.join('\u0002');
+    };
+
+    // Fetch only lightweight identity columns first. Selecting full item rows
+    // in bulk overflows the Neon HTTP 64MB response cap when images are large
+    // (the same reason getSystemItemSummaries exists). Full rows are loaded
+    // one-at-a-time via getItem() only for matched duplicate candidates.
+    const campConditions = [
+      eq(items.isTemplate, true),
+      eq(items.isLiveTemplate, false),
+      sql`${items.characterId} IS NULL`,
+      sql`${items.campaignId} IS NOT NULL`,
+    ];
+    if (opts?.system) campConditions.push(eq(items.system, opts.system));
+    const campaignItems = await db.select({
+      id: items.id, name: items.name, system: items.system, campaignId: items.campaignId,
+    }).from(items).where(and(...campConditions));
+
+    // System templates keyed by lowercase-name :: system (mirrors the client
+    // dedupe key in client/src/lib/itemResolve.ts).
+    const sysConditions = [
+      eq(items.isTemplate, true),
+      eq(items.isLiveTemplate, false),
+      eq(items.isArchived, false),
+      sql`${items.characterId} IS NULL`,
+      sql`${items.campaignId} IS NULL`,
+      sql`${items.worldId} IS NULL`,
+      sql`${items.createdByUserId} IS NULL`,
+    ];
+    if (opts?.system) sysConditions.push(eq(items.system, opts.system));
+    const systemItems = await db.select({
+      id: items.id, name: items.name, system: items.system,
+    }).from(items).where(and(...sysConditions));
+
+    const sysIdByKey = new Map<string, string>();
+    for (const s of systemItems) {
+      const key = `${(s.name || '').toLowerCase()}::${s.system || ''}`;
+      // Keep the first system match for a given name+system (canonical).
+      if (!sysIdByKey.has(key)) sysIdByKey.set(key, s.id);
+    }
+
+    const report: DuplicateCampaignItemCleanupReport = {
+      applied: apply,
+      scanned: campaignItems.length,
+      duplicatesFound: 0,
+      deleted: [],
+      kept: [],
+    };
+
+    for (const campLite of campaignItems) {
+      const key = `${(campLite.name || '').toLowerCase()}::${campLite.system || ''}`;
+      const sysId = sysIdByKey.get(key);
+      if (!sysId) continue; // no matching system template — not a duplicate
+      report.duplicatesFound++;
+
+      // Items with character-owned copies must be preserved.
+      const linkedCopies = await this.getItemsLinkedToTemplate(campLite.id);
+      if (linkedCopies.length > 0) {
+        report.kept.push({ id: campLite.id, name: campLite.name, campaignId: campLite.campaignId, systemItemId: sysId, reason: 'has-character-copies' });
+        continue;
+      }
+
+      // Load full rows individually for content comparison; any difference
+      // (item fields or roll entries) => GM customized it, so keep.
+      const [camp, sys] = await Promise.all([this.getItem(campLite.id), this.getItem(sysId)]);
+      if (!camp || !sys) continue;
+      const sameContent = itemContentSignature(camp as unknown as Record<string, unknown>) ===
+        itemContentSignature(sys as unknown as Record<string, unknown>);
+      let sameRolls = true;
+      if (sameContent) {
+        const [campRolls, sysRolls] = await Promise.all([
+          this.getRollEntries('item', camp.id),
+          this.getRollEntries('item', sys.id),
+        ]);
+        sameRolls = rollContentSignature(campRolls) === rollContentSignature(sysRolls);
+      }
+
+      if (sameContent && sameRolls) {
+        if (apply) {
+          // Remove any provenance link rows pointing at this campaign copy,
+          // then delete the campaign template item (and its roll entries).
+          await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.templateId, camp.id));
+          await db.delete(itemTemplateLinks).where(eq(itemTemplateLinks.itemId, camp.id));
+          await this.deleteRollEntriesByOwner('item', camp.id);
+          await this.deleteItem(camp.id);
+        }
+        report.deleted.push({ id: camp.id, name: camp.name, campaignId: camp.campaignId, systemItemId: sys.id });
+      } else {
+        report.kept.push({ id: camp.id, name: camp.name, campaignId: camp.campaignId, systemItemId: sys.id, reason: 'campaign-specific-changes' });
+      }
+    }
+
+    return report;
   }
 
   async getItemTemplateLinks(itemId: string): Promise<string[]> {
