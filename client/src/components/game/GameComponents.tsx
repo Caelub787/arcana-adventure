@@ -9,6 +9,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
+import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25466,9 +25467,14 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
 
   const isLoading = campaignId ? isLoadingTemplate : isLoadingSystem;
 
-  // Combine items from either source - campaign templates or system items only
-  const allTemplates = campaignId 
-    ? [...(templateSummaries?.systemItems || []), ...(templateSummaries?.campaignItems || [])]
+  // Combine items from either source - campaign templates or system items only.
+  // De-dup in two passes to avoid showing the same item twice:
+  //   Pass 1 — exact id: the same template record can appear in both lists; keep it once.
+  //   Pass 2 — name+system composite: a system item re-published as a campaign template
+  //     (possible with older data, before the server fix) produces two distinct IDs for
+  //     the same concept; prefer the campaign entry, suppress the system duplicate.
+  const allTemplates = campaignId
+    ? dedupeLibraryTemplates(templateSummaries?.systemItems || [], templateSummaries?.campaignItems || [])
     : (systemItemSummaries || []);
   const filteredTemplates = allTemplates.filter((item: any) => {
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
@@ -27127,7 +27133,12 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
   const handleSocket = async (runeItemId: string) => {
     setBusy(true);
     try {
-      await api.socketRune(character.id, item.id, runeItemId);
+      const hostId = resolveLiveOwnedItemId(item, items);
+      if (!hostId) {
+        toast({ title: 'Could not socket rune', description: 'This item is no longer in your inventory — refresh and try again.', variant: 'destructive' });
+        return;
+      }
+      await api.socketRune(character.id, hostId, runeItemId);
       invalidate();
       setOpenSlot(null);
       toast({ title: 'Rune socketed' });
@@ -27142,7 +27153,12 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
     if (cost > 0 && !window.confirm(`Removing this rune permanently lowers this item's max durability by ${cost}. Continue?`)) return;
     setBusy(true);
     try {
-      await api.removeRune(character.id, item.id, slotIndex);
+      const hostId = resolveLiveOwnedItemId(item, items);
+      if (!hostId) {
+        toast({ title: 'Could not remove rune', description: 'This item is no longer in your inventory — refresh and try again.', variant: 'destructive' });
+        return;
+      }
+      await api.removeRune(character.id, hostId, slotIndex);
       invalidate();
       toast({ title: 'Rune removed' });
     } catch (err: any) {
@@ -27573,7 +27589,20 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                     // item, so a modified client can't bypass them. The dice
                     // roll itself stays client-side (display only).
                     try {
-                      await api.useV3Technique(t.id, character.id, item.id);
+                      const weaponId = resolveLiveOwnedItemId(item, items);
+                      if (!weaponId) {
+                        triggerRollNotification({
+                          type: 'system',
+                          label: 'This weapon is no longer in your inventory — refresh and try again.',
+                          result: 0,
+                          total: 0,
+                          username: castChar.name || 'Unknown',
+                          characterName: castChar.name || 'Unknown',
+                          calculationBreakdown: 'This weapon is no longer in your inventory — refresh and try again.',
+                        });
+                        return;
+                      }
+                      await api.useV3Technique(t.id, character.id, weaponId);
                     } catch (err: any) {
                       triggerRollNotification({
                         type: 'system',

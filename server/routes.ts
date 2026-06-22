@@ -12169,6 +12169,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (character?.campaignId === sourceItem.campaignId) {
               linkToTemplate = true;
             }
+          } else if (!sourceItem.campaignId && !sourceItem.characterId) {
+            // Regular system-scoped item template (non-live roll template):
+            // link directly so the auto-save path never publishes a campaign
+            // duplicate for items that already live in the global library.
+            const character = await storage.getCharacter(req.params.characterId);
+            if (character && (!sourceItem.system || character.system === sourceItem.system)) {
+              linkToTemplate = true;
+            }
           }
         }
       }
@@ -12287,8 +12295,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const autoCampaignId = access.character?.campaignId;
         const canSeedCampaignLibrary = access.isGM || userIsAdmin;
-        if (autoCampaignId && canSeedCampaignLibrary && !linkToTemplate && item.name) {
-          const existingTemplates = await storage.getCampaignTemplateItems(autoCampaignId);
+        // Also skip auto-save when sourceTemplateId is set: the item came from an
+        // existing library entry (even if linkToTemplate resolved false due to scope
+        // mismatch), so publishing it again would create a campaign-local duplicate.
+        if (autoCampaignId && canSeedCampaignLibrary && !linkToTemplate && !sourceTemplateId && item.name) {
+          // Use the GM's userId so the duplicate check covers the same scope that
+          // the library search uses (templates from all campaigns the GM owns, not
+          // just the current campaign). This prevents re-seeding a template the GM
+          // already published in another campaign.
+          const existingTemplates = await storage.getCampaignTemplateItems(autoCampaignId, req.session.userId);
           const dup = existingTemplates.find(
             (t) => t.name && t.name.toLowerCase() === item.name.toLowerCase(),
           );
