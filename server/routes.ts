@@ -12858,8 +12858,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/characters/:id/permissions/:userId", requireAuth, async (req, res) => {
+  app.put("/api/characters/:id/permissions/:userId", requireAuth, async (req, res, next) => {
     try {
+      // "all" is not a real userId — it's the bulk route registered below.
+      // Fall through so a PUT to /permissions/all isn't treated as a literal
+      // userId (which silently wrote a row for user "all" instead of updating
+      // every player).
+      if (req.params.userId === 'all') return next();
+
       const { accessLevel } = req.body;
       if (!["none", "name", "view", "edit"].includes(accessLevel)) {
         return res.status(400).json({ error: "Invalid access level" });
