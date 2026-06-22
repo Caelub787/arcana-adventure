@@ -12690,7 +12690,7 @@ export default function Campaign() {
             open={true}
             onClose={() => closeCharacterSheet(sheet.id)}
             title={sheet.name}
-            defaultSize={{ width: 720, height: window.innerHeight * 0.8 }}
+            defaultSize={{ width: 720, height: Math.min(window.innerHeight - 40, window.innerHeight * 0.88) }}
             defaultPosition={{ x: 100 + (index * 30), y: 50 + (index * 30) }}
             minWidth={400}
             minHeight={400}
