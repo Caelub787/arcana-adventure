@@ -123,7 +123,7 @@ export function V3SpellDetailDialog({
           <span className="truncate">{spell.name || (awaiting ? "Unnamed spell" : "Spell")}</span>
         </span>
       }
-      defaultSize={{ width: 400, height: 540 }}
+      defaultSize={{ width: 400, height: Math.min(700, window.innerHeight - 40) }}
       minWidth={320}
       minHeight={360}
       panelKey={panelKey}
@@ -304,7 +304,7 @@ export function SpellbookPanel({
           </span>
         </span>
       }
-      defaultSize={{ width: 640, height: 560 }}
+      defaultSize={{ width: 640, height: Math.min(700, window.innerHeight - 40) }}
       minWidth={360}
       minHeight={360}
       panelKey={panelKey}

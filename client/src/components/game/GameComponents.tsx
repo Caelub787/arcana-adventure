@@ -28137,7 +28137,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
-      defaultSize={{ width: 600, height: 500 }}
+      defaultSize={{ width: 600, height: Math.min(700, window.innerHeight - 40) }}
       minWidth={350}
       minHeight={300}
       panelKey={`item-detail${charPanelSuffix}`}
