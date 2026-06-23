@@ -879,6 +879,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   /**
+   * broadcastCharacterUpdate - Fetch the latest character and broadcast the
+   * FULL object on a `character_updated` event.
+   *
+   * Open character sheets / hotbars render core fields (HP, stats, resources)
+   * from a prop threaded off Campaign state, which only refreshes when a
+   * `character_updated` broadcast carries the full character object. Several
+   * mutation sites historically broadcast only `{ characterId }`, so those
+   * updates never reached open sheets until a reopen/refresh. Use this helper
+   * for any character mutation so every connected client updates live.
+   */
+  async function broadcastCharacterUpdate(campaignId: string, characterId: string): Promise<void> {
+    try {
+      const character = await storage.getCharacter(characterId);
+      broadcastToCampaign(campaignId, { type: 'character_updated', characterId, character: character || undefined });
+    } catch (err) {
+      console.error('[broadcastCharacterUpdate] failed:', err);
+      broadcastToCampaign(campaignId, { type: 'character_updated', characterId });
+    }
+  }
+
+  /**
    * broadcastToWorld - Broadcast to ALL connected users in a world room
    *
    * Used for world-scoped content (entities, relationship links, maps,
@@ -6335,7 +6356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateCharacter(req.params.characterId, { folderId: folderId || null });
-      broadcastToCampaign(character.campaignId, { type: 'character_updated', characterId: req.params.characterId });
+      await broadcastCharacterUpdate(character.campaignId, req.params.characterId);
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to move character to folder" });
@@ -8003,8 +8024,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system-items/:id", requireAuth, async (req, res) => {
     try {
       const item = await storage.getItem(req.params.id);
-      if (!item || !item.isTemplate || item.characterId || item.campaignId) {
+      if (!item || !item.isTemplate || item.characterId) {
         return res.status(404).json({ error: "System item not found" });
+      }
+      // Campaign-scoped templates (used by the in-campaign item picker) are
+      // readable by any member of that campaign. Global system templates and
+      // world templates (no campaignId) remain readable by any authed user.
+      if (item.campaignId) {
+        const membership = await storage.getCampaignMembership(req.session.userId!, item.campaignId);
+        if (!membership) {
+          return res.status(404).json({ error: "System item not found" });
+        }
       }
       res.json(item);
     } catch (err) {
@@ -8894,7 +8924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (costHp > 0)     { patch.hp     = Math.max(0, charH - costHp);     resourceDeductions.push({ stat: 'hp',     spent: costHp }); }
         try {
           await storage.updateCharacter(characterId, patch);
-          if (campaignId) broadcastToCampaign(campaignId, { type: 'character_updated', characterId });
+          if (campaignId) await broadcastCharacterUpdate(campaignId, characterId);
         } catch (resErr) {
           console.error('[Crafter] failed to deduct resource costs:', resErr);
         }
@@ -9085,7 +9115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (campaignId) {
-        broadcastToCampaign(campaignId, { type: 'character_updated', characterId });
+        await broadcastCharacterUpdate(campaignId, characterId);
         const costLine = resourceDeductions.length > 0
           ? `Spent: ${resourceDeductions.map(d => `${d.spent} ${d.stat}`).join(', ')}`
           : '';
@@ -16909,7 +16939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (block) return res.status(400).json({ error: block });
 
       const item = await storage.importWorldItemToCharacter(worldItemId, characterId, req.session.userId!);
-      broadcastToCampaign(campaignId, { type: "character_updated", characterId });
+      await broadcastCharacterUpdate(campaignId, characterId);
       res.json(item);
     } catch (err: any) {
       console.error('Error importing world item:', err);
@@ -16941,7 +16971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (block) return res.status(400).json({ error: block });
 
       const spell = await storage.importWorldSpellToCharacter(worldSpellId, characterId);
-      broadcastToCampaign(campaignId, { type: "character_updated", characterId });
+      await broadcastCharacterUpdate(campaignId, characterId);
       res.json(spell);
     } catch (err: any) {
       console.error('Error importing world spell:', err);

@@ -9069,7 +9069,61 @@ export default function Campaign() {
         if (data.type === 'token_deleted' && data.tokenId) {
           setTokens(prev => prev.filter(t => t.id !== data.tokenId));
         }
-        
+
+        // Sub-resource live sync (items / spells / hotbar / feats / traits /
+        // custom skills). These handlers also live in CampaignMenu, but that
+        // component can be unmounted; this page handler is always mounted, so
+        // every connected client refreshes instantly regardless of menu state.
+        if (data.type === 'item_created' || data.type === 'item_updated' || data.type === 'item_deleted') {
+          if (data.type === 'item_updated' && data.characterId && data.item) {
+            queryClientRef.current.setQueryData<any[]>(['items', data.characterId], (existing) => {
+              if (!existing) return existing;
+              let found = false;
+              const next = existing.map((it) => {
+                if (it.id === data.item.id) { found = true; return { ...it, ...data.item }; }
+                return it;
+              });
+              return found ? next : [...existing, data.item];
+            });
+          } else if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['items', data.characterId] });
+          }
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+          }
+        }
+        if (data.type === 'spell_created' || data.type === 'spell_updated' || data.type === 'spell_deleted') {
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['spells', data.characterId] });
+            queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+          }
+        }
+        if (data.type === 'hotbar_updated') {
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+          }
+        }
+        if (data.type === 'feat_unlocked' || data.type === 'feat_removed') {
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['character-feats', data.characterId] });
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+            queryClientRef.current.invalidateQueries({ queryKey: ['character', data.characterId] });
+            queryClientRef.current.invalidateQueries({ queryKey: ['spells', data.characterId] });
+            queryClientRef.current.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
+            queryClientRef.current.invalidateQueries({ queryKey: ['character-custom-skills', data.characterId] });
+          }
+        }
+        if (data.type === 'custom_skill_added' || data.type === 'custom_skill_updated' || data.type === 'custom_skill_removed') {
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['character-custom-skills', data.characterId] });
+          }
+        }
+        if (data.type === 'trait_added' || data.type === 'trait_updated' || data.type === 'trait_removed' || data.type === 'trait_used' || data.type === 'traits_reset') {
+          if (data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
+          }
+        }
+
         // Handle scene updates - real-time scene changes
         if (data.type === 'scene_updated' && data.scene) {
           // Immediately update the scene cache

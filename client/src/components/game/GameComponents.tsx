@@ -911,59 +911,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     };
   }, []);
 
-  const wasdPosRef = useRef<{ id: string; x: number; y: number } | null>(null);
-  const wasdTokenIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!assignedCharacterId) { wasdPosRef.current = null; wasdTokenIdRef.current = null; return; }
-    const t = tokens.find(t => t.characterId === assignedCharacterId);
-    if (t) {
-      if (wasdTokenIdRef.current !== t.id) {
-        wasdPosRef.current = { id: t.id, x: t.x, y: t.y };
-        wasdTokenIdRef.current = t.id;
-      }
-    } else {
-      wasdPosRef.current = null;
-      wasdTokenIdRef.current = null;
-    }
-  }, [tokens, assignedCharacterId]);
-
-  const wasdDepsRef = useRef({ gridSize, onMoveToken, inCombat, currentTurnCharacterId, assignedCharacterId });
-  wasdDepsRef.current = { gridSize, onMoveToken, inCombat, currentTurnCharacterId, assignedCharacterId };
-
-  useEffect(() => {
-    const handleWASD = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
-      if (isEditable) return;
-
-      const key = e.key.toLowerCase();
-      let dx = 0, dy = 0;
-      if (key === 'w' || key === 'arrowup') dy = -1;
-      else if (key === 's' || key === 'arrowdown') dy = 1;
-      else if (key === 'a' || key === 'arrowleft') dx = -1;
-      else if (key === 'd' || key === 'arrowright') dx = 1;
-      else return;
-
-      e.preventDefault();
-
-      const pos = wasdPosRef.current;
-      if (!pos) return;
-
-      const deps = wasdDepsRef.current;
-      const isCombatWithActiveTurn = deps.inCombat && deps.currentTurnCharacterId;
-      if (isCombatWithActiveTurn && deps.assignedCharacterId !== deps.currentTurnCharacterId) return;
-
-      const newX = pos.x + dx * deps.gridSize;
-      const newY = pos.y + dy * deps.gridSize;
-      pos.x = newX;
-      pos.y = newY;
-      deps.onMoveToken(pos.id, newX, newY);
-    };
-
-    window.addEventListener('keydown', handleWASD);
-    return () => window.removeEventListener('keydown', handleWASD);
-  }, []);
-  
   // Track token being dragged with its current visual position
   const [draggingToken, setDraggingToken] = useState<{ 
     id: string; 
@@ -1129,8 +1076,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const prevPos = prevTokenPositionsRef.current.get(token.id);
       const currPos = { x: token.x, y: token.y };
       
-      // Skip animation for tokens the local user controls (drag or WASD)
-      if (draggingToken?.id === token.id || wasdTokenIdRef.current === token.id) {
+      // Skip animation for tokens the local user is actively dragging
+      if (draggingToken?.id === token.id) {
         prevTokenPositionsRef.current.set(token.id, currPos);
         return;
       }
