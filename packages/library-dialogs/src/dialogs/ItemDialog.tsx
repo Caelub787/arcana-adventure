@@ -278,6 +278,7 @@ export interface ItemDraft {
   templateUseOwnOrder?: boolean;
   system?: string;
   v3TechniqueGroupIds?: string[];
+  advancedItemTypeId?: string | null;
   maxDurability?: number;
   // AA V3 scrolls & runes (Task #198)
   scrollEffectMode?: string;
@@ -321,6 +322,7 @@ const FRESH: ItemDraft = {
   maxSpells: 10,
   system: "aa-v2",
   v3TechniqueGroupIds: [],
+  advancedItemTypeId: null,
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
@@ -330,6 +332,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [techniqueGroups, setTechniqueGroups] = React.useState<{ id: string; name: string }[]>([]);
+  const [advancedItemTypes, setAdvancedItemTypes] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
@@ -365,6 +368,14 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
     host.techniqueGroups()
       .then(setTechniqueGroups)
       .catch(e => host.notify("error", `Failed to load technique groups: ${e?.message ?? e}`));
+  }, [open, aav3, host]);
+
+  // Load assignable V3 advanced item types when the dialog opens in a V3 host.
+  React.useEffect(() => {
+    if (!open || !aav3 || !host.advancedItemTypes) { setAdvancedItemTypes([]); return; }
+    host.advancedItemTypes()
+      .then(setAdvancedItemTypes)
+      .catch(e => host.notify("error", `Failed to load advanced item types: ${e?.message ?? e}`));
   }, [open, aav3, host]);
 
   // Load library rune items so a GM can pre-load default runes onto a V3 item.
@@ -517,6 +528,24 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               )}
             </Grid3>
           </Section>
+
+          {aav3 && host.advancedItemTypes && (
+            <Section title="Advanced Item Type">
+              <div>
+                <Label>Advanced Item Type</Label>
+                <Select
+                  value={draft.advancedItemTypeId ?? ""}
+                  onValueChange={v => set({ advancedItemTypeId: v || null })}
+                >
+                  <SelectItem value="">— None —</SelectItem>
+                  {advancedItemTypes.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </Select>
+                <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                  Tag this item with an advanced type so crafter repair recipes can target it.
+                </p>
+              </div>
+            </Section>
+          )}
 
           {isWeaponLike && (
             <Section title="Combat / weapon">

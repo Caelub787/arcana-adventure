@@ -59,7 +59,7 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -267,6 +267,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         modal: ArcanaModalChrome,
         spellbookManager: SpellbookLibraryManager,
         techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
+        advancedItemTypes: () => api.getAdvancedItemTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
       }),
     [itemDialogTransport, imagePicker],
   );
@@ -1018,6 +1019,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'techniques' ? 'Techniques (A.A. V3)' : 
                currentView === 'technique-groups' ? 'Weapon Techniques (A.A. V3)' : 
                currentView === 'action-tokens' ? 'Action Tokens (A.A. V3)' :
+               currentView === 'advanced-item-types' ? 'Advanced Item Types (A.A. V3)' :
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1060,6 +1062,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
         {currentView === 'action-tokens' && (
           <V3ActionTokensView />
+        )}
+
+        {currentView === 'advanced-item-types' && (
+          <AdvancedItemTypesView />
         )}
 
         {currentView === 'items' && (
@@ -3270,6 +3276,136 @@ function V3ActionTokensView() {
   );
 }
 
+// ============================================================
+// AA V3 Advanced Item Types admin view (Task #250)
+// ============================================================
+function AdvancedItemTypesView() {
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [draft, setDraft] = useState<{ id: string | null; name: string; sortOrder: number }>({
+    id: null, name: '', sortOrder: 0,
+  });
+
+  const { data: types = [], isLoading } = useQuery({
+    queryKey: ['admin-advanced-item-types'],
+    queryFn: () => api.getAdminAdvancedItemTypes(),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-advanced-item-types'] });
+    queryClient.invalidateQueries({ queryKey: ['advanced-item-types'] });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = { name: draft.name, sortOrder: draft.sortOrder };
+      return draft.id ? api.updateAdvancedItemType(draft.id, payload) : api.createAdvancedItemType(payload);
+    },
+    onSuccess: () => {
+      toast({ title: draft.id ? 'Item type updated' : 'Item type created' });
+      setDialogOpen(false);
+      setDraft({ id: null, name: '', sortOrder: 0 });
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAdvancedItemType(id),
+    onSuccess: () => { toast({ title: 'Item type removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const openCreate = () => {
+    setDraft({ id: null, name: '', sortOrder: (types as any[]).length });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (t: any) => {
+    setDraft({ id: t.id, name: t.name, sortOrder: t.sortOrder ?? 0 });
+    setDialogOpen(true);
+  };
+
+  return (
+    <div className="space-y-4" data-testid="view-advanced-item-types">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-stone-950" data-testid="button-add-advanced-item-type">
+          <Plus className="h-4 w-4 mr-1" /> New Item Type
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : (types as any[]).length === 0 ? (
+        <p className="text-stone-400">No advanced item types defined yet.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(types as any[]).map((t) => (
+            <Card key={t.id} className="bg-stone-900 border-stone-700" data-testid={`card-advanced-item-type-${t.id}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start gap-2">
+                  <div className="h-10 w-10 rounded bg-amber-900/40 border border-amber-700/50 flex items-center justify-center flex-shrink-0">
+                    <Hammer className="h-5 w-5 text-amber-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-amber-400 text-sm truncate">{t.name}</CardTitle>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="text-xs border-stone-700 hover:bg-stone-800" onClick={() => openEdit(t)} data-testid={`button-edit-advanced-item-type-${t.id}`}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs border-red-800 text-red-400 hover:bg-red-900/30" onClick={() => deleteMutation.mutate(t.id)} data-testid={`button-delete-advanced-item-type-${t.id}`}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">{draft.id ? 'Edit Item Type' : 'New Item Type'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label className="text-stone-300 mb-1 block">Name *</Label>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                className="bg-stone-900 border-stone-700 text-stone-200"
+                placeholder="e.g. Metal Weapon"
+                data-testid="input-advanced-item-type-name"
+              />
+            </div>
+            <div>
+              <Label className="text-stone-300 mb-1 block">Sort Order</Label>
+              <Input
+                type="number"
+                value={draft.sortOrder}
+                onChange={(e) => setDraft((d) => ({ ...d, sortOrder: parseInt(e.target.value) || 0 }))}
+                className="bg-stone-900 border-stone-700 text-stone-200"
+                data-testid="input-advanced-item-type-sort"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="border-stone-700" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-amber-600 hover:bg-amber-700 text-stone-950" onClick={() => saveMutation.mutate()} disabled={!draft.name.trim() || saveMutation.isPending} data-testid="button-save-advanced-item-type">
+              {saveMutation.isPending ? 'Saving…' : draft.id ? 'Save Changes' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function DashSection({
   title,
   icon: Icon,
@@ -3361,6 +3497,17 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               icon={Sparkles}
               title="Action Tokens"
               description="Define reusable action token types (e.g. Second Wind, Rage) that GMs can assign to characters"
+              hoverBorder="hover:border-amber-600"
+              iconBg="bg-amber-700/20"
+              iconColor="text-amber-500"
+              titleColor="text-amber-500"
+            />
+            <DashCard
+              onClick={() => onNavigate('advanced-item-types')}
+              testId="card-advanced-item-types"
+              icon={Hammer}
+              title="Advanced Item Types"
+              description="Define named item types (e.g. Metal Weapon) to tag items and target crafter repair recipes"
               hoverBorder="hover:border-amber-600"
               iconBg="bg-amber-700/20"
               iconColor="text-amber-500"

@@ -27641,6 +27641,7 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
   const [lastResult, setLastResult] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [repairTargetByRecipe, setRepairTargetByRecipe] = useState<Record<string, string>>({});
 
   const { data: recipes = [], isLoading } = useQuery<any[]>({
     queryKey: ['craft-recipes-play', item.id],
@@ -27659,6 +27660,45 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     queryFn: () => api.getCharacterCustomSkills(character.id),
     enabled: !!character?.id,
   });
+
+  const hasRepairRecipe = recipes.some((r: any) => r.isRepairRecipe);
+  const { data: advancedItemTypes = [] } = useQuery<any[]>({
+    queryKey: ['advanced-item-types'],
+    queryFn: () => api.getAdvancedItemTypes(),
+    enabled: hasRepairRecipe,
+  });
+  const advancedTypeName = (id: string | null | undefined) =>
+    advancedItemTypes.find((t: any) => t.id === id)?.name || 'item type';
+
+  // Items in this character's inventory eligible for a given repair recipe:
+  // tagged with the recipe's target type AND below their max durability.
+  const eligibleRepairItems = (r: any) => inventory.filter((inv: any) =>
+    inv.advancedItemTypeId && inv.advancedItemTypeId === r.repairTargetTypeId &&
+    (inv.durability ?? 0) < (inv.maxDurability ?? 0));
+
+  const handleRepair = async (recipeId: string, targetItemId: string) => {
+    setBusyId(recipeId);
+    setLastResult(null);
+    try {
+      const result = await api.repairItem(item.id, {
+        recipeId,
+        characterId: character.id,
+        targetItemId,
+      });
+      setLastResult(result);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/characters', character.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
+      toast({ title: 'Repair complete', description: result?.message || 'Durability restored' });
+    } catch (err: any) {
+      const detail = err?.message || 'Repair failed';
+      const missing = err?.body?.missing || [];
+      const missingTxt = missing.length > 0 ? ` Missing: ${missing.map((m: any) => `${m.name} (${m.have}/${m.need})`).join(', ')}` : '';
+      toast({ title: 'Repair failed', description: `${detail}${missingTxt}`, variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const handleCraft = async (recipeId: string) => {
     setBusyId(recipeId);
@@ -27744,7 +27784,11 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
           const manaOk = !r.costManaEnabled || (r.costMana ?? 0) <= charM;
           const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
           const costsOk = energyOk && manaOk && hpOk;
-          const canDoIt = canCraft && allHave && skillOk && costsOk;
+          const isRepair = !!r.isRepairRecipe;
+          const eligible = isRepair ? eligibleRepairItems(r) : [];
+          const selectedTargetId = repairTargetByRecipe[r.id] || '';
+          const repairTargetOk = !isRepair || (!!selectedTargetId && eligible.some((e: any) => e.id === selectedTargetId));
+          const canDoIt = canCraft && allHave && skillOk && costsOk && repairTargetOk;
           const isOpen = expandedId === r.id;
           return (
             <div key={r.id} className="border border-stone-700 rounded bg-stone-900/40 overflow-hidden">
@@ -27756,7 +27800,9 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
               >
                 {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-amber-500 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                 <span className="text-sm font-semibold text-stone-200 flex-1 truncate" data-testid={`text-recipe-name-${r.id}`}>{r.name}</span>
-                {r.outputItemName && (
+                {isRepair ? (
+                  <span className="text-[11px] text-sky-400/80 truncate hidden sm:inline">🔧 Repairs {advancedTypeName(r.repairTargetTypeId)} (+{r.repairAmount ?? 1})</span>
+                ) : r.outputItemName && (
                   <span className="text-[11px] text-stone-500 truncate hidden sm:inline">→ {r.outputQuantity || 1}× {r.outputItemName}</span>
                 )}
                 {!allHave && <span className="text-[10px] text-red-400 shrink-0">missing</span>}
@@ -27765,7 +27811,11 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                 <div className="px-2 pb-2 pt-1 border-t border-stone-700/60">
                   {r.description && <p className="text-xs text-stone-400 mb-1.5">{r.description}</p>}
                   <div className="text-xs space-y-1.5">
-                    {r.outputItemName && (
+                    {isRepair ? (
+                      <div className="text-stone-400">
+                        Restores <span className="text-sky-300 font-semibold">+{r.repairAmount ?? 1} durability</span> to a <span className="text-sky-300 font-semibold">{advancedTypeName(r.repairTargetTypeId)}</span> <span className="text-stone-500">(capped at the item's max)</span>
+                      </div>
+                    ) : r.outputItemName && (
                       <div className="text-stone-400">
                         Produces: <span className="text-amber-300 font-semibold">{r.outputQuantity || 1}× {r.outputItemName}</span>
                       </div>
@@ -27820,17 +27870,56 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                       </div>
                     )}
                   </div>
+                  {isRepair && (
+                    <div className="mt-2">
+                      <div className="text-stone-500 mb-0.5 text-xs">Item to repair:</div>
+                      {eligible.length === 0 ? (
+                        <p className="text-[11px] text-stone-500 italic" data-testid={`repair-none-${r.id}`}>
+                          No damaged {advancedTypeName(r.repairTargetTypeId)} items in your inventory.
+                        </p>
+                      ) : (
+                        <Select
+                          value={selectedTargetId}
+                          onValueChange={(v) => setRepairTargetByRecipe((prev) => ({ ...prev, [r.id]: v }))}
+                        >
+                          <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs" data-testid={`select-repair-target-${r.id}`}>
+                            <SelectValue placeholder="Select item to repair…" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60">
+                            {eligible.map((e: any) => (
+                              <SelectItem key={e.id} value={e.id}>
+                                {e.name} ({e.durability ?? 0}/{e.maxDurability ?? 0})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-2 flex justify-end">
-                    <Button
-                      size="sm"
-                      disabled={!canDoIt || busyId === r.id}
-                      onClick={() => handleCraft(r.id)}
-                      className="bg-amber-700 hover:bg-amber-600 h-7"
-                      data-testid={`button-craft-${r.id}`}
-                    >
-                      <Hammer className="h-3 w-3 mr-1" />
-                      {busyId === r.id ? 'Crafting…' : 'Craft'}
-                    </Button>
+                    {isRepair ? (
+                      <Button
+                        size="sm"
+                        disabled={!canDoIt || busyId === r.id}
+                        onClick={() => handleRepair(r.id, selectedTargetId)}
+                        className="bg-sky-700 hover:bg-sky-600 h-7"
+                        data-testid={`button-repair-${r.id}`}
+                      >
+                        <Hammer className="h-3 w-3 mr-1" />
+                        {busyId === r.id ? 'Repairing…' : 'Repair'}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={!canDoIt || busyId === r.id}
+                        onClick={() => handleCraft(r.id)}
+                        className="bg-amber-700 hover:bg-amber-600 h-7"
+                        data-testid={`button-craft-${r.id}`}
+                      >
+                        <Hammer className="h-3 w-3 mr-1" />
+                        {busyId === r.id ? 'Crafting…' : 'Craft'}
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

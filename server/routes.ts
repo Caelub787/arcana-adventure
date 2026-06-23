@@ -7437,6 +7437,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AA V3 Advanced Item Types (admin-managed). Used to tag items and to target
+  // crafter repair recipes. Admin-only mutations; read open to any authed user
+  // (item dialog picker, recipe editor, player repair surface).
+  app.get("/api/admin/advanced-item-types", requireAdmin, async (_req, res) => {
+    try {
+      res.json(await storage.getAdvancedItemTypes());
+    } catch (err: any) {
+      console.error("[Advanced Item Types List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load advanced item types" });
+    }
+  });
+
+  app.post("/api/admin/advanced-item-types", requireAdmin, async (req, res) => {
+    try {
+      const { name, sortOrder } = req.body || {};
+      if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const created = await storage.createAdvancedItemType({
+        name: String(name).trim(),
+        sortOrder: typeof sortOrder === 'number' ? sortOrder : 0,
+        system: "aa-v3",
+      });
+      res.json(created);
+    } catch (err: any) {
+      console.error("[Advanced Item Types Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create advanced item type" });
+    }
+  });
+
+  app.patch("/api/admin/advanced-item-types/:id", requireAdmin, async (req, res) => {
+    try {
+      const { name, sortOrder } = req.body || {};
+      const patch: any = {};
+      if (name !== undefined) patch.name = String(name).trim();
+      if (sortOrder !== undefined) patch.sortOrder = Number(sortOrder) || 0;
+      const updated = await storage.updateAdvancedItemType(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Advanced item type not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[Advanced Item Types Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update advanced item type" });
+    }
+  });
+
+  app.delete("/api/admin/advanced-item-types/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteAdvancedItemType(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Advanced Item Types Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete advanced item type" });
+    }
+  });
+
+  // Public read for all Advanced Item Types (item dialog picker, recipe editor,
+  // player repair surface).
+  app.get("/api/advanced-item-types", requireAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getAdvancedItemTypes());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load advanced item types" });
+    }
+  });
+
   // Character action token assignments (GM-only mutations, read for campaign members)
   app.get("/api/characters/:id/action-tokens", requireAuth, async (req, res) => {
     try {
@@ -8164,9 +8227,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedIngredients = ingredients.map((ing: unknown) =>
         insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
       );
-      const parsedOutcomes = outcomes.map((o: unknown) =>
+      let parsedOutcomes = outcomes.map((o: unknown) =>
         insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
       );
+      // Repair recipes restore durability instead of producing output. Null out
+      // any output/outcome data server-side so stale fields can never leak.
+      if ((parsedRecipe as any).isRepairRecipe) {
+        (parsedRecipe as any).outputItemId = null;
+        (parsedRecipe as any).outputQuantity = 1;
+        parsedOutcomes = [];
+      }
       const recipe = await storage.createCraftRecipe(
         { ...parsedRecipe, parentItemId: item.id },
         parsedIngredients,
@@ -8247,10 +8317,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (ingredients as unknown[]).map((ing) =>
           insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
         );
-      const parsedOutcomes = outcomes === undefined ? undefined :
+      let parsedOutcomes = outcomes === undefined ? undefined :
         (outcomes as unknown[]).map((o) =>
           insertCraftRecipeOutcomeSchema.omit({ recipeId: true }).parse(o)
         );
+      // When a recipe is switched to repair mode, scrub output/outcome data so
+      // it can never produce an item through the craft path.
+      if ((parsedRecipe as any).isRepairRecipe === true) {
+        (parsedRecipe as any).outputItemId = null;
+        (parsedRecipe as any).outputQuantity = 1;
+        parsedOutcomes = [];
+      }
       const updated = await storage.updateCraftRecipe(req.params.id, parsedRecipe, parsedIngredients, parsedOutcomes);
       // Fan out template-recipe edits to all inherited copies
       if (auth.parentTemplateId) {
@@ -8506,6 +8583,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const recipe = await storage.getCraftRecipe(recipeId);
       if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      // Repair recipes restore durability instead of producing an output item;
+      // they must never run through the craft path (enforced server-side, not
+      // just in the UI). Use POST /api/items/:itemId/repair instead.
+      if ((recipe as any).isRepairRecipe) {
+        return res.status(400).json({ error: "This is a repair recipe — use the repair action instead of crafting." });
+      }
       // V3 crafting never requires a roll — it always auto-succeeds. Coerce
       // here so even older recipes saved with noRoll=false skip the roll.
       const isV3Craft = (campaign?.system === 'aa-v3') || (!campaign && crafter.system === 'aa-v3');
@@ -8802,6 +8885,183 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error('[Crafter] craft error:', err);
       res.status(500).json({ error: err?.message || "Craft failed" });
+    }
+  });
+
+  // AA V3 only: repair an owned item at an owned crafter. The recipe must be a
+  // repair recipe targeting the item's advancedItemTypeId. Ingredients are
+  // consumed; durability is restored by recipe.repairAmount, capped at the
+  // item's maxDurability. Owner-only (crafter + target item belong to caller).
+  app.post("/api/items/:itemId/repair", requireAuth, async (req, res) => {
+    try {
+      const { recipeId, characterId, targetItemId } = req.body || {};
+      if (!recipeId || !characterId || !targetItemId) {
+        return res.status(400).json({ error: "recipeId, characterId and targetItemId required" });
+      }
+
+      const crafter = await storage.getItem(req.params.itemId);
+      if (!crafter) return res.status(404).json({ error: "Crafter item not found" });
+      if (crafter.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
+
+      const character = await storage.getCharacter(characterId);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+
+      // Owner-only: the crafter must be this character's inventory copy.
+      if (!crafter.characterId) {
+        return res.status(403).json({ error: "Cannot repair from a library template — open the inventory copy" });
+      }
+      if (crafter.characterId !== characterId) {
+        return res.status(403).json({ error: "Crafter item does not belong to this character" });
+      }
+
+      const userId = req.session.userId!;
+      const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
+      if (character.userId !== userId) {
+        return res.status(403).json({ error: "Only the character's owner can repair with their items" });
+      }
+
+      // Repair is AA V3 only — derived from authoritative campaign / library.
+      const isV3 = (campaign?.system === 'aa-v3') || (!campaign && crafter.system === 'aa-v3');
+      if (!isV3) return res.status(400).json({ error: "Repair is AA V3 only" });
+      const campaignId = character.campaignId;
+
+      const recipe = await storage.getCraftRecipe(recipeId);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      if (!(recipe as any).isRepairRecipe) return res.status(400).json({ error: "Recipe is not a repair recipe" });
+      const sourceId = crafter.templateItemId || crafter.id;
+      if (recipe.parentItemId !== sourceId) {
+        return res.status(400).json({ error: "Recipe does not belong to this Crafter" });
+      }
+
+      // Target item must belong to the character and match the recipe's target type.
+      const targetItem = await storage.getItem(targetItemId);
+      if (!targetItem) return res.status(404).json({ error: "Target item not found" });
+      if (targetItem.characterId !== characterId) {
+        return res.status(403).json({ error: "Target item does not belong to this character" });
+      }
+      const targetTypeId = (recipe as any).repairTargetTypeId || null;
+      if (!targetTypeId) return res.status(400).json({ error: "Repair recipe has no target item type" });
+      if (((recipe as any).repairAmount ?? 0) < 1) {
+        return res.status(400).json({ error: "Repair recipe must restore at least 1 durability" });
+      }
+      if ((targetItem as any).advancedItemTypeId !== targetTypeId) {
+        return res.status(400).json({ error: "This item cannot be repaired by this recipe" });
+      }
+      const curDur = (targetItem as any).durability ?? 0;
+      const maxDur = (targetItem as any).maxDurability ?? curDur;
+      if (curDur >= maxDur) {
+        return res.status(400).json({ error: "Item is already at full durability" });
+      }
+
+      // Aggregate + match ingredient requirements (same logic as craft).
+      const inventory = await storage.getItemsByCharacter(characterId);
+      type AggReq = { key: string; itemId: string | null; itemName: string; need: number };
+      const aggMap = new Map<string, AggReq>();
+      for (const ing of recipe.ingredients) {
+        const key = ing.itemId ? `id:${ing.itemId}` : `name:${ing.itemName || ''}`;
+        const cur = aggMap.get(key);
+        const qty = ing.quantity || 1;
+        if (cur) cur.need += qty;
+        else aggMap.set(key, { key, itemId: ing.itemId ?? null, itemName: ing.itemName || '', need: qty });
+      }
+      type Match = { req: AggReq; matches: { id: string; quantity: number }[]; have: number };
+      const matches: Match[] = [];
+      for (const reqq of Array.from(aggMap.values())) {
+        const owned = inventory.filter(inv => {
+          if (reqq.itemId) return inv.templateItemId === reqq.itemId;
+          if (reqq.itemName) return inv.name === reqq.itemName;
+          return false;
+        });
+        const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
+        matches.push({ req: reqq, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
+      }
+      const missing = matches.filter(m => m.have < m.req.need);
+      if (missing.length > 0) {
+        return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
+      }
+
+      // Optional resource costs (energy / mana / hp). Validate before consuming.
+      const costEnergy = (recipe as any).costEnergyEnabled ? Math.max(0, (recipe as any).costEnergy ?? 0) : 0;
+      const costMana = (recipe as any).costManaEnabled ? Math.max(0, (recipe as any).costMana ?? 0) : 0;
+      const costHp = (recipe as any).costHpEnabled ? Math.max(0, (recipe as any).costHp ?? 0) : 0;
+      const charE = (character as any).energy ?? 0;
+      const charM = (character as any).mana ?? 0;
+      const charH = (character as any).hp ?? 0;
+      const insufficient: { stat: string; need: number; have: number }[] = [];
+      if (costEnergy > 0 && charE < costEnergy) insufficient.push({ stat: 'energy', need: costEnergy, have: charE });
+      if (costMana > 0 && charM < costMana) insufficient.push({ stat: 'mana', need: costMana, have: charM });
+      if (costHp > 0 && charH < costHp) insufficient.push({ stat: 'hp', need: costHp, have: charH });
+      if (insufficient.length > 0) {
+        return res.status(400).json({ error: `Not enough ${insufficient.map(i => i.stat).join(', ')}`, insufficient });
+      }
+
+      // Consume ingredients (uses aggregated totals).
+      for (const m of matches) {
+        let need = m.req.need;
+        for (const owned of m.matches) {
+          if (need <= 0) break;
+          if (owned.quantity <= need) {
+            await storage.deleteItem(owned.id);
+            need -= owned.quantity;
+          } else {
+            await storage.updateItem(owned.id, { quantity: owned.quantity - need });
+            need = 0;
+          }
+        }
+      }
+
+      // Restore durability, capped at maxDurability.
+      const repairAmount = Math.max(0, (recipe as any).repairAmount ?? 0);
+      const newDur = Math.min(maxDur, curDur + repairAmount);
+      const restored = newDur - curDur;
+      const updatedItem = await storage.updateItem(targetItemId, { durability: newDur });
+
+      // Deduct resource costs (already validated).
+      let resourceDeductions: { stat: string; spent: number }[] = [];
+      if (costEnergy > 0 || costMana > 0 || costHp > 0) {
+        const patch: Record<string, number> = {};
+        if (costEnergy > 0) { patch.energy = Math.max(0, charE - costEnergy); resourceDeductions.push({ stat: 'energy', spent: costEnergy }); }
+        if (costMana > 0)   { patch.mana   = Math.max(0, charM - costMana);   resourceDeductions.push({ stat: 'mana',   spent: costMana }); }
+        if (costHp > 0)     { patch.hp     = Math.max(0, charH - costHp);     resourceDeductions.push({ stat: 'hp',     spent: costHp }); }
+        try {
+          await storage.updateCharacter(characterId, patch);
+        } catch (resErr) {
+          console.error('[Crafter] repair: failed to deduct resource costs:', resErr);
+        }
+      }
+
+      if (campaignId) {
+        broadcastToCampaign(campaignId, { type: 'character_updated', characterId });
+        const costLine = resourceDeductions.length > 0
+          ? `Spent: ${resourceDeductions.map(d => `${d.spent} ${d.stat}`).join(', ')}`
+          : '';
+        const lines = [
+          `🔧 ${character.name} repaired "${targetItem.name}"`,
+          `Durability: ${curDur} → ${newDur} (+${restored})`,
+          costLine,
+        ].filter(Boolean);
+        try {
+          const chat = await storage.createChatMessage(insertChatMessageSchema.parse({
+            campaignId,
+            userId,
+            sender: character.name || 'Unknown',
+            text: lines.join('\n'),
+            type: 'roll',
+          }));
+          broadcastToCampaign(campaignId, { type: 'chat_message', message: chat });
+        } catch {}
+      }
+
+      res.json({
+        success: true,
+        item: updatedItem,
+        durability: newDur,
+        restored,
+        resourceDeductions,
+      });
+    } catch (err: any) {
+      console.error('[Crafter] repair error:', err);
+      res.status(500).json({ error: err?.message || "Repair failed" });
     }
   });
 

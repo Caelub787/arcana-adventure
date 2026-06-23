@@ -115,6 +115,13 @@ export interface HostAdapter {
    * Absent in non-V3 hosts; the dialog simply hides the selector.
    */
   techniqueGroups?: () => Promise<{ id: string; name: string }[]>;
+
+  /**
+   * Optional. Lists the AA V3 "Advanced Item Types" an admin has defined,
+   * so the ItemDialog can offer them as a single-select tag on any item.
+   * Absent in non-V3 hosts; the dialog simply hides the selector.
+   */
+  advancedItemTypes?: () => Promise<{ id: string; name: string }[]>;
 }
 
 /** Stable prop signature shared by every dialog the package exports. */

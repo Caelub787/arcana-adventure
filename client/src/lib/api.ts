@@ -242,6 +242,7 @@ export interface Item {
   itemType: string;
   rarity: string;
   maxSpells?: number;
+  advancedItemTypeId?: string | null;
   isContainer: boolean;
   carryCapacity?: number;
   isEquipped: boolean;
@@ -1157,6 +1158,29 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+  async repairItem(itemId: string, body: { recipeId: string; characterId: string; targetItemId: string }): Promise<any> {
+    return this.request(`/items/${itemId}/repair`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // AA V3 Advanced Item Types (admin CRUD + public read)
+  async getAdminAdvancedItemTypes(): Promise<AdvancedItemType[]> {
+    return this.request(`/admin/advanced-item-types`);
+  }
+  async getAdvancedItemTypes(): Promise<AdvancedItemType[]> {
+    return this.request(`/advanced-item-types`);
+  }
+  async createAdvancedItemType(data: { name: string; sortOrder?: number }): Promise<AdvancedItemType> {
+    return this.request(`/admin/advanced-item-types`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateAdvancedItemType(id: string, data: Partial<{ name: string; sortOrder: number }>): Promise<AdvancedItemType> {
+    return this.request(`/admin/advanced-item-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+  async deleteAdvancedItemType(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/advanced-item-types/${id}`, { method: 'DELETE' });
   }
 
   // Crafter Recipe Templates (AA V2 only)
@@ -2909,6 +2933,14 @@ export interface V3ActionTokenType {
   image: string | null;
   description: string | null;
   system: string;
+  createdAt: string;
+}
+
+export interface AdvancedItemType {
+  id: string;
+  name: string;
+  system: string;
+  sortOrder: number;
   createdAt: string;
 }
 

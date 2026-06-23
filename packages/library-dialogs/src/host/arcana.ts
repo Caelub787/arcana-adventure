@@ -39,6 +39,8 @@ export interface ArcanaSessionHostOptions {
   spellbookManager?: ComponentType<{ itemId?: string; maxSpells: number; campaignSystem?: string }>;
   /** Bridge to Arcana's V3 technique group list (AA V3 weapons). */
   techniqueGroups?: () => Promise<{ id: string; name: string }[]>;
+  /** Bridge to Arcana's V3 advanced item type list (AA V3). */
+  advancedItemTypes?: () => Promise<{ id: string; name: string }[]>;
 }
 
 /**
@@ -58,5 +60,6 @@ export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAd
     modal: opts.modal,
     spellbookManager: opts.spellbookManager,
     techniqueGroups: opts.techniqueGroups,
+    advancedItemTypes: opts.advancedItemTypes,
   };
 }

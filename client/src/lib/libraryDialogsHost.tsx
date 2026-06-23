@@ -285,6 +285,7 @@ export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: str
       notify,
       imagePicker,
       techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
+      advancedItemTypes: () => api.getAdvancedItemTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
     }),
     [wrappedTransport, notify, imagePicker],
   );

@@ -61,6 +61,10 @@ interface DraftRecipe {
   costMana?: number;
   costHpEnabled?: boolean;
   costHp?: number;
+  // AA V3 repair recipe (Task #250)
+  isRepairRecipe?: boolean;
+  repairTargetTypeId?: string | null;
+  repairAmount?: number;
 }
 
 const ATTRIBUTES = ['none', 'might', 'finesse', 'wit', 'presence', 'will', 'craft'];
@@ -88,6 +92,9 @@ function newRecipe(): DraftRecipe {
     costMana: 0,
     costHpEnabled: false,
     costHp: 0,
+    isRepairRecipe: false,
+    repairTargetTypeId: null,
+    repairAmount: 1,
   };
 }
 
@@ -409,9 +416,18 @@ function RecipeRow({
     costMana: recipe.costMana ?? 0,
     costHpEnabled: !!recipe.costHpEnabled,
     costHp: recipe.costHp ?? 0,
+    isRepairRecipe: !!recipe.isRepairRecipe,
+    repairTargetTypeId: recipe.repairTargetTypeId || null,
+    repairAmount: recipe.repairAmount ?? 1,
   }));
 
   const isV3 = systemSlug === 'aa-v3';
+
+  const { data: advancedItemTypes = [] } = useQuery<any[]>({
+    queryKey: ['advanced-item-types'],
+    queryFn: () => api.getAdvancedItemTypes(),
+    enabled: isV3,
+  });
 
   const itemPicker = (value: string | null | undefined, onChange: (v: string | null, name: string) => void) => isV3 ? (
     <ItemSearchPicker value={value} systemItems={systemItems} onChange={onChange} />
@@ -464,6 +480,7 @@ function RecipeRow({
               <Label className="text-xs">Name</Label>
               <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="bg-stone-800 border-stone-700 h-8" />
             </div>
+            {!draft.isRepairRecipe && (<>
             <div>
               <Label className="text-xs">Output Item</Label>
               {itemPicker(draft.outputItemId, (v) => setDraft({ ...draft, outputItemId: v }))}
@@ -472,6 +489,7 @@ function RecipeRow({
               <Label className="text-xs">Output Quantity</Label>
               <Input type="number" min={1} value={draft.outputQuantity} onChange={(e) => setDraft({ ...draft, outputQuantity: Math.max(1, parseInt(e.target.value) || 1) })} className="bg-stone-800 border-stone-700 h-8" />
             </div>
+            </>)}
             {!isV3 && (
               <div className="flex items-end gap-2">
                 <Switch checked={draft.noRoll} onCheckedChange={(c) => setDraft({ ...draft, noRoll: !!c })} />
@@ -479,6 +497,54 @@ function RecipeRow({
               </div>
             )}
           </div>
+
+          {isV3 && (
+            <div className="border border-amber-800/50 rounded p-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={!!draft.isRepairRecipe}
+                  onCheckedChange={(c) => setDraft({ ...draft, isRepairRecipe: !!c })}
+                  data-testid={`switch-repair-recipe-${recipe.id}`}
+                />
+                <Label className="text-xs font-bold text-amber-500">Repair recipe</Label>
+              </div>
+              {draft.isRepairRecipe && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Repairs Item Type</Label>
+                    <Select
+                      value={draft.repairTargetTypeId || '__none__'}
+                      onValueChange={(v) => setDraft({ ...draft, repairTargetTypeId: v === '__none__' ? null : v })}
+                    >
+                      <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs" data-testid={`select-repair-type-${recipe.id}`}>
+                        <SelectValue placeholder="Select item type…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        <SelectItem value="__none__">— none —</SelectItem>
+                        {advancedItemTypes.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Durability Restored</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draft.repairAmount ?? 1}
+                      onChange={(e) => setDraft({ ...draft, repairAmount: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="bg-stone-800 border-stone-700 h-8"
+                      data-testid={`input-repair-amount-${recipe.id}`}
+                    />
+                  </div>
+                  <p className="col-span-2 text-[11px] text-stone-500">
+                    Players use this recipe at a crafter they own to restore durability (capped at the item's max) on any item tagged with the selected type. Ingredients below are consumed each repair.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {!isV3 && !draft.noRoll && (
             <div className="grid grid-cols-3 gap-2">

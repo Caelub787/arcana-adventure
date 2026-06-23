@@ -83,6 +83,7 @@ import {
   type V3TechniqueGroup, type InsertV3TechniqueGroup, v3TechniqueGroups,
   type V3TechniqueGroupMember, v3TechniqueGroupMembers,
   type V3ActionTokenType, type InsertV3ActionTokenType, v3ActionTokenTypes,
+  type AdvancedItemType, type InsertAdvancedItemType, advancedItemTypes,
   type CharacterActionToken, characterActionTokens,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
@@ -421,6 +422,11 @@ export interface IStorage {
   createV3ActionTokenType(data: InsertV3ActionTokenType): Promise<V3ActionTokenType>;
   updateV3ActionTokenType(id: string, data: Partial<InsertV3ActionTokenType>): Promise<V3ActionTokenType | undefined>;
   deleteV3ActionTokenType(id: string): Promise<void>;
+  getAdvancedItemTypes(): Promise<AdvancedItemType[]>;
+  getAdvancedItemType(id: string): Promise<AdvancedItemType | undefined>;
+  createAdvancedItemType(data: InsertAdvancedItemType): Promise<AdvancedItemType>;
+  updateAdvancedItemType(id: string, data: Partial<InsertAdvancedItemType>): Promise<AdvancedItemType | undefined>;
+  deleteAdvancedItemType(id: string): Promise<void>;
   // Character action token assignments
   getCharacterActionTokens(characterId: string): Promise<CharacterActionToken[]>;
   addCharacterActionToken(characterId: string, tokenTypeId: string): Promise<CharacterActionToken>;
@@ -3684,6 +3690,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteV3ActionTokenType(id: string): Promise<void> {
     await db.delete(v3ActionTokenTypes).where(eq(v3ActionTokenTypes.id, id));
+  }
+
+  async getAdvancedItemTypes(): Promise<AdvancedItemType[]> {
+    return await db.select().from(advancedItemTypes)
+      .where(eq(advancedItemTypes.system, 'aa-v3'))
+      .orderBy(advancedItemTypes.sortOrder, advancedItemTypes.name);
+  }
+
+  async getAdvancedItemType(id: string): Promise<AdvancedItemType | undefined> {
+    const [row] = await db.select().from(advancedItemTypes)
+      .where(and(eq(advancedItemTypes.id, id), eq(advancedItemTypes.system, 'aa-v3')));
+    return row;
+  }
+
+  async createAdvancedItemType(data: InsertAdvancedItemType): Promise<AdvancedItemType> {
+    const [row] = await db.insert(advancedItemTypes).values({ ...data, system: 'aa-v3' }).returning();
+    return row;
+  }
+
+  async updateAdvancedItemType(id: string, data: Partial<InsertAdvancedItemType>): Promise<AdvancedItemType | undefined> {
+    const { system: _ignored, ...rest } = data as any;
+    const [row] = await db.update(advancedItemTypes).set(rest)
+      .where(and(eq(advancedItemTypes.id, id), eq(advancedItemTypes.system, 'aa-v3'))).returning();
+    return row;
+  }
+
+  async deleteAdvancedItemType(id: string): Promise<void> {
+    await db.delete(advancedItemTypes)
+      .where(and(eq(advancedItemTypes.id, id), eq(advancedItemTypes.system, 'aa-v3')));
   }
 
   async getCharacterActionTokens(characterId: string): Promise<CharacterActionToken[]> {

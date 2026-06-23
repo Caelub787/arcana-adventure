@@ -544,6 +544,10 @@ export const items = pgTable("items", {
   maxSpells: integer("max_spells").default(10).notNull(),
   system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
+  // AA V3 only: optional tag linking this item to one Advanced Item Type
+  // (e.g. "Metal Weapon"). Used by crafter repair recipes to determine which
+  // items a recipe may repair. Null = untagged.
+  advancedItemTypeId: varchar("advanced_item_type_id"),
   templateItemId: varchar("template_item_id").references(() => items.id, { onDelete: "set null" }),
   // AA V3 only: technique groups assigned to a weapon. The weapon grants every
   // technique contained in these groups (subject to per-technique unlock
@@ -684,6 +688,13 @@ export const craftRecipes = pgTable("craft_recipes", {
   costMana: integer("cost_mana").default(0).notNull(),
   costHpEnabled: boolean("cost_hp_enabled").default(false).notNull(),
   costHp: integer("cost_hp").default(0).notNull(),
+  // AA V3 only: repair recipe support. When isRepairRecipe is true, the recipe
+  // restores durability to an owned item whose advancedItemTypeId matches
+  // repairTargetTypeId, instead of producing an output item. repairAmount is the
+  // fixed durability restored per repair (capped at the item's maxDurability).
+  isRepairRecipe: boolean("is_repair_recipe").default(false).notNull(),
+  repairTargetTypeId: varchar("repair_target_type_id"),
+  repairAmount: integer("repair_amount").default(1).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
 });
 export const insertCraftRecipeSchema = createInsertSchema(craftRecipes).omit({ id: true });
@@ -2391,6 +2402,23 @@ export const insertV3ActionTokenTypeSchema = createInsertSchema(v3ActionTokenTyp
 });
 export type InsertV3ActionTokenType = z.infer<typeof insertV3ActionTokenTypeSchema>;
 export type V3ActionTokenType = typeof v3ActionTokenTypes.$inferSelect;
+
+// AA V3 only: admin/GM-defined "Advanced Item Types" (e.g. "Metal Weapon").
+// Items may be tagged with one of these, and crafter repair recipes target one
+// to determine which items they can repair.
+export const advancedItemTypes = pgTable("advanced_item_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  system: text("system").notNull().default("aa-v3"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertAdvancedItemTypeSchema = createInsertSchema(advancedItemTypes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAdvancedItemType = z.infer<typeof insertAdvancedItemTypeSchema>;
+export type AdvancedItemType = typeof advancedItemTypes.$inferSelect;
 
 // Per-character action token assignments: a character can have zero or more
 // Action Token types assigned by a GM. Using a token does NOT remove it.
