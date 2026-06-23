@@ -12646,7 +12646,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         hostUpdates[e.target] = cur - amt;
       }
       // Permanently lower max durability; clamp current durability to it.
-      const cost = Number(rune.removeDurabilityCost) || 0;
+      // Freshly socketed runes bake `removeDurabilityCost` onto the snapshot.
+      // Older snapshots may predate that field — fall back to the rune item's
+      // configured value (if it still exists), then to the socket-time default.
+      let rawCost: any = rune.removeDurabilityCost;
+      if (rawCost === undefined || rawCost === null) {
+        if (rune.runeItemId) {
+          const runeItem = await storage.getItem(rune.runeItemId);
+          rawCost = (runeItem as any)?.runeRemoveDurabilityCost;
+        }
+        if (rawCost === undefined || rawCost === null) rawCost = 1;
+      }
+      const cost = Number(rawCost) || 0;
       if (cost > 0) {
         const newMax = Math.max(0, Number((host as any).maxDurability ?? 10) - cost);
         hostUpdates.maxDurability = newMax;

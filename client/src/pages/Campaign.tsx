@@ -11876,7 +11876,7 @@ export default function Campaign() {
               if (d.armorSlot) details.push({ label: 'Armor Slot', value: d.armorSlot });
               if (d.armorBonus) details.push({ label: 'Armor Bonus', value: `+${d.armorBonus}` });
               if (d.damageReduction) details.push({ label: 'Damage Reduction', value: `${d.damageReduction}${d.damageReductionType ? ` (${d.damageReductionType})` : ''}` });
-              if (d.durability) details.push({ label: 'Durability', value: d.durability });
+              if (d.durability) details.push({ label: 'Durability', value: `${d.durability}/${d.maxDurability ?? 10}` });
               if (d.itemWeight) details.push({ label: 'Weight', value: d.itemWeight });
               if (d.size) details.push({ label: 'Size', value: d.size });
               if (d.isHeavy) details.push({ label: 'Heavy', value: 'Yes' });

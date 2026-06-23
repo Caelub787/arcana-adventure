@@ -5226,7 +5226,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `Critical failure! ${itemData.name} durability: ${newDurability}/${10}`,
+            calculationBreakdown: `Critical failure! ${itemData.name} durability: ${newDurability}/${itemData.maxDurability ?? 10}`,
           });
         }
       } catch (err) {
@@ -8083,7 +8083,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
         {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
-        {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
+        {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/{itemData.maxDurability ?? 10}</p>}
         {itemData.isDetonatable && (() => {
           const detRoll = itemRollEntries.find((re: any) => re.name === 'Detonate');
           const aoeR = detRoll?.aoeRange || itemData.detonateAoeRange;
@@ -14568,7 +14568,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     // Display item if equipped
     if (hotbar.itemId && itemData) {
       const durabilityColor = itemData.durability >= 8 ? 'bg-green-500' : itemData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
-      const durabilityWidth = (itemData.durability / 10) * 100;
+      const durabilityWidth = (itemData.durability / Math.max(1, itemData.maxDurability ?? 10)) * 100;
       const isV3ItemClickable = campaignSystem === 'aa-v3' && !!onOpenItemDetail;
       
       return (
@@ -14662,7 +14662,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
               {itemData.itemType === 'ammunition' && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
               <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
-                Durability: {itemData.durability}/10
+                Durability: {itemData.durability}/{itemData.maxDurability ?? 10}
                 {itemData.durability <= 3 && ' ⚠️'}
               </p>
             </TooltipContent>
@@ -15416,9 +15416,9 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 <div className="flex items-center gap-1">
                   <span>Dur:</span>
                   <div className="w-16 h-2 bg-stone-700 rounded overflow-hidden">
-                    <div className={`h-full ${durabilityColor}`} style={{ width: `${(item.durability / 10) * 100}%` }} />
+                    <div className={`h-full ${durabilityColor}`} style={{ width: `${(item.durability / Math.max(1, item.maxDurability ?? 10)) * 100}%` }} />
                   </div>
-                  <span className="text-[10px]">{item.durability}/10</span>
+                  <span className="text-[10px]">{item.durability}/{item.maxDurability ?? 10}</span>
                 </div>
                 {item.price > 0 && (
                   <span className={
@@ -15547,10 +15547,10 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                     <div className="w-16 h-2 bg-stone-900 rounded overflow-hidden">
                       <div 
                         className={`h-full ${stackedItem.durability >= 7 ? 'bg-green-500' : stackedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                        style={{ width: `${(stackedItem.durability / 10) * 100}%` }}
+                        style={{ width: `${(stackedItem.durability / Math.max(1, stackedItem.maxDurability ?? 10)) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs text-stone-400">{stackedItem.durability}/10</span>
+                    <span className="text-xs text-stone-400">{stackedItem.durability}/{stackedItem.maxDurability ?? 10}</span>
                     {canEdit && onDeleteItem && (
                       <button
                         onClick={(e) => {
@@ -26258,8 +26258,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               </div>
             </div>
             <div className="border-t border-stone-700 pt-4">
-              <Label>Durability: {formData.durability}/10</Label>
-              <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
+              <Label>Durability: {formData.durability}/{formData.maxDurability ?? 10}</Label>
+              <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={formData.maxDurability ?? 10} step={1} className="mt-2" />
             </div>
             {formData.itemType === 'consumable' && (
               <div className="border-t border-stone-700 pt-4">
@@ -28920,13 +28920,13 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                         value={[currentData.durability]} 
                         onValueChange={(v) => setEditData({ ...editData, durability: v[0] })}
                         min={0}
-                        max={10}
+                        max={currentData.maxDurability ?? 10}
                         step={1}
                         className="mt-2"
                         data-testid="slider-durability"
                       />
                       <div className="text-sm text-stone-400">
-                        {currentData.durability}/10
+                        {currentData.durability}/{currentData.maxDurability ?? 10}
                       </div>
                     </div>
                   ) : (
@@ -28934,10 +28934,10 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       <div className="flex-1 h-3 bg-stone-700 rounded overflow-hidden">
                         <div 
                           className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                          style={{ width: `${(currentData.durability / 10) * 100}%` }} 
+                          style={{ width: `${(currentData.durability / Math.max(1, currentData.maxDurability ?? 10)) * 100}%` }} 
                         />
                       </div>
-                      <span className="text-sm text-stone-200">{currentData.durability}/10</span>
+                      <span className="text-sm text-stone-200">{currentData.durability}/{currentData.maxDurability ?? 10}</span>
                     </div>
                   )}
                 </div>
