@@ -4357,6 +4357,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Determine campaign system once: AA V3 short rest behaves differently
+      // (tops off Energy + Mana, leaves HP alone) from V2/V1 (rolls the HP die).
+      let restCamp: any = null;
+      if (character.campaignId) {
+        restCamp = await storage.getCampaign(character.campaignId);
+      }
+      const restSystemSlug = (restCamp as any)?.system || 'arcana-adventure';
+      const isShortRestV3 = restSystemSlug === 'aa-v3';
+
+      // AA V3 short rest: set Energy and Mana to full, leave HP unchanged.
+      // Rations are still consumed (above) and short-rest trait uses still reset.
+      if (isShortRestV3) {
+        const v3MaxEnergy = character.maxEnergy || 0;
+        const v3MaxMana = character.maxMana || 0;
+        const v3EnergyRestored = Math.max(0, v3MaxEnergy - (character.energy || 0));
+
+        const v3UpdatedCharacter = await storage.updateCharacter(character.id, {
+          energy: v3MaxEnergy,
+          mana: v3MaxMana,
+        });
+
+        await storage.restoreShortRestTraitUses(character.id);
+        const v3Traits = await storage.getCharacterTraits(character.id);
+
+        if (character.campaignId) {
+          const room = campaignRooms.get(character.campaignId);
+          if (room) {
+            const charMessage = JSON.stringify({ type: 'character_updated', character: v3UpdatedCharacter });
+            const traitsMessage = JSON.stringify({ type: 'traits_reset', characterId: character.id, traits: v3Traits });
+            room.forEach((ws) => {
+              if (ws.readyState === 1) {
+                ws.send(charMessage);
+                ws.send(traitsMessage);
+              }
+            });
+          }
+        }
+
+        return res.json({
+          success: true,
+          hpRestored: 0,
+          energyRestored: v3EnergyRestored,
+          hpRoll: 0,
+          dieType: null,
+          newHp: character.hp || 0,
+          newEnergy: v3MaxEnergy,
+          rationsConsumed: skipFood ? 0 : rationsRequired,
+          character: v3UpdatedCharacter,
+          traits: v3Traits,
+        });
+      }
+
       // Get character's species hpPerLevel for the die roll
       let hpPerLevel = 5; // Default fallback
       if (character.race) {
@@ -4364,8 +4416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
         let speciesSystemName: string | undefined;
         if (character.campaignId) {
-          const camp = await storage.getCampaign(character.campaignId);
-          const slug = (camp as any)?.system || 'arcana-adventure';
+          const slug = restSystemSlug;
           speciesSystemName = slug === 'aa-v2' ? 'A.A. V2' : slug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
         }
         // First check campaign species, then system species filtered by system
@@ -6842,7 +6893,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Energy: reject before mutating anything if the character can't pay.
-      const energyCost = Math.max(0, Math.floor(Number(technique.energyCost) || 0));
+      // At V3 exhaustion 4+, energy costs are doubled (must match the client's
+      // v3ExhaustionCostMultiplier so the spend equals the displayed cost).
+      const baseEnergyCost = Math.max(0, Math.floor(Number(technique.energyCost) || 0));
+      const energyCost = ((character.exhaustion ?? 0) >= 4 ? 2 : 1) * baseEnergyCost;
       const currentEnergy = character.energy ?? 0;
       if (energyCost > 0 && currentEnergy < energyCost) {
         return res.status(400).json({

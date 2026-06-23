@@ -20,6 +20,7 @@ import {
   v3LevelDiceNotation,
   v3LevelExtraMana,
 } from "@shared/v3spells";
+import { v3ExhaustionCostMultiplier } from "@shared/v3";
 import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices } from "lucide-react";
 
 interface SpellbookCharacter {
@@ -93,7 +94,10 @@ export function V3SpellDetailDialog({
   const craftedReach = comp?.reach || "";
   const chosenReach = reach || craftedReach;
   const reachExtra = v3ReachExtraMana(spell, chosenReach);
-  const totalMana = Math.max(0, baseMana + extraMana + reachExtra);
+  const preExhaustionMana = Math.max(0, baseMana + extraMana + reachExtra);
+  // At exhaustion 4+, V3 mana costs are doubled (must match v3cast.castV3Spell).
+  const manaMult = v3ExhaustionCostMultiplier(castCharacter?.exhaustion);
+  const totalMana = preExhaustionMana * manaMult;
   const canCast = !!castCharacter && !awaiting;
 
   const handleClose = () => {
@@ -232,6 +236,11 @@ export function V3SpellDetailDialog({
               Total mana: <span className="text-blue-300">{totalMana}</span>
               <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""}{reachExtra !== 0 ? ` ${reachExtra > 0 ? "+" : "−"} ${Math.abs(reachExtra)} for range` : ""})</span>
             </p>
+            {manaMult > 1 && (
+              <p className="text-xs text-red-400/90" data-testid="text-v3-exhaustion-mana">
+                Mana: {totalMana} (doubled from {preExhaustionMana} — Exhaustion)
+              </p>
+            )}
             <Button
               type="button"
               className="w-full bg-purple-700 hover:bg-purple-600 text-white"

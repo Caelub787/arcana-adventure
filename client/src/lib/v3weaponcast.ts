@@ -11,6 +11,7 @@ import {
   V3_ATTRIBUTE_KEYS,
   attrValueToDieSides,
   v3EffectiveSkillMod,
+  v3ExhaustionCostMultiplier,
   type V3AttributeKey,
 } from "@shared/v3";
 
@@ -21,6 +22,8 @@ export interface V3WeaponCastCharacter {
   id: string;
   name?: string;
   energy?: number | null;
+  // Exhaustion level — at 4+, V3 energy costs are doubled (see v3ExhaustionCostMultiplier).
+  exhaustion?: number | null;
   v3Skills?: Record<string, number> | null;
   v3SkillBoosts?: Record<string, number> | null;
   // The six V3 attribute columns (might/finesse/.../intelligence).
@@ -109,7 +112,9 @@ export function castV3WeaponBaseAttack(
   const lv = Math.max(1, Math.floor(level || 1));
   // Energy scales with the chosen attack level only; socketed-rune damage-level
   // bonuses raise the dice tier for free (no extra energy/mana).
-  const energyCost = v3WeaponBaseAttackEnergy(lv);
+  // At exhaustion 4+, V3 energy costs are doubled (precheck + deduction).
+  const baseEnergyCost = v3WeaponBaseAttackEnergy(lv);
+  const energyCost = baseEnergyCost * v3ExhaustionCostMultiplier(character.exhaustion);
   const have = character.energy ?? 0;
   const charName = character.name || "Unknown";
   const bonus = Math.max(0, Math.floor(Number(damageLevelBonus) || 0));
@@ -150,7 +155,13 @@ export function castV3Technique(
   weaponLevel: number,
   opts?: { skipEnergy?: boolean },
 ): boolean {
-  const energyCost = Math.max(0, Math.floor(Number(technique.energyCost) || 0));
+  // At exhaustion 4+, V3 energy costs are doubled. Only applied when the client
+  // is the resource authority (no skipEnergy); when the server deducts energy
+  // it applies the same multiplier server-side so we must not double here.
+  const baseEnergyCost = Math.max(0, Math.floor(Number(technique.energyCost) || 0));
+  const energyCost = opts?.skipEnergy
+    ? baseEnergyCost
+    : baseEnergyCost * v3ExhaustionCostMultiplier(character.exhaustion);
   const have = character.energy ?? 0;
   const charName = character.name || "Unknown";
   const techName = technique.name || "Technique";

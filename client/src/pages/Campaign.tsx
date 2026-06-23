@@ -13775,7 +13775,9 @@ export default function Campaign() {
           let finalRoll = roll1;
           let advText = '';
           const saveExhaustion = targetChar?.exhaustion || 0;
-          const saveExhaustionForcesDis = saveExhaustion >= 4;
+          // V3 shifts saving-throw disadvantage to level 5 (was 4 in V2/V1).
+          const saveDisThreshold = isAAV3 ? 5 : 4;
+          const saveExhaustionForcesDis = saveExhaustion >= saveDisThreshold;
           let saveAdv = dcSaveAdvantage;
           let saveDis = dcSaveDisadvantage;
           if (saveExhaustionForcesDis) saveDis = true;
@@ -13900,7 +13902,7 @@ export default function Campaign() {
                     Disadvantage
                   </label>
                 </div>
-                {(targetChar?.exhaustion || 0) >= 4 && (
+                {(targetChar?.exhaustion || 0) >= (isAAV3 ? 5 : 4) && (
                   <div className="text-[11px] text-red-400 bg-red-900/20 border border-red-800/30 rounded px-2 py-1" data-testid="save-exhaustion-warning">
                     Exhaustion Lv{targetChar?.exhaustion}: Disadvantage on Saving Throws
                   </div>

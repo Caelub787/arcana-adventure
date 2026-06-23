@@ -1,11 +1,14 @@
 import { gameWs, type V3Spell } from "@/lib/api";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { v3LevelDice, v3LevelExtraMana, v3ReachIndex, V3_REACH_MAP } from "@shared/v3spells";
+import { v3ExhaustionCostMultiplier } from "@shared/v3";
 
 export interface V3CastCharacter {
   id: string;
   name?: string;
   mana?: number | null;
+  // Exhaustion level — at 4+, V3 mana costs are doubled (see v3ExhaustionCostMultiplier).
+  exhaustion?: number | null;
 }
 
 function rollLevelDice(level: number): { total: number; rolls: number[]; notation: string } {
@@ -51,10 +54,15 @@ export function castV3Spell(
   const lv = Math.max(1, Math.floor(level || 1));
   const baseMana = spell.manaCost ?? 0;
   const reachExtra = v3ReachExtraMana(spell, chosenReach);
-  const totalMana = Math.max(0, baseMana + v3LevelExtraMana(lv) + reachExtra);
+  const preExhaustionMana = Math.max(0, baseMana + v3LevelExtraMana(lv) + reachExtra);
+  // At exhaustion 4+, V3 mana costs are doubled. Applied to both the deduction
+  // and the not-enough pre-check so the spend matches the displayed cost.
+  const exMult = v3ExhaustionCostMultiplier(character.exhaustion);
+  const totalMana = preExhaustionMana * exMult;
   const currentMana = character.mana ?? 0;
   const charName = character.name || "Unknown";
   const spellName = spell.name || "Spell";
+  const exhaustionNote = exMult > 1 ? ` (doubled from ${preExhaustionMana} — Exhaustion)` : "";
 
   if (totalMana > 0 && currentMana < totalMana) {
     triggerRollNotification({
@@ -64,7 +72,7 @@ export function castV3Spell(
       total: 0,
       username: charName,
       characterName: charName,
-      calculationBreakdown: `${spellName} at level ${lv} requires ${totalMana} mana but you only have ${currentMana}.`,
+      calculationBreakdown: `${spellName} at level ${lv} requires ${totalMana} mana${exhaustionNote} but you only have ${currentMana}.`,
     });
     return false;
   }

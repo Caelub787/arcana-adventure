@@ -387,3 +387,29 @@ export function v3DetachRune(host: any, slotIndex: number): V3RuneAttachResult {
   }
   return { ok: true, updates };
 }
+
+// AA V3 exhaustion ladder (7 levels). Effects are cumulative as the level rises.
+// Index 0 is empty (no exhaustion); indices 1-7 list the effect(s) gained at
+// that level. V3 has no attack rolls, so the old "Disadvantage on Attack Rolls"
+// effect is replaced by "Only 1 Action per turn" at level 3, and the
+// saving-throw / speed-to-0 / HP-to-0 effects shift up to levels 5/6/7.
+export const V3_EXHAUSTION_EFFECTS: string[][] = [
+  [],
+  ["Disadvantage on Skill Checks"],
+  ["Speed Halved"],
+  ["Only 1 Action per turn"],
+  ["Energy/Mana costs are doubled"],
+  ["Disadvantage on Saving Throws"],
+  ["Speed reduced to 0"],
+  ["HP set to 0"],
+];
+
+// The highest exhaustion level the V3 control can reach.
+export const V3_EXHAUSTION_MAX = 7;
+
+// At exhaustion level 4+, a V3 character's Energy/Mana costs are doubled. This
+// multiplier must be applied identically wherever a cost is shown and wherever
+// it is actually deducted so the displayed cost always matches what is spent.
+export function v3ExhaustionCostMultiplier(exhaustion: number | null | undefined): number {
+  return (Math.floor(Number(exhaustion) || 0) >= 4) ? 2 : 1;
+}

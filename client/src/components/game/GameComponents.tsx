@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -5104,7 +5104,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const totalMod = attrMod + extraMod;
     
     const exhaustionLevel = character.exhaustion || 0;
-    const exhaustionForcesDis = exhaustionLevel >= 3;
+    // V3 has no attack rolls, so the level-3 "Disadvantage on Attack Rolls"
+    // effect (and its forced-disadvantage) does not apply — it's "Only 1 Action
+    // per turn" instead. V2/V1 keep the attack-roll disadvantage at level 3.
+    const exhaustionForcesDis = exhaustionLevel >= 3 && campaignSystem !== 'aa-v3';
     let optAdv = options?.advantage || false;
     let optDis = options?.disadvantage || false;
     if (exhaustionForcesDis) optDis = true;
@@ -6497,7 +6500,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const totalMod = attrMod + extraMod;
     
     const spellExhaustionLevel = character.exhaustion || 0;
-    const spellExhaustionForcesDis = spellExhaustionLevel >= 3;
+    const spellExhaustionForcesDis = spellExhaustionLevel >= 3 && campaignSystem !== 'aa-v3';
     let spellOptAdv = options?.advantage || false;
     let spellOptDis = options?.disadvantage || false;
     if (spellExhaustionForcesDis) spellOptDis = true;
@@ -14166,7 +14169,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     const attrName = itemData.attribute || 'might';
     const attrMod = getAttributeModifier(attrName);
     const hotbarExhaustion = character.exhaustion || 0;
-    const hotbarForcesDis = hotbarExhaustion >= 3;
+    const hotbarForcesDis = hotbarExhaustion >= 3 && campaignSystem !== 'aa-v3';
     
     let roll: number;
     let rollText: string;
@@ -14341,7 +14344,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     const attrName = spellData.attribute || 'wit';
     const attrMod = getAttributeModifier(attrName);
     const spellHotbarExhaustion = character.exhaustion || 0;
-    const spellHotbarForcesDis = spellHotbarExhaustion >= 3;
+    const spellHotbarForcesDis = spellHotbarExhaustion >= 3 && campaignSystem !== 'aa-v3';
     
     let roll: number;
     let spellRollText: string;
@@ -19743,7 +19746,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           </div>
                         ) : (
                           <span
-                            className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= 6 ? 'relative' : ''}`}
+                            className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= (isAAV3 ? 7 : 6) ? 'relative' : ''}`}
                             data-testid="text-hp"
                             {...quickPressHandlers('hp')}
                           >
@@ -19754,14 +19757,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             {(liveCharacter.tempHp ?? 0) > 0 && (
                               <span className="ml-1 text-violet-300" data-testid="text-temp-hp">(+{liveCharacter.tempHp} temp)</span>
                             )}
-                            {(liveCharacter.exhaustion || 0) >= 6 && (
+                            {(liveCharacter.exhaustion || 0) >= (isAAV3 ? 7 : 6) && (
                               <span className="absolute inset-0 flex items-center">
                                 <span className="w-full h-[2px] bg-red-500 block" />
                               </span>
                             )}
                           </span>
                         )}
-                        {(liveCharacter.exhaustion || 0) >= 6 && !editingOverview && (
+                        {(liveCharacter.exhaustion || 0) >= (isAAV3 ? 7 : 6) && !editingOverview && (
                           <span className="text-[9px] text-red-400 font-bold ml-1" data-testid="text-hp-exhaustion">Exhaustion</span>
                         )}
                       </div>
@@ -20102,7 +20105,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       {(() => {
                         const baseSpeed = editingOverview ? overviewData.speed : liveCharacter.speed;
                         const exh = liveCharacter.exhaustion || 0;
-                        const effectiveSpeed = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseSpeed / 2) : baseSpeed;
+                        const effectiveSpeed = exh >= (isAAV3 ? 6 : 5) ? 0 : exh >= 2 ? Math.floor(baseSpeed / 2) : baseSpeed;
                         const isReduced = effectiveSpeed < baseSpeed;
                         return (
                           <p className="text-stone-200" data-testid="text-speed">
@@ -20160,7 +20163,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       {(() => {
                         const baseFlySpeed = editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed;
                         const exh = liveCharacter.exhaustion || 0;
-                        const effectiveFlySpeed = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseFlySpeed / 2) : baseFlySpeed;
+                        const effectiveFlySpeed = exh >= (isAAV3 ? 6 : 5) ? 0 : exh >= 2 ? Math.floor(baseFlySpeed / 2) : baseFlySpeed;
                         const isReduced = effectiveFlySpeed < baseFlySpeed;
                         return (
                           <p className="text-stone-200" data-testid="text-fly-speed">
@@ -20227,7 +20230,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     {/* Exhaustion - Compact */}
                     {(() => {
                       const exhaustion = liveCharacter.exhaustion || 0;
-                      const exhaustionLevelEffects: string[][] = [
+                      // V3 uses a 7-level ladder (no attack rolls); V2/V1 keep the 6-level model.
+                      const exhaustionLevelEffects: string[][] = isAAV3 ? V3_EXHAUSTION_EFFECTS : [
                         [],
                         ['Disadvantage on Skill Checks'],
                         ['Speed Halved'],
@@ -20236,6 +20240,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ['Speed reduced to 0'],
                         ['HP set to 0'],
                       ];
+                      const exhaustionMax = isAAV3 ? V3_EXHAUSTION_MAX : 6;
                       const exhaustionColors: Record<number, string> = {
                         1: 'bg-orange-400',
                         2: 'bg-orange-500',
@@ -20243,10 +20248,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         4: 'bg-red-500',
                         5: 'bg-red-600',
                         6: 'bg-red-700',
+                        7: 'bg-red-900',
                       };
                       const activeEffects: string[] = [];
                       for (let i = 1; i <= exhaustion; i++) {
-                        activeEffects.push(...exhaustionLevelEffects[i]);
+                        activeEffects.push(...(exhaustionLevelEffects[i] || []));
                       }
                       
                       return (
@@ -20284,10 +20290,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   variant="ghost"
                                   className="h-5 w-5 p-0"
                                   onClick={() => {
-                                    if (exhaustion < 6) {
+                                    if (exhaustion < exhaustionMax) {
                                       const newVal = exhaustion + 1;
                                       const updates: any = { exhaustion: newVal };
-                                      if (newVal === 6) {
+                                      if (newVal === exhaustionMax) {
                                         updates.hp = 0;
                                         setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal, hp: 0 }));
                                       } else {
@@ -20296,7 +20302,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       updateCharacterMutation.mutate(updates);
                                     }
                                   }}
-                                  disabled={exhaustion === 6}
+                                  disabled={exhaustion === exhaustionMax}
                                   data-testid="button-increase-exhaustion"
                                 >
                                   <Plus className="h-2.5 w-2.5" />
@@ -20305,9 +20311,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </div>
                           </div>
                           <div className="flex gap-0.5 mt-1">
-                            {[1, 2, 3, 4, 5, 6].map(level => (
+                            {Array.from({ length: exhaustionMax }, (_, i) => i + 1).map(level => (
                               <div
                                 key={level}
+                                title={`Lv${level}: ${(exhaustionLevelEffects[level] || []).join(', ')}`}
                                 className={`flex-1 h-1.5 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
                                 data-testid={`exhaustion-level-${level}`}
                               />
@@ -21561,8 +21568,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 {(liveCharacter.exhaustion || 0) >= 3 && (
                   <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="inventory-exhaustion-warning">
                     <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
-                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
-                    <span className="text-[10px] text-red-400/70">Disadvantage on Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                    {isAAV3 ? (
+                      <span className="text-[10px] text-red-400/70">Only 1 Action per turn (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                        <span className="text-[10px] text-red-400/70">Disadvantage on Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                      </>
+                    )}
                   </div>
                 )}
                 <div className="flex justify-end gap-2">
@@ -21760,8 +21773,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 {(liveCharacter.exhaustion || 0) >= 3 && (
                   <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="magic-exhaustion-warning">
                     <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
-                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
-                    <span className="text-[10px] text-red-400/70">Disadvantage on Spell Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                    {isAAV3 ? (
+                      <span className="text-[10px] text-red-400/70">Only 1 Action per turn (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                        <span className="text-[10px] text-red-400/70">Disadvantage on Spell Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                      </>
+                    )}
                   </div>
                 )}
                 {isGM && (
@@ -27477,6 +27496,9 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
   }, [item?.v3TechniqueGroupIds, groups, techniques, customSkills, items]);
 
   const baseEnergy = v3WeaponBaseAttackEnergy(lv);
+  // At exhaustion 4+, V3 energy costs are doubled (must match v3weaponcast).
+  const weaponExMult = v3ExhaustionCostMultiplier(character?.exhaustion);
+  const effectiveEnergy = baseEnergy * weaponExMult;
   // Socketed weapon runes raise the base-attack dice tier for free (stacking).
   const runeDamageBonus = aggregateRuneWeaponDamageLevelBonus(item?.socketedRunes);
   const effectiveDiceLevel = lv + runeDamageBonus;
@@ -27528,7 +27550,10 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
         </Button>
       </div>
       <p className="text-xs text-stone-400" data-testid="text-v3-weapon-energy">
-        Energy cost: <span className="text-yellow-300">{baseEnergy}</span>
+        Energy cost: <span className="text-yellow-300">{effectiveEnergy}</span>
+        {weaponExMult > 1 && (
+          <span className="text-red-400/90"> (doubled from {baseEnergy} — Exhaustion)</span>
+        )}
       </p>
       <Button
         type="button"
@@ -27575,7 +27600,7 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-stone-200 truncate">{t.name}</p>
                   <p className="text-[11px] text-stone-500 truncate">
-                    {(t.energyCost ?? 0)} energy · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
+                    {(t.energyCost ?? 0) * weaponExMult} energy{weaponExMult > 1 ? <span className="text-red-400/90"> (doubled — Exhaustion)</span> : ''} · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
                   </p>
                   {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
                 </div>
