@@ -1,14 +1,20 @@
 ---
-name: Item build recipes
-description: How item "build recipes" reuse the craftRecipes table and stay separate from crafter recipes
+name: Item build recipes & recommended pricing
+description: Durable decisions for item "build recipes" (AA V2/V3) and the auto-recommended price
 ---
 
 # Item build recipes (AA V2/V3)
 
-Build recipes (ingredients to construct ANY item, used for recommended pricing) are stored in the **same `craftRecipes` table** as crafter-item recipes, distinguished only by `isBuildRecipe=true` with `parentItemId` = the owning item.
+Build recipes (ingredients to construct ANY item, used to drive recommended pricing) are stored in the **same craftRecipes table** as crafter-item recipes, distinguished by an `isBuildRecipe` flag (recipe output = the item itself, one per item).
 
-**Why:** avoided a parallel table; reuses existing ingredient storage + createCraftRecipe.
+**Why:** reuse existing ingredient storage instead of a parallel table.
 
-**How to apply:** any query that lists *crafter* recipes for an item MUST filter `isBuildRecipe=false` (e.g. getCraftRecipesByItem already does) or build recipes will leak into crafter UI/runtime. Conversely getItemBuildRecipe filters `isBuildRecipe=true`.
+**How to apply:** any query listing *crafter* recipes MUST exclude build recipes (filter isBuildRecipe=false), or they leak into crafter UI/runtime. Build recipes only exist to be grouped into crafter templates (snapshot copy, not live-linked) and to drive pricing.
 
-Recommended price math lives client-side in ItemBuildRecipeEditor.tsx: currency copper-rates {copper:1,silver:10,gold:100,platinum:1000}, sum*1.2/outputQty ceil'd, then denominate() picks the largest *exact* denomination (no overshoot).
+# Recommended price rule
+
+Recommended sale price = ingredient cost summed in copper (10c=1s, 10s=1g, 10g=1pt), +20% markup, divided per output unit, then **rounded UP to a clean denomination** (round up to a whole count of the largest denomination tier <= the amount, then express as the largest single denomination). Worked example: 8 silver cost -> 96c after markup -> **1 gold**.
+
+**Why:** the user chose round-up so the price always exceeds cost+markup; the example 96c->1g is canonical.
+
+**How to apply:** the price/currency fields auto-fill from this recommendation **by default** and recompute as ingredients change; the admin can still override. Do not clobber a saved/edited price on initial dialog load — only auto-apply after a real user edit to the recipe.

@@ -4,7 +4,9 @@
  * Lets an author define the "build recipe" for ANY item: the ingredients
  * needed to craft it (plus an output quantity). It also recommends a price
  * by summing the ingredient costs (respecting currency conversion), adding
- * 20%, and offering an "Apply" button to fill the item's Price/Currency.
+ * 20%, rounding UP to a clean denomination, and AUTO-FILLING the item's
+ * Price/Currency by default (the admin can still override; an explicit
+ * "Apply" button re-applies the recommendation after a manual override).
  *
  * Build recipes are AA V2 / V3 only. The parent dialog bundles this draft
  * into its save payload under `buildRecipe`; persistence is handled by the
@@ -34,13 +36,29 @@ type PickerItem = { id: string; name: string; price: number; currency: string };
 // Copper-equivalent value of one unit of each currency.
 const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
 
-// Pick the largest denomination that represents `copper` EXACTLY (no overshoot).
+// Express an EXACT copper amount as the largest single denomination.
 function denominate(copper: number): { price: number; currency: string } {
   if (copper <= 0) return { price: 0, currency: "copper" };
   if (copper % 1000 === 0) return { price: copper / 1000, currency: "platinum" };
   if (copper % 100 === 0) return { price: copper / 100, currency: "gold" };
   if (copper % 10 === 0) return { price: copper / 10, currency: "silver" };
   return { price: copper, currency: "copper" };
+}
+
+/**
+ * Round a copper amount UP to a clean denomination, then express it as the
+ * largest single denomination. Rounds up to a whole number of the largest
+ * denomination tier that is <= the amount, e.g. 96 copper -> 100 copper -> 1 gold.
+ * Rounding up guarantees the price always exceeds cost + markup.
+ */
+export function recommendFromCopper(copper: number): { price: number; currency: string } {
+  if (copper <= 0) return { price: 0, currency: "copper" };
+  let tier = 1;
+  for (const rate of [1000, 100, 10, 1]) {
+    if (rate <= copper) { tier = rate; break; }
+  }
+  const rounded = Math.ceil(copper / tier) * tier;
+  return denominate(rounded);
 }
 
 export interface ItemBuildRecipeEditorProps {
@@ -72,9 +90,7 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
   const ingredients = value.ingredients ?? [];
   const outputQuantity = value.outputQuantity ?? 1;
 
-  const setIngredients = (next: BuildRecipeIngredientDraft[]) => onChange({ ...value, ingredients: next });
-
-  // Recommended price = ceil( sum(ingredient cost in copper) * 1.2 / outputQty ).
+  // Recommended per-unit price = round-up( sum(ingredient copper) * 1.2 / outputQty ).
   const totalIngredientCopper = ingredients.reduce((sum, ing) => {
     const found = items.find(it => it.id === ing.itemId);
     if (!found) return sum;
@@ -84,14 +100,33 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
   const perUnitCopper = ingredients.length > 0
     ? Math.ceil((totalIngredientCopper * 1.2) / Math.max(1, outputQuantity))
     : 0;
-  const recommended = denominate(perUnitCopper);
+  const recommended = recommendFromCopper(perUnitCopper);
   const hasUnpriced = ingredients.some(ing => ing.itemId && !items.find(it => it.id === ing.itemId));
+
+  // Auto-fill the price/currency by default whenever the user changes the
+  // recipe. We only apply after a real user edit (tracked via the ref) so we
+  // never clobber a saved price on initial load or while the picker is loading.
+  const userEditedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!userEditedRef.current) return;
+    if (perUnitCopper <= 0) return;
+    onApplyPrice(recommended.price, recommended.currency);
+  }, [perUnitCopper, recommended.price, recommended.currency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setIngredients = (next: BuildRecipeIngredientDraft[]) => {
+    userEditedRef.current = true;
+    onChange({ ...value, ingredients: next });
+  };
+  const setOutputQuantity = (n: number) => {
+    userEditedRef.current = true;
+    onChange({ ...value, outputQuantity: n });
+  };
 
   return (
     <Stack data-testid="build-recipe-editor">
       <div className="ld-subtle">
-        Define what this item is built from. The cost is summed (10 copper = 1 silver, 10 silver = 1 gold,
-        10 gold = 1 platinum), +20% markup, to recommend a sale price.
+        Define what this item is built from. Costs are summed (10 copper = 1 silver, 10 silver = 1 gold,
+        10 gold = 1 platinum), +20% markup, rounded up to a clean price — auto-filled into Price below (you can change it).
       </div>
 
       <div style={{ maxWidth: 200 }}>
@@ -100,7 +135,7 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
           type="number"
           min={1}
           value={outputQuantity}
-          onChange={e => onChange({ ...value, outputQuantity: Math.max(1, optionalNum(e.target.value) ?? 1) })}
+          onChange={e => setOutputQuantity(Math.max(1, optionalNum(e.target.value) ?? 1))}
           data-testid="input-build-output-quantity"
         />
       </div>
@@ -133,13 +168,13 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
       {ingredients.length > 0 && (
         <Row style={{ justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <span className="ld-label" style={{ margin: 0 }}>Recommended price</span>
+            <span className="ld-label" style={{ margin: 0 }}>Recommended price (auto-filled)</span>
             <div style={{ color: "var(--ld-accent, #d97706)", fontWeight: 600 }} data-testid="text-recommended-price">
               {recommended.price} {recommended.currency}
               {hasUnpriced && <span className="ld-subtle" style={{ marginLeft: 8, fontWeight: 400 }}>(some ingredients unpriced)</span>}
             </div>
           </div>
-          <Button size="sm" variant="primary" onClick={() => onApplyPrice(recommended.price, recommended.currency)} data-testid="button-apply-recommended-price">Apply</Button>
+          <Button size="sm" variant="primary" onClick={() => onApplyPrice(recommended.price, recommended.currency)} data-testid="button-apply-recommended-price">Re-apply</Button>
         </Row>
       )}
     </Stack>
