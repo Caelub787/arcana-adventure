@@ -23,6 +23,7 @@ import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntrie
 import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRecipesEditor";
 import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
+import { EntityPickerModal } from "../components/EntityPickerModal";
 import { isAAv2, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
 import { optionalNum } from "../lib/utils";
 import type { DialogProps } from "../types";
@@ -170,61 +171,6 @@ const ATTRIBUTES = ["", "might", "finesse", "wit", "presence", "will", "craft"] 
 const AOE_SHAPES = ["", "cone", "sphere", "line", "cube", "cylinder"] as const;
 const SIZES = ["tiny", "small", "medium", "large", "huge"] as const;
 
-// Searchable multi-select for OPEN-ENDED lists (e.g. technique groups, which the
-// admin can create more of at any time). Mirrors the "add item to a character
-// sheet" search panel rather than an unbounded checkbox list. Selected entries
-// show as a removable list; the search field adds more from the same pool.
-function SearchMultiSelect({
-  options,
-  selectedIds,
-  onToggle,
-  placeholder,
-  emptyText,
-  testIdPrefix,
-}: {
-  options: { id: string; name: string }[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  placeholder?: string;
-  emptyText?: string;
-  testIdPrefix: string;
-}) {
-  const [search, setSearch] = React.useState("");
-  const selSet = new Set(selectedIds);
-  const selected = options.filter((o) => selSet.has(o.id));
-  const trimmed = search.trim().toLowerCase();
-  const filtered = options
-    .filter((o) => !selSet.has(o.id) && (!trimmed || o.name.toLowerCase().includes(trimmed)))
-    .slice(0, 100);
-  if (options.length === 0) {
-    return <div className="ld-subtle" data-testid={`text-no-${testIdPrefix}`}>{emptyText}</div>;
-  }
-  return (
-    <Stack gap="sm">
-      {selected.length > 0 && (
-        <Stack gap="sm">
-          {selected.map((o) => (
-            <Row key={o.id}>
-              <div style={{ flex: 1 }}>{o.name}</div>
-              <Button size="sm" variant="ghost" onClick={() => onToggle(o.id)} data-testid={`button-remove-${testIdPrefix}-${o.id}`}>✕</Button>
-            </Row>
-          ))}
-        </Stack>
-      )}
-      <Input value={search} placeholder={placeholder ?? "Search…"} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testIdPrefix}-search`} />
-      <Stack gap="sm">
-        {filtered.length === 0 ? (
-          <div className="ld-subtle">{trimmed ? "No matches" : "All selected"}</div>
-        ) : (
-          filtered.map((o) => (
-            <Button key={o.id} size="sm" variant="outline" onClick={() => onToggle(o.id)} data-testid={`button-add-${testIdPrefix}-${o.id}`}>+ {o.name}</Button>
-          ))
-        )}
-      </Stack>
-    </Stack>
-  );
-}
-
 export interface ItemDraft {
   id?: string;
   externalId?: string;
@@ -335,6 +281,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [techniqueGroups, setTechniqueGroups] = React.useState<{ id: string; name: string }[]>([]);
+  const [techPickerOpen, setTechPickerOpen] = React.useState(false);
   const [advancedItemTypes, setAdvancedItemTypes] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
@@ -605,22 +552,42 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   </div>
                 </Grid3>
               )}
-              {aav3 && it === "weapon" && host.techniqueGroups && (
-                <div style={{ marginTop: 8 }}>
-                  <Label>Technique Groups</Label>
-                  <SearchMultiSelect
-                    options={techniqueGroups}
-                    selectedIds={draft.v3TechniqueGroupIds ?? []}
-                    onToggle={toggleTechniqueGroup}
-                    placeholder="Search technique groups…"
-                    emptyText="No technique groups defined yet."
-                    testIdPrefix="technique-groups"
-                  />
-                  <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
-                    Changes here automatically sync to copies already in players' inventories.
-                  </p>
-                </div>
-              )}
+              {aav3 && it === "weapon" && host.techniqueGroups && (() => {
+                const selIds = draft.v3TechniqueGroupIds ?? [];
+                const selectedGroups = techniqueGroups.filter(g => selIds.includes(g.id));
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <Label>Technique Groups</Label>
+                    <Stack gap="sm">
+                      {selectedGroups.length > 0 ? (
+                        selectedGroups.map(g => (
+                          <Row key={g.id}>
+                            <div style={{ flex: 1 }}>{g.name}</div>
+                            <Button size="sm" variant="ghost" onClick={() => toggleTechniqueGroup(g.id)} data-testid={`button-remove-technique-groups-${g.id}`}>✕</Button>
+                          </Row>
+                        ))
+                      ) : (
+                        <div className="ld-subtle" data-testid="text-no-technique-groups">No technique groups selected.</div>
+                      )}
+                      <Button size="sm" onClick={() => setTechPickerOpen(true)} data-testid="button-browse-technique-groups">+ Add technique groups</Button>
+                    </Stack>
+                    <EntityPickerModal
+                      open={techPickerOpen}
+                      title="Add technique groups"
+                      options={techniqueGroups}
+                      selectedIds={selIds}
+                      onPick={(g) => toggleTechniqueGroup(g.id)}
+                      onClose={() => setTechPickerOpen(false)}
+                      searchPlaceholder="Search technique groups…"
+                      emptyText="No technique groups defined yet."
+                      testIdPrefix="technique-groups"
+                    />
+                    <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                      Changes here automatically sync to copies already in players' inventories.
+                    </p>
+                  </div>
+                );
+              })()}
             </Section>
           )}
 
@@ -1134,6 +1101,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 host={host}
                 onApplyPrice={(price, currency) => set({ price, currency })}
                 outputRarity={draft.rarity}
+                isV3={aav3}
               />
             </Section>
           )}

@@ -16,6 +16,7 @@ import * as React from "react";
 import { Button, Input, Select, SelectItem, Stack, Row, Section } from "../ui/primitives";
 import { optionalNum } from "../lib/utils";
 import type { HostAdapter } from "../types";
+import { EntityPickerModal, type PickerFilter } from "./EntityPickerModal";
 
 export type BuildRecipeIngredientDraft = {
   id?: string;
@@ -31,7 +32,7 @@ export type BuildRecipeDraft = {
   ingredients: BuildRecipeIngredientDraft[];
 };
 
-type PickerItem = { id: string; name: string; price: number; currency: string; rarity: string };
+type PickerItem = { id: string; name: string; price: number; currency: string; rarity: string; itemType: string };
 
 // Copper-equivalent value of one unit of each currency.
 export const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
@@ -82,9 +83,11 @@ export interface ItemBuildRecipeEditorProps {
   onApplyPrice: (price: number, currency: string) => void;
   /** Rarity of the item being made; adds a per-output rarity surcharge to the price. */
   outputRarity?: string | null;
+  /** AA V3 uses a searchable browse panel to pick ingredients; V2 keeps the dropdown. */
+  isV3?: boolean;
 }
 
-export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ value, onChange, host, onApplyPrice, outputRarity }) => {
+export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ value, onChange, host, onApplyPrice, outputRarity, isV3 }) => {
   const [items, setItems] = React.useState<PickerItem[]>([]);
   React.useEffect(() => {
     let cancelled = false;
@@ -97,6 +100,7 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
           price: typeof it.price === "number" ? it.price : 0,
           currency: it.currency ?? "copper",
           rarity: it.rarity ?? "common",
+          itemType: it.itemType ?? "",
         })));
       })
       .catch(e => host.notify("warning", `Could not load items for recipe picker: ${e?.message ?? e}`));
@@ -143,6 +147,32 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
     onChange({ ...value, outputQuantity: n });
   };
 
+  // V3: browse-panel ingredient picker (search + type/rarity filters).
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const distinctTypes = Array.from(new Set(items.map(it => it.itemType).filter(Boolean))).sort();
+  const ingredientFilters: PickerFilter<PickerItem>[] = [
+    ...(distinctTypes.length > 0 ? [{
+      key: "itemType",
+      label: "Type",
+      options: distinctTypes.map(t => ({ value: t, label: t })),
+      getValue: (o: PickerItem) => o.itemType,
+    }] : []),
+    {
+      key: "rarity",
+      label: "Rarity",
+      options: ["common", "uncommon", "rare", "epic", "legendary"].map(r => ({ value: r, label: r })),
+      getValue: (o: PickerItem) => o.rarity,
+    },
+  ];
+  const toggleIngredient = (it: PickerItem) => {
+    const idx = ingredients.findIndex(ing => ing.itemId === it.id);
+    if (idx >= 0) {
+      setIngredients(ingredients.filter((_, i) => i !== idx));
+    } else {
+      setIngredients([...ingredients, { itemId: it.id, itemName: it.name, quantity: 1, sortOrder: ingredients.length }]);
+    }
+  };
+
   return (
     <Stack data-testid="build-recipe-editor">
       <div className="ld-subtle">
@@ -165,15 +195,21 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
         {ingredients.length === 0 && <div className="ld-subtle">No ingredients yet.</div>}
         {ingredients.map((ing, ii) => (
           <Row key={ing.id ?? ii} style={{ marginBottom: 6 }}>
-            <Select value={ing.itemId ?? ""} onValueChange={v => {
-              const found = items.find(it => it.id === v);
-              const next = ingredients.slice();
-              next[ii] = { ...ing, itemId: v || null, itemName: found?.name ?? ing.itemName };
-              setIngredients(next);
-            }}>
-              <SelectItem value="">— item —</SelectItem>
-              {items.map(it => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
-            </Select>
+            {isV3 ? (
+              <div style={{ flex: 1 }} data-testid={`text-build-ingredient-name-${ii}`}>
+                {ing.itemName || ing.itemId || <span className="ld-subtle">— item —</span>}
+              </div>
+            ) : (
+              <Select value={ing.itemId ?? ""} onValueChange={v => {
+                const found = items.find(it => it.id === v);
+                const next = ingredients.slice();
+                next[ii] = { ...ing, itemId: v || null, itemName: found?.name ?? ing.itemName };
+                setIngredients(next);
+              }}>
+                <SelectItem value="">— item —</SelectItem>
+                {items.map(it => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
+              </Select>
+            )}
             <Input style={{ width: 80 }} type="number" min={1} value={ing.quantity}
               onChange={e => {
                 const next = ingredients.slice();
@@ -183,8 +219,28 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
             <Button size="sm" variant="danger" onClick={() => setIngredients(ingredients.filter((_, i) => i !== ii))} data-testid={`button-remove-build-ingredient-${ii}`}>×</Button>
           </Row>
         ))}
-        <Button size="sm" onClick={() => setIngredients([...ingredients, { itemName: "", quantity: 1, sortOrder: ingredients.length }])} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
+        {isV3 ? (
+          <Button size="sm" onClick={() => setPickerOpen(true)} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
+        ) : (
+          <Button size="sm" onClick={() => setIngredients([...ingredients, { itemName: "", quantity: 1, sortOrder: ingredients.length }])} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
+        )}
       </Section>
+
+      {isV3 && (
+        <EntityPickerModal<PickerItem>
+          open={pickerOpen}
+          title="Add ingredients"
+          options={items}
+          selectedIds={ingredients.map(ing => ing.itemId).filter((x): x is string => !!x)}
+          onPick={toggleIngredient}
+          onClose={() => setPickerOpen(false)}
+          filters={ingredientFilters}
+          renderMeta={(o) => [o.itemType, o.rarity].filter(Boolean).join(" · ")}
+          searchPlaceholder="Search items…"
+          emptyText="No items available yet."
+          testIdPrefix="build-ingredient"
+        />
+      )}
 
       {ingredients.length > 0 && (
         <Row style={{ justifyContent: "space-between", alignItems: "center" }}>
