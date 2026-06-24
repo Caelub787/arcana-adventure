@@ -8900,6 +8900,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
       }
 
+      // Required tool items: each must be present (qty >= 1). Non-consumed tools
+      // stay in inventory; consumed tools are spent below after all checks pass.
+      const toolReqs: { itemId: string | null; name: string; consumed: boolean }[] =
+        Array.isArray((recipe as any).toolItems) ? (recipe as any).toolItems : [];
+      type ToolMatch = { name: string; consumed: boolean; matches: { id: string; quantity: number }[]; have: number };
+      const toolMatches: ToolMatch[] = [];
+      for (const t of toolReqs) {
+        const owned = inventory.filter(inv => {
+          if (t.itemId) return inv.templateItemId === t.itemId;
+          if (t.name) return inv.name === t.name;
+          return false;
+        });
+        const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
+        toolMatches.push({ name: t.name || '?', consumed: !!t.consumed, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
+      }
+      const missingTools = toolMatches.filter(m => m.have < 1);
+      if (missingTools.length > 0) {
+        return res.status(400).json({ error: "Missing required tools", missing: missingTools.map(m => ({ name: m.name, need: 1, have: m.have })) });
+      }
+
       // Optional custom-skill restriction: gate by name + min value.
       if ((recipe as any).requireCustomSkill && (recipe as any).requiredSkillName) {
         const reqName = String((recipe as any).requiredSkillName).trim().toLowerCase();
@@ -9009,6 +9029,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               need = 0;
             }
           }
+        }
+      }
+
+      // Consume one of each consumed tool (non-consumed tools are left intact).
+      for (const tm of toolMatches) {
+        if (!tm.consumed) continue;
+        let need = 1;
+        for (const owned of tm.matches) {
+          if (need <= 0) break;
+          if (owned.quantity <= need) { await storage.deleteItem(owned.id); need -= owned.quantity; }
+          else { await storage.updateItem(owned.id, { quantity: owned.quantity - need }); need = 0; }
         }
       }
 
@@ -9252,6 +9283,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
       }
 
+      // Required tool items: each must be present (qty >= 1). Non-consumed tools
+      // stay in inventory; consumed tools are spent below after all checks pass.
+      const toolReqs: { itemId: string | null; name: string; consumed: boolean }[] =
+        Array.isArray((recipe as any).toolItems) ? (recipe as any).toolItems : [];
+      type ToolMatch = { name: string; consumed: boolean; matches: { id: string; quantity: number }[]; have: number };
+      const toolMatches: ToolMatch[] = [];
+      for (const t of toolReqs) {
+        const owned = inventory.filter(inv => {
+          if (t.itemId) return inv.templateItemId === t.itemId;
+          if (t.name) return inv.name === t.name;
+          return false;
+        });
+        const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
+        toolMatches.push({ name: t.name || '?', consumed: !!t.consumed, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
+      }
+      const missingTools = toolMatches.filter(m => m.have < 1);
+      if (missingTools.length > 0) {
+        return res.status(400).json({ error: "Missing required tools", missing: missingTools.map(m => ({ name: m.name, need: 1, have: m.have })) });
+      }
+
       // Optional resource costs (energy / mana / hp). Validate before consuming.
       const costEnergy = (recipe as any).costEnergyEnabled ? Math.max(0, (recipe as any).costEnergy ?? 0) : 0;
       const costMana = (recipe as any).costManaEnabled ? Math.max(0, (recipe as any).costMana ?? 0) : 0;
@@ -9279,6 +9330,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateItem(owned.id, { quantity: owned.quantity - need });
             need = 0;
           }
+        }
+      }
+
+      // Consume one of each consumed tool (non-consumed tools are left intact).
+      for (const tm of toolMatches) {
+        if (!tm.consumed) continue;
+        let need = 1;
+        for (const owned of tm.matches) {
+          if (need <= 0) break;
+          if (owned.quantity <= need) { await storage.deleteItem(owned.id); need -= owned.quantity; }
+          else { await storage.updateItem(owned.id, { quantity: owned.quantity - need }); need = 0; }
         }
       }
 

@@ -160,5 +160,13 @@ export interface DialogProps<T = unknown> {
    * conditionals (e.g. mana, crafter items, AAv2-only template panels).
    */
   campaignSystem?: string;
+  /**
+   * Optional host-rendered extras for crafter items. When provided, the dialog
+   * renders this slot in place of the bundled simple crafter-recipe editor,
+   * letting the host supply richer editors (repair recipes, recipe-template
+   * linking, tool requirements) that persist via dedicated endpoints keyed by
+   * the saved item id. `itemId` is undefined until the item has been saved once.
+   */
+  renderCrafterExtras?: (ctx: { itemId?: string }) => ReactNode;
 }
 

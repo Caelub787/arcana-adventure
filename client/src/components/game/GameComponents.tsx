@@ -27749,6 +27749,15 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     }, 0);
   };
 
+  const toolHaveCount = (tool: any) => {
+    return inventory.reduce((sum, inv) => {
+      let match = false;
+      if (tool.itemId) match = inv.templateItemId === tool.itemId;
+      else if (tool.name) match = inv.name === tool.name;
+      return sum + (match ? (inv.quantity || 1) : 0);
+    }, 0);
+  };
+
   const characterSkillValue = (name: string): number | null => {
     if (!name) return null;
     const target = name.trim().toLowerCase();
@@ -27790,6 +27799,8 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
       <div className="space-y-1.5">
         {filteredRecipes.map((r: any) => {
           const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
+          const toolReqs = Array.isArray(r.toolItems) ? r.toolItems : [];
+          const toolsOk = toolReqs.every((t: any) => toolHaveCount(t) >= 1);
           const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
           const skillMin = r.requiredSkillMinValue ?? 0;
           const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
@@ -27805,7 +27816,7 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
           const eligible = isRepair ? eligibleRepairItems(r) : [];
           const selectedTargetId = repairTargetByRecipe[r.id] || '';
           const repairTargetOk = !isRepair || (!!selectedTargetId && eligible.some((e: any) => e.id === selectedTargetId));
-          const canDoIt = canCraft && allHave && skillOk && costsOk && repairTargetOk;
+          const canDoIt = canCraft && allHave && skillOk && costsOk && toolsOk && repairTargetOk;
           const isOpen = expandedId === r.id;
           return (
             <div key={r.id} className="border border-stone-700 rounded bg-stone-900/40 overflow-hidden">
@@ -27878,6 +27889,25 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                               • {r.costHp ?? 0} HP <span className="text-stone-500">— have {charH}</span>
                             </li>
                           )}
+                        </ul>
+                      </div>
+                    )}
+                    {toolReqs.length > 0 && (
+                      <div>
+                        <div className="text-stone-500 mb-0.5">Required tools / items:</div>
+                        <ul className="ml-3 space-y-0.5">
+                          {toolReqs.map((t: any, ti: number) => {
+                            const have = toolHaveCount(t);
+                            return (
+                              <li
+                                key={t.itemId || t.name || ti}
+                                className={have >= 1 ? 'text-green-400' : 'text-red-400'}
+                                data-testid={`tool-req-${r.id}-${ti}`}
+                              >
+                                • {t.name || 'Item'}{t.consumed ? ' (consumed)' : ' (not consumed)'} <span className="text-stone-500">— have {have}</span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}

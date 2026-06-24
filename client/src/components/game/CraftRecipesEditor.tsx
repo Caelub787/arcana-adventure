@@ -65,6 +65,8 @@ interface DraftRecipe {
   isRepairRecipe?: boolean;
   repairTargetTypeId?: string | null;
   repairAmount?: number;
+  // Optional required inventory items: non-consumed "tools" + consumed reagents.
+  toolItems?: { itemId: string | null; name: string; consumed: boolean }[];
 }
 
 const ATTRIBUTES = ['none', 'might', 'finesse', 'wit', 'presence', 'will', 'craft'];
@@ -95,6 +97,7 @@ function newRecipe(): DraftRecipe {
     isRepairRecipe: false,
     repairTargetTypeId: null,
     repairAmount: 1,
+    toolItems: [],
   };
 }
 
@@ -419,6 +422,9 @@ function RecipeRow({
     isRepairRecipe: !!recipe.isRepairRecipe,
     repairTargetTypeId: recipe.repairTargetTypeId || null,
     repairAmount: recipe.repairAmount ?? 1,
+    toolItems: Array.isArray(recipe.toolItems)
+      ? recipe.toolItems.map((t: any) => ({ itemId: t.itemId ?? null, name: t.name || '', consumed: !!t.consumed }))
+      : [],
   }));
 
   const isV3 = systemSlug === 'aa-v3';
@@ -801,6 +807,65 @@ function RecipeRow({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Required tools / consumed reagents */}
+          <div className="border border-stone-700 rounded p-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-amber-500">Required Tools / Items</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-amber-400 hover:text-amber-300"
+                onClick={() => setDraft({ ...draft, toolItems: [...(draft.toolItems || []), { itemId: null, name: '', consumed: false }] })}
+                data-testid={`button-add-tool-${recipe.id}`}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add
+              </Button>
+            </div>
+            <p className="text-[11px] text-stone-500 mb-2">
+              Items the character must have to craft. Leave "consumed" off for a tool that stays in the inventory; turn it on for an item that is used up.
+            </p>
+            {(draft.toolItems || []).length === 0 ? (
+              <p className="text-xs text-stone-500 italic">No required tools.</p>
+            ) : (
+              <div className="space-y-2">
+                {(draft.toolItems || []).map((tool, ti) => (
+                  <div key={ti} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center" data-testid={`tool-row-${recipe.id}-${ti}`}>
+                    <div>
+                      {itemPicker(tool.itemId, (id, name) => {
+                        const next = [...(draft.toolItems || [])];
+                        next[ti] = { ...next[ti], itemId: id, name: name || next[ti].name };
+                        setDraft({ ...draft, toolItems: next });
+                      })}
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-stone-300 whitespace-nowrap">
+                      <Switch
+                        checked={!!tool.consumed}
+                        onCheckedChange={(c) => {
+                          const next = [...(draft.toolItems || [])];
+                          next[ti] = { ...next[ti], consumed: !!c };
+                          setDraft({ ...draft, toolItems: next });
+                        }}
+                        data-testid={`switch-tool-consumed-${recipe.id}-${ti}`}
+                      />
+                      Consumed
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                      onClick={() => setDraft({ ...draft, toolItems: (draft.toolItems || []).filter((_, i) => i !== ti) })}
+                      data-testid={`button-remove-tool-${recipe.id}-${ti}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">

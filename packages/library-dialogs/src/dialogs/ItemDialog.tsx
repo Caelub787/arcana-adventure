@@ -279,7 +279,7 @@ const FRESH: ItemDraft = {
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
-  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem, mode,
+  open, onOpenChange, initialValue, onSaved, onCancel, host, campaignSystem, mode, renderCrafterExtras,
 }) => {
   const [draft, setDraft] = React.useState<ItemDraft>(FRESH);
   const [saving, setSaving] = React.useState(false);
@@ -1122,11 +1122,15 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
 
           {(aav2 || aav3) && it === "crafter" && (
             <Section title="Crafting recipes (crafter item)">
-              <CraftRecipesEditor
-                value={draft.craftRecipes ?? []}
-                onChange={(craftRecipes) => set({ craftRecipes })}
-                host={host}
-              />
+              {renderCrafterExtras
+                ? renderCrafterExtras({ itemId: draft.id })
+                : (
+                  <CraftRecipesEditor
+                    value={draft.craftRecipes ?? []}
+                    onChange={(craftRecipes) => set({ craftRecipes })}
+                    host={host}
+                  />
+                )}
             </Section>
           )}
 

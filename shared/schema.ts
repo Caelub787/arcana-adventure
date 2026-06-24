@@ -699,6 +699,11 @@ export const craftRecipes = pgTable("craft_recipes", {
   isRepairRecipe: boolean("is_repair_recipe").default(false).notNull(),
   repairTargetTypeId: varchar("repair_target_type_id"),
   repairAmount: integer("repair_amount").default(1).notNull(),
+  // Optional required inventory items to craft/repair. Each entry references an
+  // admin/library item (itemId) plus a display name; `consumed: true` removes the
+  // item on use (a spent reagent), `consumed: false` is a non-expended tool that
+  // must merely be present. Matched in inventory by templateItemId then name.
+  toolItems: jsonb("tool_items").$type<{ itemId: string | null; name: string; consumed: boolean }[]>().default([]).notNull(),
   // When true, this recipe is the item's OWN build recipe (the ingredients
   // needed to craft this item). It lives on parentItemId = the item itself
   // with outputItemId = the item itself, and is excluded from the crafter's

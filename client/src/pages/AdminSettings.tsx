@@ -333,6 +333,21 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
       queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', id] });
     }
   };
+
+  // Rich crafter-recipe editor for the package ItemDialog. Renders the full
+  // recipe editor (incl. repair recipes + tool requirements) and recipe-template
+  // linking, keyed by the saved item id. New crafter items must be saved once
+  // before recipes can be attached (they persist via dedicated endpoints).
+  const renderCrafterExtras = ({ itemId }: { itemId?: string }) => itemId ? (
+    <div className="space-y-3">
+      <CraftRecipesEditor itemId={itemId} systemSlug={systemSlug} />
+      <CrafterTemplateLinksPanel itemId={itemId} systemSlug={systemSlug} personal={personalMode} />
+    </div>
+  ) : (
+    <p className="text-xs text-stone-500 italic" data-testid="text-crafter-save-first">
+      Save the Crafter item first, then reopen it to add recipes, repair options, and required tools.
+    </p>
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -1322,6 +1337,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               mode="create"
               host={itemDialogHost}
               campaignSystem={systemSlug}
+              renderCrafterExtras={renderCrafterExtras}
               onSaved={(saved) => {
                 invalidateItemQueries(saved.id);
                 setShowAddItem(false);
@@ -1337,6 +1353,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 initialValue={itemToDraft(editingItem)}
                 host={itemDialogHost}
                 campaignSystem={systemSlug}
+                renderCrafterExtras={renderCrafterExtras}
                 onSaved={(saved) => {
                   invalidateItemQueries(saved.id);
                   setEditingItem(null);
