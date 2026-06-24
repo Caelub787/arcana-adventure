@@ -34,10 +34,10 @@ export type BuildRecipeDraft = {
 type PickerItem = { id: string; name: string; price: number; currency: string };
 
 // Copper-equivalent value of one unit of each currency.
-const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
+export const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
 
 // Express an EXACT copper amount as the largest single denomination.
-function denominate(copper: number): { price: number; currency: string } {
+export function denominate(copper: number): { price: number; currency: string } {
   if (copper <= 0) return { price: 0, currency: "copper" };
   if (copper % 1000 === 0) return { price: copper / 1000, currency: "platinum" };
   if (copper % 100 === 0) return { price: copper / 100, currency: "gold" };
