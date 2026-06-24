@@ -615,9 +615,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
       }
       return updated;
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
       queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
+      queryClient.invalidateQueries({ queryKey: ['spell-icon', vars.id] });
       setEditingSpell(null);
       toast({ title: 'Spell Updated', description: 'Spell updated successfully' });
     },
@@ -747,8 +748,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
   const duplicateSpellMutation = useMutation({
     mutationFn: (id: string) => api.duplicateSystemSpell(id),
-    onSuccess: () => {
+    onSuccess: (duplicated: any) => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      if (duplicated?.id) {
+        queryClient.invalidateQueries({ queryKey: ['spell-icon', duplicated.id] });
+      }
       toast({ title: 'Spell Duplicated', description: 'Spell and all its rolls have been duplicated.' });
     },
     onError: (error: any) => {
