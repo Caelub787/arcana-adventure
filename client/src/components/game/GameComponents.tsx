@@ -21606,6 +21606,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <SelectItem value="spellbook">Spellbooks</SelectItem>
                       <SelectItem value="scroll">Scrolls</SelectItem>
                       <SelectItem value="rune">Runes</SelectItem>
+                      {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
+                        <SelectItem value="crafter">Crafter</SelectItem>
+                      )}
                       <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                     </SelectContent>
                   </Select>

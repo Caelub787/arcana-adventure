@@ -1342,6 +1342,13 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 invalidateItemQueries(saved.id);
                 setShowAddItem(false);
                 toast({ title: 'Item Created', description: 'System item created successfully' });
+                // Crafter items persist recipes/repair/tools via dedicated
+                // id-keyed endpoints, so those editors only light up once a row
+                // exists. Auto-reopen the new crafter item in edit mode so the
+                // GM can configure them immediately — no manual save-and-reopen.
+                if ((saved as Item).itemType === 'crafter') {
+                  setEditingItem(saved as Item);
+                }
               }}
             />
 
@@ -4332,6 +4339,9 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
               <SelectItem value="spellbook">Spellbooks</SelectItem>
               <SelectItem value="scroll">Scrolls</SelectItem>
               <SelectItem value="rune">Runes</SelectItem>
+              {(systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && (
+                <SelectItem value="crafter">Crafter</SelectItem>
+              )}
               <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
             </SelectContent>
           </Select>
