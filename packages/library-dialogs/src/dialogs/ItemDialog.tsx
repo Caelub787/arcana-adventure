@@ -21,6 +21,7 @@ import {
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
 import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRecipesEditor";
+import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
 import { isAAv2, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
 import { optionalNum } from "../lib/utils";
@@ -300,6 +301,7 @@ export interface ItemDraft {
   // Children
   rolls?: RollEntryDraft[];
   craftRecipes?: CraftRecipeDraft[];
+  buildRecipe?: BuildRecipeDraft | null;
   templateLinks?: string[];
 }
 
@@ -318,6 +320,7 @@ const FRESH: ItemDraft = {
   isContainer: false,
   rolls: [],
   craftRecipes: [],
+  buildRecipe: { outputQuantity: 1, ingredients: [] },
   templateLinks: [],
   maxSpells: 10,
   system: "aa-v2",
@@ -355,6 +358,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
           ...data,
           rolls: (data.rolls ?? []).map((r: any) => ({ ...r, _localId: r.id })),
           craftRecipes: (data.craftRecipes ?? []).map((r: any) => ({ ...r, _localId: r.id, ingredients: r.ingredients ?? [] })),
+          buildRecipe: data.buildRecipe
+            ? { id: data.buildRecipe.id, outputQuantity: data.buildRecipe.outputQuantity ?? 1, ingredients: data.buildRecipe.ingredients ?? [] }
+            : { outputQuantity: 1, ingredients: [] },
           templateLinks: data.templateLinks ?? [],
         });
       })
@@ -409,12 +415,13 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       // are recognized by the server's children-aware sync handler
       // (server/sync/children.ts) and stripped before the parent insert.
       const {
-        rolls: _rolls, craftRecipes: _cr, templateLinks: _tl,
+        rolls: _rolls, craftRecipes: _cr, buildRecipe: _br, templateLinks: _tl,
         ...parentFields
       } = draft;
       const payload: any = { ...parentFields };
       payload.rolls = (draft.rolls ?? []).map(({ _localId, templateName, templatePriority, templateUseOwnOrder, templateOwnerKey, ...r }) => r);
       payload.craftRecipes = (draft.craftRecipes ?? []).map(({ _localId, ...r }) => r);
+      payload.buildRecipe = draft.buildRecipe ?? { outputQuantity: 1, ingredients: [] };
       payload.templateLinks = draft.templateLinks ?? [];
       const env = editing
         ? await host.transport.patch<ItemDraft>("item", draft.id!, payload)
@@ -1115,6 +1122,17 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 value={draft.craftRecipes ?? []}
                 onChange={(craftRecipes) => set({ craftRecipes })}
                 host={host}
+              />
+            </Section>
+          )}
+
+          {(aav2 || aav3) && (
+            <Section title="Build recipe & recommended price">
+              <ItemBuildRecipeEditor
+                value={draft.buildRecipe ?? { outputQuantity: 1, ingredients: [] }}
+                onChange={(buildRecipe) => set({ buildRecipe })}
+                host={host}
+                onApplyPrice={(price, currency) => set({ price, currency })}
               />
             </Section>
           )}

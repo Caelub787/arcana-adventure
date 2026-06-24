@@ -1153,6 +1153,22 @@ class ApiClient {
   async deleteCraftRecipe(recipeId: string): Promise<void> {
     return this.request(`/admin/recipes/${recipeId}`, { method: 'DELETE' });
   }
+  // Item build recipe (the item's OWN crafting recipe)
+  async getItemBuildRecipe(itemId: string): Promise<{ buildRecipe: any | null }> {
+    return this.request(`/admin/items/${itemId}/build-recipe`);
+  }
+  async saveItemBuildRecipe(itemId: string, data: { outputQuantity: number; ingredients: any[] }): Promise<{ buildRecipe: any }> {
+    return this.request(`/admin/items/${itemId}/build-recipe`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteItemBuildRecipe(itemId: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/items/${itemId}/build-recipe`, { method: 'DELETE' });
+  }
+  async getItemsWithBuildRecipes(system: string = 'aa-v2', personal?: boolean): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>> {
+    return this.request(`/admin/items-with-build-recipes?system=${encodeURIComponent(system)}${personal ? '&personal=1' : ''}`);
+  }
+  async addItemRecipeToTemplate(templateId: string, itemId: string): Promise<any> {
+    return this.request(`/admin/crafter-recipe-templates/${templateId}/add-item-recipe`, { method: 'POST', body: JSON.stringify({ itemId }) });
+  }
   async craftRecipe(itemId: string, body: { recipeId: string; characterId: string }): Promise<any> {
     return this.request(`/items/${itemId}/craft`, {
       method: 'POST',

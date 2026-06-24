@@ -695,6 +695,11 @@ export const craftRecipes = pgTable("craft_recipes", {
   isRepairRecipe: boolean("is_repair_recipe").default(false).notNull(),
   repairTargetTypeId: varchar("repair_target_type_id"),
   repairAmount: integer("repair_amount").default(1).notNull(),
+  // When true, this recipe is the item's OWN build recipe (the ingredients
+  // needed to craft this item). It lives on parentItemId = the item itself
+  // with outputItemId = the item itself, and is excluded from the crafter's
+  // makeable-recipe list (getCraftRecipesByItem filters it out).
+  isBuildRecipe: boolean("is_build_recipe").default(false).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
 });
 export const insertCraftRecipeSchema = createInsertSchema(craftRecipes).omit({ id: true });

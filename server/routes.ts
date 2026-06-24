@@ -8334,6 +8334,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ---- Item build recipe (an item's OWN crafting recipe; any item type) ----
+  // Read this item's build recipe (ingredients needed to craft it), or null.
+  app.get("/api/admin/items/:itemId/build-recipe", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
+      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await enforceLibraryRead(req, res, item.createdByUserId)) return;
+      const recipe = await storage.getItemBuildRecipe(item.id);
+      res.json({ buildRecipe: recipe ?? null });
+    } catch (err: any) {
+      console.error('[BuildRecipe] get error:', err);
+      res.status(500).json({ error: "Failed to load build recipe" });
+    }
+  });
+
+  // Create/replace this item's build recipe.
+  app.put("/api/admin/items/:itemId/build-recipe", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
+      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      const outputQuantity = Math.max(1, Number((req.body || {}).outputQuantity) || 1);
+      const ingredients = ((req.body || {}).ingredients || []).map((ing: unknown) =>
+        insertCraftRecipeIngredientSchema.omit({ recipeId: true }).parse(ing)
+      );
+      const recipe = await storage.saveItemBuildRecipe(item.id, outputQuantity, ingredients, item.name);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json({ buildRecipe: recipe });
+    } catch (err: any) {
+      console.error('[BuildRecipe] save error:', err);
+      res.status(400).json({ error: err?.message || "Failed to save build recipe" });
+    }
+  });
+
+  // Delete this item's build recipe.
+  app.delete("/api/admin/items/:itemId/build-recipe", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
+      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
+      await storage.deleteItemBuildRecipe(item.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[BuildRecipe] delete error:', err);
+      res.status(400).json({ error: err?.message || "Failed to delete build recipe" });
+    }
+  });
+
+  // List library items that have an authored build recipe (for the "add an
+  // existing item recipe into a group" picker).
+  app.get("/api/admin/items-with-build-recipes", requireAuth, async (req, res) => {
+    try {
+      const system = (req.query.system as string) || 'aa-v2';
+      if (system !== 'aa-v2' && system !== 'aa-v3') return res.json([]);
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.query.personal === '1';
+      const ownerScope = (isA && !personal) ? undefined : [req.session.userId!];
+      const list = await storage.getItemsWithBuildRecipes(system, ownerScope);
+      res.json(list);
+    } catch (err: any) {
+      console.error('[BuildRecipe] list error:', err);
+      res.status(500).json({ error: "Failed to list items with build recipes" });
+    }
+  });
+
   // Resolve auth + system for a recipe whose parent is either an item OR a
   // crafter recipe template. Returns {ok:true, recipe, system} on success or
   // sends a 4xx and returns {ok:false} on failure.
@@ -8567,6 +8636,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error('[CrafterTemplates] create recipe error:', err);
       res.status(400).json({ error: err?.message || "Failed to create template recipe" });
+    }
+  });
+
+  // Add an already-authored item build recipe INTO a template (group). Copies
+  // the item's build recipe ingredients/output onto the template as a new
+  // template recipe and fans out copies to all linked items.
+  app.post("/api/admin/crafter-recipe-templates/:id/add-item-recipe", requireAuth, async (req, res) => {
+    try {
+      const tpl = await storage.getCrafterRecipeTemplate(req.params.id);
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return;
+      const itemId = (req.body || {}).itemId as string;
+      if (!itemId) return res.status(400).json({ error: "itemId is required" });
+      const item = await storage.getItem(itemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
+      if (!await enforceLibraryRead(req, res, item.createdByUserId)) return;
+      if (item.system !== tpl.system) return res.status(400).json({ error: "Item and template belong to different systems" });
+      const buildRecipe = await storage.getItemBuildRecipe(itemId);
+      if (!buildRecipe) return res.status(400).json({ error: "Item has no build recipe" });
+      const recipeFields = {
+        name: item.name,
+        outputItemId: item.id,
+        outputQuantity: buildRecipe.outputQuantity,
+        noRoll: true,
+      };
+      const ingredients = buildRecipe.ingredients.map(({ id: _i, recipeId: _r, ...x }: any) => x);
+      const created = await storage.createCraftRecipe(
+        { ...recipeFields, parentTemplateId: tpl.id, parentItemId: null } as any,
+        ingredients,
+        [],
+      );
+      const linkedItems = await storage.getItemsLinkedToCrafterTemplate(tpl.id);
+      for (const linkedId of linkedItems) {
+        await storage.createCraftRecipe(
+          { ...recipeFields, parentItemId: linkedId, parentTemplateId: null, fromTemplateRecipeId: created.id } as any,
+          ingredients,
+          [],
+        );
+      }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json(created);
+    } catch (err: any) {
+      console.error('[CrafterTemplates] add item recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to add item recipe to template" });
     }
   });
 

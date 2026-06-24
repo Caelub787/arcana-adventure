@@ -72,21 +72,25 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
     },
     get: async <T,>(kind: SyncKind, id: string): Promise<SyncEnvelope<T>> => {
       if (kind === 'item') {
-        // Fail-closed: do NOT swallow child-load errors. If any of the four
+        // Build recipes only exist in AA V2 / V3 libraries.
+        const supportsBuild = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+        // Fail-closed: do NOT swallow child-load errors. If any of the
         // fetches fails (network/auth/transient), let it propagate so the
         // dialog refuses to hydrate rather than presenting empty children
         // that a subsequent save would treat as authoritative deletions.
-        const [item, rolls, craftRecipes, links] = await Promise.all([
+        const [item, rolls, craftRecipes, links, buildRecipeRes] = await Promise.all([
           api.getSystemItem(id),
           api.getItemRolls(id),
           api.getCraftRecipes(id),
           api.getItemTemplateLinks(id),
+          supportsBuild ? api.getItemBuildRecipe(id) : Promise.resolve({ buildRecipe: null }),
         ]);
         const data = {
           ...item,
           rolls,
           craftRecipes,
           templateLinks: links.templateIds,
+          buildRecipe: buildRecipeRes.buildRecipe,
         } as unknown as T;
         return envelope(kind, id, data);
       }
@@ -107,8 +111,9 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
     },
     upsert: async <T,>(kind: SyncKind, body: T & { externalId?: string; externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> => {
       if (kind === 'item') {
-        const draft = body as unknown as ItemDraft;
-        const { rolls = [], craftRecipes = [], templateLinks, ...itemFields } = draft;
+        const supportsBuild = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+        const draft = body as unknown as ItemDraft & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null };
+        const { rolls = [], craftRecipes = [], templateLinks, buildRecipe, ...itemFields } = draft;
         const created = await api.createSystemItem({
           ...(itemFields as Partial<ApiItem>),
           system: systemSlug,
@@ -136,6 +141,13 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
 
         if (Array.isArray(templateLinks) && templateLinks.length > 0) {
           await api.setItemTemplateLinks(created.id, templateLinks);
+        }
+
+        if (supportsBuild && buildRecipe && Array.isArray(buildRecipe.ingredients) && buildRecipe.ingredients.length > 0) {
+          await api.saveItemBuildRecipe(created.id, {
+            outputQuantity: buildRecipe.outputQuantity ?? 1,
+            ingredients: buildRecipe.ingredients.map((ing: any) => ({ itemId: ing.itemId ?? null, itemName: ing.itemName ?? '', quantity: ing.quantity ?? 1 })),
+          });
         }
 
         return envelope(kind, created.id, created as unknown as T);
@@ -168,8 +180,9 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
     },
     patch: async <T,>(kind: SyncKind, id: string, body: Partial<T> & { externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> => {
       if (kind === 'item') {
-        const draft = body as unknown as Partial<ItemDraft>;
-        const { rolls, craftRecipes, templateLinks, ...itemFields } = draft;
+        const supportsBuild = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+        const draft = body as unknown as Partial<ItemDraft> & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null };
+        const { rolls, craftRecipes, templateLinks, buildRecipe, ...itemFields } = draft;
         const updated = await api.updateSystemItem(id, itemFields as Partial<ApiItem>);
 
         if (Array.isArray(rolls)) {
@@ -224,6 +237,18 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
 
         if (Array.isArray(templateLinks)) {
           await api.setItemTemplateLinks(id, templateLinks);
+        }
+
+        if (supportsBuild && buildRecipe !== undefined) {
+          const ingredients = buildRecipe?.ingredients;
+          if (Array.isArray(ingredients) && ingredients.length > 0) {
+            await api.saveItemBuildRecipe(id, {
+              outputQuantity: buildRecipe?.outputQuantity ?? 1,
+              ingredients: ingredients.map((ing: any) => ({ itemId: ing.itemId ?? null, itemName: ing.itemName ?? '', quantity: ing.quantity ?? 1 })),
+            });
+          } else {
+            await api.deleteItemBuildRecipe(id);
+          }
         }
 
         return envelope(kind, id, updated as unknown as T);

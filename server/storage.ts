@@ -256,6 +256,10 @@ export interface IStorage {
   updateCraftRecipe(id: string, recipe: Partial<InsertCraftRecipe>, ingredients?: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], outcomes?: Omit<InsertCraftRecipeOutcome, 'recipeId'>[]): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }) | undefined>;
   deleteCraftRecipe(id: string): Promise<void>;
   getCraftRecipesByTemplateRecipeId(fromTemplateRecipeId: string): Promise<CraftRecipe[]>;
+  getItemBuildRecipe(itemId: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[] }) | undefined>;
+  saveItemBuildRecipe(itemId: string, outputQuantity: number, ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], itemName: string): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[] }>;
+  deleteItemBuildRecipe(itemId: string): Promise<void>;
+  getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>>;
 
   // Crafter Recipe Templates
   listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null }): Promise<CrafterRecipeTemplate[]>;
@@ -5639,8 +5643,10 @@ export class DatabaseStorage implements IStorage {
   // ============================================
 
   async getCraftRecipesByItem(parentItemId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>> {
+    // Exclude the item's own build recipe (isBuildRecipe=true) so it never
+    // appears in a crafter's makeable-recipe list or the player craft runtime.
     const recipes = await db.select().from(craftRecipes)
-      .where(eq(craftRecipes.parentItemId, parentItemId))
+      .where(and(eq(craftRecipes.parentItemId, parentItemId), eq(craftRecipes.isBuildRecipe, false)))
       .orderBy(craftRecipes.sortOrder);
     if (recipes.length === 0) return [];
     const ids = recipes.map(r => r.id);
@@ -5705,6 +5711,73 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCraftRecipe(id: string): Promise<void> {
     await db.delete(craftRecipes).where(eq(craftRecipes.id, id));
+  }
+
+  // ---- Item build recipe (the item's OWN crafting recipe) ----
+  async getItemBuildRecipe(itemId: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[] }) | undefined> {
+    const [recipe] = await db.select().from(craftRecipes)
+      .where(and(eq(craftRecipes.parentItemId, itemId), eq(craftRecipes.isBuildRecipe, true)));
+    if (!recipe) return undefined;
+    const ingredients = await db.select().from(craftRecipeIngredients)
+      .where(eq(craftRecipeIngredients.recipeId, recipe.id)).orderBy(craftRecipeIngredients.sortOrder);
+    return { ...recipe, ingredients };
+  }
+
+  async saveItemBuildRecipe(
+    itemId: string,
+    outputQuantity: number,
+    ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[],
+    itemName: string,
+  ): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[] }> {
+    const existing = await this.getItemBuildRecipe(itemId);
+    if (existing) {
+      await db.update(craftRecipes)
+        .set({ outputQuantity, outputItemId: itemId, name: itemName })
+        .where(eq(craftRecipes.id, existing.id));
+      await db.delete(craftRecipeIngredients).where(eq(craftRecipeIngredients.recipeId, existing.id));
+      const ingRows = ingredients.length > 0
+        ? await db.insert(craftRecipeIngredients).values(ingredients.map((ing, i) => ({ ...ing, recipeId: existing.id, sortOrder: ing.sortOrder ?? i }))).returning()
+        : [];
+      const [updated] = await db.select().from(craftRecipes).where(eq(craftRecipes.id, existing.id));
+      return { ...updated, ingredients: ingRows };
+    }
+    const [created] = await db.insert(craftRecipes).values({
+      parentItemId: itemId,
+      isBuildRecipe: true,
+      name: itemName,
+      outputItemId: itemId,
+      outputQuantity,
+      noRoll: true,
+    }).returning();
+    const ingRows = ingredients.length > 0
+      ? await db.insert(craftRecipeIngredients).values(ingredients.map((ing, i) => ({ ...ing, recipeId: created.id, sortOrder: ing.sortOrder ?? i }))).returning()
+      : [];
+    return { ...created, ingredients: ingRows };
+  }
+
+  async deleteItemBuildRecipe(itemId: string): Promise<void> {
+    const existing = await this.getItemBuildRecipe(itemId);
+    if (existing) await db.delete(craftRecipes).where(eq(craftRecipes.id, existing.id));
+  }
+
+  // Items (in a given library scope) that have an authored build recipe, for
+  // the "add an existing item-recipe into a group" picker.
+  async getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>> {
+    const rows = await db.select({
+      id: items.id,
+      name: items.name,
+      image: items.image,
+      price: items.price,
+      currency: items.currency,
+      itemType: items.itemType,
+      createdByUserId: items.createdByUserId,
+    }).from(items)
+      .innerJoin(craftRecipes, and(eq(craftRecipes.parentItemId, items.id), eq(craftRecipes.isBuildRecipe, true)))
+      .where(and(eq(items.system, system), eq(items.isTemplate, true)));
+    const filtered = ownerScope
+      ? rows.filter(r => r.createdByUserId != null && ownerScope.includes(r.createdByUserId))
+      : rows;
+    return filtered.map(({ createdByUserId: _c, ...r }) => r);
   }
 
   async getCraftRecipesByTemplate(parentTemplateId: string): Promise<Array<CraftRecipe & { ingredients: CraftRecipeIngredient[]; outcomes: CraftRecipeOutcome[] }>> {

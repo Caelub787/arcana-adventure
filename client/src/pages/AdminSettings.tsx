@@ -11789,6 +11789,53 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
   );
 }
 
+function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: string; systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState('');
+  const { data: items = [] } = useQuery<Array<{ id: string; name: string; price: number; currency: string }>>({
+    queryKey: ['items-with-build-recipes', systemSlug],
+    queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
+    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
+  });
+
+  const addMut = useMutation({
+    mutationFn: (itemId: string) => api.addItemRecipeToTemplate(templateId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['craft-recipes-template', templateId] });
+      setSelectedId('');
+      toast({ title: 'Recipe added to template' });
+    },
+    onError: (err: any) => toast({ title: 'Failed to add recipe', description: err?.message || String(err), variant: 'destructive' }),
+  });
+
+  return (
+    <div data-testid="panel-add-item-recipe">
+      <Label className="text-stone-300">Add an existing item recipe to this group</Label>
+      <p className="text-xs text-stone-400 mb-2">Pick an item that already has a build recipe to copy its recipe into this template.</p>
+      <div className="flex gap-2 items-center">
+        <Select value={selectedId} onValueChange={setSelectedId}>
+          <SelectTrigger className="bg-stone-800 border-stone-700 flex-1" data-testid="select-item-build-recipe">
+            <SelectValue placeholder={items.length ? 'Select an item…' : 'No items with build recipes'} />
+          </SelectTrigger>
+          <SelectContent className="bg-stone-800 border-stone-700 text-stone-200">
+            {items.map((it) => (
+              <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          onClick={() => selectedId && addMut.mutate(selectedId)}
+          disabled={!selectedId || addMut.isPending}
+          className="bg-amber-700 hover:bg-amber-600"
+          data-testid="button-add-item-recipe-to-template"
+        >
+          <Plus className="h-4 w-4 mr-1" /> Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CrafterRecipeTemplateEditDialog({ open, templateId, systemSlug, onOpenChange }: {
   open: boolean;
   templateId: string;
@@ -11845,6 +11892,9 @@ function CrafterRecipeTemplateEditDialog({ open, templateId, systemSlug, onOpenC
                     <Save className="h-4 w-4 mr-1" /> Save details
                   </Button>
                 </div>
+              </div>
+              <div className="pt-4 border-t border-stone-700">
+                <AddItemRecipeToTemplate templateId={templateId} systemSlug={systemSlug} />
               </div>
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor templateId={templateId} systemSlug={systemSlug} />
