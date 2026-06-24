@@ -1774,7 +1774,7 @@ export class DatabaseStorage implements IStorage {
   // roll-template clean-break decision in copyRollEntriesToOwner. Ingredient
   // and outcome item references are preserved as-is (they point at library/
   // admin items that still exist). AA V2 crafter items only.
-  private async copyCraftRecipesToItem(sourceItemId: string, newItemId: string): Promise<void> {
+  async copyCraftRecipesToItem(sourceItemId: string, newItemId: string): Promise<void> {
     const recipes = await this.getCraftRecipesByItem(sourceItemId);
     if (recipes.length === 0) return;
     for (const r of recipes) {

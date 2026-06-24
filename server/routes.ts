@@ -9342,6 +9342,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { ...reData, ownerId: newItem.id };
         }));
       }
+      // Copy build recipe (isBuildRecipe=true) — the item's own crafting recipe
+      const buildRecipe = await storage.getItemBuildRecipe(req.params.id);
+      if (buildRecipe) {
+        await storage.saveItemBuildRecipe(
+          newItem.id,
+          buildRecipe.outputQuantity ?? 1,
+          buildRecipe.ingredients.map(({ id: _i, recipeId: _r, ...ing }) => ing),
+          newItem.name,
+        );
+      }
+      // Copy crafter recipes (isBuildRecipe=false) — recipes a crafter item can produce
+      await storage.copyCraftRecipesToItem(req.params.id, newItem.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(newItem);
     } catch (err) {
