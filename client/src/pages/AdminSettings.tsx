@@ -11600,10 +11600,14 @@ function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: stri
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
+  const templatesKey = ['crafter-recipe-templates', systemSlug, personal];
   const createMut = useMutation({
     mutationFn: (data: any) => api.createCrafterRecipeTemplate({ ...data, system: systemSlug, ...(personal ? { personal: true } : {}) }),
     onSuccess: (created: any) => {
-      queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] });
+      // Update the list cache directly so it appears instantly (no blocking refetch).
+      queryClient.setQueryData<any[]>(templatesKey, (old = []) =>
+        old.some((t) => t.id === created.id) ? old : [...old, created]
+      );
       setCreating(false);
       setEditingId(created.id);
     },
@@ -11612,8 +11616,17 @@ function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: stri
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCrafterRecipeTemplate(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['crafter-recipe-templates'] }),
-    onError: (err: any) => toast({ title: 'Delete failed', description: err?.message || String(err), variant: 'destructive' }),
+    // Optimistically remove so the row disappears immediately.
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: templatesKey });
+      const previous = queryClient.getQueryData<any[]>(templatesKey);
+      queryClient.setQueryData<any[]>(templatesKey, (old = []) => old.filter((t) => t.id !== id));
+      return { previous };
+    },
+    onError: (err: any, _id, context: any) => {
+      if (context?.previous) queryClient.setQueryData(templatesKey, context.previous);
+      toast({ title: 'Delete failed', description: err?.message || String(err), variant: 'destructive' });
+    },
   });
 
   if (systemSlug !== 'aa-v2' && systemSlug !== 'aa-v3') {

@@ -8803,6 +8803,22 @@ export default function Campaign() {
             keys.forEach(key => queryClientRef.current.invalidateQueries({ queryKey: key }));
           }
         }
+        // Admin (global library) changes broadcast to ALL clients. Refresh the
+        // in-campaign pickers/lists so newly created admin content is usable on a
+        // character sheet without a page reload.
+        if (data.type === 'admin_data_changed') {
+          const cid = effectiveCampaignIdRef.current;
+          const adminQueryMap: Record<string, string[][]> = {
+            'system-items': [['system-items-summary'], ['template-items-summary'], ['system-items'], [`/api/campaigns/${cid}/template-items`]],
+            'item-templates': [['system-items-summary'], ['template-items-summary'], ['item-templates'], [`/api/campaigns/${cid}/template-items`]],
+            'system-spells': [['system-spells-summary'], ['v3-character-spells'], ['system-spells']],
+            'crafter-recipe-templates': [['crafter-recipe-templates']],
+          };
+          const keys = adminQueryMap[data.entity];
+          if (keys) {
+            keys.forEach(key => queryClientRef.current.invalidateQueries({ queryKey: key }));
+          }
+        }
         // Handle real-time character updates - update local state if it matches current character
         if (data.type === 'character_updated' && data.character) {
           const updatedChar = data.character;

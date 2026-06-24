@@ -18732,8 +18732,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         variant: "destructive",
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+    onSuccess: (created: any, _variables, context: any) => {
+      // Swap the optimistic temp item for the server's real row directly (no
+      // blocking refetch). Other users still receive it live via the WS broadcast.
+      // Replace the temp row if present, otherwise append so the created item is
+      // never lost if the optimistic row went missing.
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) => {
+        const found = old.some((it) => it.id === context?.tempId);
+        return found
+          ? old.map((it) => (it.id === context?.tempId ? created : it))
+          : [...old.filter((it) => it.id !== created.id), created];
+      });
       toast({
         title: "Item Added",
         description: "Item has been added to inventory",
