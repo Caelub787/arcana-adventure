@@ -82,6 +82,7 @@ import {
   type V3Technique, type InsertV3Technique, v3Techniques,
   type V3TechniqueGroup, type InsertV3TechniqueGroup, v3TechniqueGroups,
   type V3TechniqueGroupMember, v3TechniqueGroupMembers,
+  type V3AmmunitionType, type InsertV3AmmunitionType, v3AmmunitionTypes,
   type V3ActionTokenType, type InsertV3ActionTokenType, v3ActionTokenTypes,
   type AdvancedItemType, type InsertAdvancedItemType, advancedItemTypes,
   type CharacterActionToken, characterActionTokens,
@@ -450,6 +451,11 @@ export interface IStorage {
   getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]>;
   addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<V3TechniqueGroupMember>;
   removeV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<void>;
+  getV3AmmunitionTypes(): Promise<V3AmmunitionType[]>;
+  getV3AmmunitionType(id: string): Promise<V3AmmunitionType | undefined>;
+  createV3AmmunitionType(data: InsertV3AmmunitionType): Promise<V3AmmunitionType>;
+  updateV3AmmunitionType(id: string, data: Partial<InsertV3AmmunitionType>): Promise<V3AmmunitionType | undefined>;
+  deleteV3AmmunitionType(id: string): Promise<void>;
 
   // System Skill operations (admin-defined custom skills)
   getSystemSkills(system?: string): Promise<SystemSkill[]>;
@@ -3783,6 +3789,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteV3TechniqueGroup(id: string): Promise<void> {
     await db.delete(v3TechniqueGroups).where(eq(v3TechniqueGroups.id, id));
+  }
+
+  async getV3AmmunitionTypes(): Promise<V3AmmunitionType[]> {
+    return await db.select().from(v3AmmunitionTypes).orderBy(v3AmmunitionTypes.name);
+  }
+
+  async getV3AmmunitionType(id: string): Promise<V3AmmunitionType | undefined> {
+    const [row] = await db.select().from(v3AmmunitionTypes).where(eq(v3AmmunitionTypes.id, id));
+    return row;
+  }
+
+  async createV3AmmunitionType(data: InsertV3AmmunitionType): Promise<V3AmmunitionType> {
+    const [created] = await db.insert(v3AmmunitionTypes).values(data).returning();
+    return created;
+  }
+
+  async updateV3AmmunitionType(id: string, data: Partial<InsertV3AmmunitionType>): Promise<V3AmmunitionType | undefined> {
+    const [updated] = await db.update(v3AmmunitionTypes).set(data).where(eq(v3AmmunitionTypes.id, id)).returning();
+    return updated;
+  }
+
+  async deleteV3AmmunitionType(id: string): Promise<void> {
+    await db.delete(v3AmmunitionTypes).where(eq(v3AmmunitionTypes.id, id));
   }
 
   async getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]> {

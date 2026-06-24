@@ -6874,6 +6874,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // when that is the sole satisfying path (free paths charge nothing).
       const charKnowledge = await storage.getCharacterCustomSkills(character.id);
       const charInventory = await storage.getItemsByCharacter(character.id);
+
+      // Ranged-weapon ammunition gate (Task #266). A weapon that declares an
+      // ammunitionTypeId can only fire when the character has a matching
+      // ammunition item EQUIPPED. Same rule the client enforces, re-checked here
+      // so a modified client cannot fire without ammo.
+      const v3core = await import("@shared/v3");
+      if (v3core.v3WeaponRequiresAmmo(weapon as any)) {
+        const hasAmmo = v3core.v3HasEquippedAmmo(
+          (weapon as any).ammunitionTypeId,
+          charInventory as any,
+        );
+        if (!hasAmmo) {
+          return res.status(403).json({
+            error: "You need matching ammunition equipped to use this weapon",
+            reason: "no-ammo",
+          });
+        }
+      }
+
       const eligibility = v3spells.evaluateV3ElementEligibility(
         Array.isArray(technique.requirements) ? (technique.requirements as any) : [],
         {
@@ -7797,6 +7816,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[V3 Technique Groups Read] Error:", err?.message);
       res.status(500).json({ error: "Failed to load technique groups" });
+    }
+  });
+
+  // --- AA V3 Ammunition Types (admin CRUD) ---
+  app.get("/api/admin/v3-ammunition-types", requireAdmin, async (_req, res) => {
+    try {
+      res.json(await storage.getV3AmmunitionTypes());
+    } catch (err: any) {
+      console.error("[V3 Ammunition Types List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load ammunition types" });
+    }
+  });
+
+  app.post("/api/admin/v3-ammunition-types", requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body || {};
+      if (!String(name || "").trim()) return res.status(400).json({ error: "An ammunition type name is required" });
+      const created = await storage.createV3AmmunitionType({ name: String(name).trim(), system: "aa-v3" } as any);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[V3 Ammunition Types Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create ammunition type" });
+    }
+  });
+
+  app.patch("/api/admin/v3-ammunition-types/:id", requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body || {};
+      const patch: any = {};
+      if (name !== undefined) patch.name = String(name).trim();
+      const updated = await storage.updateV3AmmunitionType(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Ammunition type not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[V3 Ammunition Types Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update ammunition type" });
+    }
+  });
+
+  app.delete("/api/admin/v3-ammunition-types/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteV3AmmunitionType(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[V3 Ammunition Types Delete] Error:", err?.message);
+      res.status(500).json({ error: "Failed to delete ammunition type" });
+    }
+  });
+
+  // Public read for ammunition types (item dialog pickers, weapon attack gate).
+  app.get("/api/v3/ammunition-types", requireAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getV3AmmunitionTypes());
+    } catch (err: any) {
+      console.error("[V3 Ammunition Types Read] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load ammunition types" });
     }
   });
 

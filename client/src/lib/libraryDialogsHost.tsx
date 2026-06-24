@@ -286,6 +286,7 @@ export function useLibraryDialogsHost(systemSlug: string, systemDisplayName: str
       imagePicker,
       techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
       advancedItemTypes: () => api.getAdvancedItemTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
+      ammunitionTypes: () => api.getV3AmmunitionTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
     }),
     [wrappedTransport, notify, imagePicker],
   );

@@ -45,7 +45,7 @@ import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -60,7 +60,7 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types';
+type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -269,6 +269,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         spellbookManager: SpellbookLibraryManager,
         techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
         advancedItemTypes: () => api.getAdvancedItemTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
+        ammunitionTypes: () => api.getV3AmmunitionTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
       }),
     [itemDialogTransport, imagePicker],
   );
@@ -1030,6 +1031,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'technique-groups' ? 'Weapon Techniques (A.A. V3)' : 
                currentView === 'action-tokens' ? 'Action Tokens (A.A. V3)' :
                currentView === 'advanced-item-types' ? 'Advanced Item Types (A.A. V3)' :
+               currentView === 'ammunition-types' ? 'Ammunition Types (A.A. V3)' :
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1076,6 +1078,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
         {currentView === 'advanced-item-types' && (
           <AdvancedItemTypesView />
+        )}
+
+        {currentView === 'ammunition-types' && (
+          <V3AmmunitionTypesView systemSlug={systemSlug} />
         )}
 
         {currentView === 'items' && (
@@ -3417,6 +3423,125 @@ function AdvancedItemTypesView() {
   );
 }
 
+// ============================================================
+// AA V3 Ammunition Types admin view (Task #266)
+// Define named ammunition types (e.g. Arrow, Bolt). Ranged weapons
+// declare which type they use; ammunition items declare which type
+// they are. V3 only.
+// ============================================================
+function V3AmmunitionTypesView({ systemSlug }: { systemSlug: string }) {
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [draft, setDraft] = useState<{ id: string | null; name: string }>({ id: null, name: '' });
+
+  const { data: types = [], isLoading } = useQuery({
+    queryKey: ['admin-v3-ammunition-types'],
+    queryFn: () => api.getAdminV3AmmunitionTypes(),
+    enabled: systemSlug === 'aa-v3',
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-v3-ammunition-types'] });
+    queryClient.invalidateQueries({ queryKey: ['v3-ammunition-types'] });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = { name: draft.name.trim() };
+      return draft.id ? api.updateV3AmmunitionType(draft.id, payload) : api.createV3AmmunitionType(payload);
+    },
+    onSuccess: () => {
+      toast({ title: draft.id ? 'Ammunition type updated' : 'Ammunition type created' });
+      setDialogOpen(false);
+      setDraft({ id: null, name: '' });
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteV3AmmunitionType(id),
+    onSuccess: () => { toast({ title: 'Ammunition type removed' }); invalidate(); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const openCreate = () => { setDraft({ id: null, name: '' }); setDialogOpen(true); };
+  const openEdit = (t: any) => { setDraft({ id: t.id, name: t.name }); setDialogOpen(true); };
+
+  if (systemSlug !== 'aa-v3') {
+    return <p className="text-stone-400" data-testid="text-ammunition-types-v3-only">Ammunition types are only available in A.A. V3.</p>;
+  }
+
+  return (
+    <div className="space-y-4" data-testid="view-ammunition-types">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-stone-950" data-testid="button-add-ammunition-type">
+          <Plus className="h-4 w-4 mr-1" /> New Ammunition Type
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-stone-400">Loading…</p>
+      ) : (types as any[]).length === 0 ? (
+        <p className="text-stone-400">No ammunition types defined yet.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(types as any[]).map((t) => (
+            <Card key={t.id} className="bg-stone-900 border-stone-700" data-testid={`card-ammunition-type-${t.id}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start gap-2">
+                  <div className="h-10 w-10 rounded bg-amber-900/40 border border-amber-700/50 flex items-center justify-center flex-shrink-0">
+                    <Crosshair className="h-5 w-5 text-amber-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-amber-400 text-sm truncate">{t.name}</CardTitle>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="text-xs border-stone-700 hover:bg-stone-800" onClick={() => openEdit(t)} data-testid={`button-edit-ammunition-type-${t.id}`}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs border-red-800 text-red-400 hover:bg-red-900/30" onClick={() => deleteMutation.mutate(t.id)} data-testid={`button-delete-ammunition-type-${t.id}`}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">{draft.id ? 'Edit Ammunition Type' : 'New Ammunition Type'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label className="text-stone-300 mb-1 block">Name *</Label>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                className="bg-stone-900 border-stone-700 text-stone-200"
+                placeholder="e.g. Arrow"
+                data-testid="input-ammunition-type-name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="border-stone-700" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-amber-600 hover:bg-amber-700 text-stone-950" onClick={() => saveMutation.mutate()} disabled={!draft.name.trim() || saveMutation.isPending} data-testid="button-save-ammunition-type">
+              {saveMutation.isPending ? 'Saving…' : draft.id ? 'Save Changes' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function DashSection({
   title,
   icon: Icon,
@@ -3524,6 +3649,19 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               iconColor="text-amber-500"
               titleColor="text-amber-500"
             />
+            {systemSlug === 'aa-v3' && (
+              <DashCard
+                onClick={() => onNavigate('ammunition-types')}
+                testId="card-ammunition-types"
+                icon={Crosshair}
+                title="Ammunition Types"
+                description="Define ammunition types (e.g. Arrow, Bolt) so ranged weapons can require matching ammo to fire"
+                hoverBorder="hover:border-amber-600"
+                iconBg="bg-amber-700/20"
+                iconColor="text-amber-500"
+                titleColor="text-amber-500"
+              />
+            )}
           </DashSection>
         )}
 

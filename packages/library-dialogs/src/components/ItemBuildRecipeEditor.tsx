@@ -227,7 +227,7 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
       </Section>
 
       {isV3 && (
-        <EntityPickerModal<PickerItem>
+        <EntityPickerModal
           open={pickerOpen}
           title="Add ingredients"
           options={items}

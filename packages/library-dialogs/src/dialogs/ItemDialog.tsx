@@ -191,6 +191,9 @@ export interface ItemDraft {
   size?: string | null;
   isHeavy?: boolean;
   ammunitionType?: string | null;
+  // AA V3 only — id of a v3_ammunition_type. On an ammunition item: the type it IS.
+  // On a weapon: the type it USES (non-null marks the weapon as ranged).
+  ammunitionTypeId?: string | null;
   weaponCategory?: string | null;
   breakChance?: number;
   price?: number;
@@ -272,6 +275,7 @@ const FRESH: ItemDraft = {
   system: "aa-v2",
   v3TechniqueGroupIds: [],
   advancedItemTypeId: null,
+  ammunitionTypeId: null,
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
@@ -283,6 +287,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [techniqueGroups, setTechniqueGroups] = React.useState<{ id: string; name: string }[]>([]);
   const [techPickerOpen, setTechPickerOpen] = React.useState(false);
   const [advancedItemTypes, setAdvancedItemTypes] = React.useState<{ id: string; name: string }[]>([]);
+  const [ammunitionTypes, setAmmunitionTypes] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
@@ -329,6 +334,14 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
     host.advancedItemTypes()
       .then(setAdvancedItemTypes)
       .catch(e => host.notify("error", `Failed to load advanced item types: ${e?.message ?? e}`));
+  }, [open, aav3, host]);
+
+  // Load assignable V3 ammunition types when the dialog opens in a V3 host.
+  React.useEffect(() => {
+    if (!open || !aav3 || !host.ammunitionTypes) { setAmmunitionTypes([]); return; }
+    host.ammunitionTypes()
+      .then(setAmmunitionTypes)
+      .catch(e => host.notify("error", `Failed to load ammunition types: ${e?.message ?? e}`));
   }, [open, aav3, host]);
 
   // Load library rune items so a GM can pre-load default runes onto a V3 item.
@@ -536,7 +549,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 {!aav3 && <Row><Checkbox checked={!!draft.canApplyEffects} onCheckedChange={v => set({ canApplyEffects: v })} /><Label>Can apply token effects</Label></Row>}
                 <div />
               </Grid3>
-              {it === "ammunition" && (
+              {it === "ammunition" && !aav3 && (
                 <Grid3 style={{ marginTop: 8 }}>
                   <div><Label>Ammunition Type</Label>
                     <Input value={draft.ammunitionType ?? ""} placeholder="arrow / bolt / bullet / dart"
@@ -551,6 +564,30 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       onChange={e => set({ breakChance: optionalNum(e.target.value) ?? 10 })} />
                   </div>
                 </Grid3>
+              )}
+              {it === "ammunition" && aav3 && host.ammunitionTypes && (
+                <div style={{ marginTop: 8 }}>
+                  <Label>Ammunition Type</Label>
+                  <Select value={draft.ammunitionTypeId ?? ""} onValueChange={v => set({ ammunitionTypeId: v || null })}>
+                    <SelectItem value="">— None —</SelectItem>
+                    {ammunitionTypes.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </Select>
+                  <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                    Which ammunition type this item is. Ranged weapons that use this type can only fire when a matching item is equipped.
+                  </p>
+                </div>
+              )}
+              {it === "weapon" && aav3 && host.ammunitionTypes && (
+                <div style={{ marginTop: 8 }}>
+                  <Label>Ranged — Ammunition Type</Label>
+                  <Select value={draft.ammunitionTypeId ?? ""} onValueChange={v => set({ ammunitionTypeId: v || null })}>
+                    <SelectItem value="">— Melee (no ammunition) —</SelectItem>
+                    {ammunitionTypes.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </Select>
+                  <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                    Pick an ammunition type to make this a ranged weapon. It can only attack when a matching ammunition item is equipped.
+                  </p>
+                </div>
               )}
               {aav3 && it === "weapon" && host.techniqueGroups && (() => {
                 const selIds = draft.v3TechniqueGroupIds ?? [];

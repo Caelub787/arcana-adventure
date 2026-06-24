@@ -249,6 +249,7 @@ export interface Item {
   weaponCategory?: string;
   isHeavy?: boolean;
   ammunitionType?: string;
+  ammunitionTypeId?: string | null;
   armorBonus?: number;
   breakChance?: number;
   armorSlot?: string;
@@ -2796,6 +2797,27 @@ class ApiClient {
     return this.request(`/admin/v3-technique-groups/${id}`, { method: 'DELETE' });
   }
 
+  // AA V3 Ammunition Types (admin CRUD + public read)
+  async getV3AmmunitionTypes(): Promise<V3AmmunitionType[]> {
+    return this.request(`/v3/ammunition-types`);
+  }
+
+  async getAdminV3AmmunitionTypes(): Promise<V3AmmunitionType[]> {
+    return this.request(`/admin/v3-ammunition-types`);
+  }
+
+  async createV3AmmunitionType(data: { name: string }): Promise<V3AmmunitionType> {
+    return this.request(`/admin/v3-ammunition-types`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateV3AmmunitionType(id: string, data: { name: string }): Promise<V3AmmunitionType> {
+    return this.request(`/admin/v3-ammunition-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteV3AmmunitionType(id: string): Promise<{ success: boolean }> {
+    return this.request(`/admin/v3-ammunition-types/${id}`, { method: 'DELETE' });
+  }
+
   // AA V3 Action Token Types (admin CRUD + character assignments)
   async getAdminV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
     return this.request(`/admin/v3-action-tokens`);
@@ -2941,6 +2963,13 @@ export interface V3TechniqueGroup {
   system: string;
   createdAt: string;
   techniqueIds: string[];
+}
+
+export interface V3AmmunitionType {
+  id: string;
+  name: string;
+  system: string;
+  createdAt: string;
 }
 
 export interface V3ActionTokenType {

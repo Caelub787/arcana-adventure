@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -27464,6 +27464,24 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
   const runeDamageBonus = aggregateRuneWeaponDamageLevelBonus(item?.socketedRunes);
   const effectiveDiceLevel = lv + runeDamageBonus;
 
+  // Ranged-weapon ammunition gate (Task #266). A weapon that declares an
+  // ammunitionTypeId can only fire when a matching ammunition item is equipped.
+  const weaponNeedsAmmo = v3WeaponRequiresAmmo(item);
+  const weaponHasAmmo = weaponNeedsAmmo
+    ? v3HasEquippedAmmo(item?.ammunitionTypeId, items ?? [])
+    : true;
+  const ammoBlocked = weaponNeedsAmmo && !weaponHasAmmo;
+  const notifyNoAmmo = () =>
+    triggerRollNotification({
+      type: 'system',
+      label: 'You need matching ammunition equipped to use this weapon.',
+      result: 0,
+      total: 0,
+      username: castChar.name || 'Unknown',
+      characterName: castChar.name || 'Unknown',
+      calculationBreakdown: 'You need matching ammunition equipped to use this weapon.',
+    });
+
   return (
     <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-v3-weapon-use">
       <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
@@ -27516,10 +27534,21 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
           <span className="text-red-400/90"> (doubled from {baseEnergy} — Exhaustion)</span>
         )}
       </p>
+      {weaponNeedsAmmo && (
+        <p className={`text-xs ${ammoBlocked ? 'text-red-400' : 'text-stone-400'}`} data-testid="text-v3-weapon-ammo-status">
+          {ammoBlocked
+            ? 'No matching ammunition equipped — equip ammo to attack.'
+            : 'Ammunition equipped.'}
+        </p>
+      )}
       <Button
         type="button"
         className="w-full bg-amber-700 hover:bg-amber-600 text-white"
-        onClick={() => castV3WeaponBaseAttack(castChar, item?.name || 'Weapon', lv, runeDamageBonus)}
+        onClick={() => {
+          if (ammoBlocked) { notifyNoAmmo(); return; }
+          castV3WeaponBaseAttack(castChar, item?.name || 'Weapon', lv, runeDamageBonus);
+        }}
+        disabled={ammoBlocked}
         data-testid="button-v3-weapon-attack"
       >
         <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(effectiveDiceLevel)})
@@ -27569,11 +27598,13 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                   type="button"
                   size="sm"
                   className="bg-amber-700 hover:bg-amber-600 text-white flex-shrink-0"
+                  disabled={ammoBlocked}
                   onClick={async () => {
                     // The server is authoritative for resources: it validates
                     // eligibility and deducts energy + any required consumable
                     // item, so a modified client can't bypass them. The dice
                     // roll itself stays client-side (display only).
+                    if (ammoBlocked) { notifyNoAmmo(); return; }
                     try {
                       const weaponId = resolveLiveOwnedItemId(item, items);
                       if (!weaponId) {

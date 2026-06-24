@@ -41,6 +41,8 @@ export interface ArcanaSessionHostOptions {
   techniqueGroups?: () => Promise<{ id: string; name: string }[]>;
   /** Bridge to Arcana's V3 advanced item type list (AA V3). */
   advancedItemTypes?: () => Promise<{ id: string; name: string }[]>;
+  /** Bridge to Arcana's V3 ammunition type list (AA V3 ranged weapons / ammo). */
+  ammunitionTypes?: () => Promise<{ id: string; name: string }[]>;
 }
 
 /**
@@ -61,5 +63,6 @@ export function arcanaSessionHostAdapter(opts: ArcanaSessionHostOptions): HostAd
     spellbookManager: opts.spellbookManager,
     techniqueGroups: opts.techniqueGroups,
     advancedItemTypes: opts.advancedItemTypes,
+    ammunitionTypes: opts.ammunitionTypes,
   };
 }

@@ -492,6 +492,10 @@ export const items = pgTable("items", {
   ammunitionType: text("ammunition_type"), // Type of ammunition: "arrow", "bolt", "bullet", "dart", etc. (only for itemType === 'ammunition')
   weaponCategory: text("weapon_category"), // Category for ranged weapons: "bow", "crossbow", "sling", "firearm", etc.
   breakChance: integer("break_chance").default(10).notNull(), // 0-100 percentage chance ammunition breaks on use
+  // AA V3 only — references v3_ammunition_types.id. On an ammunition item this is
+  // the type the item IS; on a weapon it's the type the weapon USES (a non-null
+  // value marks the weapon as ranged / ammo-requiring). No DB FK (mirrors advancedItemTypeId).
+  ammunitionTypeId: varchar("ammunition_type_id"),
   price: integer("price").default(0).notNull(), // Price value
   currency: text("currency").default("copper").notNull(), // copper, silver, gold, platinum
   itemWeight: real("item_weight").default(0).notNull(), // In pounds
@@ -2436,6 +2440,21 @@ export const characterActionTokens = pgTable("character_action_tokens", {
   charIdx: index("character_action_tokens_char_idx").on(t.characterId),
 }));
 export type CharacterActionToken = typeof characterActionTokens.$inferSelect;
+
+// AA V3 ammunition type definitions (admin-managed). A ranged weapon declares
+// which type it uses; an ammunition item declares which type it is.
+export const v3AmmunitionTypes = pgTable("v3_ammunition_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  system: text("system").notNull().default("aa-v3"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertV3AmmunitionTypeSchema = createInsertSchema(v3AmmunitionTypes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertV3AmmunitionType = z.infer<typeof insertV3AmmunitionTypeSchema>;
+export type V3AmmunitionType = typeof v3AmmunitionTypes.$inferSelect;
 
 // AA V3 only: a named group/bundle of techniques. Weapons assign one or more
 // groups (items.v3TechniqueGroupIds) and thereby grant all member techniques.

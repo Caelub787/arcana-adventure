@@ -413,3 +413,31 @@ export const V3_EXHAUSTION_MAX = 7;
 export function v3ExhaustionCostMultiplier(exhaustion: number | null | undefined): number {
   return (Math.floor(Number(exhaustion) || 0) >= 4) ? 2 : 1;
 }
+
+// AA V3 ranged weapons & ammunition (Task #266). A weapon is "ranged" when it
+// declares an ammunitionTypeId; it can only attack when the character has a
+// matching ammunition item EQUIPPED. Shared so the client gate and the server
+// technique-use gate enforce the exact same rule. Works on both the client
+// `Item` shape and server item rows (both expose ammunitionTypeId/isEquipped).
+export function v3WeaponRequiresAmmo(
+  weapon: { ammunitionTypeId?: string | null } | null | undefined,
+): boolean {
+  return !!(weapon && weapon.ammunitionTypeId);
+}
+
+export function v3HasEquippedAmmo(
+  ammunitionTypeId: string | null | undefined,
+  inventory: { itemType?: string | null; ammunitionTypeId?: string | null; isEquipped?: boolean | null; quantity?: number | null }[],
+): boolean {
+  if (!ammunitionTypeId) return true;
+  // Must be an actual ammunition item — a weapon also carries the SAME
+  // ammunitionTypeId (the type it uses), so without this itemType guard an
+  // equipped ranged weapon would wrongly satisfy its own ammo requirement.
+  return (inventory || []).some(
+    (it) =>
+      it.itemType === "ammunition" &&
+      it.ammunitionTypeId === ammunitionTypeId &&
+      !!it.isEquipped &&
+      (it.quantity ?? 1) > 0,
+  );
+}
