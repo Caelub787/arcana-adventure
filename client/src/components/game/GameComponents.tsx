@@ -51,6 +51,7 @@ import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay, FogMoveOverlay } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken, type WallSegment, type DoorSegment } from '@/lib/aoeHelpers';
+import { sortItemsByNameThenRarity } from '@/lib/itemSort';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
 
@@ -25452,12 +25453,12 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
   const allTemplates = campaignId
     ? dedupeLibraryTemplates(templateSummaries?.systemItems || [], templateSummaries?.campaignItems || [])
     : (systemItemSummaries || []);
-  const filteredTemplates = allTemplates.filter((item: any) => {
+  const filteredTemplates = sortItemsByNameThenRarity(allTemplates.filter((item: any) => {
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
     const matchesRarity = templateRarityFilter === 'all' || item.rarity === templateRarityFilter;
     return matchesSearch && matchesType && matchesRarity;
-  });
+  }));
 
   const handleTemplatePointerDown = (template: any) => {
     holdTimerRef.current = setTimeout(() => {

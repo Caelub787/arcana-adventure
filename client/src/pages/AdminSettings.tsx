@@ -44,6 +44,7 @@ import { V3SystemSpeciesDialog } from '@/components/admin/V3SystemSpeciesDialog'
 import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
+import { sortItemsByNameThenRarity } from '@/lib/itemSort';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
@@ -929,11 +930,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const debouncedTokenEffectSearchQuery = useDebouncedValue(tokenEffectSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
-    return systemItemSummaries.filter((item: any) => {
+    return sortItemsByNameThenRarity(systemItemSummaries.filter((item: any) => {
       const matchesSearch = item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
       const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
       return matchesSearch && matchesType;
-    });
+    }));
   }, [systemItemSummaries, debouncedSearchQuery, typeFilter]);
 
   const filteredSpecies = useMemo(() => {
