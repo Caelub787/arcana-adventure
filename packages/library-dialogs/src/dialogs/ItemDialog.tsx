@@ -28,7 +28,7 @@ import type { DialogProps } from "../types";
 
 const ITEM_TYPES = [
   "weapon", "ammunition", "armor", "consumable",
-  "utility", "container", "currency", "crafter", "spellbook", "scroll", "rune",
+  "utility", "container", "currency", "crafter", "spellbook", "scroll", "rune", "miscellaneous",
 ] as const;
 
 // AA V3 scroll effect modes (mirrors shared/schema scrollEffectMode).
@@ -470,6 +470,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       if (t === "spellbook") return aav3;
                       if (t === "scroll") return aav3;
                       if (t === "rune") return aav3;
+                      if (t === "miscellaneous") return aav3;
                       return true;
                     }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>

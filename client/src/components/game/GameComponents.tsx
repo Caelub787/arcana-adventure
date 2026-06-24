@@ -21605,6 +21605,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <SelectItem value="spellbook">Spellbooks</SelectItem>
                       <SelectItem value="scroll">Scrolls</SelectItem>
                       <SelectItem value="rune">Runes</SelectItem>
+                      <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -25423,7 +25424,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     setTemplateRarityFilter('all');
   };
 
-  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll', 'rune'];
+  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll', 'rune', 'miscellaneous'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
@@ -26121,6 +26122,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     )}
                     {campaignSystem === 'aa-v3' && (
                       <SelectItem value="spellbook">Spellbook</SelectItem>
+                    )}
+                    {campaignSystem === 'aa-v3' && (
+                      <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -28342,6 +28346,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                         )}
                         {campaignSystem === 'aa-v3' && (
                           <SelectItem value="spellbook">Spellbook</SelectItem>
+                        )}
+                        {campaignSystem === 'aa-v3' && (
+                          <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                         )}
                       </SelectContent>
                     </Select>

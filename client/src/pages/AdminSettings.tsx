@@ -4165,6 +4165,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
               <SelectItem value="spellbook">Spellbooks</SelectItem>
               <SelectItem value="scroll">Scrolls</SelectItem>
               <SelectItem value="rune">Runes</SelectItem>
+              <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -12205,6 +12206,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                     <SelectItem value="currency">Currency</SelectItem>
                     {isAaV2 && (
                       <SelectItem value="crafter">Crafter</SelectItem>
+                    )}
+                    {campaignSystem === 'aa-v3' && (
+                      <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                     )}
                   </SelectContent>
                 </Select>

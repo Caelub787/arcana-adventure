@@ -11547,6 +11547,7 @@ export default function Campaign() {
                       <option value="ammunition">Ammunition</option>
                       {isAAV3 && <option value="scroll">Scroll</option>}
                       {isAAV3 && <option value="rune">Rune</option>}
+                      {isAAV3 && <option value="miscellaneous">Miscellaneous</option>}
                     </select>
                     <select
                       value={shopImportRarityFilter}

@@ -501,7 +501,7 @@ export const items = pgTable("items", {
   // permanently lowers this by the rune's remove cost; current durability is
   // then clamped to it. Defaults to 10 to mirror the legacy 0-10 scale.
   maxDurability: integer("max_durability").default(10).notNull(),
-  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3)
+  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3), "miscellaneous" (aa-v3)
   rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
   isContainer: boolean("is_container").default(false).notNull(),
   carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container, affects max carry weight
