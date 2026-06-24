@@ -135,9 +135,71 @@ const LARGE_IMAGE_RESIZE_WIDTH = 2000;
 
 // Get a direct image URL (base64 encoded for use in app)
 // For large images, automatically fetches a resized version via Google Drive thumbnails
+//
+// Tries the public API-key client first (fast, no token), then falls back to the
+// authenticated Google Drive connector client. The API-key client can only read
+// files that are broadly shared, so newly added or restricted images fail with it
+// — the OAuth fallback can still download those.
 export async function getImageBase64(fileId: string): Promise<string> {
-  const drive = getPublicDriveClient();
-  
+  try {
+    return await fetchImageBase64WithClient(getPublicDriveClient(), fileId);
+  } catch (publicErr) {
+    // The OAuth connector account can read far more than the public API key,
+    // so before falling back we MUST confirm the requested file actually lives
+    // inside the shared image-library tree. Otherwise any authenticated user
+    // could download arbitrary connector-readable files by guessing an id.
+    let drive: Awaited<ReturnType<typeof getGoogleDriveClient>>;
+    try {
+      drive = await getGoogleDriveClient();
+    } catch {
+      // Connector unavailable — surface the original public-client error.
+      throw publicErr;
+    }
+    const allowed = await isUnderLibraryRoot(drive, fileId);
+    if (!allowed) {
+      throw new Error('Image is not part of the shared image library');
+    }
+    return await fetchImageBase64WithClient(drive, fileId);
+  }
+}
+
+// Walk the parent chain of a file/folder up to a small depth to confirm it is
+// a descendant of IMAGE_LIBRARY_ROOT_FOLDER_ID. Drive items can have multiple
+// parents, so this does a bounded breadth-first walk with a visited guard.
+async function isUnderLibraryRoot(
+  drive: ReturnType<typeof getPublicDriveClient>,
+  fileId: string,
+): Promise<boolean> {
+  if (fileId === IMAGE_LIBRARY_ROOT_FOLDER_ID) return true;
+  const visited = new Set<string>();
+  let frontier: string[] = [fileId];
+  for (let depth = 0; depth < 25 && frontier.length > 0; depth++) {
+    const parentLists = await Promise.all(
+      frontier.map(async (id) => {
+        try {
+          const meta = await drive.files.get({ fileId: id, fields: 'parents' });
+          return meta.data.parents || [];
+        } catch {
+          return [];
+        }
+      }),
+    );
+    const next: string[] = [];
+    for (const parents of parentLists) {
+      for (const parent of parents) {
+        if (parent === IMAGE_LIBRARY_ROOT_FOLDER_ID) return true;
+        if (!visited.has(parent)) {
+          visited.add(parent);
+          next.push(parent);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return false;
+}
+
+async function fetchImageBase64WithClient(drive: ReturnType<typeof getPublicDriveClient>, fileId: string): Promise<string> {
   // First get file metadata to check mime type and size
   const metadata = await drive.files.get({
     fileId,

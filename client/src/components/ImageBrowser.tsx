@@ -149,6 +149,11 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to load image:', error);
+      toast({
+        title: 'Could not load image',
+        description: 'This image could not be loaded from the library. Try another image or refresh the library.',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoadingImage(false);
       setSelectedImageId(null);
