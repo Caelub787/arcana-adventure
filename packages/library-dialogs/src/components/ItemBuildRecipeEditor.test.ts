@@ -3,6 +3,8 @@ import {
   CURRENCY_RATE,
   denominate,
   recommendFromCopper,
+  RARITY_SURCHARGE,
+  raritySurcharge,
 } from "./ItemBuildRecipeEditor";
 
 // ---------------------------------------------------------------------------
@@ -94,5 +96,33 @@ describe("recommendFromCopper — round UP to a clean denomination", () => {
       const { price, currency } = recommendFromCopper(c);
       expect(price * CURRENCY_RATE[currency]).toBeGreaterThanOrEqual(c);
     }
+  });
+});
+
+describe("RARITY_SURCHARGE — flat per-item rarity cost (in copper)", () => {
+  it("matches the configured table (common 2s, uncommon 5s, rare 1g, epic 3g, legendary 5g)", () => {
+    expect(RARITY_SURCHARGE.common).toBe(20);
+    expect(RARITY_SURCHARGE.uncommon).toBe(50);
+    expect(RARITY_SURCHARGE.rare).toBe(100);
+    expect(RARITY_SURCHARGE.epic).toBe(300);
+    expect(RARITY_SURCHARGE.legendary).toBe(500);
+  });
+
+  it("raritySurcharge() is case-insensitive and defaults missing/unknown to common/0", () => {
+    expect(raritySurcharge("Legendary")).toBe(500);
+    expect(raritySurcharge("RARE")).toBe(100);
+    expect(raritySurcharge(undefined)).toBe(20); // defaults to common
+    expect(raritySurcharge(null)).toBe(20);
+    expect(raritySurcharge("bogus")).toBe(0);
+  });
+
+  it("worked example: 2 common iron @2s + 1 common bronze @4s, common output -> 2 gold", () => {
+    // iron: (2s=20c + common 20c) * 2 = 80c; bronze: (4s=40c + common 20c) * 1 = 60c
+    const ingredientsCopper = (2 * CURRENCY_RATE.silver + raritySurcharge("common")) * 2
+      + (4 * CURRENCY_RATE.silver + raritySurcharge("common")) * 1;
+    const madeRarity = raritySurcharge("common") * 1; // output qty 1
+    const perUnit = Math.ceil(((ingredientsCopper + madeRarity) * 1.2) / 1);
+    // 140 + 60 ... = 160 * 1.2 = 192 -> round up to 200c = 2 gold
+    expect(recommendFromCopper(perUnit)).toEqual({ price: 2, currency: "gold" });
   });
 });

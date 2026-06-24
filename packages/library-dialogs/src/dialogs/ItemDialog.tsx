@@ -1133,6 +1133,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 onChange={(buildRecipe) => set({ buildRecipe })}
                 host={host}
                 onApplyPrice={(price, currency) => set({ price, currency })}
+                outputRarity={draft.rarity}
               />
             </Section>
           )}

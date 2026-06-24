@@ -31,10 +31,23 @@ export type BuildRecipeDraft = {
   ingredients: BuildRecipeIngredientDraft[];
 };
 
-type PickerItem = { id: string; name: string; price: number; currency: string };
+type PickerItem = { id: string; name: string; price: number; currency: string; rarity: string };
 
 // Copper-equivalent value of one unit of each currency.
 export const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
+
+// Flat cost (in copper) added per item based on its rarity. Applied per
+// ingredient (times its quantity) and once per crafted output item.
+//   common 2s, uncommon 5s, rare 1g, epic 3g, legendary 5g
+export const RARITY_SURCHARGE: Record<string, number> = {
+  common: 20,
+  uncommon: 50,
+  rare: 100,
+  epic: 300,
+  legendary: 500,
+};
+export const raritySurcharge = (rarity?: string | null): number =>
+  RARITY_SURCHARGE[(rarity ?? "common").toLowerCase()] ?? 0;
 
 // Express an EXACT copper amount as the largest single denomination.
 export function denominate(copper: number): { price: number; currency: string } {
@@ -67,9 +80,11 @@ export interface ItemBuildRecipeEditorProps {
   host: HostAdapter;
   /** Apply the recommended price/currency onto the parent item draft. */
   onApplyPrice: (price: number, currency: string) => void;
+  /** Rarity of the item being made; adds a per-output rarity surcharge to the price. */
+  outputRarity?: string | null;
 }
 
-export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ value, onChange, host, onApplyPrice }) => {
+export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ value, onChange, host, onApplyPrice, outputRarity }) => {
   const [items, setItems] = React.useState<PickerItem[]>([]);
   React.useEffect(() => {
     let cancelled = false;
@@ -81,6 +96,7 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
           name: it.name,
           price: typeof it.price === "number" ? it.price : 0,
           currency: it.currency ?? "copper",
+          rarity: it.rarity ?? "common",
         })));
       })
       .catch(e => host.notify("warning", `Could not load items for recipe picker: ${e?.message ?? e}`));
@@ -90,15 +106,20 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
   const ingredients = value.ingredients ?? [];
   const outputQuantity = value.outputQuantity ?? 1;
 
-  // Recommended per-unit price = round-up( sum(ingredient copper) * 1.2 / outputQty ).
+  // Each ingredient costs its base price plus a flat rarity surcharge, per unit.
+  // The crafted item adds its own rarity surcharge once per output item.
+  // Recommended per-unit price = round-up( (ingredientsCost + madeRarity*qty) * 1.2 / outputQty ).
   const totalIngredientCopper = ingredients.reduce((sum, ing) => {
     const found = items.find(it => it.id === ing.itemId);
     if (!found) return sum;
     const rate = CURRENCY_RATE[found.currency] ?? 1;
-    return sum + found.price * rate * (ing.quantity || 0);
+    const perUnit = found.price * rate + raritySurcharge(found.rarity);
+    return sum + perUnit * (ing.quantity || 0);
   }, 0);
+  const madeItemRarityCopper = raritySurcharge(outputRarity) * Math.max(1, outputQuantity);
+  const totalCostCopper = totalIngredientCopper + madeItemRarityCopper;
   const perUnitCopper = ingredients.length > 0
-    ? Math.ceil((totalIngredientCopper * 1.2) / Math.max(1, outputQuantity))
+    ? Math.ceil((totalCostCopper * 1.2) / Math.max(1, outputQuantity))
     : 0;
   const recommended = recommendFromCopper(perUnitCopper);
   const hasUnpriced = ingredients.some(ing => ing.itemId && !items.find(it => it.id === ing.itemId));

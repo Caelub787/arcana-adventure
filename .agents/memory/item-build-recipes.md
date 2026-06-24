@@ -18,3 +18,5 @@ Recommended sale price = ingredient cost summed in copper (10c=1s, 10s=1g, 10g=1
 **Why:** the user chose round-up so the price always exceeds cost+markup; the example 96c->1g is canonical.
 
 **How to apply:** the price/currency fields auto-fill from this recommendation **by default** and recompute as ingredients change; the admin can still override. Do not clobber a saved/edited price on initial dialog load — only auto-apply after a real user edit to the recipe.
+
+Rarity also adds a flat copper surcharge per item (common 2s, uncommon 5s, rare 1g, epic 3g, legendary 5g): added per ingredient (×quantity) AND once per crafted output item (×outputQty), folded into the cost before markup. Constants live in RARITY_SURCHARGE (ItemBuildRecipeEditor.tsx).
