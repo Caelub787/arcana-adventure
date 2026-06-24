@@ -1269,7 +1269,7 @@ class ApiClient {
   }
 
   // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
-  async getSystemItemSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+  async getSystemItemSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);

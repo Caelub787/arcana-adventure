@@ -1071,6 +1071,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         {currentView === 'items' && (
           <ItemsView
             items={filteredItems}
+            systemSlug={systemSlug}
             isLoading={itemsLoading}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -4087,9 +4088,10 @@ interface ItemsViewProps {
   onArchiveItem: (id: string) => void;
   onCopyToSystem?: (id: string) => void;
   copyTargetLabel?: string;
+  systemSlug?: string;
 }
 
-function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem, onCopyToSystem, copyTargetLabel }: ItemsViewProps) {
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem, onCopyToSystem, copyTargetLabel, systemSlug }: ItemsViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   
@@ -4208,6 +4210,13 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                     </div>
                     <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
                       <span className="capitalize">{item.itemType}</span>
+                      {systemSlug === 'aa-v3' && (
+                        <span className="flex items-center gap-1 text-amber-400" data-testid={`text-item-price-${item.id}`}>
+                          <Coins className="h-3 w-3" />
+                          <span>{item.price ?? 0}</span>
+                          <span className="capitalize">{item.currency || 'copper'}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
