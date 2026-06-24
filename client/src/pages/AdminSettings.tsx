@@ -310,6 +310,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      queryClient.invalidateQueries({ queryKey: ['item-image', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['item-template-links', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', vars.id] });
       setEditingItem(null);
@@ -325,6 +326,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
     queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
     if (id) {
+      queryClient.invalidateQueries({ queryKey: ['item-image', id] });
       queryClient.invalidateQueries({ queryKey: ['item-template-links', id] });
       queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', id] });
     }
@@ -729,9 +731,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
   const duplicateItemMutation = useMutation({
     mutationFn: (id: string) => api.duplicateSystemItem(id),
-    onSuccess: () => {
+    onSuccess: (duplicated) => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      if (duplicated?.id) {
+        queryClient.invalidateQueries({ queryKey: ['item-image', duplicated.id] });
+      }
       toast({ title: 'Item Duplicated', description: 'Item and all its rolls have been duplicated.' });
     },
     onError: (error: any) => {
