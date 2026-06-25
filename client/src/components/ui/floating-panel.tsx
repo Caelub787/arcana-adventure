@@ -283,9 +283,10 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     };
   }, []);
 
-  // Size the panel's height to its content (opt-in via `fitContent`). This makes
-  // the bottom edge sit right after the content so the bottom gap matches the
-  // content's own padding. Stops once the user manually resizes the panel.
+  // Grow the panel's height to fit its content (opt-in via `fitContent`).
+  // It only ever GROWS to fit the tallest content shown (e.g. the Skills tab)
+  // and never shrinks back for shorter tabs, so the panel settles on one size
+  // and stays there. Stops adjusting once the user manually resizes the panel.
   const fitToContent = React.useCallback(() => {
     if (!fitContent || userResizedRef.current || isFullscreen || isMinimized) return;
     const inner = contentInnerRef.current;
@@ -295,7 +296,8 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     const desired = HEADER + inner.scrollHeight + 2; // +2 for top/bottom borders
     const maxH = window.innerHeight - 24;
     const newH = Math.max(minHeight, Math.min(desired, maxH));
-    if (Math.abs(newH - sizeRef.current.height) > 1) {
+    // Grow-only: never shrink below the current height.
+    if (newH > sizeRef.current.height + 1) {
       sizeRef.current = { ...sizeRef.current, height: newH };
       applySize();
       const p = clampPosition(posRef.current.x, posRef.current.y, sizeRef.current.width, newH);
