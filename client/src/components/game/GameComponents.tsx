@@ -27655,7 +27655,7 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
   );
 }
 
-function CraftSection({ item, character, canCraft }: { item: any; character: any; canCraft: boolean }) {
+function CraftSection({ item, character, canCraft, isGM = false }: { item: any; character: any; canCraft: boolean; isGM?: boolean }) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<any>(null);
@@ -27773,6 +27773,15 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
     const hay = [r.name, r.description, r.outputItemName].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
   });
+  // GMs always see every recipe. Players hide only recipes explicitly flagged
+  // `hideWithoutKnowledge` whose knowledge/skill requirement they don't meet.
+  const visibleRecipes = isGM ? filteredRecipes : filteredRecipes.filter((r: any) => {
+    if (!r.hideWithoutKnowledge) return true;
+    const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
+    if (!skillRequired) return true;
+    const have = characterSkillValue(r.requiredSkillName);
+    return have != null && have >= (r.requiredSkillMinValue ?? 0);
+  });
 
   return (
     <div className="pt-4 border-t border-stone-700">
@@ -27795,12 +27804,12 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
       {!isLoading && recipes.length === 0 && (
         <p className="text-xs text-stone-500 italic">No recipes available.</p>
       )}
-      {!isLoading && recipes.length > 0 && filteredRecipes.length === 0 && (
-        <p className="text-xs text-stone-500 italic">No recipes match "{search}".</p>
+      {!isLoading && recipes.length > 0 && visibleRecipes.length === 0 && (
+        <p className="text-xs text-stone-500 italic">{q ? `No recipes match "${search}".` : 'No recipes available to you.'}</p>
       )}
 
       <div className="space-y-1.5">
-        {filteredRecipes.map((r: any) => {
+        {visibleRecipes.map((r: any) => {
           const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
           const toolReqs = Array.isArray(r.toolItems) ? r.toolItems : [];
           const toolsOk = toolReqs.every((t: any) => toolHaveCount(t) >= 1);
@@ -27944,6 +27953,20 @@ function CraftSection({ item, character, canCraft }: { item: any; character: any
                           </SelectContent>
                         </Select>
                       )}
+                    </div>
+                  )}
+                  {!canDoIt && (
+                    <div className="mt-2 text-[11px] text-red-400" data-testid={`craft-blocked-${r.id}`}>
+                      Can't {isRepair ? 'repair' : 'craft'}: {[
+                        !canCraft && 'not your character',
+                        !allHave && 'missing ingredients',
+                        !toolsOk && 'missing required tools/items',
+                        !skillOk && `need ${r.requiredSkillName}${skillMin ? ` ${skillMin}+` : ''}`,
+                        !energyOk && 'not enough energy',
+                        !manaOk && 'not enough mana',
+                        !hpOk && 'not enough HP',
+                        isRepair && !repairTargetOk && 'select an item to repair',
+                      ].filter(Boolean).join(' · ')}
                     </div>
                   )}
                   <div className="mt-2 flex justify-end">
@@ -29237,7 +29260,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </div>
             )}
             {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && !isEditing && (
-              <CraftSection item={currentData} character={character} canCraft={isOwner} />
+              <CraftSection item={currentData} character={character} canCraft={isOwner} isGM={isGM} />
             )}
             {/* Recipe editing only on library templates (no characterId).
                 Server admin endpoints reject edits on inventory copies, so

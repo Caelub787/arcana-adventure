@@ -54,6 +54,8 @@ interface DraftRecipe {
   requireCustomSkill?: boolean;
   requiredSkillName?: string;
   requiredSkillMinValue?: number;
+  // Hide this recipe from players who lack the required knowledge (GMs always see it)
+  hideWithoutKnowledge?: boolean;
   // Optional resource costs
   costEnergyEnabled?: boolean;
   costEnergy?: number;
@@ -88,6 +90,7 @@ function newRecipe(): DraftRecipe {
     requireCustomSkill: false,
     requiredSkillName: '',
     requiredSkillMinValue: 0,
+    hideWithoutKnowledge: false,
     costEnergyEnabled: false,
     costEnergy: 0,
     costManaEnabled: false,
@@ -363,6 +366,17 @@ function KnowledgeSearchPicker({ value, systemSkills, onChange }: {
           >
             — none —
           </button>
+          {/* Allow free-typed Knowledge names — V3 may have no predefined Knowledge list yet. */}
+          {search.trim() && !filtered.some(s => (s.name || '').toLowerCase() === search.trim().toLowerCase()) && (
+            <button
+              type="button"
+              onClick={() => pick(search.trim())}
+              className="w-full text-left px-3 py-1.5 text-xs text-amber-400 hover:bg-stone-800 truncate"
+              data-testid="button-knowledge-picker-custom"
+            >
+              Use "{search.trim()}"
+            </button>
+          )}
           {filtered.map(s => (
             <button
               key={s.id}
@@ -374,7 +388,7 @@ function KnowledgeSearchPicker({ value, systemSkills, onChange }: {
               {s.name}
             </button>
           ))}
-          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-stone-500 italic">{systemSkills.length === 0 ? 'No Knowledge defined yet.' : 'No matches'}</p>}
+          {filtered.length === 0 && !search.trim() && <p className="px-3 py-2 text-xs text-stone-500 italic">{systemSkills.length === 0 ? 'Type a Knowledge name above to set one.' : 'No matches'}</p>}
         </div>
       </PopoverContent>
     </Popover>
@@ -574,6 +588,7 @@ function RecipeRow({
     requireCustomSkill: !!recipe.requireCustomSkill,
     requiredSkillName: recipe.requiredSkillName || '',
     requiredSkillMinValue: recipe.requiredSkillMinValue ?? 0,
+    hideWithoutKnowledge: !!recipe.hideWithoutKnowledge,
     costEnergyEnabled: !!recipe.costEnergyEnabled,
     costEnergy: recipe.costEnergy ?? 0,
     costManaEnabled: !!recipe.costManaEnabled,
@@ -922,6 +937,17 @@ function RecipeRow({
                     onChange={(e) => setDraft({ ...draft, requiredSkillMinValue: parseInt(e.target.value) || 0 })}
                     className="bg-stone-800 border-stone-700 h-8"
                     data-testid="input-required-skill-min"
+                  />
+                </div>
+                <div className="col-span-2 flex items-center justify-between rounded border border-stone-700 px-2 py-1.5">
+                  <div className="min-w-0 pr-2">
+                    <Label className="text-xs">Hide from players without this {systemSlug === 'aa-v3' ? 'Knowledge' : 'skill'}</Label>
+                    <p className="text-[10px] text-stone-500">Off (default): everyone sees this recipe. On: only players who meet the requirement (and GMs) see it.</p>
+                  </div>
+                  <Switch
+                    checked={!!draft.hideWithoutKnowledge}
+                    onCheckedChange={(c) => setDraft({ ...draft, hideWithoutKnowledge: !!c })}
+                    data-testid="switch-hide-without-knowledge"
                   />
                 </div>
               </div>

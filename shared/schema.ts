@@ -684,6 +684,10 @@ export const craftRecipes = pgTable("craft_recipes", {
   requireCustomSkill: boolean("require_custom_skill").default(false).notNull(),
   requiredSkillName: text("required_skill_name").default("").notNull(),
   requiredSkillMinValue: integer("required_skill_min_value").default(0).notNull(),
+  // When true (and a knowledge/skill requirement is set), this recipe is hidden
+  // from players who don't meet the requirement. GMs always see every recipe.
+  // Default false: all crafts are visible to everyone regardless of knowledge.
+  hideWithoutKnowledge: boolean("hide_without_knowledge").default(false).notNull(),
   // Optional resource costs (disabled by default). When enabled, the cost
   // is required to be available, and is deducted on successful craft.
   costEnergyEnabled: boolean("cost_energy_enabled").default(false).notNull(),
