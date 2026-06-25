@@ -269,6 +269,7 @@ export interface IStorage {
   updateCrafterRecipeTemplate(id: string, patch: Partial<InsertCrafterRecipeTemplate>): Promise<CrafterRecipeTemplate | undefined>;
   deleteCrafterRecipeTemplate(id: string): Promise<void>;
   getCrafterTemplateLinks(itemId: string): Promise<string[]>;
+  findLibraryCrafterIdsByName(name: string, system: string | null): Promise<string[]>;
   getItemsLinkedToCrafterTemplate(templateId: string): Promise<string[]>;
   addCrafterTemplateLink(itemId: string, templateId: string): Promise<void>;
   removeCrafterTemplateLink(itemId: string, templateId: string): Promise<void>;
@@ -5868,6 +5869,29 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({ templateId: crafterTemplateLinks.templateId })
       .from(crafterTemplateLinks).where(eq(crafterTemplateLinks.itemId, itemId));
     return rows.map(r => r.templateId);
+  }
+
+  // Find GLOBAL admin/system crafter templates matching a name, used to
+  // resolve recipes for an inventory crafter created without a templateItemId
+  // link. Restricted to globally-accessible templates only — no character
+  // owner, no creating user (admin/system), and no campaign scope — so this
+  // fallback can never resolve to another user's personal library crafter or a
+  // different campaign's template. These global templates are linkable by any
+  // character in the matching system, so resolving them for any caller is safe.
+  // Case-insensitive name match; scoped to `system` when provided. Returns ids;
+  // callers should only act on a unique match.
+  async findLibraryCrafterIdsByName(name: string, system: string | null): Promise<string[]> {
+    const conds: any[] = [
+      eq(items.itemType, 'crafter'),
+      isNull(items.characterId),
+      isNull(items.createdByUserId),
+      isNull(items.campaignId),
+      eq(items.isTemplate, true),
+      sql`lower(${items.name}) = lower(${name})`,
+    ];
+    if (system) conds.push(eq(items.system, system));
+    const rows = await db.select({ id: items.id }).from(items).where(and(...conds));
+    return rows.map(r => r.id);
   }
 
   async getItemsLinkedToCrafterTemplate(templateId: string): Promise<string[]> {

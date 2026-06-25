@@ -8340,7 +8340,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (item.templateItemId) {
           const src = await storage.getItem(item.templateItemId);
           sourceSystem = src?.system ?? sourceSystem;
+        } else {
+          // Legacy / cross-system inventory crafter created without a
+          // templateItemId link: resolve its library template by name +
+          // campaign system so its recipes still appear without re-adding.
+          const fb = await storage.findLibraryCrafterIdsByName(item.name, campaign?.system ?? null);
+          if (fb.length === 1) sourceId = fb[0];
         }
+        // The campaign system is authoritative for character-owned items; the
+        // inventory copy's own `system` may be stale/default (e.g.
+        // 'arcana-adventure') and must not gate crafting below.
+        if (campaign?.system) sourceSystem = campaign.system;
         if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       } else {
         const me = await storage.getUser(userId);
@@ -8930,7 +8940,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isV3Craft = (campaign?.system === 'aa-v3') || (!campaign && crafter.system === 'aa-v3');
       const effectiveNoRoll = !!recipe.noRoll || isV3Craft;
       // Recipe must be attached to the source library item for this crafter
-      const sourceId = crafter.templateItemId || crafter.id;
+      let sourceId = crafter.templateItemId || crafter.id;
+      if (!crafter.templateItemId) {
+        // Legacy / cross-system inventory crafter without a templateItemId
+        // link: resolve its library template by name + campaign system so
+        // crafting works without re-adding the crafter.
+        const fb = await storage.findLibraryCrafterIdsByName(crafter.name, campaign?.system ?? null);
+        if (fb.length === 1) sourceId = fb[0];
+      }
       // Reconcile linked templates first so a freshly-linked template's recipes
       // are craftable even if the link-time copy never ran.
       await syncCrafterTemplateRecipes(sourceId);
@@ -12843,6 +12860,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const sourceTemplateId = req.body.sourceTemplateId;
+      // A character's system comes from its campaign — there is no `system`
+      // column on characters. Using the campaign system here is what lets
+      // system-scoped templates (e.g. an aa-v3 Crafter) link on add so the
+      // inventory copy carries templateItemId and can resolve its recipes.
+      const charSystem = access.campaign?.system ?? null;
 
       // Check if source template is a live template (campaign-scoped or system-scoped)
       let linkToTemplate = false;
@@ -12852,7 +12874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (sourceItem.isLiveTemplate && !sourceItem.campaignId && !sourceItem.characterId) {
             // System-scoped admin live template: any character in matching system can link
             const character = await storage.getCharacter(req.params.characterId);
-            if (character && (!sourceItem.system || character.system === sourceItem.system)) {
+            if (character && (!sourceItem.system || charSystem === sourceItem.system)) {
               linkToTemplate = true;
             }
           } else if (sourceItem.campaignId) {
@@ -12866,7 +12888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // link directly so the auto-save path never publishes a campaign
             // duplicate for items that already live in the global library.
             const character = await storage.getCharacter(req.params.characterId);
-            if (character && (!sourceItem.system || character.system === sourceItem.system)) {
+            if (character && (!sourceItem.system || charSystem === sourceItem.system)) {
               linkToTemplate = true;
             }
           }
