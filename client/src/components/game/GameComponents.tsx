@@ -27833,7 +27833,12 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
       {!isLoading && recipes.length > 0 && (
         <div className="flex flex-col md:flex-row gap-3">
           {/* LEFT: searchable, filterable recipe list */}
-          <div className="md:w-2/5 md:shrink-0 flex flex-col gap-2">
+          <div className="md:flex-1 md:min-w-0 flex flex-col gap-2">
+            {item.image && (
+              <div className="w-full rounded border border-stone-700 overflow-hidden bg-stone-900/40">
+                <img src={item.image} alt={item.name} className="w-full h-32 object-cover" data-testid="img-crafter-item" />
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
               <Input
@@ -27913,7 +27918,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                       </div>
                     ) : r.outputItemName && (
                       <div className="text-stone-400">
-                        Produces: <span className="text-amber-300 font-semibold">{r.outputQuantity || 1}× {r.outputItemName}</span>
+                        Produces: <span className="text-amber-300 font-semibold">x{r.outputQuantity || 1} {r.outputItemName}</span>
                       </div>
                     )}
                     {r.ingredients?.length > 0 && (
@@ -27926,7 +27931,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                             const ok = have >= need;
                             return (
                               <li key={i} className={ok ? 'text-green-400' : 'text-red-400'} data-testid={`ingredient-${r.id}-${i}`}>
-                                • {need}× {ing.itemName || '?'} <span className="text-stone-500">— have {have}{!ok ? ` (need ${need - have} more)` : ''}</span>
+                                • x{need} {ing.itemName || '?'} <span className="text-stone-500">{have}/{need}</span>
                               </li>
                             );
                           })}
@@ -28056,7 +28061,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                     <div className="mt-2 text-xs border border-amber-900/50 bg-amber-950/20 rounded p-2">
                       <div className="text-amber-300 font-semibold">{lastResult.outcome?.label}</div>
                       {lastResult.roll && <div className="text-stone-400">{lastResult.roll.text}</div>}
-                      {lastResult.producedItem && <div className="text-green-400">+ {lastResult.producedItem.quantity}× {lastResult.producedItem.name}</div>}
+                      {lastResult.producedItem && <div className="text-green-400">+ x{lastResult.producedItem.quantity} {lastResult.producedItem.name}</div>}
                     </div>
                   )}
                 </div>
@@ -28407,7 +28412,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
-      defaultSize={{ width: 600, height: Math.min(700, window.innerHeight - 40) }}
+      defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
       minWidth={350}
       minHeight={300}
       panelKey={`item-detail${charPanelSuffix}`}
@@ -29379,22 +29384,16 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               <V3ConsumableUsePanel item={currentData} character={character} canUse={isOwner || isGM} />
             )}
 
-            <div className="flex gap-2 pt-4">
-              {isEditing ? (
-                <>
-                  <Button size="sm" onClick={handleSave} data-testid="button-save-item">
-                    Save Changes
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleCancel} data-testid="button-cancel-edit">
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" onClick={() => onOpenChange(false)} data-testid="button-close-item-detail">
-                  Close
+            {isEditing && (
+              <div className="flex gap-2 pt-4">
+                <Button size="sm" onClick={handleSave} data-testid="button-save-item">
+                  Save Changes
                 </Button>
-              )}
-            </div>
+                <Button size="sm" variant="outline" onClick={handleCancel} data-testid="button-cancel-edit">
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         </div>
     </FloatingPanel>
