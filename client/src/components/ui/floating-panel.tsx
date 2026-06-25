@@ -248,13 +248,15 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     if (el) el.style.zIndex = String(isFullscreen ? Math.max(z, 10500) : z);
   }, [panelKey, isFullscreen]);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     zIndexRef.current = Math.max(zIndexRef.current, zIndex);
     applyZIndex();
   }, [zIndex, applyZIndex]);
 
   // On open (mount), always rise above every other currently-open panel.
-  React.useEffect(() => {
+  // useLayoutEffect fires before the browser paints, preventing the one-frame
+  // z-index mismatch that caused panels to briefly appear behind overlays.
+  React.useLayoutEffect(() => {
     acquireTopZ();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -25410,6 +25410,70 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   );
 }
 
+// Quantity picker extracted into its own component so that clicking +/- only
+// re-renders this small component — not AddItemDialog or its FloatingPanel.
+function AddItemQuantityDialog({ template, onConfirm, onCancel }: {
+  template: any;
+  onConfirm: (qty: number) => void;
+  onCancel: () => void;
+}) {
+  const [qty, setQty] = useState(1);
+
+  // Reset to 1 whenever a new template is picked.
+  useEffect(() => {
+    if (template) setQty(1);
+  }, [template?.id]);
+
+  if (!template) return null;
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500">Add {template.name}</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <Label>Quantity</Label>
+          <div className="flex items-center gap-2 mt-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setQty(q => Math.max(1, q - 1))}
+              className="border-stone-600"
+              data-testid="button-decrease-quantity"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Input
+              type="number"
+              min="1"
+              value={qty === 0 ? '' : qty}
+              onChange={(e) => setQty(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value) || 1))}
+              className="bg-stone-800 border-stone-700 text-center w-20"
+              data-testid="input-add-quantity"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setQty(q => q + 1)}
+              className="border-stone-600"
+              data-testid="button-increase-quantity"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button onClick={() => onConfirm(qty)} disabled={qty < 1}>
+            Add {qty} Item{qty !== 1 ? 's' : ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Add Item Dialog Component
 function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '', inventoryRunes }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string; inventoryRunes?: any[] }) {
   const isAAV3 = campaignSystem === 'aa-v3';
@@ -25418,7 +25482,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
   const [templateRarityFilter, setTemplateRarityFilter] = useState('all');
   const [quantityPickerTemplate, setQuantityPickerTemplate] = useState<any>(null);
-  const [addQuantity, setAddQuantity] = useState(1);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const hasActiveItemFilters = templateTypeFilter !== 'all' || templateRarityFilter !== 'all';
@@ -25466,7 +25529,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
   const handleTemplatePointerDown = (template: any) => {
     holdTimerRef.current = setTimeout(() => {
       setQuantityPickerTemplate(template);
-      setAddQuantity(1);
     }, 400);
   };
 
@@ -25487,11 +25549,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     }
   };
 
-  const handleConfirmQuantity = () => {
-    if (quantityPickerTemplate && addQuantity > 0) {
-      handleAddFromTemplate(quantityPickerTemplate, addQuantity);
+  const handleConfirmQuantity = (qty: number) => {
+    if (quantityPickerTemplate && qty > 0) {
+      handleAddFromTemplate(quantityPickerTemplate, qty);
       setQuantityPickerTemplate(null);
-      setAddQuantity(1);
     }
   };
 
@@ -25962,53 +26023,12 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                 </div>
               )}
               
-              {/* Quantity Picker Dialog */}
-              {quantityPickerTemplate && (
-                <Dialog open={!!quantityPickerTemplate} onOpenChange={() => setQuantityPickerTemplate(null)}>
-                  <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">
-                    <DialogHeader>
-                      <DialogTitle className="text-amber-500">Add {quantityPickerTemplate.name}</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4">
-                      <Label>Quantity</Label>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
-                          className="border-stone-600"
-                          data-testid="button-decrease-quantity"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={addQuantity === 0 ? '' : addQuantity}
-                          onChange={(e) => setAddQuantity(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value) || 1))}
-                          className="bg-stone-800 border-stone-700 text-center w-20"
-                          data-testid="input-add-quantity"
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => setAddQuantity(addQuantity + 1)}
-                          className="border-stone-600"
-                          data-testid="button-increase-quantity"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setQuantityPickerTemplate(null)}>Cancel</Button>
-                      <Button onClick={handleConfirmQuantity} disabled={addQuantity < 1}>
-                        Add {addQuantity} Item{addQuantity !== 1 ? 's' : ''}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
+              {/* Quantity Picker Dialog — own component so +/- never re-renders AddItemDialog */}
+              <AddItemQuantityDialog
+                template={quantityPickerTemplate}
+                onConfirm={handleConfirmQuantity}
+                onCancel={() => setQuantityPickerTemplate(null)}
+              />
             </div>
           ) : (
           <div className="space-y-4">
