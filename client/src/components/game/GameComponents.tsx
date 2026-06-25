@@ -27689,11 +27689,23 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   const advancedTypeName = (id: string | null | undefined) =>
     advancedItemTypes.find((t: any) => t.id === id)?.name || 'item type';
 
+  // The advanced item types a repair recipe can repair (multi-type; falls back
+  // to the legacy single column for old recipes).
+  const repairTypeIds = (r: any): string[] =>
+    Array.isArray(r.repairTargetTypeIds) && r.repairTargetTypeIds.length > 0
+      ? r.repairTargetTypeIds
+      : (r.repairTargetTypeId ? [r.repairTargetTypeId] : []);
+
   // Items in this character's inventory eligible for a given repair recipe:
-  // tagged with the recipe's target type AND below their max durability.
-  const eligibleRepairItems = (r: any) => inventory.filter((inv: any) =>
-    inv.advancedItemTypeId && inv.advancedItemTypeId === r.repairTargetTypeId &&
-    (inv.durability ?? 0) < (inv.maxDurability ?? 0));
+  // tagged with one of the recipe's target types, configured with a repair
+  // amount, AND below their max durability.
+  const eligibleRepairItems = (r: any) => {
+    const types = repairTypeIds(r);
+    return inventory.filter((inv: any) =>
+      inv.advancedItemTypeId && types.includes(inv.advancedItemTypeId) &&
+      (inv.repairAmount ?? 0) > 0 &&
+      (inv.durability ?? 0) < (inv.maxDurability ?? 0));
+  };
 
   const handleRepair = async (recipeId: string, targetItemId: string) => {
     setBusyId(recipeId);
@@ -27816,26 +27828,39 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   }, [categoryKey]);
 
   const recipeState = (r: any) => {
-    const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
-    const toolReqs = Array.isArray(r.toolItems) ? r.toolItems : [];
+    const isRepair = !!r.isRepairRecipe;
+    const eligible = isRepair ? eligibleRepairItems(r) : [];
+    const selectedTargetId = repairTargetByRecipe[r.id] || '';
+    const selectedTarget = isRepair ? (eligible.find((e: any) => e.id === selectedTargetId) || null) : null;
+    // For repair, the ingredient list + restore amount live on the target ITEM,
+    // not the recipe. The recipe only declares which item types it can repair.
+    const repairIngredients = isRepair && selectedTarget && Array.isArray(selectedTarget.repairIngredients)
+      ? selectedTarget.repairIngredients : [];
+    const repairAmount = isRepair ? (selectedTarget?.repairAmount ?? 0) : 0;
+
+    const ingredientList = isRepair ? repairIngredients : (r.ingredients || []);
+    const allHave = isRepair
+      ? (!!selectedTarget && repairIngredients.every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1)))
+      : ingredientList.every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
+
+    // Tools / skill / resource costs only apply to crafting, not repair.
+    const toolReqs = isRepair ? [] : (Array.isArray(r.toolItems) ? r.toolItems : []);
     const toolsOk = toolReqs.every((t: any) => toolHaveCount(t) >= 1);
-    const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
+    const skillRequired = !isRepair && !!r.requireCustomSkill && !!r.requiredSkillName;
     const skillMin = r.requiredSkillMinValue ?? 0;
     const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
     const skillOk = !skillRequired || (skillHave != null && skillHave >= skillMin);
     const charE = character?.energy ?? 0;
     const charM = character?.mana ?? 0;
     const charH = character?.hp ?? 0;
-    const energyOk = !r.costEnergyEnabled || (r.costEnergy ?? 0) <= charE;
-    const manaOk = !r.costManaEnabled || (r.costMana ?? 0) <= charM;
-    const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
+    const energyOk = isRepair || !r.costEnergyEnabled || (r.costEnergy ?? 0) <= charE;
+    const manaOk = isRepair || !r.costManaEnabled || (r.costMana ?? 0) <= charM;
+    const hpOk = isRepair || !r.costHpEnabled || (r.costHp ?? 0) <= charH;
     const costsOk = energyOk && manaOk && hpOk;
-    const isRepair = !!r.isRepairRecipe;
-    const eligible = isRepair ? eligibleRepairItems(r) : [];
-    const selectedTargetId = repairTargetByRecipe[r.id] || '';
+
     const repairTargetOk = !isRepair || (!!selectedTargetId && eligible.some((e: any) => e.id === selectedTargetId));
     const canDoIt = canCraft && allHave && skillOk && costsOk && toolsOk && repairTargetOk;
-    return { allHave, toolReqs, toolsOk, skillRequired, skillMin, skillHave, skillOk, charE, charM, charH, energyOk, manaOk, hpOk, costsOk, isRepair, eligible, selectedTargetId, repairTargetOk, canDoIt };
+    return { allHave, ingredientList, toolReqs, toolsOk, skillRequired, skillMin, skillHave, skillOk, charE, charM, charH, energyOk, manaOk, hpOk, costsOk, isRepair, eligible, selectedTargetId, selectedTarget, repairIngredients, repairAmount, repairTargetOk, canDoIt };
   };
 
   const selected = visibleRecipes.find((r: any) => r.id === selectedId) || null;
@@ -27935,18 +27960,22 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                   <div className="text-xs space-y-1.5">
                     {st.isRepair ? (
                       <div className="text-stone-400">
-                        Restores <span className="text-sky-300 font-semibold">+{r.repairAmount ?? 1} durability</span> to a <span className="text-sky-300 font-semibold">{advancedTypeName(r.repairTargetTypeId)}</span> <span className="text-stone-500">(capped at the item's max)</span>
+                        {st.selectedTarget ? (
+                          <>Restores <span className="text-sky-300 font-semibold">+{st.repairAmount} durability</span> to <span className="text-sky-300 font-semibold">{st.selectedTarget.name}</span> <span className="text-stone-500">(capped at the item's max)</span></>
+                        ) : (
+                          <>Repairs <span className="text-sky-300 font-semibold">{repairTypeIds(r).map(advancedTypeName).join(', ') || 'item'}</span> items — pick one below.</>
+                        )}
                       </div>
                     ) : r.outputItemName && (
                       <div className="text-stone-400">
                         Produces: <span className="text-amber-300 font-semibold">x{r.outputQuantity || 1} {r.outputItemName}</span>
                       </div>
                     )}
-                    {r.ingredients?.length > 0 && (
+                    {st.ingredientList?.length > 0 && (
                       <div>
-                        <div className="text-stone-500 mb-0.5">Ingredients:</div>
+                        <div className="text-stone-500 mb-0.5">{st.isRepair ? 'Repair cost:' : 'Ingredients:'}</div>
                         <ul className="ml-3 space-y-0.5">
-                          {r.ingredients.map((ing: any, i: number) => {
+                          {st.ingredientList.map((ing: any, i: number) => {
                             const have = ingredientHaveCount(ing);
                             const need = ing.quantity || 1;
                             const ok = have >= need;
@@ -27964,7 +27993,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                         Requires: {r.requiredSkillName} {st.skillMin}+ <span className="text-stone-500">— have {st.skillHave == null ? 'none' : st.skillHave}</span>
                       </div>
                     )}
-                    {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
+                    {!st.isRepair && (r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
                       <div>
                         <div className="text-stone-500 mb-0.5">Costs:</div>
                         <ul className="ml-3 space-y-0.5">
@@ -28016,7 +28045,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                       <div className="text-stone-500 mb-0.5 text-xs">Item to repair:</div>
                       {st.eligible.length === 0 ? (
                         <p className="text-[11px] text-stone-500 italic" data-testid={`repair-none-${r.id}`}>
-                          No damaged {advancedTypeName(r.repairTargetTypeId)} items in your inventory.
+                          No repairable {repairTypeIds(r).map(advancedTypeName).join(', ') || 'item'} items in your inventory.
                         </p>
                       ) : (
                         <div className="border border-stone-700 rounded divide-y divide-stone-800 max-h-40 overflow-y-auto" data-testid={`repair-target-list-${r.id}`}>

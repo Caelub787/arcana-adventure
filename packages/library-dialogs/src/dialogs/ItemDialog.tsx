@@ -230,6 +230,9 @@ export interface ItemDraft {
   v3TechniqueGroupIds?: string[];
   advancedItemTypeId?: string | null;
   maxDurability?: number;
+  // AA V3 repair cost (lives on the item; crafter repair recipes just declare types).
+  repairAmount?: number;
+  repairIngredients?: { itemId: string | null; itemName: string; quantity: number }[];
   // AA V3 scrolls & runes (Task #198)
   scrollEffectMode?: string;
   scrollKnowledgeName?: string | null;
@@ -276,6 +279,8 @@ const FRESH: ItemDraft = {
   v3TechniqueGroupIds: [],
   advancedItemTypeId: null,
   ammunitionTypeId: null,
+  repairAmount: 0,
+  repairIngredients: [],
 };
 
 export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
@@ -348,11 +353,19 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [runeItems, setRuneItems] = React.useState<any[]>([]);
   const [runePickerSlot, setRunePickerSlot] = React.useState<number | null>(null);
   const [runeSearch, setRuneSearch] = React.useState("");
+  // All library items, used by the V3 repair-ingredient picker below.
+  const [libraryItems, setLibraryItems] = React.useState<any[]>([]);
+  const [repairIngPickerOpen, setRepairIngPickerOpen] = React.useState(false);
+  const [repairIngSearch, setRepairIngSearch] = React.useState("");
   React.useEffect(() => {
-    if (!open || !aav3) { setRuneItems([]); return; }
+    if (!open || !aav3) { setRuneItems([]); setLibraryItems([]); return; }
     host.transport.list<any>("item")
-      .then(res => setRuneItems((res?.data ?? []).filter((i: any) => i.itemType === "rune")))
-      .catch(() => setRuneItems([]));
+      .then(res => {
+        const all = res?.data ?? [];
+        setRuneItems(all.filter((i: any) => i.itemType === "rune"));
+        setLibraryItems(all);
+      })
+      .catch(() => { setRuneItems([]); setLibraryItems([]); });
   }, [open, aav3, host]);
 
   const set = (patch: Partial<ItemDraft>) => setDraft(d => ({ ...d, ...patch }));
@@ -510,6 +523,121 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 </Select>
                 <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
                   Tag this item with an advanced type so crafter repair recipes can target it.
+                </p>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Label>Durability restored per repair</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={draft.repairAmount ?? 0}
+                  onChange={e => set({ repairAmount: Math.max(0, optionalNum(e.target.value) ?? 0) })}
+                  data-testid="input-repair-amount"
+                />
+                <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                  How much durability one repair restores (0 = this item can't be repaired).
+                </p>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Label>Repair ingredients</Label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 6 }}>
+                  {(draft.repairIngredients ?? []).length === 0 && (
+                    <p className="ld-subtle" style={{ fontSize: 12, opacity: 0.6 }}>No ingredients — repair is free.</p>
+                  )}
+                  {(draft.repairIngredients ?? []).map((ing, idx) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }} data-testid={`repair-ingredient-${idx}`}>
+                      <span style={{ flex: 1, fontSize: 13, color: "#e7e5e4" }}>{ing.itemName || "Unnamed item"}</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={ing.quantity}
+                        onChange={e => {
+                          const next = [...(draft.repairIngredients ?? [])];
+                          next[idx] = { ...next[idx], quantity: Math.max(1, optionalNum(e.target.value) ?? 1) };
+                          set({ repairIngredients: next });
+                        }}
+                        style={{ width: 70 }}
+                        data-testid={`input-repair-ingredient-qty-${idx}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => set({ repairIngredients: (draft.repairIngredients ?? []).filter((_, i) => i !== idx) })}
+                        style={{
+                          width: 28, height: 28, borderRadius: 4, background: "#1c1917",
+                          border: "1px solid #57534e", color: "#a8a29e", cursor: "pointer", lineHeight: 1,
+                        }}
+                        data-testid={`button-remove-repair-ingredient-${idx}`}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setRepairIngPickerOpen(o => !o); setRepairIngSearch(""); }}
+                  style={{
+                    padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13,
+                    border: repairIngPickerOpen ? "1px solid rgba(180,83,9,0.8)" : "1px solid #57534e",
+                    background: repairIngPickerOpen ? "#292524" : "rgba(28,25,23,0.5)", color: "#e7e5e4",
+                  }}
+                  data-testid="button-add-repair-ingredient"
+                >+ Add ingredient</button>
+                {repairIngPickerOpen && (
+                  <div
+                    style={{ border: "1px solid #44403c", borderRadius: 8, padding: 8, background: "#1c1917", marginTop: 8 }}
+                    data-testid="repair-ingredient-picker-panel"
+                  >
+                    <Input
+                      value={repairIngSearch}
+                      onChange={e => setRepairIngSearch(e.target.value)}
+                      placeholder="Search items…"
+                      data-testid="input-repair-ingredient-search"
+                      autoFocus
+                    />
+                    <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 8 }}>
+                      {(() => {
+                        const chosen = new Set((draft.repairIngredients ?? []).map(i => i.itemId).filter(Boolean));
+                        const matches = libraryItems
+                          .filter(i => !chosen.has(i.id))
+                          .filter(i => (i.name || "").toLowerCase().includes(repairIngSearch.toLowerCase()));
+                        if (matches.length === 0) {
+                          return <p className="ld-subtle" data-testid="text-no-repair-items" style={{ textAlign: "center", padding: 12 }}>No matching items</p>;
+                        }
+                        return matches.map(i => (
+                          <button
+                            key={i.id}
+                            type="button"
+                            onClick={() => {
+                              set({ repairIngredients: [...(draft.repairIngredients ?? []), { itemId: i.id, itemName: i.name || "", quantity: 1 }] });
+                              setRepairIngPickerOpen(false);
+                              setRepairIngSearch("");
+                            }}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 8, width: "100%",
+                              padding: 6, borderRadius: 4, background: "transparent",
+                              border: "none", cursor: "pointer", textAlign: "left", color: "#e7e5e4",
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "#292524")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                            data-testid={`repair-ingredient-option-${i.id}`}
+                          >
+                            <span style={{
+                              width: 28, height: 28, borderRadius: 4, background: "#292524",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              overflow: "hidden", flexShrink: 0,
+                            }}>
+                              {i.image ? (
+                                <img src={i.image} alt={i.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : <span style={{ fontSize: 14 }}>📦</span>}
+                            </span>
+                            <span style={{ fontSize: 13 }}>{i.name}</span>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
+                <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
+                  Items consumed from the player's inventory each time this item is repaired.
                 </p>
               </div>
             </Section>

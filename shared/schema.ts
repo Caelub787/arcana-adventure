@@ -505,6 +505,12 @@ export const items = pgTable("items", {
   // permanently lowers this by the rune's remove cost; current durability is
   // then clamped to it. Defaults to 10 to mirror the legacy 0-10 scale.
   maxDurability: integer("max_durability").default(10).notNull(),
+  // AA V3 only: per-item repair cost. repairAmount is the durability restored
+  // per repair (capped at maxDurability); repairIngredients are the inventory
+  // items consumed each repair. The crafter's repair recipe only declares which
+  // advanced item types it can repair — the cost lives here, on the item.
+  repairAmount: integer("repair_amount").default(0).notNull(),
+  repairIngredients: jsonb("repair_ingredients").$type<{ itemId: string | null; itemName: string; quantity: number }[]>().default(sql`'[]'::jsonb`).notNull(),
   itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3), "miscellaneous" (aa-v3)
   rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
   isContainer: boolean("is_container").default(false).notNull(),
@@ -697,12 +703,16 @@ export const craftRecipes = pgTable("craft_recipes", {
   costHpEnabled: boolean("cost_hp_enabled").default(false).notNull(),
   costHp: integer("cost_hp").default(0).notNull(),
   // AA V3 only: repair recipe support. When isRepairRecipe is true, the recipe
-  // restores durability to an owned item whose advancedItemTypeId matches
-  // repairTargetTypeId, instead of producing an output item. repairAmount is the
-  // fixed durability restored per repair (capped at the item's maxDurability).
+  // restores durability instead of producing an output item. It only DECLARES
+  // which advanced item types it can repair (repairTargetTypeIds, multi-select);
+  // the actual cost (ingredients consumed + durability restored) lives on each
+  // target ITEM (items.repairIngredients / items.repairAmount).
+  // repairTargetTypeId/repairAmount are legacy single-type columns, kept for
+  // back-compat but no longer used by the repair flow.
   isRepairRecipe: boolean("is_repair_recipe").default(false).notNull(),
   repairTargetTypeId: varchar("repair_target_type_id"),
   repairAmount: integer("repair_amount").default(1).notNull(),
+  repairTargetTypeIds: text("repair_target_type_ids").array().default(sql`ARRAY[]::text[]`).notNull(),
   // Optional required inventory items to craft/repair. Each entry references an
   // admin/library item (itemId) plus a display name; `consumed: true` removes the
   // item on use (a spent reagent), `consumed: false` is a non-expended tool that

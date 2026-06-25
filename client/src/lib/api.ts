@@ -267,6 +267,9 @@ export interface Item {
   consumableEffectDescription?: string | null;
   // AA V3 scrolls & runes (Task #198)
   maxDurability?: number;
+  // AA V3 repair cost (lives on the item; crafter repair recipes just declare types).
+  repairAmount?: number;
+  repairIngredients?: { itemId: string | null; itemName: string; quantity: number }[];
   dcBonusValue?: number;
   templateItemId?: string | null;
   scrollEffectMode?: string;

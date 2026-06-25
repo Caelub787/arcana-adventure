@@ -9269,10 +9269,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // AA V3 only: repair an owned item at an owned crafter. The recipe must be a
-  // repair recipe targeting the item's advancedItemTypeId. Ingredients are
-  // consumed; durability is restored by recipe.repairAmount, capped at the
-  // item's maxDurability. Owner-only (crafter + target item belong to caller).
+  // AA V3 only: repair an owned item at an owned crafter. The recipe only
+  // DECLARES which advanced item types it can repair (repairTargetTypeIds); the
+  // repair COST lives on the target item itself — its repairIngredients are
+  // consumed and durability is restored by the item's repairAmount, capped at
+  // the item's maxDurability. No character resources are spent.
+  // Owner-only (crafter + target item belong to caller).
   app.post("/api/items/:itemId/repair", requireAuth, async (req, res) => {
     try {
       const { recipeId, characterId, targetItemId } = req.body || {};
@@ -9320,13 +9322,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (targetItem.characterId !== characterId) {
         return res.status(403).json({ error: "Target item does not belong to this character" });
       }
-      const targetTypeId = (recipe as any).repairTargetTypeId || null;
-      if (!targetTypeId) return res.status(400).json({ error: "Repair recipe has no target item type" });
-      if (((recipe as any).repairAmount ?? 0) < 1) {
-        return res.status(400).json({ error: "Repair recipe must restore at least 1 durability" });
-      }
-      if ((targetItem as any).advancedItemTypeId !== targetTypeId) {
+      // The recipe only DECLARES which advanced item types it can repair.
+      const targetTypeIds: string[] = Array.isArray((recipe as any).repairTargetTypeIds) && (recipe as any).repairTargetTypeIds.length > 0
+        ? (recipe as any).repairTargetTypeIds
+        : ((recipe as any).repairTargetTypeId ? [(recipe as any).repairTargetTypeId] : []);
+      if (targetTypeIds.length === 0) return res.status(400).json({ error: "Repair recipe declares no item types" });
+      const targetTypeId = (targetItem as any).advancedItemTypeId || null;
+      if (!targetTypeId || !targetTypeIds.includes(targetTypeId)) {
         return res.status(400).json({ error: "This item cannot be repaired by this recipe" });
+      }
+      // Repair cost lives on the ITEM, not the recipe.
+      const repairAmount = Math.max(0, (targetItem as any).repairAmount ?? 0);
+      if (repairAmount < 1) {
+        return res.status(400).json({ error: "This item has no repair amount configured" });
       }
       const curDur = (targetItem as any).durability ?? 0;
       const maxDur = (targetItem as any).maxDurability ?? curDur;
@@ -9334,11 +9342,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item is already at full durability" });
       }
 
-      // Aggregate + match ingredient requirements (same logic as craft).
+      // Aggregate + match the ITEM's repair ingredients (same logic as craft).
+      const itemRepairIngredients: { itemId: string | null; itemName: string; quantity: number }[] =
+        Array.isArray((targetItem as any).repairIngredients) ? (targetItem as any).repairIngredients : [];
       const inventory = await storage.getItemsByCharacter(characterId);
       type AggReq = { key: string; itemId: string | null; itemName: string; need: number };
       const aggMap = new Map<string, AggReq>();
-      for (const ing of recipe.ingredients) {
+      for (const ing of itemRepairIngredients) {
         const key = ing.itemId ? `id:${ing.itemId}` : `name:${ing.itemName || ''}`;
         const cur = aggMap.get(key);
         const qty = ing.quantity || 1;
@@ -9361,42 +9371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Missing ingredients", missing: missing.map(m => ({ name: m.req.itemName, need: m.req.need, have: m.have })) });
       }
 
-      // Required tool items: each must be present (qty >= 1). Non-consumed tools
-      // stay in inventory; consumed tools are spent below after all checks pass.
-      const toolReqs: { itemId: string | null; name: string; consumed: boolean }[] =
-        Array.isArray((recipe as any).toolItems) ? (recipe as any).toolItems : [];
-      type ToolMatch = { name: string; consumed: boolean; matches: { id: string; quantity: number }[]; have: number };
-      const toolMatches: ToolMatch[] = [];
-      for (const t of toolReqs) {
-        const owned = inventory.filter(inv => {
-          if (t.itemId) return inv.templateItemId === t.itemId;
-          if (t.name) return inv.name === t.name;
-          return false;
-        });
-        const have = owned.reduce((s, o) => s + (o.quantity || 1), 0);
-        toolMatches.push({ name: t.name || '?', consumed: !!t.consumed, matches: owned.map(o => ({ id: o.id, quantity: o.quantity || 1 })), have });
-      }
-      const missingTools = toolMatches.filter(m => m.have < 1);
-      if (missingTools.length > 0) {
-        return res.status(400).json({ error: "Missing required tools", missing: missingTools.map(m => ({ name: m.name, need: 1, have: m.have })) });
-      }
-
-      // Optional resource costs (energy / mana / hp). Validate before consuming.
-      const costEnergy = (recipe as any).costEnergyEnabled ? Math.max(0, (recipe as any).costEnergy ?? 0) : 0;
-      const costMana = (recipe as any).costManaEnabled ? Math.max(0, (recipe as any).costMana ?? 0) : 0;
-      const costHp = (recipe as any).costHpEnabled ? Math.max(0, (recipe as any).costHp ?? 0) : 0;
-      const charE = (character as any).energy ?? 0;
-      const charM = (character as any).mana ?? 0;
-      const charH = (character as any).hp ?? 0;
-      const insufficient: { stat: string; need: number; have: number }[] = [];
-      if (costEnergy > 0 && charE < costEnergy) insufficient.push({ stat: 'energy', need: costEnergy, have: charE });
-      if (costMana > 0 && charM < costMana) insufficient.push({ stat: 'mana', need: costMana, have: charM });
-      if (costHp > 0 && charH < costHp) insufficient.push({ stat: 'hp', need: costHp, have: charH });
-      if (insufficient.length > 0) {
-        return res.status(400).json({ error: `Not enough ${insufficient.map(i => i.stat).join(', ')}`, insufficient });
-      }
-
-      // Consume ingredients (uses aggregated totals).
+      // Consume the item's repair ingredients (uses aggregated totals).
       for (const m of matches) {
         let need = m.req.need;
         for (const owned of m.matches) {
@@ -9411,36 +9386,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Consume one of each consumed tool (non-consumed tools are left intact).
-      for (const tm of toolMatches) {
-        if (!tm.consumed) continue;
-        let need = 1;
-        for (const owned of tm.matches) {
-          if (need <= 0) break;
-          if (owned.quantity <= need) { await storage.deleteItem(owned.id); need -= owned.quantity; }
-          else { await storage.updateItem(owned.id, { quantity: owned.quantity - need }); need = 0; }
-        }
-      }
-
-      // Restore durability, capped at maxDurability.
-      const repairAmount = Math.max(0, (recipe as any).repairAmount ?? 0);
+      // Restore durability, capped at maxDurability. Amount comes from the item.
       const newDur = Math.min(maxDur, curDur + repairAmount);
       const restored = newDur - curDur;
       const updatedItem = await storage.updateItem(targetItemId, { durability: newDur });
 
-      // Deduct resource costs (already validated).
-      let resourceDeductions: { stat: string; spent: number }[] = [];
-      if (costEnergy > 0 || costMana > 0 || costHp > 0) {
-        const patch: Record<string, number> = {};
-        if (costEnergy > 0) { patch.energy = Math.max(0, charE - costEnergy); resourceDeductions.push({ stat: 'energy', spent: costEnergy }); }
-        if (costMana > 0)   { patch.mana   = Math.max(0, charM - costMana);   resourceDeductions.push({ stat: 'mana',   spent: costMana }); }
-        if (costHp > 0)     { patch.hp     = Math.max(0, charH - costHp);     resourceDeductions.push({ stat: 'hp',     spent: costHp }); }
-        try {
-          await storage.updateCharacter(characterId, patch);
-        } catch (resErr) {
-          console.error('[Crafter] repair: failed to deduct resource costs:', resErr);
-        }
-      }
+      const resourceDeductions: { stat: string; spent: number }[] = [];
 
       if (campaignId) {
         await broadcastCharacterUpdate(campaignId, characterId);

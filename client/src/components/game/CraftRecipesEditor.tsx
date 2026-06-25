@@ -67,6 +67,8 @@ interface DraftRecipe {
   isRepairRecipe?: boolean;
   repairTargetTypeId?: string | null;
   repairAmount?: number;
+  // AA V3: advanced item types this repair recipe can repair (the cost lives on each item).
+  repairTargetTypeIds?: string[];
   // Optional required inventory items: non-consumed "tools" + consumed reagents.
   toolItems?: { itemId: string | null; name: string; consumed: boolean }[];
 }
@@ -100,6 +102,7 @@ function newRecipe(): DraftRecipe {
     isRepairRecipe: false,
     repairTargetTypeId: null,
     repairAmount: 1,
+    repairTargetTypeIds: [],
     toolItems: [],
   };
 }
@@ -598,6 +601,9 @@ function RecipeRow({
     isRepairRecipe: !!recipe.isRepairRecipe,
     repairTargetTypeId: recipe.repairTargetTypeId || null,
     repairAmount: recipe.repairAmount ?? 1,
+    repairTargetTypeIds: Array.isArray(recipe.repairTargetTypeIds) && recipe.repairTargetTypeIds.length > 0
+      ? recipe.repairTargetTypeIds
+      : (recipe.repairTargetTypeId ? [recipe.repairTargetTypeId] : []),
     toolItems: Array.isArray(recipe.toolItems)
       ? recipe.toolItems.map((t: any) => ({ itemId: t.itemId ?? null, name: t.name || '', consumed: !!t.consumed }))
       : [],
@@ -691,30 +697,39 @@ function RecipeRow({
                 <Label className="text-xs font-bold text-amber-500">Repair recipe</Label>
               </div>
               {draft.isRepairRecipe && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   <div>
-                    <Label className="text-xs">Repairs Item Type</Label>
+                    <Label className="text-xs">Repairs Item Types</Label>
+                    {(draft.repairTargetTypeIds && draft.repairTargetTypeIds.length > 0) ? (
+                      <div className="flex flex-wrap gap-1 mb-1" data-testid={`repair-types-${recipe.id}`}>
+                        {draft.repairTargetTypeIds.map((tid) => {
+                          const name = advancedItemTypes.find((t: any) => t.id === tid)?.name || 'Unknown type';
+                          return (
+                            <span key={tid} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-600 rounded px-1.5 py-0.5 text-[11px] text-stone-200">
+                              {name}
+                              <button
+                                type="button"
+                                onClick={() => setDraft({ ...draft, repairTargetTypeIds: (draft.repairTargetTypeIds || []).filter((x) => x !== tid) })}
+                                className="text-stone-400 hover:text-red-400"
+                                data-testid={`remove-repair-type-${recipe.id}-${tid}`}
+                              >×</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-amber-400/80 mb-1">No item types yet — add at least one.</p>
+                    )}
                     <ItemSearchPicker
-                      value={draft.repairTargetTypeId}
-                      systemItems={advancedItemTypes}
-                      onChange={(v) => setDraft({ ...draft, repairTargetTypeId: v })}
-                      placeholder="Select item type…"
+                      value={null}
+                      systemItems={advancedItemTypes.filter((t: any) => !(draft.repairTargetTypeIds || []).includes(t.id))}
+                      onChange={(v) => { if (v) setDraft({ ...draft, repairTargetTypeIds: [...(draft.repairTargetTypeIds || []), v] }); }}
+                      placeholder="Add item type…"
                       searchPlaceholder="Search item types..."
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs">Durability Restored</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={draft.repairAmount ?? 1}
-                      onChange={(e) => setDraft({ ...draft, repairAmount: Math.max(1, parseInt(e.target.value) || 1) })}
-                      className="bg-stone-800 border-stone-700 h-8"
-                      data-testid={`input-repair-amount-${recipe.id}`}
-                    />
-                  </div>
-                  <p className="col-span-2 text-[11px] text-stone-500">
-                    Players use this recipe at a crafter they own to restore durability (capped at the item's max) on any item tagged with the selected type. Ingredients below are consumed each repair.
+                  <p className="text-[11px] text-stone-500">
+                    Players use this recipe at a crafter they own to repair any item tagged with one of these types. The repair cost (ingredients consumed + durability restored) is configured on each item, not here.
                   </p>
                 </div>
               )}
@@ -748,7 +763,8 @@ function RecipeRow({
             <Input value={draft.description || ''} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="bg-stone-800 border-stone-700 h-8" />
           </div>
 
-          {/* Ingredients */}
+          {/* Ingredients — hidden for repair recipes (cost lives on each item). */}
+          {!draft.isRepairRecipe && (
           <div className="border border-stone-700 rounded p-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-amber-500">Ingredients</span>
@@ -777,6 +793,7 @@ function RecipeRow({
               {draft.ingredients.length === 0 && <p className="text-xs text-stone-500 italic">No ingredients required</p>}
             </div>
           </div>
+          )}
 
           {/* Outcomes — roll-driven, hidden for V3 (auto-success, no roll) */}
           {!isV3 && (

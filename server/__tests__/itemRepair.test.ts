@@ -9,8 +9,9 @@ import express from "express";
 // `./lib/library-acl` so registerRoutes can boot without a real DB.
 //
 // These tests are the server-authoritative coverage for the AA V3 crafter
-// item-repair flow: durability restore (capped at maxDurability), ingredient +
-// energy/mana/hp consumption, and ownership / V3 / validation gating.
+// item-repair flow. Under the current model the repair COST (ingredient list +
+// durability restored) lives on the ITEM being repaired; the crafter's repair
+// recipe only DECLARES which advanced item types it can repair (multi-type).
 // ---------------------------------------------------------------------------
 
 const h = vi.hoisted(() => {
@@ -144,28 +145,20 @@ const targetTypeId = "advType1";
 type Ctx = {
   campaignSystem?: string;
   charUserId?: string;
-  energy?: number;
-  mana?: number;
-  hp?: number;
   // crafter overrides
   crafterCharacterId?: string | null;
   crafterTemplateItemId?: string | null;
-  // recipe overrides
+  // recipe overrides — the recipe only DECLARES repairable item types.
   isRepairRecipe?: boolean;
   parentItemId?: string;
-  repairTargetTypeId?: string | null;
-  repairAmount?: number;
-  ingredients?: any[];
-  costEnergyEnabled?: boolean;
-  costEnergy?: number;
-  costManaEnabled?: boolean;
-  costMana?: number;
-  costHpEnabled?: boolean;
-  costHp?: number;
-  // target item overrides
+  repairTargetTypeIds?: string[];
+  repairTargetTypeId?: string | null; // legacy single column (fallback)
+  // target item overrides — the repair COST lives here.
   targetAdvancedTypeId?: string | null;
   durability?: number;
   maxDurability?: number;
+  itemRepairAmount?: number;
+  itemRepairIngredients?: any[];
   targetCharacterId?: string;
   // inventory
   inventory?: any[];
@@ -176,9 +169,9 @@ function mockContext(opts: Ctx = {}) {
     id: characterId,
     userId: opts.charUserId ?? owner,
     campaignId,
-    energy: opts.energy ?? 10,
-    mana: opts.mana ?? 10,
-    hp: opts.hp ?? 10,
+    energy: 10,
+    mana: 10,
+    hp: 10,
   });
   h.storage.getCampaign.mockResolvedValue({
     id: campaignId,
@@ -200,6 +193,9 @@ function mockContext(opts: Ctx = {}) {
     durability: opts.durability ?? 2,
     maxDurability: opts.maxDurability ?? 10,
     name: "Worn Blade",
+    repairAmount: opts.itemRepairAmount ?? 5,
+    repairIngredients:
+      opts.itemRepairIngredients ?? [{ itemId: "tpl-iron", itemName: "Iron", quantity: 2 }],
   };
   h.storage.getItem.mockImplementation(async (id: string) => {
     if (id === crafterId) return crafter;
@@ -211,19 +207,10 @@ function mockContext(opts: Ctx = {}) {
     id: recipeId,
     isRepairRecipe: opts.isRepairRecipe ?? true,
     parentItemId: opts.parentItemId ?? crafterId,
-    repairTargetTypeId:
-      opts.repairTargetTypeId === undefined ? targetTypeId : opts.repairTargetTypeId,
-    repairAmount: opts.repairAmount ?? 5,
-    ingredients: opts.ingredients ?? [
-      { itemId: "tpl-iron", itemName: "Iron", quantity: 2 },
-    ],
+    repairTargetTypeIds:
+      opts.repairTargetTypeIds === undefined ? [targetTypeId] : opts.repairTargetTypeIds,
+    repairTargetTypeId: opts.repairTargetTypeId ?? null,
     outcomes: [],
-    costEnergyEnabled: opts.costEnergyEnabled ?? false,
-    costEnergy: opts.costEnergy ?? 0,
-    costManaEnabled: opts.costManaEnabled ?? false,
-    costMana: opts.costMana ?? 0,
-    costHpEnabled: opts.costHpEnabled ?? false,
-    costHp: opts.costHp ?? 0,
   });
 
   h.storage.getItemsByCharacter.mockResolvedValue(
@@ -238,8 +225,8 @@ function repair(body: any, user = owner) {
 const goodBody = { recipeId, characterId, targetItemId };
 
 describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
-  it("restores durability, consuming ingredients on the happy path", async () => {
-    mockContext({ durability: 2, maxDurability: 10, repairAmount: 5 });
+  it("restores durability, consuming the item's ingredients on the happy path", async () => {
+    mockContext({ durability: 2, maxDurability: 10, itemRepairAmount: 5 });
     const res = await repair(goodBody);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -253,7 +240,7 @@ describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
   });
 
   it("caps restored durability at maxDurability", async () => {
-    mockContext({ durability: 8, maxDurability: 10, repairAmount: 5 });
+    mockContext({ durability: 8, maxDurability: 10, itemRepairAmount: 5 });
     const res = await repair(goodBody);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -264,7 +251,7 @@ describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
 
   it("deletes an ingredient stack consumed in full", async () => {
     mockContext({
-      ingredients: [{ itemId: "tpl-iron", itemName: "Iron", quantity: 2 }],
+      itemRepairIngredients: [{ itemId: "tpl-iron", itemName: "Iron", quantity: 2 }],
       inventory: [{ id: "inv-iron", templateItemId: "tpl-iron", name: "Iron", quantity: 2 }],
     });
     const res = await repair(goodBody);
@@ -272,44 +259,34 @@ describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
     expect(h.storage.deleteItem).toHaveBeenCalledWith("inv-iron");
   });
 
-  it("consumes energy, mana and hp when the recipe charges them", async () => {
+  it("never consumes character resources (repair cost is item-only)", async () => {
+    mockContext({ durability: 2, maxDurability: 10 });
+    const res = await repair(goodBody);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(body.resourceDeductions).toEqual([]);
+  });
+
+  it("repairs an item whose type is one of several the recipe declares", async () => {
     mockContext({
-      energy: 10,
-      mana: 10,
-      hp: 10,
-      costEnergyEnabled: true,
-      costEnergy: 3,
-      costManaEnabled: true,
-      costMana: 4,
-      costHpEnabled: true,
-      costHp: 2,
+      repairTargetTypeIds: ["other-type", targetTypeId, "yet-another"],
+      durability: 2,
+      maxDurability: 10,
     });
     const res = await repair(goodBody);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(h.storage.updateCharacter).toHaveBeenCalledWith(characterId, {
-      energy: 7,
-      mana: 6,
-      hp: 8,
-    });
-    expect(body.resourceDeductions).toEqual(
-      expect.arrayContaining([
-        { stat: "energy", spent: 3 },
-        { stat: "mana", spent: 4 },
-        { stat: "hp", spent: 2 },
-      ]),
-    );
+    expect(body.success).toBe(true);
+    expect(h.storage.updateItem).toHaveBeenCalledWith(targetItemId, { durability: 7 });
   });
 
-  it("rejects and spends nothing when a resource is short", async () => {
-    mockContext({ mana: 1, costManaEnabled: true, costMana: 5 });
+  it("falls back to the legacy single target type when no array is set", async () => {
+    mockContext({ repairTargetTypeIds: [], repairTargetTypeId: targetTypeId });
     const res = await repair(goodBody);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toMatch(/not enough/i);
-    expect(h.storage.updateItem).not.toHaveBeenCalled();
-    expect(h.storage.deleteItem).not.toHaveBeenCalled();
-    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(body.success).toBe(true);
   });
 
   it("rejects a non-owner of the character", async () => {
@@ -338,7 +315,16 @@ describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
     expect(h.storage.updateItem).not.toHaveBeenCalled();
   });
 
-  it("rejects an item whose type does not match the recipe", async () => {
+  it("rejects an item with no repair amount configured", async () => {
+    mockContext({ itemRepairAmount: 0 });
+    const res = await repair(goodBody);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/no repair amount/i);
+    expect(h.storage.updateItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects an item whose type is not declared by the recipe", async () => {
     mockContext({ targetAdvancedTypeId: "other-type" });
     const res = await repair(goodBody);
     expect(res.status).toBe(400);
@@ -349,7 +335,7 @@ describe("POST /api/items/:itemId/repair — AA V3 crafter repair", () => {
 
   it("rejects with the missing ingredients when inventory is short", async () => {
     mockContext({
-      ingredients: [{ itemId: "tpl-iron", itemName: "Iron", quantity: 4 }],
+      itemRepairIngredients: [{ itemId: "tpl-iron", itemName: "Iron", quantity: 4 }],
       inventory: [{ id: "inv-iron", templateItemId: "tpl-iron", name: "Iron", quantity: 1 }],
     });
     const res = await repair(goodBody);
