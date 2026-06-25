@@ -9235,23 +9235,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Post chat message.
       if (campaignId) {
-        const costLine = resourceDeductions.length > 0
-          ? `Spent: ${resourceDeductions.map(d => `${d.spent} ${d.stat}`).join(', ')}`
-          : '';
-        const lines = [
-          `🛠️ ${character.name} crafted "${recipe.name}"`,
-          effectiveNoRoll ? '(no roll required)' : `Roll: ${rollText}`,
-          `Outcome: ${outcomeLabel}`,
-          createdOutput ? `Produced: ${createdOutput.quantity}× ${createdOutput.name}` : 'No item produced',
-          consume ? '' : '(ingredients preserved)',
-          costLine,
-        ].filter(Boolean);
         try {
+          let playerName = 'Unknown';
+          try { playerName = (await storage.getUser(userId))?.username || 'Unknown'; } catch {}
+          const outputQty = createdOutput ? createdOutput.quantity : 1;
+          const outputName = createdOutput ? createdOutput.name : recipe.name;
+          const craftLine = `${character.name || 'Unknown'} (${playerName}) crafted x${outputQty} ${outputName}!`;
           const chat = await storage.createChatMessage(insertChatMessageSchema.parse({
             campaignId,
             userId,
             sender: character.name || 'Unknown',
-            text: lines.join('\n'),
+            text: craftLine,
             type: 'roll',
           }));
           broadcastToCampaign(campaignId, { type: 'chat_message', message: chat });
