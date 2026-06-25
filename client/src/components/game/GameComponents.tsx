@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -27660,7 +27660,8 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<any>(null);
   const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [repairTargetByRecipe, setRepairTargetByRecipe] = useState<Record<string, string>>({});
 
   const { data: recipes = [], isLoading } = useQuery<any[]>({
@@ -27769,13 +27770,13 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   };
 
   const q = search.trim().toLowerCase();
-  const filteredRecipes = !q ? recipes : recipes.filter((r: any) => {
+  const searched = !q ? recipes : recipes.filter((r: any) => {
     const hay = [r.name, r.description, r.outputItemName].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
   });
   // GMs always see every recipe. Players hide only recipes explicitly flagged
   // `hideWithoutKnowledge` whose knowledge/skill requirement they don't meet.
-  const visibleRecipes = isGM ? filteredRecipes : filteredRecipes.filter((r: any) => {
+  const knowledgeVisible = isGM ? searched : searched.filter((r: any) => {
     if (!r.hideWithoutKnowledge) return true;
     const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
     if (!skillRequired) return true;
@@ -27783,75 +27784,153 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
     return have != null && have >= (r.requiredSkillMinValue ?? 0);
   });
 
+  const categoryOf = (r: any): string => {
+    if (r.isRepairRecipe) return 'Repair';
+    if (r.outputItemType) return r.outputItemType.charAt(0).toUpperCase() + r.outputItemType.slice(1);
+    return 'Other';
+  };
+  const categories = Array.from(new Set(knowledgeVisible.map(categoryOf))).sort();
+  const visibleRecipes = typeFilter === 'all'
+    ? knowledgeVisible
+    : knowledgeVisible.filter((r: any) => categoryOf(r) === typeFilter);
+
+  // Keep a valid selection as the list changes (search/filter/data updates).
+  const visibleIdKey = visibleRecipes.map((r: any) => r.id).join(',');
+  useEffect(() => {
+    if (visibleRecipes.length === 0) {
+      if (selectedId) setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !visibleRecipes.some((r: any) => r.id === selectedId)) {
+      setSelectedId(visibleRecipes[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIdKey]);
+
+  // If the active type filter no longer matches any available category
+  // (recipes changed), fall back to "All" so the list never looks empty.
+  const categoryKey = categories.join(',');
+  useEffect(() => {
+    if (typeFilter !== 'all' && !categories.includes(typeFilter)) {
+      setTypeFilter('all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryKey]);
+
+  const recipeState = (r: any) => {
+    const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
+    const toolReqs = Array.isArray(r.toolItems) ? r.toolItems : [];
+    const toolsOk = toolReqs.every((t: any) => toolHaveCount(t) >= 1);
+    const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
+    const skillMin = r.requiredSkillMinValue ?? 0;
+    const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
+    const skillOk = !skillRequired || (skillHave != null && skillHave >= skillMin);
+    const charE = character?.energy ?? 0;
+    const charM = character?.mana ?? 0;
+    const charH = character?.hp ?? 0;
+    const energyOk = !r.costEnergyEnabled || (r.costEnergy ?? 0) <= charE;
+    const manaOk = !r.costManaEnabled || (r.costMana ?? 0) <= charM;
+    const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
+    const costsOk = energyOk && manaOk && hpOk;
+    const isRepair = !!r.isRepairRecipe;
+    const eligible = isRepair ? eligibleRepairItems(r) : [];
+    const selectedTargetId = repairTargetByRecipe[r.id] || '';
+    const repairTargetOk = !isRepair || (!!selectedTargetId && eligible.some((e: any) => e.id === selectedTargetId));
+    const canDoIt = canCraft && allHave && skillOk && costsOk && toolsOk && repairTargetOk;
+    return { allHave, toolReqs, toolsOk, skillRequired, skillMin, skillHave, skillOk, charE, charM, charH, energyOk, manaOk, hpOk, costsOk, isRepair, eligible, selectedTargetId, repairTargetOk, canDoIt };
+  };
+
+  const selected = visibleRecipes.find((r: any) => r.id === selectedId) || null;
+
   return (
     <div className="pt-4 border-t border-stone-700">
       <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
         <Hammer className="h-4 w-4" /> Crafting
       </h3>
 
-      <div className="relative mb-2">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search craftable items…"
-          className="pl-7 h-8 text-xs bg-stone-800 border-stone-700"
-          data-testid="input-craft-search"
-        />
-      </div>
-
       {isLoading && <p className="text-xs text-stone-500">Loading recipes…</p>}
       {!isLoading && recipes.length === 0 && (
         <p className="text-xs text-stone-500 italic">No recipes available.</p>
       )}
-      {!isLoading && recipes.length > 0 && visibleRecipes.length === 0 && (
-        <p className="text-xs text-stone-500 italic">{q ? `No recipes match "${search}".` : 'No recipes available to you.'}</p>
-      )}
 
-      <div className="space-y-1.5">
-        {visibleRecipes.map((r: any) => {
-          const allHave = (r.ingredients || []).every((ing: any) => ingredientHaveCount(ing) >= (ing.quantity || 1));
-          const toolReqs = Array.isArray(r.toolItems) ? r.toolItems : [];
-          const toolsOk = toolReqs.every((t: any) => toolHaveCount(t) >= 1);
-          const skillRequired = !!r.requireCustomSkill && !!r.requiredSkillName;
-          const skillMin = r.requiredSkillMinValue ?? 0;
-          const skillHave = skillRequired ? characterSkillValue(r.requiredSkillName) : null;
-          const skillOk = !skillRequired || (skillHave != null && skillHave >= skillMin);
-          const charE = character?.energy ?? 0;
-          const charM = character?.mana ?? 0;
-          const charH = character?.hp ?? 0;
-          const energyOk = !r.costEnergyEnabled || (r.costEnergy ?? 0) <= charE;
-          const manaOk = !r.costManaEnabled || (r.costMana ?? 0) <= charM;
-          const hpOk = !r.costHpEnabled || (r.costHp ?? 0) <= charH;
-          const costsOk = energyOk && manaOk && hpOk;
-          const isRepair = !!r.isRepairRecipe;
-          const eligible = isRepair ? eligibleRepairItems(r) : [];
-          const selectedTargetId = repairTargetByRecipe[r.id] || '';
-          const repairTargetOk = !isRepair || (!!selectedTargetId && eligible.some((e: any) => e.id === selectedTargetId));
-          const canDoIt = canCraft && allHave && skillOk && costsOk && toolsOk && repairTargetOk;
-          const isOpen = expandedId === r.id;
-          return (
-            <div key={r.id} className="border border-stone-700 rounded bg-stone-900/40 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setExpandedId(isOpen ? null : r.id)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-800/60 text-left"
-                data-testid={`button-toggle-recipe-${r.id}`}
-              >
-                {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-amber-500 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
-                <span className="text-sm font-semibold text-stone-200 flex-1 truncate" data-testid={`text-recipe-name-${r.id}`}>{r.name}</span>
-                {isRepair ? (
-                  <span className="text-[11px] text-sky-400/80 truncate hidden sm:inline">🔧 Repairs {advancedTypeName(r.repairTargetTypeId)} (+{r.repairAmount ?? 1})</span>
-                ) : r.outputItemName && (
-                  <span className="text-[11px] text-stone-500 truncate hidden sm:inline">→ {r.outputQuantity || 1}× {r.outputItemName}</span>
-                )}
-                {!allHave && <span className="text-[10px] text-red-400 shrink-0">missing</span>}
-              </button>
-              {isOpen && (
-                <div className="px-2 pb-2 pt-1 border-t border-stone-700/60">
-                  {r.description && <p className="text-xs text-stone-400 mb-1.5">{r.description}</p>}
+      {!isLoading && recipes.length > 0 && (
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* LEFT: searchable, filterable recipe list */}
+          <div className="md:w-2/5 md:shrink-0 flex flex-col gap-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search craftable items…"
+                className="pl-7 h-8 text-xs bg-stone-800 border-stone-700"
+                data-testid="input-craft-search"
+              />
+            </div>
+            {categories.length > 1 && (
+              <div className="flex flex-wrap gap-1" data-testid="craft-type-filters">
+                <button
+                  type="button"
+                  onClick={() => setTypeFilter('all')}
+                  className={`text-[11px] px-2 py-0.5 rounded-full border ${typeFilter === 'all' ? 'bg-amber-700 border-amber-600 text-amber-50' : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'}`}
+                  data-testid="chip-type-all"
+                >All</button>
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setTypeFilter(c)}
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${typeFilter === c ? 'bg-amber-700 border-amber-600 text-amber-50' : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'}`}
+                    data-testid={`chip-type-${c}`}
+                  >{c}</button>
+                ))}
+              </div>
+            )}
+            <div className="border border-stone-700 rounded bg-stone-900/40 divide-y divide-stone-800 max-h-[320px] overflow-y-auto" data-testid="craft-recipe-list">
+              {visibleRecipes.length === 0 ? (
+                <p className="text-xs text-stone-500 italic p-2">{q || typeFilter !== 'all' ? 'No recipes match your filters.' : 'No recipes available to you.'}</p>
+              ) : visibleRecipes.map((r: any) => {
+                const st = recipeState(r);
+                const isSel = r.id === selectedId;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedId(r.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-2 text-left ${isSel ? 'bg-stone-800' : 'hover:bg-stone-800/50'}`}
+                    data-testid={`button-recipe-row-${r.id}`}
+                  >
+                    {st.isRepair
+                      ? <Wrench className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                      : <Hammer className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                    <span className="text-sm font-semibold text-stone-200 flex-1 truncate" data-testid={`text-recipe-name-${r.id}`}>{r.name}</span>
+                    {st.canDoIt
+                      ? <span className="text-[10px] text-green-500 shrink-0">ready</span>
+                      : <span className="text-[10px] text-red-400 shrink-0">can't</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* RIGHT: detail of the selected recipe */}
+          <div className="md:flex-1 border border-stone-700 rounded bg-stone-900/40 p-3 min-h-[180px]">
+            {!selected ? (
+              <p className="text-xs text-stone-500 italic">Select a craft on the left to see what it needs.</p>
+            ) : (() => {
+              const r = selected;
+              const st = recipeState(r);
+              return (
+                <div data-testid={`craft-detail-${r.id}`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {st.isRepair
+                      ? <Wrench className="h-4 w-4 text-sky-400 shrink-0" />
+                      : <Hammer className="h-4 w-4 text-amber-500 shrink-0" />}
+                    <span className="text-sm font-bold text-stone-100 flex-1">{r.name}</span>
+                  </div>
+                  {r.description && <p className="text-xs text-stone-400 mb-2">{r.description}</p>}
                   <div className="text-xs space-y-1.5">
-                    {isRepair ? (
+                    {st.isRepair ? (
                       <div className="text-stone-400">
                         Restores <span className="text-sky-300 font-semibold">+{r.repairAmount ?? 1} durability</span> to a <span className="text-sky-300 font-semibold">{advancedTypeName(r.repairTargetTypeId)}</span> <span className="text-stone-500">(capped at the item's max)</span>
                       </div>
@@ -27877,9 +27956,9 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                         </ul>
                       </div>
                     )}
-                    {skillRequired && (
-                      <div className={skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
-                        Requires: {r.requiredSkillName} {skillMin}+ <span className="text-stone-500">— have {skillHave == null ? 'none' : skillHave}</span>
+                    {st.skillRequired && (
+                      <div className={st.skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
+                        Requires: {r.requiredSkillName} {st.skillMin}+ <span className="text-stone-500">— have {st.skillHave == null ? 'none' : st.skillHave}</span>
                       </div>
                     )}
                     {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
@@ -27887,28 +27966,28 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                         <div className="text-stone-500 mb-0.5">Costs:</div>
                         <ul className="ml-3 space-y-0.5">
                           {r.costEnergyEnabled && (
-                            <li className={energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
-                              • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {charE}</span>
+                            <li className={st.energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
+                              • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {st.charE}</span>
                             </li>
                           )}
                           {r.costManaEnabled && (
-                            <li className={manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
-                              • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {charM}</span>
+                            <li className={st.manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
+                              • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {st.charM}</span>
                             </li>
                           )}
                           {r.costHpEnabled && (
-                            <li className={hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
-                              • {r.costHp ?? 0} HP <span className="text-stone-500">— have {charH}</span>
+                            <li className={st.hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
+                              • {r.costHp ?? 0} HP <span className="text-stone-500">— have {st.charH}</span>
                             </li>
                           )}
                         </ul>
                       </div>
                     )}
-                    {toolReqs.length > 0 && (
+                    {st.toolReqs.length > 0 && (
                       <div>
                         <div className="text-stone-500 mb-0.5">Required tools / items:</div>
                         <ul className="ml-3 space-y-0.5">
-                          {toolReqs.map((t: any, ti: number) => {
+                          {st.toolReqs.map((t: any, ti: number) => {
                             const have = toolHaveCount(t);
                             return (
                               <li
@@ -27929,82 +28008,84 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                       </div>
                     )}
                   </div>
-                  {isRepair && (
+                  {st.isRepair && (
                     <div className="mt-2">
                       <div className="text-stone-500 mb-0.5 text-xs">Item to repair:</div>
-                      {eligible.length === 0 ? (
+                      {st.eligible.length === 0 ? (
                         <p className="text-[11px] text-stone-500 italic" data-testid={`repair-none-${r.id}`}>
                           No damaged {advancedTypeName(r.repairTargetTypeId)} items in your inventory.
                         </p>
                       ) : (
-                        <Select
-                          value={selectedTargetId}
-                          onValueChange={(v) => setRepairTargetByRecipe((prev) => ({ ...prev, [r.id]: v }))}
-                        >
-                          <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs" data-testid={`select-repair-target-${r.id}`}>
-                            <SelectValue placeholder="Select item to repair…" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {eligible.map((e: any) => (
-                              <SelectItem key={e.id} value={e.id}>
-                                {e.name} ({e.durability ?? 0}/{e.maxDurability ?? 0})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="border border-stone-700 rounded divide-y divide-stone-800 max-h-40 overflow-y-auto" data-testid={`repair-target-list-${r.id}`}>
+                          {st.eligible.map((e: any) => {
+                            const sel = st.selectedTargetId === e.id;
+                            return (
+                              <button
+                                key={e.id}
+                                type="button"
+                                onClick={() => setRepairTargetByRecipe((prev) => ({ ...prev, [r.id]: e.id }))}
+                                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left text-xs ${sel ? 'bg-sky-900/40 text-sky-200' : 'text-stone-300 hover:bg-stone-800/60'}`}
+                                data-testid={`repair-target-${r.id}-${e.id}`}
+                              >
+                                <span className="truncate">{e.name}</span>
+                                <span className="text-stone-500 shrink-0">{e.durability ?? 0}/{e.maxDurability ?? 0}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   )}
-                  {!canDoIt && (
+                  {!st.canDoIt && (
                     <div className="mt-2 text-[11px] text-red-400" data-testid={`craft-blocked-${r.id}`}>
-                      Can't {isRepair ? 'repair' : 'craft'}: {[
+                      Can't {st.isRepair ? 'repair' : 'craft'}: {[
                         !canCraft && 'not your character',
-                        !allHave && 'missing ingredients',
-                        !toolsOk && 'missing required tools/items',
-                        !skillOk && `need ${r.requiredSkillName}${skillMin ? ` ${skillMin}+` : ''}`,
-                        !energyOk && 'not enough energy',
-                        !manaOk && 'not enough mana',
-                        !hpOk && 'not enough HP',
-                        isRepair && !repairTargetOk && 'select an item to repair',
+                        !st.allHave && 'missing ingredients',
+                        !st.toolsOk && 'missing required tools/items',
+                        !st.skillOk && `need ${r.requiredSkillName}${st.skillMin ? ` ${st.skillMin}+` : ''}`,
+                        !st.energyOk && 'not enough energy',
+                        !st.manaOk && 'not enough mana',
+                        !st.hpOk && 'not enough HP',
+                        st.isRepair && !st.repairTargetOk && 'select an item to repair',
                       ].filter(Boolean).join(' · ')}
                     </div>
                   )}
-                  <div className="mt-2 flex justify-end">
-                    {isRepair ? (
+                  <div className="mt-3 flex justify-end">
+                    {st.isRepair ? (
                       <Button
                         size="sm"
-                        disabled={!canDoIt || busyId === r.id}
-                        onClick={() => handleRepair(r.id, selectedTargetId)}
-                        className="bg-sky-700 hover:bg-sky-600 h-7"
+                        disabled={!st.canDoIt || busyId === r.id}
+                        onClick={() => handleRepair(r.id, st.selectedTargetId)}
+                        className="bg-sky-700 hover:bg-sky-600 h-8"
                         data-testid={`button-repair-${r.id}`}
                       >
-                        <Hammer className="h-3 w-3 mr-1" />
+                        <Hammer className="h-3.5 w-3.5 mr-1" />
                         {busyId === r.id ? 'Repairing…' : 'Repair'}
                       </Button>
                     ) : (
                       <Button
                         size="sm"
-                        disabled={!canDoIt || busyId === r.id}
+                        disabled={!st.canDoIt || busyId === r.id}
                         onClick={() => handleCraft(r.id)}
-                        className="bg-amber-700 hover:bg-amber-600 h-7"
+                        className="bg-amber-700 hover:bg-amber-600 h-8"
                         data-testid={`button-craft-${r.id}`}
                       >
-                        <Hammer className="h-3 w-3 mr-1" />
+                        <Hammer className="h-3.5 w-3.5 mr-1" />
                         {busyId === r.id ? 'Crafting…' : 'Craft'}
                       </Button>
                     )}
                   </div>
+                  {lastResult && busyId === null && (
+                    <div className="mt-2 text-xs border border-amber-900/50 bg-amber-950/20 rounded p-2">
+                      <div className="text-amber-300 font-semibold">{lastResult.outcome?.label}</div>
+                      {lastResult.roll && <div className="text-stone-400">{lastResult.roll.text}</div>}
+                      {lastResult.producedItem && <div className="text-green-400">+ {lastResult.producedItem.quantity}× {lastResult.producedItem.name}</div>}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {lastResult && (
-        <div className="mt-2 text-xs border border-amber-900/50 bg-amber-950/20 rounded p-2">
-          <div className="text-amber-300 font-semibold">{lastResult.outcome?.label}</div>
-          {lastResult.roll && <div className="text-stone-400">{lastResult.roll.text}</div>}
-          {lastResult.producedItem && <div className="text-green-400">+ {lastResult.producedItem.quantity}× {lastResult.producedItem.name}</div>}
+              );
+            })()}
+          </div>
         </div>
       )}
     </div>
