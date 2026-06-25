@@ -5,6 +5,7 @@ Arcana Adventure is a full-stack web application designed to be a comprehensive 
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
+Pickers: Do NOT use dropdown (`<Select>`) lists for choosing items, knowledge, or item types. Use searchable popover pickers (search box + scrollable list, like the inventory/library browser) instead.
 
 ## System Architecture
 
