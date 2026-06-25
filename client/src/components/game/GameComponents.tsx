@@ -15640,6 +15640,7 @@ interface CharacterSheetProps {
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
   defaultTab?: string;
+  onTabChange?: (value: string) => void;
   campaignId?: string;
   sceneId?: string;
   isTemplate?: boolean;
@@ -17220,7 +17221,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -19486,7 +19487,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           )}
         </div>
       )}
-      <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
+      <Tabs defaultValue={defaultTab} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
         <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-6' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (

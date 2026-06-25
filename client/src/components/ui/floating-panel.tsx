@@ -103,6 +103,12 @@ interface FloatingPanelProps {
    * own padding). Auto-fitting stops once the user manually resizes the panel.
    */
   fitContent?: boolean;
+  /**
+   * Only relevant together with `fitContent`. The one-time fit-and-lock is
+   * performed while this is true (e.g. while the designated tab is showing), so
+   * the single locked size matches that tab. Defaults to true.
+   */
+  fitContentActive?: boolean;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -119,6 +125,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   onBringToFront,
   panelKey,
   fitContent,
+  fitContentActive,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -173,6 +180,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     onBringToFront={onBringToFront}
     panelKey={panelKey}
     fitContent={fitContent}
+    fitContentActive={fitContentActive}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -192,11 +200,13 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   onBringToFront,
   panelKey,
   fitContent,
+  fitContentActive,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
   const contentInnerRef = React.useRef<HTMLDivElement>(null);
   const userResizedRef = React.useRef(false);
+  const fitLockedRef = React.useRef(false);
 
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
@@ -285,39 +295,45 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     };
   }, []);
 
-  // Grow the panel's height to fit its content (opt-in via `fitContent`).
-  // It only ever GROWS to fit the tallest content shown (e.g. the Skills tab)
-  // and never shrinks back for shorter tabs, so the panel settles on one size
-  // and stays there. Stops adjusting once the user manually resizes the panel.
+  // Fit the panel's height to its content exactly ONCE, then lock it so the
+  // size never changes again (no per-tab resizing). The fit only runs while
+  // `fitContentActive` is true (e.g. while the designated tab is showing), so
+  // the single locked size matches that tab. Ignored after a manual resize.
   const fitToContent = React.useCallback(() => {
-    if (!fitContent || userResizedRef.current || isFullscreen || isMinimized) return;
+    if (!fitContent || fitLockedRef.current || userResizedRef.current || isFullscreen || isMinimized) return;
+    if (fitContentActive === false) return;
     const inner = contentInnerRef.current;
     const el = panelRef.current;
     if (!inner || !el) return;
+    const sh = inner.scrollHeight;
+    if (sh <= 0) return;
     const HEADER = 44; // non-minimized header height
-    const desired = HEADER + inner.scrollHeight + 2; // +2 for top/bottom borders
+    const EXTRA = 6;   // a few px of slack so content is never clipped
+    const desired = HEADER + sh + 2 + EXTRA; // +2 for top/bottom borders
     const maxH = window.innerHeight - 24;
     const newH = Math.max(minHeight, Math.min(desired, maxH));
-    // Grow-only: never shrink below the current height.
-    if (newH > sizeRef.current.height + 1) {
-      sizeRef.current = { ...sizeRef.current, height: newH };
-      applySize();
-      const p = clampPosition(posRef.current.x, posRef.current.y, sizeRef.current.width, newH);
-      posRef.current.x = p.x;
-      posRef.current.y = p.y;
-      applyTransform();
-    }
-  }, [fitContent, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition]);
+    sizeRef.current = { ...sizeRef.current, height: newH };
+    applySize();
+    const p = clampPosition(posRef.current.x, posRef.current.y, sizeRef.current.width, newH);
+    posRef.current.x = p.x;
+    posRef.current.y = p.y;
+    applyTransform();
+    fitLockedRef.current = true; // lock — never resize again
+  }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition]);
 
   React.useLayoutEffect(() => {
-    if (!fitContent) return;
+    if (!fitContent || fitLockedRef.current) return;
     const inner = contentInnerRef.current;
     if (!inner) return;
     fitToContent();
-    const ro = new ResizeObserver(() => fitToContent());
+    if (fitLockedRef.current) return;
+    const ro = new ResizeObserver(() => {
+      fitToContent();
+      if (fitLockedRef.current) ro.disconnect();
+    });
     ro.observe(inner);
     return () => ro.disconnect();
-  }, [fitContent, fitToContent]);
+  }, [fitContent, fitContentActive, fitToContent]);
 
   React.useLayoutEffect(() => {
     const el = panelRef.current;

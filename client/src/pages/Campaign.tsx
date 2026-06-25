@@ -6661,18 +6661,30 @@ export default function Campaign() {
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
   const [openCharacterSheets, setOpenCharacterSheets] = useState<any[]>([]);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
+  // Tracks the active tab per open character sheet so the floating panel can
+  // size itself once to the "Attrs & Skills" (attributes) tab and lock there.
+  const [charSheetActiveTabs, setCharSheetActiveTabs] = useState<Record<string, string>>({});
   
   // Helper functions for managing multiple open character sheets
-  const openCharacterSheet = (char: any) => {
+  const openCharacterSheet = (char: any, tab: string = "overview") => {
     setOpenCharacterSheets(prev => {
       if (prev.some(c => c.id === char.id)) return prev;
       return [...prev, char];
     });
+    // Seed the sheet's active tab so the floating panel sizes once to the right
+    // tab from the very first render (never relies on the global default tab).
+    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: tab }));
     bringToFront(`char-${char.id}`);
   };
   
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
+    setCharSheetActiveTabs(prev => {
+      if (!(charId in prev)) return prev;
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
   };
 
   // Item-detail / spellbook panels are hosted here (not inside the character
@@ -9834,7 +9846,7 @@ export default function Campaign() {
     const charToView = role === 'player' ? character : inspectedChar;
     if (charToView) {
       setCharacterSheetDefaultTab(tab);
-      openCharacterSheet(charToView);
+      openCharacterSheet(charToView, tab);
     }
   };
 
@@ -12766,6 +12778,7 @@ export default function Campaign() {
             minWidth={400}
             minHeight={400}
             fitContent
+            fitContentActive={(charSheetActiveTabs[sheet.id] ?? characterSheetDefaultTab) === 'attributes'}
             panelKey={`char-${sheet.id}`}
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
@@ -12785,6 +12798,7 @@ export default function Campaign() {
               onUpdate={(updates) => handleUpdateCharacterById(sheet.id, updates)}
               onClose={() => closeCharacterSheet(sheet.id)}
               defaultTab={characterSheetDefaultTab}
+              onTabChange={(v) => setCharSheetActiveTabs(prev => ({ ...prev, [sheet.id]: v }))}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
