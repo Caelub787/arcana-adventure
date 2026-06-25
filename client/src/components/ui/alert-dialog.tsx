@@ -2,7 +2,7 @@ import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
-import { useTopLayerZIndex } from "@/components/ui/floating-panel"
+import { bringFloatingPanelToFront } from "@/components/ui/floating-panel"
 import { buttonVariants } from "@/components/ui/button"
 
 const AlertDialog = AlertDialogPrimitive.Root
@@ -30,13 +30,37 @@ const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
 >(({ className, style, ...props }, ref) => {
-  const z = useTopLayerZIndex();
+  // z starts at 0; updated imperatively when Radix Presence actually mounts the
+  // content into the DOM (i.e. when the dialog opens), NOT when the parent
+  // component first renders. This ensures a stale z captured at inventory-open
+  // time never blocks the dialog from sitting above floating panels opened later.
+  const [z, setZ] = React.useState(0);
+  const overlayRef = React.useRef<React.ElementRef<typeof AlertDialogPrimitive.Overlay> | null>(null);
+
+  const contentCallback = React.useCallback(
+    (el: React.ElementRef<typeof AlertDialogPrimitive.Content> | null) => {
+      if (el) {
+        const newZ = bringFloatingPanelToFront();
+        // Apply imperatively so the first paint uses the correct value
+        // (before React finishes the re-render triggered by setZ).
+        el.style.zIndex = String(newZ);
+        if (overlayRef.current) {
+          (overlayRef.current as HTMLElement).style.zIndex = String(newZ);
+        }
+        setZ(newZ);
+      }
+      if (typeof ref === 'function') ref(el);
+      else if (ref) (ref as React.MutableRefObject<typeof el>).current = el;
+    },
+    [ref],
+  );
+
   return (
   <AlertDialogPortal>
-    <AlertDialogOverlay style={{ zIndex: z }} />
+    <AlertDialogOverlay ref={overlayRef} style={{ zIndex: z || undefined }} />
     <AlertDialogPrimitive.Content
-      ref={ref}
-      style={{ zIndex: z, ...style }}
+      ref={contentCallback}
+      style={{ zIndex: z || undefined, ...style }}
       className={cn(
         "fixed left-[50%] top-[50%] z-[10701] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-stone-700 bg-stone-900 p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className

@@ -3,7 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { useTopLayerZIndex } from "@/components/ui/floating-panel"
+import { bringFloatingPanelToFront } from "@/components/ui/floating-panel"
 
 const Dialog = DialogPrimitive.Root
 
@@ -32,13 +32,33 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, onInteractOutside, onPointerDownOutside, style, ...props }, ref) => {
-  const z = useTopLayerZIndex();
+  // z starts at 0; acquired imperatively when Radix Presence mounts the content
+  // into the DOM (dialog opens), NOT when the wrapper component first renders.
+  const [z, setZ] = React.useState(0);
+  const overlayRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Overlay> | null>(null);
+
+  const contentCallback = React.useCallback(
+    (el: React.ElementRef<typeof DialogPrimitive.Content> | null) => {
+      if (el) {
+        const newZ = bringFloatingPanelToFront();
+        el.style.zIndex = String(newZ);
+        if (overlayRef.current) {
+          (overlayRef.current as HTMLElement).style.zIndex = String(newZ);
+        }
+        setZ(newZ);
+      }
+      if (typeof ref === 'function') ref(el);
+      else if (ref) (ref as React.MutableRefObject<typeof el>).current = el;
+    },
+    [ref],
+  );
+
   return (
   <DialogPortal>
-    <DialogOverlay style={{ zIndex: z }} />
+    <DialogOverlay ref={overlayRef} style={{ zIndex: z || undefined }} />
     <DialogPrimitive.Content
-      ref={ref}
-      style={{ zIndex: z, ...style }}
+      ref={contentCallback}
+      style={{ zIndex: z || undefined, ...style }}
       onInteractOutside={(e) => {
         e.preventDefault();
         onInteractOutside?.(e);

@@ -44,8 +44,21 @@ export function getFloatingPanelZ(panelKey?: string): number | undefined {
 // z-index can eventually be climbed past — making an overlay open BEHIND a
 // panel. Drawing from the shared counter guarantees "whatever opens last sits
 // on top of every currently-open floating panel".
+//
+// IMPORTANT: We use useLayoutEffect (not useState lazy-init) so the z-index is
+// acquired at the moment the component actually mounts/becomes visible, not at
+// the time it was first added to the React tree.  Radix unmounts and remounts
+// overlay content when open→true, so useLayoutEffect fires at exactly the right
+// moment.  Because useLayoutEffect runs synchronously before the browser paints,
+// the re-render triggered by setZ completes before anything is drawn — no flash.
+// This fixes overlays (e.g. the per-row delete-quantity AlertDialog) that are
+// mounted long before the user opens them and would otherwise hold a stale,
+// lower-than-current z-index.
 export function useTopLayerZIndex(): number {
-  const [z] = React.useState(() => bringFloatingPanelToFront());
+  const [z, setZ] = React.useState(0);
+  React.useLayoutEffect(() => {
+    setZ(bringFloatingPanelToFront());
+  }, []);
   return z;
 }
 
