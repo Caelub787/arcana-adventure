@@ -11958,6 +11958,7 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
 function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: string; systemSlug: string }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
@@ -11998,7 +11999,11 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
   });
 
   const q = search.trim().toLowerCase();
-  const filtered = q ? items.filter((it) => (it.name || '').toLowerCase().includes(q)) : items;
+  const types = Array.from(new Set(items.map((it) => it.itemType).filter(Boolean) as string[])).sort();
+  const filtered = items.filter((it) =>
+    (!typeFilter || it.itemType === typeFilter) &&
+    (!q || (it.name || '').toLowerCase().includes(q))
+  );
 
   return (
     <div data-testid="panel-add-item-recipe">
@@ -12016,6 +12021,29 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
               data-testid="input-add-item-recipe-search"
             />
           </div>
+          {types.length > 1 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              <button
+                type="button"
+                onClick={() => setTypeFilter(null)}
+                className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === null ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                data-testid="button-add-item-recipe-type-all"
+              >
+                All
+              </button>
+              {types.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter((cur) => (cur === t ? null : t))}
+                  className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === t ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                  data-testid={`button-add-item-recipe-type-${t}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="max-h-60 overflow-y-auto py-1">
           {filtered.map((it) => {

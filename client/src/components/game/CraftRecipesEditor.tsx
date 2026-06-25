@@ -391,13 +391,14 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { data: items = [] } = useQuery<any[]>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
     enabled: (systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && open,
   });
-  const reset = () => { setSearch(''); setSelected(new Set()); };
+  const reset = () => { setSearch(''); setTypeFilter(null); setSelected(new Set()); };
   const addMut = useMutation({
     mutationFn: async (ids: string[]) => {
       let succeeded = 0;
@@ -430,7 +431,11 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
     return next;
   });
   const q = search.trim().toLowerCase();
-  const filtered = q ? items.filter(s => (s.name || '').toLowerCase().includes(q)) : items;
+  const types = Array.from(new Set(items.map(s => s.itemType).filter(Boolean) as string[])).sort();
+  const filtered = items.filter(s =>
+    (!typeFilter || s.itemType === typeFilter) &&
+    (!q || (s.name || '').toLowerCase().includes(q))
+  );
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <PopoverTrigger asChild>
@@ -451,6 +456,29 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
               data-testid="input-add-recipe-from-item-search"
             />
           </div>
+          {types.length > 1 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              <button
+                type="button"
+                onClick={() => setTypeFilter(null)}
+                className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === null ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                data-testid="button-add-recipe-from-item-type-all"
+              >
+                All
+              </button>
+              {types.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter((cur) => (cur === t ? null : t))}
+                  className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === t ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                  data-testid={`button-add-recipe-from-item-type-${t}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="max-h-60 overflow-y-auto py-1">
           {filtered.map(s => {
