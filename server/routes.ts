@@ -8355,6 +8355,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sourceSystem && sourceSystem !== 'aa-v2' && sourceSystem !== 'aa-v3') {
         return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
       }
+      // Reconcile any linked crafter-templates onto the source item so recipes
+      // appear even if the original link-time copy never ran.
+      await syncCrafterTemplateRecipes(sourceId);
       const recipes = await storage.getCraftRecipesByItem(sourceId);
       // Enrich with outputItemName so the player UI can list what each
       // recipe produces without an extra round-trip per row.
@@ -8524,6 +8527,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ingredients.map(({ id: _, recipeId: __, ...x }: any) => x),
         outcomes.map(({ id: _, recipeId: __, ...x }: any) => x),
       );
+    }
+  }
+
+  // Self-heal: ensure every crafter-template currently linked to a crafter
+  // library item has had its recipes copied onto that item. copyCrafter...
+  // is idempotent (skips recipes already copied), so calling this on read /
+  // craft reconciles any link whose copy never ran (e.g. a template linked
+  // while empty, then later filled, or a link created before the copy code
+  // existed). Keeps display + crafting working regardless of link ordering.
+  async function syncCrafterTemplateRecipes(sourceItemId: string) {
+    const linkedTpls = await storage.getCrafterTemplateLinks(sourceItemId);
+    for (const tplId of linkedTpls) {
+      await copyCrafterTemplateRecipesToItem(tplId, sourceItemId);
     }
   }
 
@@ -8915,6 +8931,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const effectiveNoRoll = !!recipe.noRoll || isV3Craft;
       // Recipe must be attached to the source library item for this crafter
       const sourceId = crafter.templateItemId || crafter.id;
+      // Reconcile linked templates first so a freshly-linked template's recipes
+      // are craftable even if the link-time copy never ran.
+      await syncCrafterTemplateRecipes(sourceId);
       if (recipe.parentItemId !== sourceId) {
         return res.status(400).json({ error: "Recipe does not belong to this Crafter" });
       }

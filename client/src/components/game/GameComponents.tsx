@@ -25866,7 +25866,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
           {activeTab === 'templates' ? (
             <div className="space-y-4">
               {/* Search and Filter */}
@@ -25898,35 +25898,43 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       <div className="font-medium text-stone-200">Filter Items</div>
                       <div>
                         <Label className="text-stone-400 text-xs">Item Type</Label>
-                        <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-item-type-filter">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All</SelectItem>
-                            {itemTypeOptions.map(type => (
-                              <SelectItem key={type} value={type}>
-                                {type.charAt(0).toUpperCase() + type.slice(1)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="mt-1 flex flex-wrap gap-1.5" data-testid="picker-item-type-filter">
+                          {['all', ...itemTypeOptions].map(type => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setTemplateTypeFilter(type)}
+                              className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
+                                templateTypeFilter === type
+                                  ? 'bg-amber-600 border-amber-500 text-white'
+                                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'
+                              }`}
+                              data-testid={`button-item-type-filter-${type}`}
+                            >
+                              {type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div>
                         <Label className="text-stone-400 text-xs">Rarity</Label>
-                        <Select value={templateRarityFilter} onValueChange={setTemplateRarityFilter}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-item-rarity-filter">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All</SelectItem>
-                            {rarityOptions.map(rarity => (
-                              <SelectItem key={rarity} value={rarity}>
-                                {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="mt-1 flex flex-wrap gap-1.5" data-testid="picker-item-rarity-filter">
+                          {['all', ...rarityOptions].map(rarity => (
+                            <button
+                              key={rarity}
+                              type="button"
+                              onClick={() => setTemplateRarityFilter(rarity)}
+                              className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
+                                templateRarityFilter === rarity
+                                  ? 'bg-amber-600 border-amber-500 text-white'
+                                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'
+                              }`}
+                              data-testid={`button-item-rarity-filter-${rarity}`}
+                            >
+                              {rarity === 'all' ? 'All' : rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <Button
                         variant="outline"
