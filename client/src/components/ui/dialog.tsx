@@ -32,9 +32,15 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, onInteractOutside, onPointerDownOutside, style, ...props }, ref) => {
-  // z starts at 0; acquired imperatively when Radix Presence mounts the content
-  // into the DOM (dialog opens), NOT when the wrapper component first renders.
-  const [z, setZ] = React.useState(0);
+  // z is acquired imperatively the moment Radix Presence mounts the content into
+  // the DOM (dialog opens), NOT when the wrapper component first renders.
+  //
+  // IMPORTANT: do NOT store this in React state. Radix re-composes this content
+  // ref while it settles its open transition, so a setState here would re-render
+  // -> re-invoke the ref -> acquire an ever-higher z -> setState again, an
+  // infinite loop (React error #185). Setting el.style directly runs before paint
+  // and React never manages zIndex (it's not passed via the style prop), so the
+  // imperative value survives subsequent re-renders.
   const overlayRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Overlay> | null>(null);
 
   const contentCallback = React.useCallback(
@@ -45,7 +51,6 @@ const DialogContent = React.forwardRef<
         if (overlayRef.current) {
           (overlayRef.current as HTMLElement).style.zIndex = String(newZ);
         }
-        setZ(newZ);
       }
       if (typeof ref === 'function') ref(el);
       else if (ref) (ref as React.MutableRefObject<typeof el>).current = el;
@@ -55,10 +60,10 @@ const DialogContent = React.forwardRef<
 
   return (
   <DialogPortal>
-    <DialogOverlay ref={overlayRef} style={{ zIndex: z || undefined }} />
+    <DialogOverlay ref={overlayRef} />
     <DialogPrimitive.Content
       ref={contentCallback}
-      style={{ zIndex: z || undefined, ...style }}
+      style={style}
       onInteractOutside={(e) => {
         e.preventDefault();
         onInteractOutside?.(e);
