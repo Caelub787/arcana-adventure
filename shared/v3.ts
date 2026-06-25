@@ -53,8 +53,9 @@ export const V3_SKILLS: V3SkillDef[] = [
   // Anemos
   { key: "sense",         name: "Sense",         parent: "anemos",       description: "Sensing magic, spirits, and currents of the Anemos." },
   // Intelligence
+  { key: "animalHandling", name: "Animal Handling", parent: "intelligence", description: "Taming, calming, and handling animals and beasts." },
   { key: "investigation", name: "Investigation", parent: "intelligence", description: "Deductive reasoning, sifting clues, recognizing patterns." },
-  { key: "naturecraft",   name: "Naturecraft",   parent: "intelligence", description: "Knowledge of plants, beasts, weather, and the wild." },
+  { key: "naturecraft",   name: "Nature",        parent: "intelligence", description: "Knowledge of plants, weather, terrain, and the wild." },
   { key: "survival",      name: "Survival",      parent: "intelligence", description: "Tracking, foraging, and surviving in hostile terrain." },
 ];
 

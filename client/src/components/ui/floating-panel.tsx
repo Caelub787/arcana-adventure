@@ -237,6 +237,10 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const [, forceRender] = React.useState(0);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
+  // For fitContent panels we render hidden until the one-time fit-to-content
+  // has locked the size, so the user never sees the default size flash to the
+  // fitted size. Panels that aren't waiting on a fit reveal immediately.
+  const [fitRevealed, setFitRevealed] = React.useState(false);
 
   const applyZIndex = React.useCallback(() => {
     const el = panelRef.current;
@@ -319,7 +323,27 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     posRef.current.y = p.y;
     applyTransform();
     fitLockedRef.current = true; // lock — never resize again
+    setFitRevealed(true); // size is final; safe to show the panel
   }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition]);
+
+  // Whether this panel should stay hidden until the fit locks. Mirrors the
+  // guards in fitToContent so panels that won't fit (no fitContent, inactive
+  // tab, fullscreen/minimized, or already manually resized) reveal at once.
+  const waitingForFit =
+    !!fitContent && fitContentActive !== false && !isFullscreen && !isMinimized && !userResizedRef.current;
+
+  // Reveal immediately when we are not waiting on a fit; otherwise keep a short
+  // safety timer so the panel can never stay invisible if a measurement never
+  // resolves (the common case reveals pre-paint via fitToContent's lock).
+  React.useEffect(() => {
+    if (fitRevealed) return;
+    if (!waitingForFit) {
+      setFitRevealed(true);
+      return;
+    }
+    const t = setTimeout(() => setFitRevealed(true), 250);
+    return () => clearTimeout(t);
+  }, [fitRevealed, waitingForFit]);
 
   React.useLayoutEffect(() => {
     if (!fitContent || fitLockedRef.current) return;
@@ -519,6 +543,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const headerHeight = isMinimized ? 28 : 44;
   const minimizedMaxWidth = 120;
   const s = sizeRef.current;
+  const hidePreFit = waitingForFit && !fitRevealed;
 
   const panelContent = (
     <>
@@ -534,6 +559,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
           height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
           backfaceVisibility: 'hidden' as const,
+          visibility: hidePreFit ? 'hidden' : undefined,
         }}
         data-testid="floating-panel"
         data-floating-panel
