@@ -16,7 +16,6 @@ import * as React from "react";
 import { Button, Input, Select, SelectItem, Stack, Row, Section } from "../ui/primitives";
 import { optionalNum } from "../lib/utils";
 import type { HostAdapter } from "../types";
-import { EntityPickerModal, type PickerFilter } from "./EntityPickerModal";
 
 export type BuildRecipeIngredientDraft = {
   id?: string;
@@ -75,6 +74,132 @@ export function recommendFromCopper(copper: number): { price: number; currency: 
   return denominate(rounded);
 }
 
+/**
+ * Inline searchable item picker for V3 ingredient rows.
+ * Uses only package primitives — no Radix, no shadcn, no Tailwind.
+ */
+const InlineItemPicker: React.FC<{
+  value: string | null | undefined;
+  items: PickerItem[];
+  onChange: (itemId: string | null, itemName: string) => void;
+  rowIndex: number;
+}> = ({ value, items, onChange, rowIndex }) => {
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const selected = value ? items.find(it => it.id === value) : null;
+  const q = search.trim().toLowerCase();
+  const filtered = q ? items.filter(it => it.name.toLowerCase().includes(q)) : items;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const pick = (itemId: string | null, itemName: string) => {
+    onChange(itemId, itemName);
+    setOpen(false);
+    setSearch("");
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", flex: 1 }}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", textAlign: "left", justifyContent: "flex-start" }}
+        data-testid={`button-build-ingredient-picker-${rowIndex}`}
+      >
+        {selected ? selected.name : <span style={{ opacity: 0.5 }}>— item —</span>}
+      </Button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            background: "var(--ld-surface, #1c1917)",
+            border: "1px solid var(--ld-border, #44403c)",
+            borderRadius: 6,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+            minWidth: 200,
+          }}
+        >
+          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--ld-border, #44403c)" }}>
+            <Input
+              autoFocus
+              placeholder="Search items…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              data-testid={`input-build-ingredient-search-${rowIndex}`}
+            />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            <button
+              type="button"
+              onClick={() => pick(null, "")}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "6px 10px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--ld-muted, #a8a29e)",
+                fontSize: 13,
+              }}
+              data-testid={`button-build-ingredient-none-${rowIndex}`}
+            >
+              — none —
+            </button>
+            {filtered.map(it => (
+              <button
+                key={it.id}
+                type="button"
+                onClick={() => pick(it.id, it.name)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "6px 10px",
+                  background: it.id === value ? "var(--ld-accent-muted, rgba(217,119,6,0.15))" : "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--ld-text, #e7e5e4)",
+                  fontSize: 13,
+                }}
+                data-testid={`button-build-ingredient-option-${rowIndex}-${it.id}`}
+              >
+                <span style={{ fontWeight: it.id === value ? 600 : 400 }}>{it.name}</span>
+                {it.itemType && (
+                  <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11 }}>{it.itemType}</span>
+                )}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: "8px 10px", color: "var(--ld-muted, #a8a29e)", fontSize: 13 }}>
+                No items found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export interface ItemBuildRecipeEditorProps {
   value: BuildRecipeDraft;
   onChange: (next: BuildRecipeDraft) => void;
@@ -83,7 +208,7 @@ export interface ItemBuildRecipeEditorProps {
   onApplyPrice: (price: number, currency: string) => void;
   /** Rarity of the item being made; adds a per-output rarity surcharge to the price. */
   outputRarity?: string | null;
-  /** AA V3 uses a searchable browse panel to pick ingredients; V2 keeps the dropdown. */
+  /** AA V3 uses an inline searchable popover to pick ingredients; V2 keeps the dropdown. */
   isV3?: boolean;
 }
 
@@ -147,30 +272,8 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
     onChange({ ...value, outputQuantity: n });
   };
 
-  // V3: browse-panel ingredient picker (search + type/rarity filters).
-  const [pickerOpen, setPickerOpen] = React.useState(false);
-  const distinctTypes = Array.from(new Set(items.map(it => it.itemType).filter(Boolean))).sort();
-  const ingredientFilters: PickerFilter<PickerItem>[] = [
-    ...(distinctTypes.length > 0 ? [{
-      key: "itemType",
-      label: "Type",
-      options: distinctTypes.map(t => ({ value: t, label: t })),
-      getValue: (o: PickerItem) => o.itemType,
-    }] : []),
-    {
-      key: "rarity",
-      label: "Rarity",
-      options: ["common", "uncommon", "rare", "epic", "legendary"].map(r => ({ value: r, label: r })),
-      getValue: (o: PickerItem) => o.rarity,
-    },
-  ];
-  const toggleIngredient = (it: PickerItem) => {
-    const idx = ingredients.findIndex(ing => ing.itemId === it.id);
-    if (idx >= 0) {
-      setIngredients(ingredients.filter((_, i) => i !== idx));
-    } else {
-      setIngredients([...ingredients, { itemId: it.id, itemName: it.name, quantity: 1, sortOrder: ingredients.length }]);
-    }
+  const addIngredientRow = () => {
+    setIngredients([...ingredients, { itemName: "", quantity: 1, sortOrder: ingredients.length }]);
   };
 
   return (
@@ -196,9 +299,16 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
         {ingredients.map((ing, ii) => (
           <Row key={ing.id ?? ii} style={{ marginBottom: 6 }}>
             {isV3 ? (
-              <div style={{ flex: 1 }} data-testid={`text-build-ingredient-name-${ii}`}>
-                {ing.itemName || ing.itemId || <span className="ld-subtle">— item —</span>}
-              </div>
+              <InlineItemPicker
+                value={ing.itemId}
+                items={items}
+                rowIndex={ii}
+                onChange={(itemId, itemName) => {
+                  const next = ingredients.slice();
+                  next[ii] = { ...ing, itemId: itemId || null, itemName: itemName || ing.itemName };
+                  setIngredients(next);
+                }}
+              />
             ) : (
               <Select value={ing.itemId ?? ""} onValueChange={v => {
                 const found = items.find(it => it.id === v);
@@ -219,28 +329,8 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
             <Button size="sm" variant="danger" onClick={() => setIngredients(ingredients.filter((_, i) => i !== ii))} data-testid={`button-remove-build-ingredient-${ii}`}>×</Button>
           </Row>
         ))}
-        {isV3 ? (
-          <Button size="sm" onClick={() => setPickerOpen(true)} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
-        ) : (
-          <Button size="sm" onClick={() => setIngredients([...ingredients, { itemName: "", quantity: 1, sortOrder: ingredients.length }])} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
-        )}
+        <Button size="sm" onClick={addIngredientRow} data-testid="button-add-build-ingredient">+ Add ingredient</Button>
       </Section>
-
-      {isV3 && (
-        <EntityPickerModal
-          open={pickerOpen}
-          title="Add ingredients"
-          options={items}
-          selectedIds={ingredients.map(ing => ing.itemId).filter((x): x is string => !!x)}
-          onPick={toggleIngredient}
-          onClose={() => setPickerOpen(false)}
-          filters={ingredientFilters}
-          renderMeta={(o) => [o.itemType, o.rarity].filter(Boolean).join(" · ")}
-          searchPlaceholder="Search items…"
-          emptyText="No items available yet."
-          testIdPrefix="build-ingredient"
-        />
-      )}
 
       {ingredients.length > 0 && (
         <Row style={{ justifyContent: "space-between", alignItems: "center" }}>
