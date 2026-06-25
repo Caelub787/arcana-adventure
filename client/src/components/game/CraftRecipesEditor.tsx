@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown, Search, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
@@ -391,28 +391,51 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const { data: items = [] } = useQuery<any[]>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
     enabled: (systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && open,
   });
+  const reset = () => { setSearch(''); setSelected(new Set()); };
   const addMut = useMutation({
-    mutationFn: (itemId: string) => api.addItemRecipeToCrafter(crafterItemId, itemId),
-    onSuccess: () => {
-      toast({ title: 'Recipe added from item' });
-      setOpen(false);
-      setSearch('');
-      onAdded();
+    mutationFn: async (ids: string[]) => {
+      let succeeded = 0;
+      const failed: string[] = [];
+      for (const id of ids) {
+        try {
+          await api.addItemRecipeToCrafter(crafterItemId, id);
+          succeeded++;
+        } catch {
+          failed.push(id);
+        }
+      }
+      return { succeeded, failed };
     },
-    onError: (err: any) => toast({ title: 'Failed to add recipe', description: err?.message || String(err), variant: 'destructive' }),
+    onSuccess: ({ succeeded, failed }) => {
+      if (failed.length === 0) {
+        toast({ title: `Added ${succeeded} recipe${succeeded === 1 ? '' : 's'} from items` });
+        setOpen(false);
+        reset();
+      } else {
+        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected — try again.', variant: 'destructive' });
+        setSelected(new Set(failed));
+      }
+    },
+    onSettled: () => onAdded(),
+  });
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
   });
   const q = search.trim().toLowerCase();
   const filtered = q ? items.filter(s => (s.name || '').toLowerCase().includes(q)) : items;
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <PopoverTrigger asChild>
         <Button type="button" size="sm" variant="outline" className="border-stone-600" data-testid="button-add-recipe-from-item">
-          <Plus className="h-3 w-3 mr-1" /> Add from item
+          <Plus className="h-3 w-3 mr-1" /> Add from items
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0 bg-stone-900 border-stone-700" align="end">
@@ -430,31 +453,50 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
           </div>
         </div>
         <div className="max-h-60 overflow-y-auto py-1">
-          {filtered.map(s => (
-            <button
-              key={s.id}
-              type="button"
-              disabled={addMut.isPending}
-              onClick={() => addMut.mutate(s.id)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50"
-              data-testid={`button-add-recipe-from-item-option-${s.id}`}
-            >
-              {s.image ? (
-                <img src={s.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
-              ) : (
-                <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-stone-200 truncate">{s.name}</div>
-                {s.itemType && <div className="text-[10px] text-stone-500 capitalize">{s.itemType}</div>}
-              </div>
-            </button>
-          ))}
+          {filtered.map(s => {
+            const isSel = selected.has(s.id);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                disabled={addMut.isPending}
+                onClick={() => toggle(s.id)}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40' : ''}`}
+                data-testid={`button-add-recipe-from-item-option-${s.id}`}
+              >
+                <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
+                  {isSel && <Check className="h-3 w-3 text-white" />}
+                </div>
+                {s.image ? (
+                  <img src={s.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+                ) : (
+                  <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-stone-200 truncate">{s.name}</div>
+                  {s.itemType && <div className="text-[10px] text-stone-500 capitalize">{s.itemType}</div>}
+                </div>
+              </button>
+            );
+          })}
           {filtered.length === 0 && (
             <p className="px-3 py-2 text-xs text-stone-500 italic">
               {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
             </p>
           )}
+        </div>
+        <div className="p-2 border-t border-stone-700 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-stone-400">{selected.size} selected</span>
+          <Button
+            type="button"
+            size="sm"
+            disabled={selected.size === 0 || addMut.isPending}
+            onClick={() => addMut.mutate(Array.from(selected))}
+            className="bg-amber-700 hover:bg-amber-600 h-7"
+            data-testid="button-add-recipe-from-item-confirm"
+          >
+            <Plus className="h-3 w-3 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

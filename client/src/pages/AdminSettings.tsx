@@ -46,7 +46,7 @@ import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -11959,21 +11959,45 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
+  const reset = () => { setSearch(''); setSelected(new Set()); };
   const addMut = useMutation({
-    mutationFn: (itemId: string) => api.addItemRecipeToTemplate(templateId, itemId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['craft-recipes-template', templateId] });
-      setOpen(false);
-      setSearch('');
-      toast({ title: 'Recipe added to template' });
+    mutationFn: async (ids: string[]) => {
+      let succeeded = 0;
+      const failed: string[] = [];
+      for (const id of ids) {
+        try {
+          await api.addItemRecipeToTemplate(templateId, id);
+          succeeded++;
+        } catch {
+          failed.push(id);
+        }
+      }
+      return { succeeded, failed };
     },
-    onError: (err: any) => toast({ title: 'Failed to add recipe', description: err?.message || String(err), variant: 'destructive' }),
+    onSuccess: ({ succeeded, failed }) => {
+      if (failed.length === 0) {
+        toast({ title: `Added ${succeeded} recipe${succeeded === 1 ? '' : 's'} to template` });
+        setOpen(false);
+        reset();
+      } else {
+        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected — try again.', variant: 'destructive' });
+        setSelected(new Set(failed));
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['craft-recipes-template', templateId] }),
+  });
+
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
   });
 
   const q = search.trim().toLowerCase();
@@ -11981,12 +12005,12 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
 
   return (
     <div data-testid="panel-add-item-recipe">
-      <Label className="text-stone-300">Add an existing item recipe to this group</Label>
-      <p className="text-xs text-stone-400 mb-2">Pick an item that already has a build recipe to copy its recipe into this template.</p>
-      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+      <Label className="text-stone-300">Add existing item recipes to this group</Label>
+      <p className="text-xs text-stone-400 mb-2">Pick one or more items that already have a build recipe to copy their recipes into this template.</p>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
         <PopoverTrigger asChild>
           <Button variant="outline" className="w-full justify-between bg-stone-800 border-stone-700 font-normal" data-testid="button-add-item-recipe-to-template">
-            <span className="text-stone-400"><Plus className="h-4 w-4 mr-1 inline" /> Add item recipe…</span>
+            <span className="text-stone-400"><Plus className="h-4 w-4 mr-1 inline" /> Add item recipes…</span>
             <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
           </Button>
         </PopoverTrigger>
@@ -12005,31 +12029,50 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
             </div>
           </div>
           <div className="max-h-60 overflow-y-auto py-1">
-            {filtered.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                disabled={addMut.isPending}
-                onClick={() => addMut.mutate(it.id)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50"
-                data-testid={`button-add-item-recipe-option-${it.id}`}
-              >
-                {it.image ? (
-                  <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
-                ) : (
-                  <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-stone-200 truncate">{it.name}</div>
-                  {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
-                </div>
-              </button>
-            ))}
+            {filtered.map((it) => {
+              const isSel = selected.has(it.id);
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  disabled={addMut.isPending}
+                  onClick={() => toggle(it.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40' : ''}`}
+                  data-testid={`button-add-item-recipe-option-${it.id}`}
+                >
+                  <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
+                    {isSel && <Check className="h-3 w-3 text-white" />}
+                  </div>
+                  {it.image ? (
+                    <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+                  ) : (
+                    <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-stone-200 truncate">{it.name}</div>
+                    {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
+                  </div>
+                </button>
+              );
+            })}
             {filtered.length === 0 && (
               <p className="px-3 py-2 text-xs text-stone-500 italic">
                 {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
               </p>
             )}
+          </div>
+          <div className="p-2 border-t border-stone-700 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-stone-400">{selected.size} selected</span>
+            <Button
+              type="button"
+              size="sm"
+              disabled={selected.size === 0 || addMut.isPending}
+              onClick={() => addMut.mutate(Array.from(selected))}
+              className="bg-amber-700 hover:bg-amber-600 h-7"
+              data-testid="button-add-item-recipe-confirm"
+            >
+              <Plus className="h-3 w-3 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
+            </Button>
           </div>
         </PopoverContent>
       </Popover>
