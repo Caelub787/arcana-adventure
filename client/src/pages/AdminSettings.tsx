@@ -4324,28 +4324,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input placeholder="Search items..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-stone-800 border-stone-700" data-testid="input-search-items" />
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-type-filter">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="weapon">Weapons</SelectItem>
-              <SelectItem value="ammunition">Ammunition</SelectItem>
-              <SelectItem value="armor">Armor</SelectItem>
-              <SelectItem value="consumable">Consumables</SelectItem>
-              <SelectItem value="utility">Utilities</SelectItem>
-              <SelectItem value="container">Containers</SelectItem>
-              <SelectItem value="currency">Currency</SelectItem>
-              <SelectItem value="spellbook">Spellbooks</SelectItem>
-              <SelectItem value="scroll">Scrolls</SelectItem>
-              <SelectItem value="rune">Runes</SelectItem>
-              {(systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && (
-                <SelectItem value="crafter">Crafter</SelectItem>
-              )}
-              <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
-            </SelectContent>
-          </Select>
+          <ItemTypeFilterPicker value={typeFilter} onChange={setTypeFilter} systemSlug={systemSlug} />
         </div>
 
         {items.length > 0 && (
@@ -11952,6 +11931,69 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ItemTypeFilterPicker({ value, onChange, systemSlug }: { value: string; onChange: (v: string) => void; systemSlug?: string }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const options = [
+    { value: 'all', label: 'All Types' },
+    { value: 'weapon', label: 'Weapons' },
+    { value: 'ammunition', label: 'Ammunition' },
+    { value: 'armor', label: 'Armor' },
+    { value: 'consumable', label: 'Consumables' },
+    { value: 'utility', label: 'Utilities' },
+    { value: 'container', label: 'Containers' },
+    { value: 'currency', label: 'Currency' },
+    { value: 'spellbook', label: 'Spellbooks' },
+    { value: 'scroll', label: 'Scrolls' },
+    { value: 'rune', label: 'Runes' },
+    ...((systemSlug === 'aa-v2' || systemSlug === 'aa-v3') ? [{ value: 'crafter', label: 'Crafter' }] : []),
+    { value: 'miscellaneous', label: 'Miscellaneous' },
+  ];
+  const current = options.find((o) => o.value === value) || options[0];
+  const q = search.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-[180px] justify-between bg-stone-800 border-stone-700 font-normal" data-testid="button-type-filter">
+          <span className="truncate">{current.label}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-0 bg-stone-900 border-stone-700" align="end">
+        <div className="p-2 border-b border-stone-700">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              autoFocus
+              placeholder="Search types..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              data-testid="input-type-filter-search"
+            />
+          </div>
+        </div>
+        <div className="max-h-60 overflow-y-auto py-1">
+          {filtered.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => { onChange(o.value); setOpen(false); setSearch(''); }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 ${o.value === value ? 'bg-amber-900/40' : ''}`}
+              data-testid={`option-type-filter-${o.value}`}
+            >
+              <div className="w-3.5 shrink-0">{o.value === value && <Check className="h-3.5 w-3.5 text-amber-500" />}</div>
+              <span className={`text-xs ${o.value === value ? 'text-amber-200' : 'text-stone-200'}`}>{o.label}</span>
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-stone-500 italic">No types found</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
