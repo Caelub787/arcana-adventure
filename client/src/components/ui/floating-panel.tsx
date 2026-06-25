@@ -96,6 +96,13 @@ interface FloatingPanelProps {
   zIndex?: number;
   onBringToFront?: () => void;
   panelKey?: string;
+  /**
+   * When true (desktop only), the panel sizes its height to fit its content
+   * instead of stretching to the provided defaultSize.height. The bottom edge
+   * then sits right after the content (so the bottom gap matches the content's
+   * own padding). Auto-fitting stops once the user manually resizes the panel.
+   */
+  fitContent?: boolean;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -111,6 +118,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   zIndex = 10500,
   onBringToFront,
   panelKey,
+  fitContent,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -164,6 +172,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     zIndex={zIndex}
     onBringToFront={onBringToFront}
     panelKey={panelKey}
+    fitContent={fitContent}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -182,8 +191,12 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   zIndex = 10500,
   onBringToFront,
   panelKey,
+  fitContent,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const contentElRef = React.useRef<HTMLDivElement>(null);
+  const contentInnerRef = React.useRef<HTMLDivElement>(null);
+  const userResizedRef = React.useRef(false);
 
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
@@ -270,6 +283,38 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     };
   }, []);
 
+  // Size the panel's height to its content (opt-in via `fitContent`). This makes
+  // the bottom edge sit right after the content so the bottom gap matches the
+  // content's own padding. Stops once the user manually resizes the panel.
+  const fitToContent = React.useCallback(() => {
+    if (!fitContent || userResizedRef.current || isFullscreen || isMinimized) return;
+    const inner = contentInnerRef.current;
+    const el = panelRef.current;
+    if (!inner || !el) return;
+    const HEADER = 44; // non-minimized header height
+    const desired = HEADER + inner.scrollHeight + 2; // +2 for top/bottom borders
+    const maxH = window.innerHeight - 24;
+    const newH = Math.max(minHeight, Math.min(desired, maxH));
+    if (Math.abs(newH - sizeRef.current.height) > 1) {
+      sizeRef.current = { ...sizeRef.current, height: newH };
+      applySize();
+      const p = clampPosition(posRef.current.x, posRef.current.y, sizeRef.current.width, newH);
+      posRef.current.x = p.x;
+      posRef.current.y = p.y;
+      applyTransform();
+    }
+  }, [fitContent, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition]);
+
+  React.useLayoutEffect(() => {
+    if (!fitContent) return;
+    const inner = contentInnerRef.current;
+    if (!inner) return;
+    fitToContent();
+    const ro = new ResizeObserver(() => fitToContent());
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [fitContent, fitToContent]);
+
   React.useLayoutEffect(() => {
     const el = panelRef.current;
     if (el && !el.style.zIndex) {
@@ -336,6 +381,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const handleResizeStart = React.useCallback((e: React.PointerEvent, direction: string) => {
     e.preventDefault();
     e.stopPropagation();
+    userResizedRef.current = true;
     isResizingRef.current = direction;
     resizeStartRef.current = {
       x: e.clientX, y: e.clientY,
@@ -539,11 +585,15 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
       </div>
 
       <div
+        ref={contentElRef}
         className="flex-1 overflow-y-auto overflow-x-hidden"
         data-panel-content
         style={{ display: isMinimized ? 'none' : '' }}
       >
-        {children}
+        {/* fitContent wraps children in a measuring div so we can read their
+            natural height. Adopters relying on children being a direct scroll
+            child or on parent-height contracts should verify layout. */}
+        {fitContent ? <div ref={contentInnerRef}>{children}</div> : children}
       </div>
 
       {!isMinimized && (
