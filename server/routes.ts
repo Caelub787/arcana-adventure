@@ -5176,11 +5176,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } else if (ownerType === 'spell') {
       const spell = await storage.getSpell(ownerId);
       if (!spell) {
-        // Fallback: AAv2 admin spell catalog lives in `system_spells`. If the
-        // owner is a SystemSpell row, only site admins can manage its rolls.
-        if (!isAdmin) return false;
-        const [sys] = await db.select({ id: systemSpells.id }).from(systemSpells).where(eq(systemSpells.id, ownerId)).limit(1);
-        return !!sys;
+        // Fallback: AAv2 admin/library spell catalog lives in `system_spells`.
+        // Shared admin spells (ownerUserId IS NULL) stay admin-only. Personal GM
+        // "My Library" spells are owned by their creator via ownerUserId, so that
+        // GM may manage their own spell's rolls/template-links.
+        const [sys] = await db.select({ id: systemSpells.id, ownerUserId: systemSpells.ownerUserId })
+          .from(systemSpells).where(eq(systemSpells.id, ownerId)).limit(1);
+        if (!sys) return false;
+        return isAdmin || (!!sys.ownerUserId && sys.ownerUserId === userId);
       }
       if (spell.isTemplate && spell.campaignId) {
         const campaign = await storage.getCampaign(spell.campaignId);
