@@ -5163,7 +5163,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return hasGmAccess(userId, item.campaignId, campaign.gmUserId);
       }
       if (item.isTemplate && !item.campaignId) {
-        return isAdmin;
+        // Admin/shared system library items (createdByUserId IS NULL) stay
+        // admin-only. Personal GM library items are owned by their creator, so
+        // that GM may manage their own item's rolls/template-links.
+        return isAdmin || (!!item.createdByUserId && item.createdByUserId === userId);
       }
       if (item.characterId) {
         const access = await checkCharacterAccess(item.characterId, userId, 'edit');
