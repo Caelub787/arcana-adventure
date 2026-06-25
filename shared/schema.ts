@@ -851,6 +851,7 @@ export const systemSkills = pgTable("system_skills", {
   description: text("description"),
   parentAttribute: text("parent_attribute").notNull().default("wit"), // might, finesse, wit, presence, will, craft
   system: text("system").notNull().default("arcana-adventure"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -905,6 +906,7 @@ export const systemTraits = pgTable("system_traits", {
   visionModifierTime: text("vision_modifier_time").default("both"), // "day", "night", "both"
   visionOverrideType: text("vision_override_type"), // Override vision type (null = no override)
   visionOverrideToggle: boolean("vision_override_toggle").default(false), // If true, overrides rather than stacks
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1381,6 +1383,7 @@ export const tokenEffects = pgTable("token_effects", {
   hasDuration: boolean("has_duration").default(false).notNull(), // Whether this effect expires after a set time
   defaultDuration: integer("default_duration"), // Default number of rounds/turns until effect expires
   durationType: text("duration_type").default("turns"), // "turns" (player's turn) or "rounds" (full combat round)
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -2405,6 +2408,7 @@ export const v3Techniques = pgTable("v3_techniques", {
   // array => the technique is unlocked for everyone who owns the weapon.
   requirements: jsonb("requirements").$type<{ conditionType: "knowledge" | "item"; knowledgeName?: string | null; itemId?: string | null; itemName?: string | null; consumed?: boolean | null }[]>().default(sql`'[]'::jsonb`),
   system: text("system").notNull().default("aa-v3"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertV3TechniqueSchema = createInsertSchema(v3Techniques).omit({
@@ -2422,6 +2426,7 @@ export const v3ActionTokenTypes = pgTable("v3_action_token_types", {
   image: text("image"),
   description: text("description"),
   system: text("system").notNull().default("aa-v3"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertV3ActionTokenTypeSchema = createInsertSchema(v3ActionTokenTypes).omit({
@@ -2439,6 +2444,7 @@ export const advancedItemTypes = pgTable("advanced_item_types", {
   name: text("name").notNull(),
   system: text("system").notNull().default("aa-v3"),
   sortOrder: integer("sort_order").default(0).notNull(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertAdvancedItemTypeSchema = createInsertSchema(advancedItemTypes).omit({
@@ -2466,6 +2472,7 @@ export const v3AmmunitionTypes = pgTable("v3_ammunition_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   system: text("system").notNull().default("aa-v3"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertV3AmmunitionTypeSchema = createInsertSchema(v3AmmunitionTypes).omit({
@@ -2481,6 +2488,7 @@ export const v3TechniqueGroups = pgTable("v3_technique_groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   system: text("system").notNull().default("aa-v3"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertV3TechniqueGroupSchema = createInsertSchema(v3TechniqueGroups).omit({

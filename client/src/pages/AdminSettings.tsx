@@ -238,8 +238,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
-  // Non-admin GMs are scoped to their AA V2 private library
-  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters'];
+  // Non-admin GMs are scoped to their private library
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types'];
   useEffect(() => {
     if (!embedded && !isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
   }, [isAdmin, selectedSystem, embedded]);
@@ -268,11 +268,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         imagePicker,
         modal: ArcanaModalChrome,
         spellbookManager: SpellbookLibraryManager,
-        techniqueGroups: () => api.getV3TechniqueGroups().then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
-        advancedItemTypes: () => api.getAdvancedItemTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
-        ammunitionTypes: () => api.getV3AmmunitionTypes().then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
+        techniqueGroups: () => api.getV3TechniqueGroups(personalMode).then((gs) => gs.map((g) => ({ id: g.id, name: g.name }))),
+        advancedItemTypes: () => api.getAdvancedItemTypes(personalMode).then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
+        ammunitionTypes: () => api.getV3AmmunitionTypes(personalMode).then((ts) => ts.map((t) => ({ id: t.id, name: t.name }))),
       }),
-    [itemDialogTransport, imagePicker],
+    [itemDialogTransport, imagePicker, personalMode],
   );
   const createItemMutation = useMutation({
     mutationFn: async ({ item, draftRolls, templateLinks }: { item: Partial<Item>; draftRolls?: any[]; templateLinks?: string[] }) => {
@@ -407,15 +407,15 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   });
 
   const { data: systemSkills = [], isLoading: skillsLoading } = useQuery({
-    queryKey: ['system-skills', systemSlug],
-    queryFn: () => api.getSystemSkills(systemSlug),
-    enabled: isAdmin && currentView === 'skills',
+    queryKey: ['system-skills', systemSlug, personalMode],
+    queryFn: () => api.getSystemSkills(systemSlug, personalMode),
+    enabled: currentView === 'skills',
   });
 
   const { data: systemTraits = [], isLoading: traitsLoading } = useQuery({
-    queryKey: ['system-traits', systemSlug],
-    queryFn: () => api.getSystemTraits(systemSlug),
-    enabled: isAdmin && currentView === 'traits',
+    queryKey: ['system-traits', systemSlug, personalMode],
+    queryFn: () => api.getSystemTraits(systemSlug, personalMode),
+    enabled: currentView === 'traits',
   });
 
   const { data: characterTemplates = [], isLoading: charactersLoading } = useQuery({
@@ -431,9 +431,9 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   });
 
   const { data: tokenEffects = [], isLoading: tokenEffectsLoading } = useQuery({
-    queryKey: ['token-effects'],
-    queryFn: () => api.getTokenEffects(),
-    enabled: isAdmin && currentView === 'token-effects',
+    queryKey: ['token-effects', personalMode],
+    queryFn: () => api.getTokenEffects(personalMode),
+    enabled: currentView === 'token-effects',
   });
 
   const { data: allFeatTrees = [] } = useQuery({
@@ -656,7 +656,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   });
 
   const createSkillMutation = useMutation({
-    mutationFn: (skill: Partial<SystemSkill>) => api.createSystemSkill({ ...skill, system: systemSlug }),
+    mutationFn: (skill: Partial<SystemSkill>) => api.createSystemSkill({ ...skill, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-skills'] });
       setShowAddSkill(false);
@@ -691,7 +691,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   });
 
   const createTraitMutation = useMutation({
-    mutationFn: (trait: Partial<SystemTrait>) => api.createSystemTrait({ ...trait, system: systemSlug }),
+    mutationFn: (trait: Partial<SystemTrait>) => api.createSystemTrait({ ...trait, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-traits'] });
       setShowAddTrait(false);
@@ -873,7 +873,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   };
 
   const createTokenEffectMutation = useMutation({
-    mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect(effect),
+    mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect({ ...effect, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['token-effects'] });
       setShowAddTokenEffect(false);
@@ -1069,7 +1069,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         </div>
 
         {currentView === 'dashboard' && (
-          <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} />
+          <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} personalMode={personalMode} />
         )}
 
         {currentView === 'v3-spells' && (
@@ -1081,23 +1081,23 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         )}
 
         {currentView === 'techniques' && (
-          <V3TechniquesView systemSlug={systemSlug} />
+          <V3TechniquesView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'technique-groups' && (
-          <V3TechniqueGroupsView systemSlug={systemSlug} />
+          <V3TechniqueGroupsView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'action-tokens' && (
-          <V3ActionTokensView />
+          <V3ActionTokensView personal={personalMode} />
         )}
 
         {currentView === 'advanced-item-types' && (
-          <AdvancedItemTypesView />
+          <AdvancedItemTypesView personal={personalMode} />
         )}
 
         {currentView === 'ammunition-types' && (
-          <V3AmmunitionTypesView systemSlug={systemSlug} />
+          <V3AmmunitionTypesView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'items' && (
@@ -2711,7 +2711,7 @@ type TechniqueDraftCondition = {
   consumed?: boolean;
 };
 
-function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
+function V3TechniquesView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const emptyDraft = {
     id: null as string | null,
@@ -2733,8 +2733,8 @@ function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
   const [condConsumed, setCondConsumed] = useState(false);
 
   const { data: techniques = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-techniques'],
-    queryFn: () => api.getAdminV3Techniques(),
+    queryKey: ['admin-v3-techniques', personal],
+    queryFn: () => api.getAdminV3Techniques(personal),
   });
   const { data: knowledgeOptions = [] } = useQuery({
     queryKey: ['system-skills', 'aa-v3'],
@@ -2757,6 +2757,7 @@ function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
         rollMode: draft.rollMode,
         skillKey: draft.rollMode === 'skill_check' ? (draft.skillKey || null) : null,
         requirements: draft.requirements,
+        ...(personal && !draft.id ? { personal: true } : {}),
       };
       return draft.id ? api.updateV3Technique(draft.id, payload) : api.createV3Technique(payload);
     },
@@ -3011,25 +3012,25 @@ function V3TechniquesView({ systemSlug }: { systemSlug: string }) {
   );
 }
 
-function V3TechniqueGroupsView({ systemSlug }: { systemSlug: string }) {
+function V3TechniqueGroupsView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [newGroupName, setNewGroupName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
   const { data: groups = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-technique-groups'],
-    queryFn: () => api.getAdminV3TechniqueGroups(),
+    queryKey: ['admin-v3-technique-groups', personal],
+    queryFn: () => api.getAdminV3TechniqueGroups(personal),
   });
   const { data: techniques = [] } = useQuery({
-    queryKey: ['admin-v3-techniques'],
-    queryFn: () => api.getAdminV3Techniques(),
+    queryKey: ['admin-v3-techniques', personal],
+    queryFn: () => api.getAdminV3Techniques(personal),
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-technique-groups'] });
 
   const createMutation = useMutation({
-    mutationFn: () => api.createV3TechniqueGroup({ name: newGroupName.trim() }),
+    mutationFn: () => api.createV3TechniqueGroup({ name: newGroupName.trim(), ...(personal ? { personal: true } : {}) }),
     onSuccess: () => { toast({ title: 'Group created' }); setNewGroupName(''); invalidate(); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
@@ -3165,7 +3166,7 @@ function DashCard({
 // ============================================================
 // V3 Action Tokens admin view
 // ============================================================
-function V3ActionTokensView() {
+function V3ActionTokensView({ personal }: { personal?: boolean }) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [imageBrowserOpen, setImageBrowserOpen] = useState(false);
@@ -3174,15 +3175,15 @@ function V3ActionTokensView() {
   });
 
   const { data: tokenTypes = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-action-tokens'],
-    queryFn: () => api.getAdminV3ActionTokenTypes(),
+    queryKey: ['admin-v3-action-tokens', personal],
+    queryFn: () => api.getAdminV3ActionTokenTypes(personal),
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-action-tokens'] });
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = { name: draft.name, image: draft.image, description: draft.description || null };
+      const payload = { name: draft.name, image: draft.image, description: draft.description || null, ...(personal && !draft.id ? { personal: true } : {}) };
       return draft.id ? api.updateV3ActionTokenType(draft.id, payload) : api.createV3ActionTokenType(payload);
     },
     onSuccess: () => {
@@ -3321,7 +3322,7 @@ function V3ActionTokensView() {
 // ============================================================
 // AA V3 Advanced Item Types admin view (Task #250)
 // ============================================================
-function AdvancedItemTypesView() {
+function AdvancedItemTypesView({ personal }: { personal?: boolean }) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<{ id: string | null; name: string; sortOrder: number }>({
@@ -3329,8 +3330,8 @@ function AdvancedItemTypesView() {
   });
 
   const { data: types = [], isLoading } = useQuery({
-    queryKey: ['admin-advanced-item-types'],
-    queryFn: () => api.getAdminAdvancedItemTypes(),
+    queryKey: ['admin-advanced-item-types', personal],
+    queryFn: () => api.getAdminAdvancedItemTypes(personal),
   });
 
   const invalidate = () => {
@@ -3340,7 +3341,7 @@ function AdvancedItemTypesView() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = { name: draft.name, sortOrder: draft.sortOrder };
+      const payload = { name: draft.name, sortOrder: draft.sortOrder, ...(personal && !draft.id ? { personal: true } : {}) };
       return draft.id ? api.updateAdvancedItemType(draft.id, payload) : api.createAdvancedItemType(payload);
     },
     onSuccess: () => {
@@ -3454,14 +3455,14 @@ function AdvancedItemTypesView() {
 // declare which type they use; ammunition items declare which type
 // they are. V3 only.
 // ============================================================
-function V3AmmunitionTypesView({ systemSlug }: { systemSlug: string }) {
+function V3AmmunitionTypesView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<{ id: string | null; name: string }>({ id: null, name: '' });
 
   const { data: types = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-ammunition-types'],
-    queryFn: () => api.getAdminV3AmmunitionTypes(),
+    queryKey: ['admin-v3-ammunition-types', personal],
+    queryFn: () => api.getAdminV3AmmunitionTypes(personal),
     enabled: systemSlug === 'aa-v3',
   });
 
@@ -3472,7 +3473,7 @@ function V3AmmunitionTypesView({ systemSlug }: { systemSlug: string }) {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = { name: draft.name.trim() };
+      const payload = { name: draft.name.trim(), ...(personal && !draft.id ? { personal: true } : {}) };
       return draft.id ? api.updateV3AmmunitionType(draft.id, payload) : api.createV3AmmunitionType(payload);
     },
     onSuccess: () => {
@@ -3590,7 +3591,7 @@ function DashSection({
   );
 }
 
-function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean }) {
+function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean; personalMode?: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
 
   if (systemSlug === 'aa-v3') {
@@ -3623,8 +3624,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           </DashSection>
         )}
 
-        {isAdmin && (
-          <DashSection title="Weapons & Techniques" icon={Sword} color="text-rose-400">
+        <DashSection title="Weapons & Techniques" icon={Sword} color="text-rose-400">
             <DashCard
               onClick={() => onNavigate('techniques')}
               testId="card-techniques"
@@ -3648,10 +3648,8 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               titleColor="text-rose-500"
             />
           </DashSection>
-        )}
 
-        {isAdmin && (
-          <DashSection title="Actions & Abilities" icon={Sparkles} color="text-amber-400">
+        <DashSection title="Actions & Abilities" icon={Sparkles} color="text-amber-400">
             <DashCard
               onClick={() => onNavigate('action-tokens')}
               testId="card-action-tokens"
@@ -3688,7 +3686,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               />
             )}
           </DashSection>
-        )}
 
         <DashSection title="Species & Progression" icon={Users} color="text-emerald-400">
           <DashCard
@@ -3766,8 +3763,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           />
         </DashSection>
 
-        {isAdmin && (
-          <DashSection title="Characters & Mechanics" icon={User} color="text-cyan-400">
+        <DashSection title="Characters & Mechanics" icon={User} color="text-cyan-400">
             <DashCard
               onClick={() => onNavigate('skills')}
               testId="card-system-skills"
@@ -3813,7 +3809,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
               titleColor="text-cyan-500"
             />
           </DashSection>
-        )}
 
         {isAdmin && (
           <DashSection title="Archives" icon={Archive} color="text-stone-400">
@@ -3931,7 +3926,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
       </Card>
       )}
 
-      {isAdmin && (<>
       <Card 
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
         onClick={() => onNavigate('skills')}
@@ -3995,6 +3989,8 @@ function DashboardView({ onNavigate, systemSlug, isAdmin }: { onNavigate: (view:
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {isAdmin && (<>
 
       <Card 
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"

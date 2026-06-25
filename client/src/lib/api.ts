@@ -1190,13 +1190,15 @@ class ApiClient {
   }
 
   // AA V3 Advanced Item Types (admin CRUD + public read)
-  async getAdminAdvancedItemTypes(): Promise<AdvancedItemType[]> {
-    return this.request(`/admin/advanced-item-types`);
+  async getAdminAdvancedItemTypes(personal?: boolean): Promise<AdvancedItemType[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/advanced-item-types${params}`);
   }
-  async getAdvancedItemTypes(): Promise<AdvancedItemType[]> {
-    return this.request(`/advanced-item-types`);
+  async getAdvancedItemTypes(personal?: boolean): Promise<AdvancedItemType[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/advanced-item-types${params}`);
   }
-  async createAdvancedItemType(data: { name: string; sortOrder?: number }): Promise<AdvancedItemType> {
+  async createAdvancedItemType(data: { name: string; sortOrder?: number; personal?: boolean }): Promise<AdvancedItemType> {
     return this.request(`/admin/advanced-item-types`, { method: 'POST', body: JSON.stringify(data) });
   }
   async updateAdvancedItemType(id: string, data: Partial<{ name: string; sortOrder: number }>): Promise<AdvancedItemType> {
@@ -1699,9 +1701,12 @@ class ApiClient {
   }
 
   // Admin System Skills
-  async getSystemSkills(system?: string): Promise<SystemSkill[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/skills${params}`);
+  async getSystemSkills(system?: string, personal?: boolean): Promise<SystemSkill[]> {
+    const p = new URLSearchParams();
+    if (system) p.set('system', system);
+    if (personal) p.set('personal', 'true');
+    const qs = p.toString();
+    return this.request(`/admin/skills${qs ? '?' + qs : ''}`);
   }
 
   async getSystemSkill(id: string): Promise<SystemSkill> {
@@ -1756,9 +1761,12 @@ class ApiClient {
   }
 
   // Admin System Traits
-  async getSystemTraits(system?: string): Promise<SystemTrait[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
-    return this.request(`/admin/traits${params}`);
+  async getSystemTraits(system?: string, personal?: boolean): Promise<SystemTrait[]> {
+    const p = new URLSearchParams();
+    if (system) p.set('system', system);
+    if (personal) p.set('personal', 'true');
+    const qs = p.toString();
+    return this.request(`/admin/traits${qs ? '?' + qs : ''}`);
   }
 
   async getSystemTrait(id: string): Promise<SystemTrait> {
@@ -2376,8 +2384,9 @@ class ApiClient {
   }
 
   // Token Effects - public read, admin write
-  async getTokenEffects(): Promise<TokenEffect[]> {
-    return this.request('/token-effects');
+  async getTokenEffects(personal?: boolean): Promise<TokenEffect[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/token-effects${params}`);
   }
 
   async getTokenEffect(id: string): Promise<TokenEffect> {
@@ -2733,12 +2742,14 @@ class ApiClient {
   }
 
   // AA V3 weapon techniques (Task #180)
-  async getV3Techniques(): Promise<V3Technique[]> {
-    return this.request(`/v3/techniques`);
+  async getV3Techniques(personal?: boolean): Promise<V3Technique[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-techniques${params}`);
   }
 
-  async getV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
-    return this.request(`/v3/technique-groups`);
+  async getV3TechniqueGroups(personal?: boolean): Promise<V3TechniqueGroup[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-technique-groups${params}`);
   }
 
   // Authoritatively use a technique: the server validates eligibility and
@@ -2755,8 +2766,9 @@ class ApiClient {
     });
   }
 
-  async getAdminV3Techniques(): Promise<V3Technique[]> {
-    return this.request(`/admin/v3-techniques`);
+  async getAdminV3Techniques(personal?: boolean): Promise<V3Technique[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-techniques${params}`);
   }
 
   async createV3Technique(data: {
@@ -2767,6 +2779,7 @@ class ApiClient {
     rollMode?: 'base_damage' | 'skill_check';
     skillKey?: string | null;
     requirements?: V3TechniqueCondition[];
+    personal?: boolean;
   }): Promise<V3Technique> {
     return this.request(`/admin/v3-techniques`, { method: 'POST', body: JSON.stringify(data) });
   }
@@ -2787,11 +2800,12 @@ class ApiClient {
     return this.request(`/admin/v3-techniques/${id}`, { method: 'DELETE' });
   }
 
-  async getAdminV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
-    return this.request(`/admin/v3-technique-groups`);
+  async getAdminV3TechniqueGroups(personal?: boolean): Promise<V3TechniqueGroup[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-technique-groups${params}`);
   }
 
-  async createV3TechniqueGroup(data: { name: string }): Promise<V3TechniqueGroup> {
+  async createV3TechniqueGroup(data: { name: string; personal?: boolean }): Promise<V3TechniqueGroup> {
     return this.request(`/admin/v3-technique-groups`, { method: 'POST', body: JSON.stringify(data) });
   }
 
@@ -2808,11 +2822,12 @@ class ApiClient {
     return this.request(`/v3/ammunition-types`);
   }
 
-  async getAdminV3AmmunitionTypes(): Promise<V3AmmunitionType[]> {
-    return this.request(`/admin/v3-ammunition-types`);
+  async getAdminV3AmmunitionTypes(personal?: boolean): Promise<V3AmmunitionType[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-ammunition-types${params}`);
   }
 
-  async createV3AmmunitionType(data: { name: string }): Promise<V3AmmunitionType> {
+  async createV3AmmunitionType(data: { name: string; personal?: boolean }): Promise<V3AmmunitionType> {
     return this.request(`/admin/v3-ammunition-types`, { method: 'POST', body: JSON.stringify(data) });
   }
 
@@ -2825,15 +2840,17 @@ class ApiClient {
   }
 
   // AA V3 Action Token Types (admin CRUD + character assignments)
-  async getAdminV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
-    return this.request(`/admin/v3-action-tokens`);
+  async getAdminV3ActionTokenTypes(personal?: boolean): Promise<V3ActionTokenType[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-action-tokens${params}`);
   }
 
-  async getV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
-    return this.request(`/v3/action-tokens`);
+  async getV3ActionTokenTypes(personal?: boolean): Promise<V3ActionTokenType[]> {
+    const params = personal ? '?personal=true' : '';
+    return this.request(`/admin/v3-action-tokens${params}`);
   }
 
-  async createV3ActionTokenType(data: { name: string; image?: string | null; description?: string | null }): Promise<V3ActionTokenType> {
+  async createV3ActionTokenType(data: { name: string; image?: string | null; description?: string | null; personal?: boolean }): Promise<V3ActionTokenType> {
     return this.request(`/admin/v3-action-tokens`, { method: 'POST', body: JSON.stringify(data) });
   }
 

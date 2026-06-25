@@ -7476,25 +7476,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // --- V3 Action Token Types CRUD (admin) ---
-  app.get("/api/admin/v3-action-tokens", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/v3-action-tokens", requireAuth, async (req, res) => {
     try {
-      res.json(await storage.getV3ActionTokenTypes());
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      res.json(await storage.getV3ActionTokenTypes(opts));
     } catch (err: any) {
       console.error("[V3 Action Tokens List] Error:", err?.message);
       res.status(500).json({ error: "Failed to load action token types" });
     }
   });
 
-  app.post("/api/admin/v3-action-tokens", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-action-tokens", requireAuth, async (req, res) => {
     try {
-      const { name, image, description } = req.body || {};
+      const { name, image, description, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const isPersonal = personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createV3ActionTokenType({
         name: String(name).trim(),
         image: image || null,
         description: description || null,
         system: "aa-v3",
-      });
+        ownerUserId: isPersonal ? req.session.userId! : null,
+      } as any);
       res.json(created);
     } catch (err: any) {
       console.error("[V3 Action Tokens Create] Error:", err?.message);
@@ -7502,8 +7511,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/v3-action-tokens/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/v3-action-tokens/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3ActionTokenType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Action token type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { name, image, description } = req.body || {};
       const patch: any = {};
       if (name !== undefined) patch.name = String(name).trim();
@@ -7518,8 +7531,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/v3-action-tokens/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-action-tokens/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3ActionTokenType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Action token type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteV3ActionTokenType(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7531,7 +7548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public read for all V3 action token types (needed by GM picker in campaign)
   app.get("/api/v3/action-tokens", requireAuth, async (_req, res) => {
     try {
-      res.json(await storage.getV3ActionTokenTypes());
+      res.json(await storage.getV3ActionTokenTypes({ ownerScope: [] }));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load action token types" });
     }
@@ -7540,24 +7557,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AA V3 Advanced Item Types (admin-managed). Used to tag items and to target
   // crafter repair recipes. Admin-only mutations; read open to any authed user
   // (item dialog picker, recipe editor, player repair surface).
-  app.get("/api/admin/advanced-item-types", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/advanced-item-types", requireAuth, async (req, res) => {
     try {
-      res.json(await storage.getAdvancedItemTypes());
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      res.json(await storage.getAdvancedItemTypes(opts));
     } catch (err: any) {
       console.error("[Advanced Item Types List] Error:", err?.message);
       res.status(500).json({ error: "Failed to load advanced item types" });
     }
   });
 
-  app.post("/api/admin/advanced-item-types", requireAdmin, async (req, res) => {
+  app.post("/api/admin/advanced-item-types", requireAuth, async (req, res) => {
     try {
-      const { name, sortOrder } = req.body || {};
+      const { name, sortOrder, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const isPersonal = personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createAdvancedItemType({
         name: String(name).trim(),
         sortOrder: typeof sortOrder === 'number' ? sortOrder : 0,
         system: "aa-v3",
-      });
+        ownerUserId: isPersonal ? req.session.userId! : null,
+      } as any);
       res.json(created);
     } catch (err: any) {
       console.error("[Advanced Item Types Create] Error:", err?.message);
@@ -7565,8 +7591,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/advanced-item-types/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/advanced-item-types/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getAdvancedItemType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Advanced item type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { name, sortOrder } = req.body || {};
       const patch: any = {};
       if (name !== undefined) patch.name = String(name).trim();
@@ -7580,8 +7610,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/advanced-item-types/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/advanced-item-types/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getAdvancedItemType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Advanced item type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteAdvancedItemType(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7594,7 +7628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // player repair surface).
   app.get("/api/advanced-item-types", requireAuth, async (_req, res) => {
     try {
-      res.json(await storage.getAdvancedItemTypes());
+      res.json(await storage.getAdvancedItemTypes({ ownerScope: [] }));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load advanced item types" });
     }
@@ -7656,19 +7690,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Techniques CRUD (admin) ---
-  app.get("/api/admin/v3-techniques", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/v3-techniques", requireAuth, async (req, res) => {
     try {
-      res.json(await storage.getV3Techniques());
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      res.json(await storage.getV3Techniques(opts));
     } catch (err: any) {
       console.error("[V3 Techniques List] Error:", err?.message);
       res.status(500).json({ error: "Failed to load techniques" });
     }
   });
 
-  app.post("/api/admin/v3-techniques", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-techniques", requireAuth, async (req, res) => {
     try {
-      const { name, image, description, energyCost, rollMode, skillKey, requirements } = req.body || {};
+      const { name, image, description, energyCost, rollMode, skillKey, requirements, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A technique name is required" });
+      const isPersonal = personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const mode = V3_TECHNIQUE_ROLL_MODES.includes(rollMode) ? rollMode : "base_damage";
       const created = await storage.createV3Technique({
         name: String(name).trim(),
@@ -7679,6 +7721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         skillKey: mode === "skill_check" ? (skillKey || null) : null,
         requirements: sanitizeTechniqueRequirements(requirements),
         system: "aa-v3",
+        ownerUserId: isPersonal ? req.session.userId! : null,
       } as any);
       res.json(created);
     } catch (err: any) {
@@ -7687,8 +7730,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/v3-techniques/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/v3-techniques/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3Technique(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Technique not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { name, image, description, energyCost, rollMode, skillKey, requirements } = req.body || {};
       const patch: any = {};
       if (name !== undefined) patch.name = String(name).trim();
@@ -7711,8 +7758,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/v3-techniques/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-techniques/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3Technique(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Technique not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteV3Technique(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7721,11 +7772,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- Technique groups CRUD (admin) ---
-  app.get("/api/admin/v3-technique-groups", requireAdmin, async (_req, res) => {
+  // --- Technique groups CRUD ---
+  app.get("/api/admin/v3-technique-groups", requireAuth, async (req, res) => {
     try {
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
       const [groups, members] = await Promise.all([
-        storage.getV3TechniqueGroups(),
+        storage.getV3TechniqueGroups(opts),
         storage.getV3TechniqueGroupMembers(),
       ]);
       const withMembers = groups.map((g) => ({
@@ -7739,11 +7795,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/v3-technique-groups", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-technique-groups", requireAuth, async (req, res) => {
     try {
-      const { name } = req.body || {};
+      const { name, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A group name is required" });
-      const created = await storage.createV3TechniqueGroup({ name: String(name).trim(), system: "aa-v3" } as any);
+      const isPersonal = personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const created = await storage.createV3TechniqueGroup({ name: String(name).trim(), system: "aa-v3", ownerUserId: isPersonal ? req.session.userId! : null } as any);
       res.json({ ...created, techniqueIds: [] });
     } catch (err: any) {
       console.error("[V3 Technique Groups Create] Error:", err?.message);
@@ -7751,8 +7810,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/v3-technique-groups/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/v3-technique-groups/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3TechniqueGroup(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Group not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { name } = req.body || {};
       const patch: any = {};
       if (name !== undefined) patch.name = String(name).trim();
@@ -7765,8 +7828,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/v3-technique-groups/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-technique-groups/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3TechniqueGroup(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Group not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteV3TechniqueGroup(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7775,9 +7842,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- Group membership (admin) ---
-  app.post("/api/admin/v3-technique-groups/:id/members", requireAdmin, async (req, res) => {
+  // --- Group membership ---
+  app.post("/api/admin/v3-technique-groups/:id/members", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3TechniqueGroup(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Group not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { techniqueId } = req.body || {};
       if (!techniqueId) return res.status(400).json({ error: "techniqueId is required" });
       const created = await storage.addV3TechniqueGroupMember(req.params.id, techniqueId);
@@ -7788,8 +7859,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/v3-technique-groups/:id/members/:techniqueId", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-technique-groups/:id/members/:techniqueId", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3TechniqueGroup(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Group not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.removeV3TechniqueGroupMember(req.params.id, req.params.techniqueId);
       res.json({ success: true });
     } catch (err: any) {
@@ -7801,7 +7876,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- Player-facing reads: weapon surfaces resolve granted/unlocked techniques ---
   app.get("/api/v3/techniques", requireAuth, async (_req, res) => {
     try {
-      res.json(await storage.getV3Techniques());
+      res.json(await storage.getV3Techniques({ ownerScope: [] }));
     } catch (err: any) {
       console.error("[V3 Techniques Read] Error:", err?.message);
       res.status(500).json({ error: "Failed to load techniques" });
@@ -7811,7 +7886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/v3/technique-groups", requireAuth, async (_req, res) => {
     try {
       const [groups, members] = await Promise.all([
-        storage.getV3TechniqueGroups(),
+        storage.getV3TechniqueGroups({ ownerScope: [] }),
         storage.getV3TechniqueGroupMembers(),
       ]);
       const withMembers = groups.map((g) => ({
@@ -7825,21 +7900,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- AA V3 Ammunition Types (admin CRUD) ---
-  app.get("/api/admin/v3-ammunition-types", requireAdmin, async (_req, res) => {
+  // --- AA V3 Ammunition Types ---
+  app.get("/api/admin/v3-ammunition-types", requireAuth, async (req, res) => {
     try {
-      res.json(await storage.getV3AmmunitionTypes());
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      res.json(await storage.getV3AmmunitionTypes(opts));
     } catch (err: any) {
       console.error("[V3 Ammunition Types List] Error:", err?.message);
       res.status(500).json({ error: "Failed to load ammunition types" });
     }
   });
 
-  app.post("/api/admin/v3-ammunition-types", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-ammunition-types", requireAuth, async (req, res) => {
     try {
-      const { name } = req.body || {};
+      const { name, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "An ammunition type name is required" });
-      const created = await storage.createV3AmmunitionType({ name: String(name).trim(), system: "aa-v3" } as any);
+      const isPersonal = personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const created = await storage.createV3AmmunitionType({ name: String(name).trim(), system: "aa-v3", ownerUserId: isPersonal ? req.session.userId! : null } as any);
       res.json(created);
     } catch (err: any) {
       console.error("[V3 Ammunition Types Create] Error:", err?.message);
@@ -7847,8 +7930,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/v3-ammunition-types/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/v3-ammunition-types/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3AmmunitionType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Ammunition type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { name } = req.body || {};
       const patch: any = {};
       if (name !== undefined) patch.name = String(name).trim();
@@ -7861,8 +7948,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/v3-ammunition-types/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-ammunition-types/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getV3AmmunitionType(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Ammunition type not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteV3AmmunitionType(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7874,7 +7965,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public read for ammunition types (item dialog pickers, weapon attack gate).
   app.get("/api/v3/ammunition-types", requireAuth, async (_req, res) => {
     try {
-      res.json(await storage.getV3AmmunitionTypes());
+      res.json(await storage.getV3AmmunitionTypes({ ownerScope: [] }));
     } catch (err: any) {
       console.error("[V3 Ammunition Types Read] Error:", err?.message);
       res.status(500).json({ error: "Failed to load ammunition types" });
@@ -11736,31 +11827,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // System Skills routes (admin)
-  app.get("/api/admin/skills", requireAdmin, async (req, res) => {
+  app.get("/api/admin/skills", requireAuth, async (req, res) => {
     try {
+      const isA = (req.session as any).isAdmin;
       const system = req.query.system as string | undefined;
-      const skills = await storage.getSystemSkills(system);
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const skills = await storage.getSystemSkills(system, opts);
       res.json(skills);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system skills" });
     }
   });
 
-  app.get("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/skills/:id", requireAuth, async (req, res) => {
     try {
       const skill = await storage.getSystemSkill(req.params.id);
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
       }
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      if (!await enforceLibraryRead(req, res, skill.ownerUserId)) return;
       res.json(skill);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch skill" });
     }
   });
 
-  app.post("/api/admin/skills", requireAdmin, async (req, res) => {
+  app.post("/api/admin/skills", requireAuth, async (req, res) => {
     try {
-      const skill = await storage.createSystemSkill(req.body);
+      const isPersonal = req.body.personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const { personal: _p, ...skillData } = req.body;
+      const skill = await storage.createSystemSkill({ ...skillData, ownerUserId: isPersonal ? req.session.userId! : null });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'skills' });
       res.json(skill);
     } catch (err) {
@@ -11768,8 +11870,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/skills/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getSystemSkill(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Skill not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const skill = await storage.updateSystemSkill(req.params.id, req.body);
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
@@ -11781,8 +11887,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/skills/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getSystemSkill(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Skill not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteSystemSkill(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'skills' });
       res.json({ success: true });
@@ -12271,31 +12381,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // System Traits routes (admin)
-  app.get("/api/admin/traits", requireAdmin, async (req, res) => {
+  app.get("/api/admin/traits", requireAuth, async (req, res) => {
     try {
+      const isA = (req.session as any).isAdmin;
       const system = req.query.system as string | undefined;
-      const traits = await storage.getSystemTraits(system);
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const traits = await storage.getSystemTraits(system, opts);
       res.json(traits);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system traits" });
     }
   });
 
-  app.get("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/traits/:id", requireAuth, async (req, res) => {
     try {
       const trait = await storage.getSystemTrait(req.params.id);
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
       }
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      if (!await enforceLibraryRead(req, res, trait.ownerUserId)) return;
       res.json(trait);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch trait" });
     }
   });
 
-  app.post("/api/admin/traits", requireAdmin, async (req, res) => {
+  app.post("/api/admin/traits", requireAuth, async (req, res) => {
     try {
-      const trait = await storage.createSystemTrait(req.body);
+      const isPersonal = req.body.personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const { personal: _p, ...traitData } = req.body;
+      const trait = await storage.createSystemTrait({ ...traitData, ownerUserId: isPersonal ? req.session.userId! : null });
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-traits' });
       res.json(trait);
     } catch (err) {
@@ -12303,8 +12424,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+  app.put("/api/admin/traits/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getSystemTrait(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Trait not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const trait = await storage.updateSystemTrait(req.params.id, req.body);
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
@@ -12316,8 +12441,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/traits/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getSystemTrait(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Trait not found" });
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteSystemTrait(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-traits' });
       res.json({ success: true });
@@ -15660,7 +15789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public route for getting all token effects (for battle map display)
   app.get("/api/token-effects", requireAuth, async (req, res) => {
     try {
-      const effects = await storage.getTokenEffects();
+      const effects = await storage.getTokenEffects({ ownerScope: [] });
       res.json(effects);
     } catch (err) {
       console.error("Failed to fetch token effects:", err);
@@ -15669,9 +15798,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Token Effects CRUD routes
-  app.get("/api/admin/token-effects", requireAdmin, async (req, res) => {
+  app.get("/api/admin/token-effects", requireAuth, async (req, res) => {
     try {
-      const effects = await storage.getTokenEffects();
+      const isA = (req.session as any).isAdmin;
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const effects = await storage.getTokenEffects(opts);
       res.json(effects);
     } catch (err) {
       console.error("Failed to fetch token effects:", err);
@@ -15679,10 +15813,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/token-effects", requireAdmin, async (req, res) => {
+  app.post("/api/admin/token-effects", requireAuth, async (req, res) => {
     try {
-      const effectData = insertTokenEffectSchema.parse(req.body);
-      const effect = await storage.createTokenEffect(effectData);
+      const isPersonal = req.body.personal === true;
+      const isA = (req.session as any).isAdmin;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const { personal: _p, ...effectBody } = req.body;
+      const effectData = insertTokenEffectSchema.parse(effectBody);
+      const effect = await storage.createTokenEffect({ ...effectData, ownerUserId: isPersonal ? req.session.userId! : null } as any);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.status(201).json(effect);
     } catch (err) {
@@ -15691,12 +15829,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+  app.get("/api/admin/token-effects/:id", requireAuth, async (req, res) => {
     try {
       const effect = await storage.getTokenEffect(req.params.id);
       if (!effect) {
         return res.status(404).json({ error: "Token effect not found" });
       }
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      if (!await enforceLibraryRead(req, res, (effect as any).ownerUserId)) return;
       res.json(effect);
     } catch (err) {
       console.error("Failed to fetch token effect:", err);
@@ -15704,12 +15844,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+  app.put("/api/admin/token-effects/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
       const effect = await storage.getTokenEffect(req.params.id);
       if (!effect) {
         return res.status(404).json({ error: "Token effect not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (effect as any).ownerUserId)) return;
       const updated = await storage.updateTokenEffect(req.params.id, req.body);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.json(updated);
@@ -15719,12 +15861,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/token-effects/:id", requireAuth, async (req, res) => {
     try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
       const effect = await storage.getTokenEffect(req.params.id);
       if (!effect) {
         return res.status(404).json({ error: "Token effect not found" });
       }
+      if (!await enforceLibraryWrite(req, res, (effect as any).ownerUserId)) return;
       await storage.deleteTokenEffect(req.params.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.json({ success: true });

@@ -94,6 +94,29 @@ import {
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
 
+// Shared helper: builds an owner-scope WHERE clause for personal-library tables.
+// - personal=true  → only rows where ownerUserId = scope[0] (strictly personal)
+// - ownerScope set → rows where ownerUserId IS NULL or IN scope (global + owned)
+// - neither        → no extra filter (admin: all rows)
+function buildOwnerScopeCondition(
+  column: any,
+  opts?: { ownerScope?: string[]; personal?: boolean }
+): any {
+  if (!opts) return undefined;
+  const { ownerScope, personal } = opts;
+  if (personal && ownerScope && ownerScope.length > 0) {
+    return eq(column, ownerScope[0]);
+  }
+  if (ownerScope && ownerScope.length > 0) {
+    return or(isNull(column), inArray(column, ownerScope));
+  }
+  // Explicitly empty ownerScope (not undefined) → global-only rows
+  if (ownerScope !== undefined) {
+    return isNull(column);
+  }
+  return undefined;
+}
+
 export interface SearchableEntity {
   id: string;
   type: 'spell' | 'trait' | 'skill' | 'item' | 'species' | 'character';
@@ -423,12 +446,12 @@ export interface IStorage {
   deleteV3ElementRequirement(id: string): Promise<void>;
 
   // AA V3 action token types (admin-managed)
-  getV3ActionTokenTypes(): Promise<V3ActionTokenType[]>;
+  getV3ActionTokenTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3ActionTokenType[]>;
   getV3ActionTokenType(id: string): Promise<V3ActionTokenType | undefined>;
   createV3ActionTokenType(data: InsertV3ActionTokenType): Promise<V3ActionTokenType>;
   updateV3ActionTokenType(id: string, data: Partial<InsertV3ActionTokenType>): Promise<V3ActionTokenType | undefined>;
   deleteV3ActionTokenType(id: string): Promise<void>;
-  getAdvancedItemTypes(): Promise<AdvancedItemType[]>;
+  getAdvancedItemTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<AdvancedItemType[]>;
   getAdvancedItemType(id: string): Promise<AdvancedItemType | undefined>;
   createAdvancedItemType(data: InsertAdvancedItemType): Promise<AdvancedItemType>;
   updateAdvancedItemType(id: string, data: Partial<InsertAdvancedItemType>): Promise<AdvancedItemType | undefined>;
@@ -439,27 +462,27 @@ export interface IStorage {
   removeCharacterActionToken(id: string): Promise<void>;
 
   // AA V3 weapon techniques (Task #180)
-  getV3Techniques(): Promise<V3Technique[]>;
+  getV3Techniques(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3Technique[]>;
   getV3Technique(id: string): Promise<V3Technique | undefined>;
   createV3Technique(data: InsertV3Technique): Promise<V3Technique>;
   updateV3Technique(id: string, data: Partial<InsertV3Technique>): Promise<V3Technique | undefined>;
   deleteV3Technique(id: string): Promise<void>;
-  getV3TechniqueGroups(): Promise<V3TechniqueGroup[]>;
+  getV3TechniqueGroups(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3TechniqueGroup[]>;
   getV3TechniqueGroup(id: string): Promise<V3TechniqueGroup | undefined>;
   createV3TechniqueGroup(data: InsertV3TechniqueGroup): Promise<V3TechniqueGroup>;
   updateV3TechniqueGroup(id: string, data: Partial<InsertV3TechniqueGroup>): Promise<V3TechniqueGroup | undefined>;
   deleteV3TechniqueGroup(id: string): Promise<void>;
-  getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]>;
+  getV3TechniqueGroupMembers(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3TechniqueGroupMember[]>;
   addV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<V3TechniqueGroupMember>;
   removeV3TechniqueGroupMember(groupId: string, techniqueId: string): Promise<void>;
-  getV3AmmunitionTypes(): Promise<V3AmmunitionType[]>;
+  getV3AmmunitionTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3AmmunitionType[]>;
   getV3AmmunitionType(id: string): Promise<V3AmmunitionType | undefined>;
   createV3AmmunitionType(data: InsertV3AmmunitionType): Promise<V3AmmunitionType>;
   updateV3AmmunitionType(id: string, data: Partial<InsertV3AmmunitionType>): Promise<V3AmmunitionType | undefined>;
   deleteV3AmmunitionType(id: string): Promise<void>;
 
   // System Skill operations (admin-defined custom skills)
-  getSystemSkills(system?: string): Promise<SystemSkill[]>;
+  getSystemSkills(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemSkill[]>;
   getSystemSkill(id: string): Promise<SystemSkill | undefined>;
   createSystemSkill(skill: InsertSystemSkill): Promise<SystemSkill>;
   updateSystemSkill(id: string, data: Partial<InsertSystemSkill>): Promise<SystemSkill | undefined>;
@@ -473,7 +496,7 @@ export interface IStorage {
   removeCharacterCustomSkill(id: string): Promise<void>;
 
   // System Trait operations (admin-defined traits)
-  getSystemTraits(system?: string): Promise<SystemTrait[]>;
+  getSystemTraits(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemTrait[]>;
   getSystemTrait(id: string): Promise<SystemTrait | undefined>;
   createSystemTrait(trait: InsertSystemTrait): Promise<SystemTrait>;
   updateSystemTrait(id: string, data: Partial<InsertSystemTrait>): Promise<SystemTrait | undefined>;
@@ -553,7 +576,7 @@ export interface IStorage {
   canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }>;
 
   // Token Effects CRUD operations
-  getTokenEffects(): Promise<TokenEffect[]>;
+  getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<TokenEffect[]>;
   getTokenEffect(id: string): Promise<TokenEffect | undefined>;
   createTokenEffect(effect: InsertTokenEffect): Promise<TokenEffect>;
   updateTokenEffect(id: string, effect: Partial<InsertTokenEffect>): Promise<TokenEffect | undefined>;
@@ -3680,8 +3703,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // AA V3 action token types -------------------------------------------------
-  async getV3ActionTokenTypes(): Promise<V3ActionTokenType[]> {
-    return await db.select().from(v3ActionTokenTypes).orderBy(v3ActionTokenTypes.name);
+  async getV3ActionTokenTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3ActionTokenType[]> {
+    const cond = buildOwnerScopeCondition(v3ActionTokenTypes.ownerUserId, opts);
+    return await db.select().from(v3ActionTokenTypes).where(cond).orderBy(v3ActionTokenTypes.name);
   }
 
   async getV3ActionTokenType(id: string): Promise<V3ActionTokenType | undefined> {
@@ -3703,9 +3727,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(v3ActionTokenTypes).where(eq(v3ActionTokenTypes.id, id));
   }
 
-  async getAdvancedItemTypes(): Promise<AdvancedItemType[]> {
+  async getAdvancedItemTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<AdvancedItemType[]> {
+    const ownerCond = buildOwnerScopeCondition(advancedItemTypes.ownerUserId, opts);
+    const cond = ownerCond ? and(eq(advancedItemTypes.system, 'aa-v3'), ownerCond) : eq(advancedItemTypes.system, 'aa-v3');
     return await db.select().from(advancedItemTypes)
-      .where(eq(advancedItemTypes.system, 'aa-v3'))
+      .where(cond)
       .orderBy(advancedItemTypes.sortOrder, advancedItemTypes.name);
   }
 
@@ -3746,8 +3772,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // AA V3 weapon techniques (Task #180) -------------------------------------
-  async getV3Techniques(): Promise<V3Technique[]> {
-    return await db.select().from(v3Techniques).orderBy(v3Techniques.name);
+  async getV3Techniques(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3Technique[]> {
+    const cond = buildOwnerScopeCondition(v3Techniques.ownerUserId, opts);
+    return await db.select().from(v3Techniques).where(cond).orderBy(v3Techniques.name);
   }
 
   async getV3Technique(id: string): Promise<V3Technique | undefined> {
@@ -3769,8 +3796,9 @@ export class DatabaseStorage implements IStorage {
     await db.delete(v3Techniques).where(eq(v3Techniques.id, id));
   }
 
-  async getV3TechniqueGroups(): Promise<V3TechniqueGroup[]> {
-    return await db.select().from(v3TechniqueGroups).orderBy(v3TechniqueGroups.name);
+  async getV3TechniqueGroups(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3TechniqueGroup[]> {
+    const cond = buildOwnerScopeCondition(v3TechniqueGroups.ownerUserId, opts);
+    return await db.select().from(v3TechniqueGroups).where(cond).orderBy(v3TechniqueGroups.name);
   }
 
   async getV3TechniqueGroup(id: string): Promise<V3TechniqueGroup | undefined> {
@@ -3792,8 +3820,9 @@ export class DatabaseStorage implements IStorage {
     await db.delete(v3TechniqueGroups).where(eq(v3TechniqueGroups.id, id));
   }
 
-  async getV3AmmunitionTypes(): Promise<V3AmmunitionType[]> {
-    return await db.select().from(v3AmmunitionTypes).orderBy(v3AmmunitionTypes.name);
+  async getV3AmmunitionTypes(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3AmmunitionType[]> {
+    const cond = buildOwnerScopeCondition(v3AmmunitionTypes.ownerUserId, opts);
+    return await db.select().from(v3AmmunitionTypes).where(cond).orderBy(v3AmmunitionTypes.name);
   }
 
   async getV3AmmunitionType(id: string): Promise<V3AmmunitionType | undefined> {
@@ -3815,7 +3844,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(v3AmmunitionTypes).where(eq(v3AmmunitionTypes.id, id));
   }
 
-  async getV3TechniqueGroupMembers(): Promise<V3TechniqueGroupMember[]> {
+  async getV3TechniqueGroupMembers(_opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3TechniqueGroupMember[]> {
     return await db.select().from(v3TechniqueGroupMembers);
   }
 
@@ -3833,9 +3862,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Skill operations (admin-defined custom skills)
-  async getSystemSkills(system?: string): Promise<SystemSkill[]> {
+  async getSystemSkills(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemSkill[]> {
     const conditions: any[] = [];
     if (system) conditions.push(eq(systemSkills.system, system));
+    const ownerCond = buildOwnerScopeCondition(systemSkills.ownerUserId, opts);
+    if (ownerCond) conditions.push(ownerCond);
     return await db.select()
       .from(systemSkills)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -3901,9 +3932,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Trait operations (admin-defined traits)
-  async getSystemTraits(system?: string): Promise<SystemTrait[]> {
+  async getSystemTraits(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemTrait[]> {
     const conditions: any[] = [];
     if (system) conditions.push(eq(systemTraits.system, system));
+    const ownerCond = buildOwnerScopeCondition(systemTraits.ownerUserId, opts);
+    if (ownerCond) conditions.push(ownerCond);
     return await db.select()
       .from(systemTraits)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -4517,8 +4550,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Token Effects CRUD operations
-  async getTokenEffects(): Promise<TokenEffect[]> {
-    return await db.select().from(tokenEffects);
+  async getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<TokenEffect[]> {
+    const cond = buildOwnerScopeCondition(tokenEffects.ownerUserId, opts);
+    return await db.select().from(tokenEffects).where(cond);
   }
 
   async getTokenEffect(id: string): Promise<TokenEffect | undefined> {
