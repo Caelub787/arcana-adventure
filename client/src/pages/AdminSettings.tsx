@@ -29,6 +29,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11956,8 +11957,9 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
 
 function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: string; systemSlug: string }) {
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState('');
-  const { data: items = [] } = useQuery<Array<{ id: string; name: string; price: number; currency: string }>>({
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
@@ -11967,36 +11969,70 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
     mutationFn: (itemId: string) => api.addItemRecipeToTemplate(templateId, itemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['craft-recipes-template', templateId] });
-      setSelectedId('');
+      setOpen(false);
+      setSearch('');
       toast({ title: 'Recipe added to template' });
     },
     onError: (err: any) => toast({ title: 'Failed to add recipe', description: err?.message || String(err), variant: 'destructive' }),
   });
 
+  const q = search.trim().toLowerCase();
+  const filtered = q ? items.filter((it) => (it.name || '').toLowerCase().includes(q)) : items;
+
   return (
     <div data-testid="panel-add-item-recipe">
       <Label className="text-stone-300">Add an existing item recipe to this group</Label>
       <p className="text-xs text-stone-400 mb-2">Pick an item that already has a build recipe to copy its recipe into this template.</p>
-      <div className="flex gap-2 items-center">
-        <Select value={selectedId} onValueChange={setSelectedId}>
-          <SelectTrigger className="bg-stone-800 border-stone-700 flex-1" data-testid="select-item-build-recipe">
-            <SelectValue placeholder={items.length ? 'Select an item…' : 'No items with build recipes'} />
-          </SelectTrigger>
-          <SelectContent className="bg-stone-800 border-stone-700 text-stone-200">
-            {items.map((it) => (
-              <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="w-full justify-between bg-stone-800 border-stone-700 font-normal" data-testid="button-add-item-recipe-to-template">
+            <span className="text-stone-400"><Plus className="h-4 w-4 mr-1 inline" /> Add item recipe…</span>
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-0 bg-stone-900 border-stone-700" align="start">
+          <div className="p-2 border-b border-stone-700">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+              <Input
+                autoFocus
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+                data-testid="input-add-item-recipe-search"
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {filtered.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                disabled={addMut.isPending}
+                onClick={() => addMut.mutate(it.id)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50"
+                data-testid={`button-add-item-recipe-option-${it.id}`}
+              >
+                {it.image ? (
+                  <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+                ) : (
+                  <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-stone-200 truncate">{it.name}</div>
+                  {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
+                </div>
+              </button>
             ))}
-          </SelectContent>
-        </Select>
-        <Button
-          onClick={() => selectedId && addMut.mutate(selectedId)}
-          disabled={!selectedId || addMut.isPending}
-          className="bg-amber-700 hover:bg-amber-600"
-          data-testid="button-add-item-recipe-to-template"
-        >
-          <Plus className="h-4 w-4 mr-1" /> Add
-        </Button>
-      </div>
+            {filtered.length === 0 && (
+              <p className="px-3 py-2 text-xs text-stone-500 italic">
+                {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
+              </p>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

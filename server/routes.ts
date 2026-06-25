@@ -8764,6 +8764,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add an already-authored item build recipe DIRECTLY onto a crafter item.
+  // Copies the source item's build recipe ingredients/output onto the crafter
+  // as a new direct (parentItemId) recipe. The GM can then edit repair /
+  // knowledge / resource settings on this crafter-owned copy.
+  app.post("/api/admin/items/:itemId/add-item-recipe", requireAuth, async (req, res) => {
+    try {
+      const crafter = await storage.getItem(req.params.itemId);
+      if (!crafter || !crafter.isTemplate) return res.status(404).json({ error: "Crafter item not found" });
+      if (crafter.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
+      if (!await requireLibraryAaV2(req, res, crafter.system)) return;
+      if (!await enforceLibraryWrite(req, res, crafter.createdByUserId)) return;
+      const sourceItemId = (req.body || {}).itemId as string;
+      if (!sourceItemId) return res.status(400).json({ error: "itemId is required" });
+      const item = await storage.getItem(sourceItemId);
+      if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
+      if (!await enforceLibraryRead(req, res, item.createdByUserId)) return;
+      if (item.system !== crafter.system) return res.status(400).json({ error: "Item and crafter belong to different systems" });
+      const buildRecipe = await storage.getItemBuildRecipe(sourceItemId);
+      if (!buildRecipe) return res.status(400).json({ error: "Item has no build recipe" });
+      const recipeFields = {
+        name: item.name,
+        outputItemId: item.id,
+        outputQuantity: buildRecipe.outputQuantity,
+        noRoll: true,
+      };
+      const ingredients = buildRecipe.ingredients.map(({ id: _i, recipeId: _r, ...x }: any) => x);
+      const created = await storage.createCraftRecipe(
+        { ...recipeFields, parentItemId: crafter.id, parentTemplateId: null } as any,
+        ingredients,
+        [],
+      );
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
+      res.json(created);
+    } catch (err: any) {
+      console.error('[Crafter] add item recipe error:', err);
+      res.status(400).json({ error: err?.message || "Failed to add item recipe to crafter" });
+    }
+  });
+
   // Get / set crafter template links on a crafter library item
   app.get("/api/admin/items/:itemId/crafter-template-links", requireAuth, async (req, res) => {
     try {

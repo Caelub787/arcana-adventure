@@ -1170,6 +1170,9 @@ class ApiClient {
   async addItemRecipeToTemplate(templateId: string, itemId: string): Promise<any> {
     return this.request(`/admin/crafter-recipe-templates/${templateId}/add-item-recipe`, { method: 'POST', body: JSON.stringify({ itemId }) });
   }
+  async addItemRecipeToCrafter(crafterItemId: string, itemId: string): Promise<any> {
+    return this.request(`/admin/items/${crafterItemId}/add-item-recipe`, { method: 'POST', body: JSON.stringify({ itemId }) });
+  }
   async craftRecipe(itemId: string, body: { recipeId: string; characterId: string }): Promise<any> {
     return this.request(`/items/${itemId}/craft`, {
       method: 'POST',

@@ -186,9 +186,18 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
         <h3 className="text-sm font-bold text-stone-300 flex items-center gap-2">
           <Hammer className="h-4 w-4" /> Crafting Recipes
         </h3>
-        <Button type="button" size="sm" onClick={handleAdd} className="bg-amber-700 hover:bg-amber-600" data-testid="button-add-recipe">
-          <Plus className="h-3 w-3 mr-1" /> Add Recipe
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isTemplateMode && itemId && (
+            <AddRecipeFromItem
+              crafterItemId={itemId}
+              systemSlug={systemSlug}
+              onAdded={() => queryClient.invalidateQueries({ queryKey })}
+            />
+          )}
+          <Button type="button" size="sm" onClick={handleAdd} className="bg-amber-700 hover:bg-amber-600" data-testid="button-add-recipe">
+            <Plus className="h-3 w-3 mr-1" /> Add Recipe
+          </Button>
+        </div>
       </div>
 
       {isLoading && <p className="text-xs text-stone-500">Loading…</p>}
@@ -220,10 +229,12 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
 
 // Searchable item picker (V3) — mirrors the "add item to inventory" library
 // browser style (search box + scrollable card list) instead of a dropdown.
-function ItemSearchPicker({ value, systemItems, onChange }: {
+function ItemSearchPicker({ value, systemItems, onChange, placeholder = 'Select item…', searchPlaceholder = 'Search items...' }: {
   value: string | null | undefined;
   systemItems: any[];
   onChange: (v: string | null, name: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -245,7 +256,7 @@ function ItemSearchPicker({ value, systemItems, onChange }: {
           data-testid="button-item-picker"
         >
           <span className={selected ? 'text-stone-200 truncate' : 'text-stone-500'}>
-            {selected ? selected.name : 'Select item…'}
+            {selected ? selected.name : placeholder}
           </span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
@@ -256,7 +267,7 @@ function ItemSearchPicker({ value, systemItems, onChange }: {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
             <Input
               autoFocus
-              placeholder="Search items..."
+              placeholder={searchPlaceholder}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
@@ -364,6 +375,86 @@ function KnowledgeSearchPicker({ value, systemSkills, onChange }: {
             </button>
           ))}
           {filtered.length === 0 && <p className="px-3 py-2 text-xs text-stone-500 italic">{systemSkills.length === 0 ? 'No Knowledge defined yet.' : 'No matches'}</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Searchable "Add recipe from item" control. Lets the GM pick any item that
+// already has a build recipe and copy that recipe directly onto this crafter.
+function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
+  crafterItemId: string;
+  systemSlug: string;
+  onAdded: () => void;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const { data: items = [] } = useQuery<any[]>({
+    queryKey: ['items-with-build-recipes', systemSlug],
+    queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
+    enabled: (systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && open,
+  });
+  const addMut = useMutation({
+    mutationFn: (itemId: string) => api.addItemRecipeToCrafter(crafterItemId, itemId),
+    onSuccess: () => {
+      toast({ title: 'Recipe added from item' });
+      setOpen(false);
+      setSearch('');
+      onAdded();
+    },
+    onError: (err: any) => toast({ title: 'Failed to add recipe', description: err?.message || String(err), variant: 'destructive' }),
+  });
+  const q = search.trim().toLowerCase();
+  const filtered = q ? items.filter(s => (s.name || '').toLowerCase().includes(q)) : items;
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="sm" variant="outline" className="border-stone-600" data-testid="button-add-recipe-from-item">
+          <Plus className="h-3 w-3 mr-1" /> Add from item
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0 bg-stone-900 border-stone-700" align="end">
+        <div className="p-2 border-b border-stone-700">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              autoFocus
+              placeholder="Search items..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              data-testid="input-add-recipe-from-item-search"
+            />
+          </div>
+        </div>
+        <div className="max-h-60 overflow-y-auto py-1">
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              disabled={addMut.isPending}
+              onClick={() => addMut.mutate(s.id)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50"
+              data-testid={`button-add-recipe-from-item-option-${s.id}`}
+            >
+              {s.image ? (
+                <img src={s.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+              ) : (
+                <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-stone-200 truncate">{s.name}</div>
+                {s.itemType && <div className="text-[10px] text-stone-500 capitalize">{s.itemType}</div>}
+              </div>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <p className="px-3 py-2 text-xs text-stone-500 italic">
+              {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
+            </p>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -518,20 +609,13 @@ function RecipeRow({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label className="text-xs">Repairs Item Type</Label>
-                    <Select
-                      value={draft.repairTargetTypeId || '__none__'}
-                      onValueChange={(v) => setDraft({ ...draft, repairTargetTypeId: v === '__none__' ? null : v })}
-                    >
-                      <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs" data-testid={`select-repair-type-${recipe.id}`}>
-                        <SelectValue placeholder="Select item type…" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        <SelectItem value="__none__">— none —</SelectItem>
-                        {advancedItemTypes.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ItemSearchPicker
+                      value={draft.repairTargetTypeId}
+                      systemItems={advancedItemTypes}
+                      onChange={(v) => setDraft({ ...draft, repairTargetTypeId: v })}
+                      placeholder="Select item type…"
+                      searchPlaceholder="Search item types..."
+                    />
                   </div>
                   <div>
                     <Label className="text-xs">Durability Restored</Label>
