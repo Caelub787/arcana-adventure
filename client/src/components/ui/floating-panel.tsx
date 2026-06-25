@@ -62,6 +62,27 @@ export function useTopLayerZIndex(): number {
   return z;
 }
 
+// Wrapper <div> for hand-rolled (non-Radix) modal/confirmation overlays that
+// would otherwise hardcode a z-index. It draws from the SAME shared counter the
+// floating panels use, so it always opens above every currently-open panel.
+// Mount it only when the overlay is open (the hook acquires its z on mount).
+// Any z-* class passed via className is ignored in favor of the acquired value;
+// pass positioning/background classes (e.g. "fixed inset-0 ... bg-black/70").
+interface TopLayerOverlayProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+export const TopLayerOverlay = React.forwardRef<HTMLDivElement, TopLayerOverlayProps>(
+  function TopLayerOverlay({ children, style, ...props }, ref) {
+    const z = useTopLayerZIndex();
+    return (
+      <div ref={ref} style={{ zIndex: z || undefined, ...style }} {...props}>
+        {children}
+      </div>
+    );
+  },
+);
+
 interface FloatingPanelProps {
   open: boolean;
   onClose: () => void;

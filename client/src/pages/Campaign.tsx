@@ -35,7 +35,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
-import { FloatingPanel, bringFloatingPanelToFront } from "@/components/ui/floating-panel";
+import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
 import AdminSettings from "@/pages/AdminSettings";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
@@ -13900,7 +13900,7 @@ export default function Campaign() {
         };
 
         return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" data-testid="dc-save-popup">
+          <TopLayerOverlay className="fixed inset-0 flex items-center justify-center bg-black/70" data-testid="dc-save-popup">
             <div className="bg-stone-900 border-2 border-red-600 rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-2xl">
               <div className="text-center">
                 <h3 className="text-lg font-bold text-red-400">{dcSavePrompt.spellName}</h3>
@@ -13988,7 +13988,7 @@ export default function Campaign() {
                 Roll {attrLabel ? `${attrLabel} ` : ''}Save
               </button>
             </div>
-          </div>
+          </TopLayerOverlay>
         );
       })()}
     </div>
