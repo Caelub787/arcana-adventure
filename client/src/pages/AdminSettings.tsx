@@ -11957,7 +11957,6 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
 
 function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: string; systemSlug: string }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
@@ -11966,7 +11965,6 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
   });
 
-  const reset = () => { setSearch(''); setSelected(new Set()); };
   const addMut = useMutation({
     mutationFn: async (ids: string[]) => {
       let succeeded = 0;
@@ -11984,8 +11982,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
     onSuccess: ({ succeeded, failed }) => {
       if (failed.length === 0) {
         toast({ title: `Added ${succeeded} recipe${succeeded === 1 ? '' : 's'} to template` });
-        setOpen(false);
-        reset();
+        setSelected(new Set());
       } else {
         toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected — try again.', variant: 'destructive' });
         setSelected(new Set(failed));
@@ -12007,75 +12004,66 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
     <div data-testid="panel-add-item-recipe">
       <Label className="text-stone-300">Add existing item recipes to this group</Label>
       <p className="text-xs text-stone-400 mb-2">Pick one or more items that already have a build recipe to copy their recipes into this template.</p>
-      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-between bg-stone-800 border-stone-700 font-normal" data-testid="button-add-item-recipe-to-template">
-            <span className="text-stone-400"><Plus className="h-4 w-4 mr-1 inline" /> Add item recipes…</span>
-            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+      <div className="rounded-md border border-stone-700 bg-stone-900">
+        <div className="p-2 border-b border-stone-700">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Input
+              placeholder="Search items..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              data-testid="input-add-item-recipe-search"
+            />
+          </div>
+        </div>
+        <div className="max-h-60 overflow-y-auto py-1">
+          {filtered.map((it) => {
+            const isSel = selected.has(it.id);
+            return (
+              <button
+                key={it.id}
+                type="button"
+                disabled={addMut.isPending}
+                onClick={() => toggle(it.id)}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40' : ''}`}
+                data-testid={`button-add-item-recipe-option-${it.id}`}
+              >
+                <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
+                  {isSel && <Check className="h-3 w-3 text-white" />}
+                </div>
+                {it.image ? (
+                  <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+                ) : (
+                  <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-stone-200 truncate">{it.name}</div>
+                  {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
+                </div>
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <p className="px-3 py-2 text-xs text-stone-500 italic">
+              {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
+            </p>
+          )}
+        </div>
+        <div className="p-2 border-t border-stone-700 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-stone-400">{selected.size} selected</span>
+          <Button
+            type="button"
+            size="sm"
+            disabled={selected.size === 0 || addMut.isPending}
+            onClick={() => addMut.mutate(Array.from(selected))}
+            className="bg-amber-700 hover:bg-amber-600 h-7"
+            data-testid="button-add-item-recipe-confirm"
+          >
+            <Plus className="h-3 w-3 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-80 p-0 bg-stone-900 border-stone-700" align="start">
-          <div className="p-2 border-b border-stone-700">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
-              <Input
-                autoFocus
-                placeholder="Search items..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
-                data-testid="input-add-item-recipe-search"
-              />
-            </div>
-          </div>
-          <div className="max-h-60 overflow-y-auto py-1">
-            {filtered.map((it) => {
-              const isSel = selected.has(it.id);
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  disabled={addMut.isPending}
-                  onClick={() => toggle(it.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40' : ''}`}
-                  data-testid={`button-add-item-recipe-option-${it.id}`}
-                >
-                  <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
-                    {isSel && <Check className="h-3 w-3 text-white" />}
-                  </div>
-                  {it.image ? (
-                    <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
-                  ) : (
-                    <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-stone-200 truncate">{it.name}</div>
-                    {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
-                  </div>
-                </button>
-              );
-            })}
-            {filtered.length === 0 && (
-              <p className="px-3 py-2 text-xs text-stone-500 italic">
-                {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
-              </p>
-            )}
-          </div>
-          <div className="p-2 border-t border-stone-700 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-stone-400">{selected.size} selected</span>
-            <Button
-              type="button"
-              size="sm"
-              disabled={selected.size === 0 || addMut.isPending}
-              onClick={() => addMut.mutate(Array.from(selected))}
-              className="bg-amber-700 hover:bg-amber-600 h-7"
-              data-testid="button-add-item-recipe-confirm"
-            >
-              <Plus className="h-3 w-3 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+        </div>
+      </div>
     </div>
   );
 }
