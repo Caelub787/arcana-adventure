@@ -25870,8 +25870,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
           {activeTab === 'templates' ? (
             <div className="space-y-4">
               {/* Search and Filter */}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
+              <div className="space-y-2">
+                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
                   <Input
                     placeholder="Search items..."
@@ -25881,73 +25881,42 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     data-testid="input-template-search"
                   />
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      className={`bg-stone-800 border-stone-700 ${hasActiveItemFilters ? 'border-amber-500 text-amber-400' : ''}`}
-                      data-testid="button-item-library-filter"
+                <div className="flex gap-2" data-testid="picker-item-type-filter">
+                  <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
+                    <SelectTrigger className="flex-1 bg-stone-800 border-stone-700 h-8 text-xs" data-testid="select-item-type-filter">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      {itemTypeOptions.map(type => (
+                        <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={templateRarityFilter} onValueChange={setTemplateRarityFilter}>
+                    <SelectTrigger className="flex-1 bg-stone-800 border-stone-700 h-8 text-xs" data-testid="select-item-rarity-filter">
+                      <SelectValue placeholder="All Rarities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Rarities</SelectItem>
+                      {rarityOptions.map(rarity => (
+                        <SelectItem key={rarity} value={rarity}>{rarity.charAt(0).toUpperCase() + rarity.slice(1)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {hasActiveItemFilters && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={clearItemFilters}
+                      className="bg-stone-800 border-amber-500 text-amber-400 shrink-0 h-8 w-8"
+                      title="Clear filters"
+                      data-testid="button-clear-item-filters"
                     >
-                      <Filter className="h-4 w-4" />
-                      {hasActiveItemFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />}
+                      <X className="h-3.5 w-3.5" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 bg-stone-900 border-stone-700 p-4" align="end">
-                    <div className="space-y-4">
-                      <div className="font-medium text-stone-200">Filter Items</div>
-                      <div>
-                        <Label className="text-stone-400 text-xs">Item Type</Label>
-                        <div className="mt-1 flex flex-wrap gap-1.5" data-testid="picker-item-type-filter">
-                          {['all', ...itemTypeOptions].map(type => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => setTemplateTypeFilter(type)}
-                              className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
-                                templateTypeFilter === type
-                                  ? 'bg-amber-600 border-amber-500 text-white'
-                                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'
-                              }`}
-                              data-testid={`button-item-type-filter-${type}`}
-                            >
-                              {type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-stone-400 text-xs">Rarity</Label>
-                        <div className="mt-1 flex flex-wrap gap-1.5" data-testid="picker-item-rarity-filter">
-                          {['all', ...rarityOptions].map(rarity => (
-                            <button
-                              key={rarity}
-                              type="button"
-                              onClick={() => setTemplateRarityFilter(rarity)}
-                              className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
-                                templateRarityFilter === rarity
-                                  ? 'bg-amber-600 border-amber-500 text-white'
-                                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-500'
-                              }`}
-                              data-testid={`button-item-rarity-filter-${rarity}`}
-                            >
-                              {rarity === 'all' ? 'All' : rarity.charAt(0).toUpperCase() + rarity.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={clearItemFilters}
-                        className="w-full bg-stone-800 border-stone-600 hover:bg-stone-700"
-                        data-testid="button-clear-item-filters"
-                      >
-                        Clear Filters
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               </div>
 
               {/* Template Items List */}
