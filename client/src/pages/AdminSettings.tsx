@@ -12002,6 +12002,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
   const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
@@ -12047,28 +12048,57 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
     (!q || (it.name || '').toLowerCase().includes(q))
   );
 
+  if (!open) {
+    return (
+      <div data-testid="panel-add-item-recipe-collapsed">
+        <Label className="text-stone-300">Add existing item recipes to this group</Label>
+        <p className="text-xs text-stone-400 mb-2">Pick items that already have a build recipe to copy their recipes into this template.</p>
+        <Button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="bg-amber-700 hover:bg-amber-600"
+          data-testid="button-open-add-item-recipe"
+        >
+          <Plus className="h-4 w-4 mr-2" /> Add item recipe
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div data-testid="panel-add-item-recipe">
-      <Label className="text-stone-300">Add existing item recipes to this group</Label>
-      <p className="text-xs text-stone-400 mb-2">Pick one or more items that already have a build recipe to copy their recipes into this template.</p>
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-stone-300">Add existing item recipes to this group</Label>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => { setOpen(false); setSelected(new Set()); setSearch(''); setTypeFilter(null); }}
+          className="h-7 text-stone-400 hover:text-stone-200"
+          data-testid="button-close-add-item-recipe"
+        >
+          <X className="h-4 w-4 mr-1" /> Close
+        </Button>
+      </div>
       <div className="rounded-md border border-stone-700 bg-stone-900">
-        <div className="p-2 border-b border-stone-700">
+        <div className="p-3 border-b border-stone-700">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
+              autoFocus
               placeholder="Search items..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 bg-stone-800 border-stone-700 h-8 text-xs"
+              className="pl-9 bg-stone-800 border-stone-700"
               data-testid="input-add-item-recipe-search"
             />
           </div>
-          {types.length > 1 && (
-            <div className="flex flex-wrap gap-1 mt-2">
+          {types.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
               <button
                 type="button"
                 onClick={() => setTypeFilter(null)}
-                className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === null ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                className={`px-3 py-1 rounded-full text-xs capitalize border ${typeFilter === null ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
                 data-testid="button-add-item-recipe-type-all"
               >
                 All
@@ -12078,7 +12108,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
                   key={t}
                   type="button"
                   onClick={() => setTypeFilter((cur) => (cur === t ? null : t))}
-                  className={`px-2 py-0.5 rounded-full text-[10px] capitalize border ${typeFilter === t ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                  className={`px-3 py-1 rounded-full text-xs capitalize border ${typeFilter === t ? 'bg-amber-700 border-amber-600 text-white' : 'bg-stone-800 border-stone-600 text-stone-300 hover:bg-stone-700'}`}
                   data-testid={`button-add-item-recipe-type-${t}`}
                 >
                   {t}
@@ -12087,7 +12117,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
             </div>
           )}
         </div>
-        <div className="max-h-60 overflow-y-auto py-1">
+        <div className="max-h-[460px] overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {filtered.map((it) => {
             const isSel = selected.has(it.id);
             return (
@@ -12096,41 +12126,40 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
                 type="button"
                 disabled={addMut.isPending}
                 onClick={() => toggle(it.id)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40' : ''}`}
+                className={`flex items-center gap-3 p-2 rounded-md border text-left hover:bg-stone-800 disabled:opacity-50 ${isSel ? 'bg-amber-900/40 border-amber-600' : 'border-stone-700'}`}
                 data-testid={`button-add-item-recipe-option-${it.id}`}
               >
-                <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
-                  {isSel && <Check className="h-3 w-3 text-white" />}
+                <div className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 ${isSel ? 'bg-amber-600 border-amber-500' : 'border-stone-600'}`}>
+                  {isSel && <Check className="h-3.5 w-3.5 text-white" />}
                 </div>
                 {it.image ? (
-                  <img src={it.image} alt="" className="h-6 w-6 rounded object-cover border border-stone-700 shrink-0" />
+                  <img src={it.image} alt="" className="h-12 w-12 rounded object-cover border border-stone-700 shrink-0" />
                 ) : (
-                  <div className="h-6 w-6 rounded bg-stone-800 border border-stone-700 shrink-0" />
+                  <div className="h-12 w-12 rounded bg-stone-800 border border-stone-700 shrink-0" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs text-stone-200 truncate">{it.name}</div>
-                  {it.itemType && <div className="text-[10px] text-stone-500 capitalize">{it.itemType}</div>}
+                  <div className="text-sm text-stone-100 truncate">{it.name}</div>
+                  {it.itemType && <div className="text-xs text-stone-500 capitalize">{it.itemType}</div>}
                 </div>
               </button>
             );
           })}
           {filtered.length === 0 && (
-            <p className="px-3 py-2 text-xs text-stone-500 italic">
+            <p className="px-3 py-2 text-sm text-stone-500 italic col-span-full">
               {items.length === 0 ? 'No items with build recipes yet.' : 'No items found'}
             </p>
           )}
         </div>
-        <div className="p-2 border-t border-stone-700 flex items-center justify-between gap-2">
-          <span className="text-[11px] text-stone-400">{selected.size} selected</span>
+        <div className="p-3 border-t border-stone-700 flex items-center justify-between gap-2">
+          <span className="text-xs text-stone-400">{selected.size} selected</span>
           <Button
             type="button"
-            size="sm"
             disabled={selected.size === 0 || addMut.isPending}
             onClick={() => addMut.mutate(Array.from(selected))}
-            className="bg-amber-700 hover:bg-amber-600 h-7"
+            className="bg-amber-700 hover:bg-amber-600"
             data-testid="button-add-item-recipe-confirm"
           >
-            <Plus className="h-3 w-3 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
+            <Plus className="h-4 w-4 mr-1" /> {addMut.isPending ? 'Adding…' : `Add ${selected.size || ''} item${selected.size === 1 ? '' : 's'}`.trim()}
           </Button>
         </div>
       </div>
