@@ -6664,21 +6664,32 @@ export default function Campaign() {
   // Tracks the active tab per open character sheet so the floating panel can
   // size itself once to the "Attrs & Skills" (attributes) tab and lock there.
   const [charSheetActiveTabs, setCharSheetActiveTabs] = useState<Record<string, string>>({});
+  // The tab each sheet should END UP showing once its panel has sized itself.
+  // Kept in a ref so onFitLocked can read it without re-render churn or relying
+  // on the shared characterSheetDefaultTab (which would couple concurrent opens).
+  const charSheetIntendedTabRef = useRef<Record<string, string>>({});
   
   // Helper functions for managing multiple open character sheets
   const openCharacterSheet = (char: any, tab: string = "overview") => {
+    const alreadyOpen = openCharacterSheets.some(c => c.id === char.id);
+    charSheetIntendedTabRef.current[char.id] = tab;
     setOpenCharacterSheets(prev => {
       if (prev.some(c => c.id === char.id)) return prev;
       return [...prev, char];
     });
-    // Seed the sheet's active tab so the floating panel sizes once to the right
-    // tab from the very first render (never relies on the global default tab).
-    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: tab }));
+    // New sheet: seed 'attributes' so the floating panel measures and locks its
+    // size to the (taller) Attrs & Skills tab on the very first render;
+    // onFitLocked then switches the visible tab to the intended one before paint
+    // (panel shows the right tab but is sized to fit Attributes — no flash).
+    // Already-open sheet: the size is already locked, so just honor the
+    // requested tab directly.
+    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: alreadyOpen ? tab : 'attributes' }));
     bringToFront(`char-${char.id}`);
   };
   
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
+    delete charSheetIntendedTabRef.current[charId];
     setCharSheetActiveTabs(prev => {
       if (!(charId in prev)) return prev;
       const next = { ...prev };
@@ -12778,6 +12789,11 @@ export default function Campaign() {
             minWidth={400}
             minHeight={400}
             fitContent
+            onFitLocked={() => setCharSheetActiveTabs(prev => (
+              prev[sheet.id] === 'attributes'
+                ? { ...prev, [sheet.id]: charSheetIntendedTabRef.current[sheet.id] ?? characterSheetDefaultTab }
+                : prev
+            ))}
             panelKey={`char-${sheet.id}`}
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
@@ -12797,6 +12813,7 @@ export default function Campaign() {
               onUpdate={(updates) => handleUpdateCharacterById(sheet.id, updates)}
               onClose={() => closeCharacterSheet(sheet.id)}
               defaultTab={characterSheetDefaultTab}
+              activeTab={charSheetActiveTabs[sheet.id] ?? 'attributes'}
               onTabChange={(v) => setCharSheetActiveTabs(prev => ({ ...prev, [sheet.id]: v }))}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}

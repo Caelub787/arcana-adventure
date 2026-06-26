@@ -109,6 +109,14 @@ interface FloatingPanelProps {
    * the single locked size matches that tab. Defaults to true.
    */
   fitContentActive?: boolean;
+  /**
+   * Called once, right after the one-time fit-to-content measurement locks the
+   * panel size (and just before the panel is revealed). Lets the caller react
+   * to the lock — e.g. switch the displayed tab back after measuring a taller
+   * one. Fires synchronously within the layout phase, so a state update here is
+   * flushed before paint (no flash).
+   */
+  onFitLocked?: () => void;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -126,6 +134,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   panelKey,
   fitContent,
   fitContentActive,
+  onFitLocked,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -181,6 +190,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     panelKey={panelKey}
     fitContent={fitContent}
     fitContentActive={fitContentActive}
+    onFitLocked={onFitLocked}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -201,6 +211,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   panelKey,
   fitContent,
   fitContentActive,
+  onFitLocked,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -323,8 +334,9 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     posRef.current.y = p.y;
     applyTransform();
     fitLockedRef.current = true; // lock — never resize again
+    onFitLocked?.(); // let caller react before reveal (e.g. switch tab back)
     setFitRevealed(true); // size is final; safe to show the panel
-  }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition]);
+  }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition, onFitLocked]);
 
   // Whether this panel should stay hidden until the fit locks. Mirrors the
   // guards in fitToContent so panels that won't fit (no fitContent, inactive
