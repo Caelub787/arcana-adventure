@@ -27708,11 +27708,6 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
         <div className="flex flex-col md:flex-row gap-3">
           {/* LEFT: searchable, filterable recipe list */}
           <div className="md:flex-1 md:min-w-0 flex flex-col gap-2">
-            {item.image && (
-              <div className="w-full rounded border border-stone-700 overflow-hidden bg-stone-900/40">
-                <img src={item.image} alt={item.name} className="w-full h-32 object-cover" data-testid="img-crafter-item" />
-              </div>
-            )}
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
               <Input
