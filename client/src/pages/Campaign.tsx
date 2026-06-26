@@ -12778,7 +12778,6 @@ export default function Campaign() {
             minWidth={400}
             minHeight={400}
             fitContent
-            fitContentActive={(charSheetActiveTabs[sheet.id] ?? characterSheetDefaultTab) === 'attributes'}
             panelKey={`char-${sheet.id}`}
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
