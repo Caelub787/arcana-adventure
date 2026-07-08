@@ -12847,6 +12847,11 @@ export default function Campaign() {
           bringToFront={bringToFront}
           floatingZIndices={floatingZIndicesRef.current}
           onClose={() => closeDetachedItemDetail(p.character.id)}
+          trustedPlayer={(() => {
+            if (p.character.userId !== user?.id) return false;
+            const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
+            return !!m?.trustedPlayer;
+          })()}
         />
       ))}
 

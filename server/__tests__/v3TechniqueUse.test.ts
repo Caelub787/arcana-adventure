@@ -165,6 +165,8 @@ function mockContext(opts: {
   knowledge?: string[];
   weaponGroupIds?: string[];
   groupMembers?: { groupId: string; techniqueId: string }[];
+  unlockedTechniqueIds?: string[];
+  classSkillPoints?: number;
 }) {
   h.storage.getCharacter.mockResolvedValue({
     id: characterId,
@@ -172,6 +174,11 @@ function mockContext(opts: {
     campaignId,
     isTemplate: false,
     energy: opts.energy ?? 10,
+    classSkillPoints: opts.classSkillPoints ?? 0,
+    // Default the technique to unlocked so the happy-path tests exercise the
+    // downstream requirement/energy/consume logic; the unlock-gate tests
+    // override this explicitly.
+    v3UnlockedTechniqueIds: opts.unlockedTechniqueIds ?? [techniqueId],
   });
   h.storage.getCampaign.mockResolvedValue({
     id: campaignId,
@@ -329,6 +336,118 @@ describe("POST /api/v3/techniques/:id/use — server-side enforcement", () => {
       v3TechniqueGroupIds: [groupId],
     });
     const res = await api(`/api/v3/techniques/${techniqueId}/use`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it("rejects with reason 'not-unlocked' when the technique was never unlocked", async () => {
+    mockContext({
+      energyCost: 3,
+      requirements: [],
+      unlockedTechniqueIds: [],
+    });
+    const res = await api(`/api/v3/techniques/${techniqueId}/use`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.reason).toBe("not-unlocked");
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+    expect(h.storage.updateItem).not.toHaveBeenCalled();
+    expect(h.storage.deleteItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/techniques/:id/unlock — spend a class skill point", () => {
+  it("unlocks the technique and spends 1 point", async () => {
+    mockContext({
+      requirements: [],
+      unlockedTechniqueIds: [],
+      classSkillPoints: 3,
+    });
+    h.storage.updateCharacter.mockImplementation(async (_id: string, updates: any) => ({
+      id: characterId,
+      ...updates,
+    }));
+    const res = await api(`/api/v3/techniques/${techniqueId}/unlock`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.pointSpent).toBe(1);
+    expect(h.storage.updateCharacter).toHaveBeenCalledWith(characterId, {
+      v3UnlockedTechniqueIds: [techniqueId],
+      classSkillPoints: 2,
+    });
+  });
+
+  it("rejects with reason 'no-points' when the character has no skill points", async () => {
+    mockContext({
+      requirements: [],
+      unlockedTechniqueIds: [],
+      classSkillPoints: 0,
+    });
+    const res = await api(`/api/v3/techniques/${techniqueId}/unlock`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.reason).toBe("no-points");
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the technique is already unlocked (no double-spend)", async () => {
+    mockContext({
+      requirements: [],
+      unlockedTechniqueIds: [techniqueId],
+      classSkillPoints: 3,
+    });
+    const res = await api(`/api/v3/techniques/${techniqueId}/unlock`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it("rejects with reason 'locked' when requirements are not met", async () => {
+    mockContext({
+      requirements: [KNOWLEDGE_SWORD],
+      unlockedTechniqueIds: [],
+      classSkillPoints: 3,
+      knowledge: [],
+    });
+    const res = await api(`/api/v3/techniques/${techniqueId}/unlock`, {
+      method: "POST",
+      user: owner,
+      body: { characterId, weaponItemId: weaponId },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.reason).toBe("locked");
+    expect(h.storage.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it("rejects a technique not granted by the supplied weapon", async () => {
+    mockContext({
+      requirements: [],
+      unlockedTechniqueIds: [],
+      classSkillPoints: 3,
+      groupMembers: [{ groupId, techniqueId: "other-tech" }],
+    });
+    const res = await api(`/api/v3/techniques/${techniqueId}/unlock`, {
       method: "POST",
       user: owner,
       body: { characterId, weaponItemId: weaponId },

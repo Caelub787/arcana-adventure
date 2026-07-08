@@ -1,0 +1,18 @@
+A.A.V3 SYSTEM ONLY
+Continue previous tasks BUT change/add the following.
+
+1. Removing a rune from an item just deletes the rune, dont make it auto remove durability.  Add a confirmation popup tho stating removing the rune is permanent.
+2.  On mobile opening a floating panel normally opens it behind already opened ones which isn't okay.  
+3.  On mobile at least (maybe pc too) there is still a huge issue of the panels flickering and glitching randomly in campaigns when making edits but especially in admin.  It is a huge deal.  Fix it.
+4.  In canvas realms, when adding a new node the panel that displays the node types goes off the screen on the left side which is not okay, and opened nodes clip through the top of the page, they need to be FULLY visible.
+5.  Right now in campaigns there are 3 bars on the pfp of character tokens on the battlemap that are stacked on top of one another.  I want to change the orientation so that the hp bar is on the bottom, the mana bar is verticle on the right side of the grid space/token and the energy bar is verticle on the left side of the grid space/token.
+6.  Canvas Realms issue, big problem is if I switch between 2 nodes it for some reason glitches back and forth and renames them both to the same thing and jumbles the content.  For obvious reasons this is completely unacceptable.
+7.  Trusted players, assistant gms and gms can edit an items durability.
+8.  Lets change how unlocking weapon techniques work.  I want instead of it being through skill trees, for it to be just accessible on the item.  When you open a weapon item and see all the techniques you dont own, if you have a point to use an unlock button appears you can then click which will add that technique to your sheet.
+8.5  Any techniques you unlock in one item if it is also used in another weapon, then it is unlocked in both.  Ex, disarm if you unlock that technique in sword weapon and you also have a scythe it will be able to be used in both if they both have it in their techniques.
+9.  I want in the traits section of character sheets, I want to have the following as collapsible panels that then display that characters unlocked/known stuff in those categories:
+Traits, Knowledge, Weapon Techniques
+Only Traits should be opened by default.
+10.  In character sheets, background tab, lets remake this.  1, remove the character portrait editor/selector, now if you hold down on the image in the overview tab it gives the option to upload or library.  2, remove token bar display options as all need to be used and displayed always.  3, remove created.  4, Lets actually remove the background page altogether, since the only needed thing left is nickname which can be edited by holding down on the character name in overview tab (which gives the option to edit the name or nickname).
+11.  In traits when creating them in admin and in character sheets, remove parent attribute, and make the tracker for uses per long and short rest display correctly.  Also remove damage modifier.
+12.  Also, when a player creates a spell there shouldnt be any roll, they create it no matter what and its sent to the gm.  

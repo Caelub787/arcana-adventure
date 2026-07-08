@@ -18,7 +18,6 @@ import {
   V3_DURATION_MAP,
   v3IsAoeDelivery,
   v3ManaCost,
-  v3CraftDc,
   v3ElementCount,
   v3RoleColor,
   isValidV3Composition,
@@ -475,7 +474,6 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
   }, [elementRequirements, customSkills, inventory]);
 
   const manaCost = useMemo(() => v3ManaCost(comp), [comp]);
-  const craftDc = useMemo(() => v3CraftDc(comp), [comp]);
   const elementCount = useMemo(() => v3ElementCount(comp), [comp]);
   const usedElementKeys = useMemo(
     () => [comp.core, ...comp.secondaries.map((s) => s.element)].filter(Boolean),
@@ -505,15 +503,15 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
         toast({
           title: "Spell crafted!",
           description: result.autoFilled
-            ? `Roll ${result.roll.total} vs DC ${result.roll.dc}. This composition is already known — its details were filled in automatically.`
-            : `Roll ${result.roll.total} vs DC ${result.roll.dc}. Your GM has been asked to name and describe it.`,
+            ? "This composition is already known — its details were filled in automatically."
+            : "Your GM has been asked to name and describe it.",
         });
         setComp(DEFAULT_COMP);
         onCrafted?.(result.spell, !!result.autoFilled);
       } else {
         toast({
           title: "Crafting failed",
-          description: `Roll ${result.roll.total} vs DC ${result.roll.dc}. The mana was spent, but your token was not consumed — try again.`,
+          description: "Something went wrong — your token was not consumed. Try again.",
           variant: "destructive",
         });
         onCrafted?.(undefined, false);
@@ -538,10 +536,6 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
         <div className="flex items-center gap-3 text-sm">
           <span className={`flex items-center gap-1 ${notEnoughMana ? "text-red-400" : "text-violet-300"}`} data-testid="text-craft-mana-cost">
             <Droplet className="h-4 w-4" /> {manaCost} mana
-          </span>
-          <span className="text-stone-500">·</span>
-          <span className="text-stone-300" data-testid="text-craft-dc">
-            DC {craftDc}{craftDc <= 0 ? " (auto)" : ""}
           </span>
           <span className="text-stone-500">·</span>
           <span className={`flex items-center gap-1 ${noTokens ? "text-red-400" : "text-amber-300"}`} data-testid="text-craft-tokens">

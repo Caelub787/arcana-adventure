@@ -192,6 +192,7 @@ export function DocumentPane({ paneId, nodeId }: Props) {
       )}
       {node && isCanvas && (
         <CanvasPaneBody
+          key={node.id}
           canvasNode={node}
           paneId={paneId}
           onClosePane={() => closePane(paneId)}
@@ -199,6 +200,7 @@ export function DocumentPane({ paneId, nodeId }: Props) {
       )}
       {node && isMap && (
         <MapNodeView
+          key={node.id}
           node={node}
           paneId={paneId}
           onClosePane={() => closePane(paneId)}
@@ -206,6 +208,7 @@ export function DocumentPane({ paneId, nodeId }: Props) {
       )}
       {node && !isCanvas && !isMap && (
         <DocumentEditor
+          key={node.id}
           node={node}
           paneId={paneId}
           autoFocusTitle={shouldAutoFocus}

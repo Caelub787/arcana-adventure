@@ -44,7 +44,7 @@ export function TopBar() {
   const canEdit = !!activeRealmId && !role.isViewer;
 
   return (
-    <header className="absolute top-0 left-0 right-0 h-topbar z-40 flex items-center justify-between px-2 sm:px-4 bg-background/50 backdrop-blur-xl border-b border-border/50 pt-[env(safe-area-inset-top)]">
+    <header className="absolute top-0 left-0 right-0 h-[calc(3.5rem_+_env(safe-area-inset-top))] z-40 flex items-center justify-between px-2 sm:px-4 bg-background/50 backdrop-blur-xl border-b border-border/50 pt-[env(safe-area-inset-top)]">
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
         <Button
           data-guide="library-toggle"

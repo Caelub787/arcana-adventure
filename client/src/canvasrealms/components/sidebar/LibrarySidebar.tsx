@@ -2291,7 +2291,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                       )}
                     </Button>
                     {newNodeMenuOpen && (
-                      <div className="absolute right-0 mt-1 w-60 max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-50">
+                      <div className="absolute left-0 mt-1 w-60 max-w-[calc(100vw-1rem)] max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-50">
                         <div className="flex items-center justify-end px-2 py-0.5 border-b border-border/60 mb-0.5">
                           <button
                             type="button"

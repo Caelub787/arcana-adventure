@@ -111,7 +111,7 @@ function MobileSinglePane({
   };
 
   return (
-    <div className="absolute inset-0 pt-topbar flex flex-col">
+    <div className="absolute inset-0 pt-[calc(3.5rem_+_env(safe-area-inset-top))] flex flex-col">
       {leaves.length > 1 && (
         <div className="flex items-stretch gap-1 px-2 py-1.5 border-b border-border bg-muted/30 flex-shrink-0">
           <button
@@ -252,7 +252,7 @@ export function WindowWorkspace() {
   if (!paneTree) {
     return (
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pt-topbar"
+        className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pt-[calc(3.5rem_+_env(safe-area-inset-top))]"
         onDragOver={(e) => {
           if (hasSidebarNodeDrag(e)) {
             e.preventDefault();
@@ -279,7 +279,7 @@ export function WindowWorkspace() {
   }
 
   return (
-    <div className="absolute inset-0 pt-topbar">
+    <div className="absolute inset-0 pt-[calc(3.5rem_+_env(safe-area-inset-top))]">
       {renderTree(paneTree, setSplitRatio, lastRatiosRef)}
     </div>
   );

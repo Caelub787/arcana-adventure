@@ -5185,6 +5185,8 @@ interface TraitFormDialogProps {
 }
 
 function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, systemSlug }: TraitFormDialogProps) {
+  // V3 traits have no parent attribute and no damage modifier (item 11).
+  const isV3Trait = systemSlug === 'aa-v3';
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -5236,19 +5238,19 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
       toast({ title: 'Error', description: 'Trait name is required', variant: 'destructive' });
       return;
     }
-    if (formData.damageModifierType !== 'none' && !formData.damageModifierDamageType) {
+    if (!isV3Trait && formData.damageModifierType !== 'none' && !formData.damageModifierDamageType) {
       toast({ title: 'Error', description: 'Please select a damage type for the damage modifier', variant: 'destructive' });
       return;
     }
     onSave({
       name: formData.name.trim(),
       description: formData.description.trim() || undefined,
-      parentAttribute: formData.parentAttribute,
+      parentAttribute: isV3Trait ? 'will' : formData.parentAttribute,
       usesPerLongRest: formData.usesPerLongRest,
       usesPerShortRest: formData.usesPerShortRest,
-      damageModifierType: formData.damageModifierType,
-      damageModifierDamageType: formData.damageModifierType !== 'none' ? formData.damageModifierDamageType : undefined,
-      damageModifierValue: formData.damageModifierType === 'reduce' ? formData.damageModifierValue : undefined,
+      damageModifierType: isV3Trait ? 'none' : formData.damageModifierType,
+      damageModifierDamageType: !isV3Trait && formData.damageModifierType !== 'none' ? formData.damageModifierDamageType : undefined,
+      damageModifierValue: !isV3Trait && formData.damageModifierType === 'reduce' ? formData.damageModifierValue : undefined,
     });
   };
 
@@ -5285,6 +5287,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
             />
           </div>
 
+          {!isV3Trait && (
           <div>
             <Label className="text-stone-300">Parent Attribute</Label>
             <Select
@@ -5306,6 +5309,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
               The parent attribute determines which stat modifier is added to trait rolls
             </p>
           </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -5338,6 +5342,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
             </div>
           </div>
 
+          {!isV3Trait && (
           <div>
             <Label className="text-stone-300">Damage Modifier</Label>
             <Select
@@ -5358,8 +5363,9 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
               Apply damage reduction, resistance, or immunity to a damage type
             </p>
           </div>
+          )}
 
-          {formData.damageModifierType !== 'none' && (
+          {!isV3Trait && formData.damageModifierType !== 'none' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-stone-300">{getEffectTypeLabel(systemSlug)}</Label>

@@ -2820,7 +2820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   function validateCharacterUpdate(updates: Partial<any>, isGM: boolean, canEditSheet: boolean, campaignSystem?: string): void {
     // GM-only fields that regular editors cannot change
-    const serverOnlyFields = ['classSkillPoints'];
+    const serverOnlyFields = ['classSkillPoints', 'v3UnlockedTechniqueIds'];
     for (const f of serverOnlyFields) {
       delete updates[f];
     }
@@ -2872,10 +2872,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * 
    * This prevents players from cheating by modifying weapon damage or item durability.
    */
-  function validateItemUpdate(updates: Partial<any>, isGM: boolean): void {
+  function validateItemUpdate(updates: Partial<any>, isGM: boolean, trustedSelf = false): void {
     if (!isGM) {
-      // Only allow name and description for non-GMs (plus container organization)
+      // Only allow name and description for non-GMs (plus container organization).
+      // Trusted players may additionally adjust durability (GM-delegated bookkeeping).
       const allowedFields = ['name', 'description', 'containerId', 'isEquipped'];
+      if (trustedSelf) allowedFields.push('durability');
       const attemptedFields = Object.keys(updates);
       const restrictedFields = attemptedFields.filter(
         f => !allowedFields.includes(f)
@@ -6711,31 +6713,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (slotToNeeder[s] !== undefined) reservedItemRowIds.push(slots[s].rowId);
       }
 
-      // Roll the DC check: 1d20 + Anemos vs craftDc. DC 0 = automatic success.
-      const anemos = character.anemos || 0;
-      const d20 = Math.floor(Math.random() * 20) + 1;
-      const rollTotal = d20 + anemos;
-      const success = craftDc <= 0 ? true : rollTotal >= craftDc;
+      // No craft roll: crafting always succeeds and the spell is sent to the GM.
 
-      // Failed DC check: consume mana only (no spell is created), then stop.
-      if (!success) {
-        const failChar = await storage.updateCharacter(character.id, {
-          mana: currentMana - manaCost,
-        });
-        if (campaign?.id) {
-          broadcastToCampaign(campaign.id, { type: "character_updated", character: failChar });
-        }
-        return res.json({
-          success: false,
-          roll: { d20, anemos, total: rollTotal, dc: craftDc },
-          manaCost,
-          manaSpent: manaCost,
-          tokenSpent: false,
-          character: failChar,
-        });
-      }
-
-      // Success: create the spell row FIRST so a failed insert never consumes
+      // Create the spell row FIRST so a failed insert never consumes
       // resources (the Neon HTTP driver has no interactive transactions). If a
       // canonical version exists, prefill it.
       const compositionHash = hashV3Composition(composition);
@@ -6810,7 +6790,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({
         success: true,
-        roll: { d20, anemos, total: rollTotal, dc: craftDc },
         manaCost,
         manaSpent: manaCost,
         tokenSpent: true,
@@ -6873,6 +6852,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       if (!granted) {
         return res.status(403).json({ error: "This weapon does not grant that technique" });
+      }
+
+      // Techniques must be unlocked (a class skill point spent via the weapon's
+      // Unlock button) before they can be used. Unlocks are global per character.
+      const unlockedIds: string[] = Array.isArray((character as any).v3UnlockedTechniqueIds)
+        ? (character as any).v3UnlockedTechniqueIds
+        : [];
+      if (!unlockedIds.includes(technique.id)) {
+        return res.status(403).json({
+          error: "You haven't unlocked this technique yet",
+          reason: "not-unlocked",
+        });
       }
 
       // Re-validate the technique's OR'd unlock conditions against the
@@ -6987,6 +6978,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[V3 Technique Use] Error:", err?.message, err?.stack);
       res.status(500).json({ error: "Failed to use technique" });
+    }
+  });
+
+  // AA V3 only: unlock a technique for a character by spending 1 class skill
+  // point. The technique must be granted by a weapon the character owns, and
+  // its knowledge/item requirements must be satisfied. Unlocks are stored
+  // globally on the character (characters.v3UnlockedTechniqueIds), so a
+  // technique unlocked on one weapon is usable from every weapon granting it.
+  app.post("/api/v3/techniques/:id/unlock", requireAuth, async (req, res) => {
+    try {
+      const { characterId, weaponItemId } = req.body || {};
+      if (!characterId) return res.status(400).json({ error: "characterId is required" });
+      if (!weaponItemId) return res.status(400).json({ error: "weaponItemId is required" });
+
+      const access = await checkCharacterAccess(characterId, req.session.userId!, "edit");
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character" });
+
+      const character = access.character;
+      const campaign = access.campaign;
+      if (campaign?.system !== "aa-v3") {
+        return res.status(400).json({ error: "Techniques are only available in A.A. V3 campaigns" });
+      }
+
+      const technique = await storage.getV3Technique(req.params.id);
+      if (!technique) return res.status(404).json({ error: "Technique not found" });
+
+      const unlockedIds: string[] = Array.isArray((character as any).v3UnlockedTechniqueIds)
+        ? (character as any).v3UnlockedTechniqueIds
+        : [];
+      if (unlockedIds.includes(technique.id)) {
+        return res.status(400).json({ error: "Technique is already unlocked" });
+      }
+
+      // The weapon must belong to this character and grant this technique.
+      const weapon = await storage.getItem(weaponItemId);
+      if (!weapon) return res.status(404).json({ error: "Weapon not found" });
+      if (weapon.characterId !== character.id) {
+        return res.status(403).json({ error: "That weapon does not belong to this character" });
+      }
+      const assignedGroupIds: string[] = Array.isArray((weapon as any).v3TechniqueGroupIds)
+        ? (weapon as any).v3TechniqueGroupIds
+        : [];
+      if (assignedGroupIds.length === 0) {
+        return res.status(403).json({ error: "This weapon grants no techniques" });
+      }
+      const members = await storage.getV3TechniqueGroupMembers();
+      const granted = members.some(
+        (m) => assignedGroupIds.includes(m.groupId) && m.techniqueId === technique.id,
+      );
+      if (!granted) {
+        return res.status(403).json({ error: "This weapon does not grant that technique" });
+      }
+
+      // Requirements (Knowledge / item conditions) must be satisfied to unlock.
+      const charKnowledge = await storage.getCharacterCustomSkills(character.id);
+      const charInventory = await storage.getItemsByCharacter(character.id);
+      const eligibility = v3spells.evaluateV3ElementEligibility(
+        Array.isArray(technique.requirements) ? (technique.requirements as any) : [],
+        {
+          knowledgeNames: charKnowledge.map((k) => k.name),
+          items: charInventory.map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
+        },
+      );
+      if (!eligibility.usable) {
+        return res.status(403).json({
+          error: "You don't meet this technique's requirements",
+          reason: "locked",
+          requirements: eligibility.requirements,
+        });
+      }
+
+      // Spend 1 class skill point. Real GMs unlock for free; trusted players
+      // (isGM via trustedSelf elevation) still pay like any other player.
+      const points = character.classSkillPoints ?? 0;
+      const spendPoint = !(access.isGM && !(access as any).trustedSelf);
+      if (spendPoint && points < 1) {
+        return res.status(400).json({
+          error: "No skill points available",
+          reason: "no-points",
+        });
+      }
+
+      const updatedCharacter = await storage.updateCharacter(character.id, {
+        v3UnlockedTechniqueIds: [...unlockedIds, technique.id],
+        ...(spendPoint ? { classSkillPoints: points - 1 } : {}),
+      } as any);
+
+      if (campaign?.id) {
+        broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
+      }
+
+      res.json({
+        success: true,
+        pointSpent: spendPoint ? 1 : 0,
+        character: updatedCharacter,
+      });
+    } catch (err: any) {
+      console.error("[V3 Technique Unlock] Error:", err?.message, err?.stack);
+      res.status(500).json({ error: "Failed to unlock technique" });
     }
   });
 
@@ -13169,9 +13260,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "You don't have permission to edit this character's items" });
       }
 
-      // Validate update based on GM status
+      // Validate update based on GM status (trusted players may edit durability)
       try {
-        validateItemUpdate(req.body, access.isGM);
+        validateItemUpdate(req.body, access.isGM, access.trustedSelf);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }
@@ -13385,7 +13476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Remove a removable rune from a host item. Reverts its stat effects and
-  // permanently lowers the host's max durability by the rune's remove cost.
+  // deletes the rune permanently (no durability penalty).
   app.post("/api/characters/:characterId/items/:itemId/remove-rune", requireAuth, async (req, res) => {
     try {
       const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
@@ -13414,25 +13505,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cur = Number((host as any)[e.target] ?? 0);
         hostUpdates[e.target] = cur - amt;
       }
-      // Permanently lower max durability; clamp current durability to it.
-      // Freshly socketed runes bake `removeDurabilityCost` onto the snapshot.
-      // Older snapshots may predate that field — fall back to the rune item's
-      // configured value (if it still exists), then to the socket-time default.
-      let rawCost: any = rune.removeDurabilityCost;
-      if (rawCost === undefined || rawCost === null) {
-        if (rune.runeItemId) {
-          const runeItem = await storage.getItem(rune.runeItemId);
-          rawCost = (runeItem as any)?.runeRemoveDurabilityCost;
-        }
-        if (rawCost === undefined || rawCost === null) rawCost = 1;
-      }
-      const cost = Number(rawCost) || 0;
-      if (cost > 0) {
-        const newMax = Math.max(0, Number((host as any).maxDurability ?? 10) - cost);
-        hostUpdates.maxDurability = newMax;
-        hostUpdates.durability = Math.min(Number(host.durability ?? 0), newMax);
-      }
-
+      // Rune removal is permanent but costs nothing: the rune is simply
+      // deleted and its stat effects reverted. (The old max-durability
+      // penalty was removed by design.)
       const updatedHost = await storage.updateItem(host.id, hostUpdates);
       if (access.character?.campaignId) {
         broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedHost });

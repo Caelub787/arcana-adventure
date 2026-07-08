@@ -3083,6 +3083,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   style={{ 
                     bottom: (() => {
                       if (!character) return 2;
+                      if (campaignSystem === 'aa-v3') {
+                        // V3: only the HP bar sits at the bottom (mana/energy are vertical side bars).
+                        return hpPercent !== null ? 2 + 8 : 2;
+                      }
                       let visibleBars = 0;
                       if (hpPercent !== null && (character.showHpBar ?? true)) visibleBars++;
                       if (energyPercent !== null && (character.showEnergyBar ?? true)) visibleBars++;
@@ -3102,11 +3106,69 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* Token Resource Bars - HP, Energy, Mana stacked from bottom */}
+              {/* Token Resource Bars.
+                  V2 (and V1): HP/Energy/Mana horizontally stacked from the bottom,
+                  honoring the per-character show*Bar visibility flags.
+                  V3: bars are ALWAYS shown (no display options) with a fixed layout —
+                  HP horizontal at the bottom, mana vertical on the RIGHT edge,
+                  energy vertical on the LEFT edge of the token. */}
               {(() => {
-                const showMana = character && manaPercent !== null && (character.showManaBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
-                const showEnergy = character && energyPercent !== null && (character.showEnergyBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
-                const showHp = character && hpPercent !== null && (character.showHpBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
+                const isV3Bars = campaignSystem === 'aa-v3';
+                const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
+                const showMana = character && manaPercent !== null && (isV3Bars || (character.showManaBar ?? true)) && canSeeBars;
+                const showEnergy = character && energyPercent !== null && (isV3Bars || (character.showEnergyBar ?? true)) && canSeeBars;
+                const showHp = character && hpPercent !== null && (isV3Bars || (character.showHpBar ?? true)) && canSeeBars;
+                if (isV3Bars) {
+                  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+                  return (
+                    <>
+                      {showHp && (
+                        <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex" data-testid={`bar-hp-${token.id}`}>
+                          <div
+                            className={`h-full transition-all duration-700 ease-in-out ${
+                              hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${clamp(hpPercent!)}%` }}
+                          />
+                          {tempHpPercent > 0 && (
+                            <div
+                              className="h-full bg-violet-400/90"
+                              style={{ width: `${Math.max(0, Math.min(100 - clamp(hpPercent!), tempHpPercent))}%` }}
+                            />
+                          )}
+                        </div>
+                      )}
+                      {showEnergy && (
+                        <div className="absolute left-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-energy-${token.id}`}>
+                          {tempEnergyPercent > 0 && (
+                            <div
+                              className="w-full bg-violet-400/90"
+                              style={{ height: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }}
+                            />
+                          )}
+                          <div
+                            className="w-full transition-all duration-700 ease-in-out bg-cyan-500"
+                            style={{ height: `${clamp(energyPercent!)}%` }}
+                          />
+                        </div>
+                      )}
+                      {showMana && (
+                        <div className="absolute right-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-mana-${token.id}`}>
+                          {tempManaPercent > 0 && (
+                            <div
+                              className="w-full bg-fuchsia-200/90"
+                              style={{ height: `${Math.max(0, Math.min(100 - clamp(manaPercent!), tempManaPercent))}%` }}
+                            />
+                          )}
+                          <div
+                            className="w-full transition-all duration-700 ease-in-out bg-fuchsia-500"
+                            style={{ height: `${clamp(manaPercent!)}%` }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  );
+                }
                 let barIndex = 0;
                 const barPositions = ['bottom-0.5', 'bottom-[10px]', 'bottom-[18px]'];
                 const manaPos = showMana ? barPositions[barIndex++] : '';
@@ -5734,8 +5796,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const handleTraitRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
     if (!traitData) return;
     
-    // Check if trait has uses remaining
-    if (traitData.currentUses >= traitData.usesPerLongRest) {
+    // Check if trait has uses remaining (V3 pool = long-rest + short-rest uses)
+    const traitMaxUses = campaignSystem === 'aa-v3'
+      ? traitData.usesPerLongRest + (traitData.usesPerShortRest || 0)
+      : traitData.usesPerLongRest;
+    if (traitData.currentUses >= traitMaxUses) {
       triggerRollNotification({
         type: 'system',
         label: `${traitData.name} - No Uses!`,
@@ -5743,7 +5808,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `No uses remaining (${traitData.currentUses}/${traitData.usesPerLongRest})`,
+        calculationBreakdown: `No uses remaining (${traitData.currentUses}/${traitMaxUses})`,
       });
       return;
     }
@@ -5766,11 +5831,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `Used (${usesAfter}/${traitData.usesPerLongRest})`,
+        calculationBreakdown: `Used (${usesAfter}/${traitMaxUses})`,
       });
       if (character.campaignId) {
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
-          `${traitData.name} used (${usesAfter}/${traitData.usesPerLongRest} uses)`, 'system');
+          `${traitData.name} used (${usesAfter}/${traitMaxUses} uses)`, 'system');
       }
       return;
     }
@@ -5833,7 +5898,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (character.campaignId) {
       const usesAfter = traitData.currentUses + 1;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-        `${traitData.name}: ${calculationBreakdown} = ${total} (${usesAfter}/${traitData.usesPerLongRest} uses)`, 'roll');
+        `${traitData.name}: ${calculationBreakdown} = ${total} (${usesAfter}/${traitMaxUses} uses)`, 'roll');
     }
   };
 
@@ -8064,8 +8129,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       </>
     );
   } else if (hotbar?.traitId && traitData) {
-    // Display trait with uses remaining
-    const usesRemaining = traitData.usesPerLongRest - traitData.currentUses;
+    // Display trait with uses remaining (V3 pool = long-rest + short-rest uses)
+    const traitMaxUses = campaignSystem === 'aa-v3'
+      ? traitData.usesPerLongRest + (traitData.usesPerShortRest || 0)
+      : traitData.usesPerLongRest;
+    const usesRemaining = traitMaxUses - traitData.currentUses;
     const isExhausted = usesRemaining <= 0;
     
     content = (
@@ -8074,7 +8142,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           {traitData.name.substring(0, 4)}
         </div>
         <div className={`absolute top-0 right-0 text-[6px] px-0.5 rounded-bl font-bold ${isExhausted ? 'bg-red-900 text-red-400' : 'bg-cyan-900 text-cyan-400'}`}>
-          {usesRemaining}/{traitData.usesPerLongRest}
+          {usesRemaining}/{traitMaxUses}
         </div>
       </div>
     );
@@ -8082,9 +8150,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       <>
         <p className="font-bold">{traitData.name}</p>
         {traitData.description && <p className="text-xs text-stone-400">{traitData.description}</p>}
-        <p className="text-sm">Attribute: {traitData.parentAttribute}</p>
+        {campaignSystem !== 'aa-v3' && <p className="text-sm">Attribute: {traitData.parentAttribute}</p>}
         <p className={`text-sm ${isExhausted ? 'text-red-400' : 'text-cyan-400'}`}>
-          Uses: {usesRemaining}/{traitData.usesPerLongRest} per long rest
+          Uses: {usesRemaining}/{traitMaxUses}{campaignSystem === 'aa-v3' ? '' : ' per long rest'}
         </p>
         {isExhausted 
           ? <p className="text-xs text-red-400 mt-1">No uses remaining - take a long rest</p>
@@ -8397,7 +8465,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   )}
                   <div className="bg-stone-800 rounded p-2">
                     <span className="text-stone-500 block">Uses</span>
-                    <span className="text-stone-200">{traitData.currentUses || 0} / {traitData.usesPerLongRest || '∞'}</span>
+                    <span className="text-stone-200">{traitData.currentUses || 0} / {(campaignSystem === 'aa-v3' ? (traitData.usesPerLongRest || 0) + (traitData.usesPerShortRest || 0) : traitData.usesPerLongRest) || '∞'}</span>
                   </div>
                   {traitData.restType && (
                     <div className="bg-stone-800 rounded p-2">
@@ -14483,9 +14551,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       );
     }
 
-    // Display trait if equipped
+    // Display trait if equipped (V3 pool = long-rest + short-rest uses)
     if (hotbar.traitId && traitData) {
-      const usesRemaining = traitData.usesPerLongRest - traitData.currentUses;
+      const traitMaxUses = campaignSystem === 'aa-v3'
+        ? traitData.usesPerLongRest + (traitData.usesPerShortRest || 0)
+        : traitData.usesPerLongRest;
+      const usesRemaining = traitMaxUses - traitData.currentUses;
       const isExhausted = usesRemaining <= 0;
       
       return (
@@ -14499,7 +14570,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                 </div>
                 {/* Uses remaining badge */}
                 <div className={`absolute top-0 right-0 text-white text-[8px] px-1 rounded-bl font-bold ${isExhausted ? 'bg-red-900' : 'bg-cyan-600'}`}>
-                  {usesRemaining}/{traitData.usesPerLongRest}
+                  {usesRemaining}/{traitMaxUses}
                 </div>
                 {/* Trait name at bottom */}
                 <div className={`absolute bottom-0 left-0 right-0 bg-stone-900/80 text-[7px] text-center px-0.5 rounded-t truncate font-medium ${isExhausted ? 'text-stone-500' : 'text-cyan-300'}`}>
@@ -14510,9 +14581,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             <TooltipContent>
               <p className="font-bold">{traitData.name}</p>
               {traitData.description && <p className="text-xs text-stone-400">{traitData.description}</p>}
-              <p className="text-sm">Attribute: {traitData.parentAttribute}</p>
+              {campaignSystem !== 'aa-v3' && <p className="text-sm">Attribute: {traitData.parentAttribute}</p>}
               <p className={`text-sm ${isExhausted ? 'text-red-400' : 'text-cyan-400'}`}>
-                Uses: {usesRemaining}/{traitData.usesPerLongRest} per long rest
+                Uses: {usesRemaining}/{traitMaxUses} per rest
               </p>
               {isExhausted && <p className="text-xs text-red-400">No uses remaining</p>}
             </TooltipContent>
@@ -15862,12 +15933,14 @@ function TraitForm({
   systemTraits, 
   existingTraitIds, 
   onSave, 
-  isLoading 
+  isLoading,
+  isAAV3 = false
 }: { 
   systemTraits: SystemTrait[]; 
   existingTraitIds: (string | undefined)[];
   onSave: (data: Partial<CharacterTrait>) => void; 
   isLoading?: boolean;
+  isAAV3?: boolean;
 }) {
   const [mode, setMode] = useState<'library' | 'custom'>('library');
   const [customName, setCustomName] = useState('');
@@ -15947,6 +16020,7 @@ function TraitForm({
                   className="bg-stone-800 border-stone-700 flex-1"
                   data-testid="input-trait-library-search"
                 />
+                {!isAAV3 && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button 
@@ -16005,6 +16079,7 @@ function TraitForm({
                     </div>
                   </PopoverContent>
                 </Popover>
+                )}
               </div>
               <div className="max-h-[400px] overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="space-y-2">
@@ -16022,11 +16097,13 @@ function TraitForm({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-stone-100">{trait.name}</span>
-                            <Badge className="bg-rose-600/30 text-rose-300 text-xs capitalize">
-                              {trait.parentAttribute}
-                            </Badge>
+                            {!isAAV3 && (
+                              <Badge className="bg-rose-600/30 text-rose-300 text-xs capitalize">
+                                {trait.parentAttribute}
+                              </Badge>
+                            )}
                             <Badge className="bg-amber-600/30 text-amber-300 text-xs">
-                              {trait.usesPerLongRest}/rest
+                              {isAAV3 ? trait.usesPerLongRest + (trait.usesPerShortRest || 0) : trait.usesPerLongRest}/rest
                             </Badge>
                           </div>
                           {trait.description && (
@@ -16073,6 +16150,7 @@ function TraitForm({
             />
           </div>
 
+          {!isAAV3 && (
           <div>
             <Label className="text-stone-300">Parent Attribute</Label>
             <Select value={customAttribute} onValueChange={setCustomAttribute}>
@@ -16088,6 +16166,7 @@ function TraitForm({
               </SelectContent>
             </Select>
           </div>
+          )}
 
           <div>
             <Label className="text-stone-300">Uses Per Long Rest</Label>
@@ -16122,20 +16201,22 @@ function TraitEditForm({
   trait, 
   onSave, 
   onDelete,
-  isLoading 
+  isLoading,
+  isAAV3 = false
 }: { 
   trait: CharacterTrait; 
   onSave: (data: Partial<CharacterTrait>) => void;
   onDelete: () => void;
   isLoading?: boolean;
+  isAAV3?: boolean;
 }) {
   const [description, setDescription] = useState(trait.description || '');
   const [usesPerLongRest, setUsesPerLongRest] = useState(trait.usesPerLongRest);
   const [usesPerShortRest, setUsesPerShortRest] = useState(trait.usesPerShortRest || 0);
   const [currentUses, setCurrentUses] = useState(trait.currentUses);
 
-  // Calculate max uses (sum of long rest + short rest uses)
-  const maxUses = usesPerLongRest + usesPerShortRest;
+  // V3 max uses = long-rest + short-rest pool; V2 keeps long-rest only.
+  const maxUses = usesPerLongRest + (isAAV3 ? usesPerShortRest : 0);
 
   const handleSave = () => {
     onSave({
@@ -16150,8 +16231,8 @@ function TraitEditForm({
     <div className="space-y-4">
       <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
         <div className="font-medium text-rose-400">{trait.name}</div>
-        <div className="text-xs text-stone-500 capitalize">Parent: {trait.parentAttribute}</div>
-        {trait.damageModifierType && trait.damageModifierType !== 'none' && (
+        {!isAAV3 && <div className="text-xs text-stone-500 capitalize">Parent: {trait.parentAttribute}</div>}
+        {!isAAV3 && trait.damageModifierType && trait.damageModifierType !== 'none' && (
           <div className="text-xs text-amber-400 mt-1">
             {trait.damageModifierType === 'reduce' && `Reduces ${trait.damageModifierDamageType} damage by ${trait.damageModifierValue}`}
             {trait.damageModifierType === 'resistance' && `Resistance to ${trait.damageModifierDamageType} (half damage)`}
@@ -16901,7 +16982,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
 // Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
 // Campaign page) so it keeps living when the character sheet is closed. It owns
 // its own items query + update/delete mutations so the host page stays thin.
-export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose }: {
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -16910,6 +16991,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
   onClose: () => void;
+  trustedPlayer?: boolean;
 }) {
   const queryClient = useQueryClient();
   const charPanelSuffix = character?.id ? '-' + character.id : '';
@@ -16984,6 +17066,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       floatingZIndices={floatingZIndices}
       campaignSystem={campaignSystem}
       charPanelSuffix={charPanelSuffix}
+      trustedPlayer={trustedPlayer}
     />
   );
 }
@@ -17074,6 +17157,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   
   // Image browser state
   const [showImageBrowser, setShowImageBrowser] = useState(false);
+
+  // V3 overview long-press editing (portrait source picker + name/nickname editor)
+  const [v3PortraitMenuOpen, setV3PortraitMenuOpen] = useState(false);
+  const [v3NameEditOpen, setV3NameEditOpen] = useState(false);
+  const [v3NameDraft, setV3NameDraft] = useState('');
+  const [v3NicknameDraft, setV3NicknameDraft] = useState('');
+  const v3OverviewLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelV3OverviewLongPress = () => {
+    if (v3OverviewLongPressRef.current) {
+      clearTimeout(v3OverviewLongPressRef.current);
+      v3OverviewLongPressRef.current = null;
+    }
+  };
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -17271,6 +17367,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // State for trait management
   const [showAddTrait, setShowAddTrait] = useState(false);
   const [editingTrait, setEditingTrait] = useState<CharacterTrait | null>(null);
+  // AA V3 Traits tab collapsible sections — only Traits open by default.
+  const [v3TraitsOpen, setV3TraitsOpen] = useState(true);
+  const [v3KnowledgeOpen, setV3KnowledgeOpen] = useState(false);
+  const [v3TechniquesOpen, setV3TechniquesOpen] = useState(false);
 
 
   // Calculate bonuses from unlocked feats
@@ -19209,7 +19309,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
     ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
     { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
-    { value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
+    // V3 drops the Background tab: portrait + name/nickname editing moved to
+    // long-press interactions on the Overview tab.
+    ...(isAAV3 ? [] : [{ value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' }]),
   ];
 
   const getTabColorClasses = (color: string) => {
@@ -19355,7 +19457,24 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       />
                     </div>
                   ) : (
-                    <span data-testid="text-character-name">{liveCharacter.name}</span>
+                    <span
+                      data-testid="text-character-name"
+                      className={isAAV3 && canEdit && onUpdate ? 'cursor-pointer select-none' : undefined}
+                      onPointerDown={isAAV3 && canEdit && onUpdate ? () => {
+                        cancelV3OverviewLongPress();
+                        v3OverviewLongPressRef.current = setTimeout(() => {
+                          v3OverviewLongPressRef.current = null;
+                          setV3NameDraft(liveCharacter.name || '');
+                          setV3NicknameDraft(liveCharacter.nickname || '');
+                          setV3NameEditOpen(true);
+                        }, 500);
+                      } : undefined}
+                      onPointerUp={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                      onPointerLeave={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                      onContextMenu={isAAV3 && canEdit && onUpdate ? (e) => e.preventDefault() : undefined}
+                    >
+                      {liveCharacter.name}
+                    </span>
                   )}
                   {!editingOverview ? (
                     <div className="flex items-center gap-2 flex-wrap">
@@ -19471,9 +19590,21 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <CardContent className="space-y-4">
                 {/* TOP ROW: PFP + HP/Energy */}
                 <div className="flex gap-4">
-                  <div className="w-28 h-28 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
+                  <div
+                    className={`w-28 h-28 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0 ${isAAV3 && canEdit && onUpdate ? 'cursor-pointer select-none' : ''}`}
+                    onPointerDown={isAAV3 && canEdit && onUpdate ? () => {
+                      cancelV3OverviewLongPress();
+                      v3OverviewLongPressRef.current = setTimeout(() => {
+                        v3OverviewLongPressRef.current = null;
+                        setV3PortraitMenuOpen(true);
+                      }, 500);
+                    } : undefined}
+                    onPointerUp={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                    onPointerLeave={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                    onContextMenu={isAAV3 && canEdit && onUpdate ? (e) => e.preventDefault() : undefined}
+                  >
                     {effectivePortrait ? (
-                      <img src={effectivePortrait} alt={liveCharacter.name} className="w-full h-full object-cover" data-testid="img-portrait" />
+                      <img src={effectivePortrait} alt={liveCharacter.name} className="w-full h-full object-cover pointer-events-none" data-testid="img-portrait" draggable={false} />
                     ) : (
                       <div className="w-full h-full bg-stone-900 flex items-center justify-center" data-testid="img-portrait-fallback">
                         <User className="h-12 w-12 text-stone-600" />
@@ -20873,9 +21004,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
             {/* Custom Skills Section */}
             <Card className={`bg-stone-800 border-stone-700 ${isAAV3 ? 'order-2' : 'mt-4'}`}>
-              <CardHeader className="pb-3">
+              <CardHeader
+                className={`pb-3 ${isAAV3 ? 'cursor-pointer select-none' : ''}`}
+                onClick={isAAV3 ? () => setV3KnowledgeOpen((o) => !o) : undefined}
+                data-testid={isAAV3 ? 'header-v3-knowledge-section' : undefined}
+              >
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-cyan-500 text-sm font-medium flex items-center gap-2">
+                    {isAAV3 && (v3KnowledgeOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
                     <BookOpen className="h-4 w-4" />
                     {isAAV3 ? 'Knowledge' : 'Custom Skills'}
                   </CardTitle>
@@ -20902,7 +21038,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-3">
+              <CardContent className={`pt-3 ${isAAV3 && !v3KnowledgeOpen ? 'hidden' : ''}`}>
                 {characterCustomSkills.length === 0 ? (
                   <div className="text-center py-4 text-stone-500 text-sm">
                     {isAAV3 ? 'No knowledge added yet' : 'No custom skills added yet'}
@@ -21161,9 +21297,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
             {/* Traits Section */}
             <Card className={`bg-stone-800 border-stone-700 ${isAAV3 ? 'order-1' : 'mt-4'}`}>
-              <CardHeader className="pb-2">
+              <CardHeader
+                className={`pb-2 ${isAAV3 ? 'cursor-pointer select-none' : ''}`}
+                onClick={isAAV3 ? () => setV3TraitsOpen((o) => !o) : undefined}
+                data-testid={isAAV3 ? 'header-v3-traits-section' : undefined}
+              >
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-rose-500 text-sm font-medium flex items-center gap-2">
+                    {isAAV3 && (v3TraitsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
                     <Star className="h-4 w-4" />
                     Traits
                   </CardTitle>
@@ -21171,7 +21312,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setShowAddTrait(true)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAddTrait(true);
+                      }}
                       className="h-7 text-xs"
                       data-testid="button-add-trait"
                     >
@@ -21181,7 +21325,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-2">
+              <CardContent className={`pt-2 ${isAAV3 && !v3TraitsOpen ? 'hidden' : ''}`}>
                 {characterTraits.length === 0 ? (
                   <div className="text-center py-4 text-stone-500 text-sm">
                     No traits added yet
@@ -21190,12 +21334,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {characterTraits.map((trait: CharacterTrait) => {
                       const parentAttr = trait.parentAttribute || 'wit';
-                      const attrValue = typeof liveCharacter[parentAttr as keyof typeof liveCharacter] === 'number' 
+                      // V3 traits have no parent attribute — no attr mod on rolls.
+                      const attrValue = !isAAV3 && typeof liveCharacter[parentAttr as keyof typeof liveCharacter] === 'number' 
                         ? (liveCharacter[parentAttr as keyof typeof liveCharacter] as number) 
                         : 0;
                       const totalMod = attrValue;
-                      const usesRemaining = trait.usesPerLongRest - trait.currentUses;
-                      const canUse = trait.currentUses < trait.usesPerLongRest;
+                      // V3 total pool = long-rest uses + short-rest uses; V2 keeps long-rest only.
+                      const traitMaxUses = trait.usesPerLongRest + (isAAV3 ? (trait.usesPerShortRest || 0) : 0);
+                      const usesRemaining = Math.max(0, traitMaxUses - trait.currentUses);
+                      const canUse = trait.currentUses < traitMaxUses;
                       
                       return (
                         <Badge 
@@ -21250,10 +21397,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="flex flex-col flex-1">
                             <span className="text-xs text-rose-300">{trait.name}</span>
                             <div className="flex items-center gap-1 text-[10px] text-stone-500">
-                              <span className="capitalize">{parentAttr}</span>
-                              <span>•</span>
+                              {!isAAV3 && (
+                                <>
+                                  <span className="capitalize">{parentAttr}</span>
+                                  <span>•</span>
+                                </>
+                              )}
                               <span className={canUse ? 'text-green-400' : 'text-red-400'}>
-                                {usesRemaining}/{trait.usesPerLongRest} uses
+                                {usesRemaining}/{traitMaxUses} uses
                               </span>
                             </div>
                           </div>
@@ -21296,6 +21447,28 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               </CardContent>
             </Card>
 
+            {/* Weapon Techniques Section (AA V3 only) */}
+            {isAAV3 && (
+              <Card className="bg-stone-800 border-stone-700 order-3">
+                <CardHeader
+                  className="pb-2 cursor-pointer select-none"
+                  onClick={() => setV3TechniquesOpen((o) => !o)}
+                  data-testid="header-v3-techniques-section"
+                >
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-amber-500 text-sm font-medium flex items-center gap-2">
+                      {v3TechniquesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      <Swords className="h-4 w-4" />
+                      Weapon Techniques
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className={`pt-2 ${v3TechniquesOpen ? '' : 'hidden'}`}>
+                  <V3UnlockedTechniquesList character={liveCharacter} />
+                </CardContent>
+              </Card>
+            )}
+
             {/* Add Trait Dialog */}
             <FloatingPanel
               open={showAddTrait}
@@ -21314,6 +21487,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   existingTraitIds={characterTraits.map((ct: CharacterTrait) => ct.systemTraitId).filter(Boolean)}
                   onSave={(data) => addTraitMutation.mutate(data)}
                   isLoading={addTraitMutation.isPending}
+                  isAAV3={isAAV3}
                 />
               </div>
             </FloatingPanel>
@@ -21334,6 +21508,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 <div className="p-4">
                   <TraitEditForm
                     trait={editingTrait}
+                    isAAV3={isAAV3}
                     onSave={(data) => updateTraitMutation.mutate({ traitId: editingTrait.id, data })}
                     onDelete={() => {
                       if (confirm('Are you sure you want to remove this trait?')) {
@@ -22854,14 +23029,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       </div>
                     )}
                   </div>
-                  <input
-                    ref={portraitInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handlePortraitUpload}
-                    data-testid="input-portrait-file"
-                  />
                   <div className="flex justify-center">
                     {character.portrait ? (
                       <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
@@ -22880,116 +23047,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </div>
                 
-                {/* Image Browser Dialog */}
-                <ImageBrowser
-                  open={showImageBrowser}
-                  onOpenChange={setShowImageBrowser}
-                  onSelect={(imageBase64) => {
-                    if (onUpdate) {
-                      onUpdate({ portrait: imageBase64 });
-                    }
-                  }}
-                  title="Select Character Portrait"
-                />
 
-                {/* Portrait Cropping Dialog */}
-                <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>
-                  <DialogContent className="bg-stone-900 border-stone-700 max-w-lg">
-                    <DialogHeader>
-                      <DialogTitle className="text-amber-500">Crop Portrait</DialogTitle>
-                      <DialogDescription className="text-stone-400">
-                        Drag to position the crop area. The portrait will be cropped as a square for circular token display.
-                      </DialogDescription>
-                    </DialogHeader>
-                    {uploadedImage && (
-                      <div className="relative">
-                        <div className="relative overflow-hidden bg-stone-800 rounded-lg" style={{ maxHeight: '400px' }}>
-                          <img 
-                            ref={cropImageRef}
-                            src={uploadedImage} 
-                            alt="Crop preview"
-                            onLoad={handleImageLoad}
-                            className="max-w-full"
-                            style={{ display: 'block' }}
-                          />
-                          {/* Crop Overlay */}
-                          <div 
-                            className="absolute border-4 border-amber-500 bg-amber-500/10 cursor-move touch-none"
-                            style={{
-                              left: cropPosition.x,
-                              top: cropPosition.y,
-                              width: cropPosition.size,
-                              height: cropPosition.size,
-                              boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
-                            }}
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                              
-                              const initialPointerX = e.clientX;
-                              const initialPointerY = e.clientY;
-                              const initialCropX = cropPosition.x;
-                              const initialCropY = cropPosition.y;
-                              const currentSize = cropPosition.size;
-                              
-                              const handleMove = (moveEvent: PointerEvent) => {
-                                const deltaX = moveEvent.clientX - initialPointerX;
-                                const deltaY = moveEvent.clientY - initialPointerY;
-                                
-                                const maxX = imageDimensions.width - currentSize;
-                                const maxY = imageDimensions.height - currentSize;
-                                
-                                const newX = Math.max(0, Math.min(maxX, initialCropX + deltaX));
-                                const newY = Math.max(0, Math.min(maxY, initialCropY + deltaY));
-                                setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
-                              };
-                              
-                              const handleUp = (upEvent: PointerEvent) => {
-                                (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId);
-                                document.removeEventListener('pointermove', handleMove);
-                                document.removeEventListener('pointerup', handleUp);
-                              };
-                              
-                              document.addEventListener('pointermove', handleMove);
-                              document.addEventListener('pointerup', handleUp);
-                            }}
-                          />
-                        </div>
-                        {/* Size Slider */}
-                        <div className="mt-4 space-y-2">
-                          <Label className="text-stone-300">Crop Size</Label>
-                          <input
-                            type="range"
-                            min="50"
-                            max={Math.min(imageDimensions.width || 300, imageDimensions.height || 300)}
-                            value={cropPosition.size}
-                            onChange={(e) => {
-                              const newSize = parseInt(e.target.value);
-                              const maxX = Math.max(0, (imageDimensions.width || 300) - newSize);
-                              const maxY = Math.max(0, (imageDimensions.height || 300) - newSize);
-                              setCropPosition(prev => ({
-                                x: Math.min(prev.x, maxX),
-                                y: Math.min(prev.y, maxY),
-                                size: newSize
-                              }));
-                            }}
-                            className="w-full accent-amber-600"
-                            data-testid="slider-crop-size"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex gap-2 justify-end">
-                      <Button variant="outline" onClick={handleCropCancel} data-testid="button-cancel-crop">
-                        Cancel
-                      </Button>
-                      <Button onClick={handleCropConfirm} className="bg-amber-600 hover:bg-amber-700" data-testid="button-confirm-crop">
-                        Save Portrait
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
 
                 {/* Nickname Section */}
                 <div>
@@ -23243,6 +23301,214 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         </div>
       </Tabs>
 
+      {/* V3: long-press portrait → choose Upload or Library */}
+      {isAAV3 && (
+        <Dialog open={v3PortraitMenuOpen} onOpenChange={setV3PortraitMenuOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700 max-w-xs">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500">Change Portrait</DialogTitle>
+              <DialogDescription className="text-stone-400">
+                Choose where to get the new portrait from.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setV3PortraitMenuOpen(false);
+                  portraitInputRef.current?.click();
+                }}
+                data-testid="button-v3-portrait-upload"
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                Upload
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setV3PortraitMenuOpen(false);
+                  setShowImageBrowser(true);
+                }}
+                data-testid="button-v3-portrait-library"
+              >
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Library
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* V3: long-press character name → edit name / nickname */}
+      {isAAV3 && (
+        <Dialog open={v3NameEditOpen} onOpenChange={setV3NameEditOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500">Edit Name</DialogTitle>
+              <DialogDescription className="text-stone-400">
+                The nickname, if set, is shown on the token instead of the name.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs text-stone-400 mb-1 block">Name</Label>
+                <Input
+                  value={v3NameDraft}
+                  onChange={(e) => setV3NameDraft(e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-v3-edit-name"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-stone-400 mb-1 block">Nickname</Label>
+                <Input
+                  value={v3NicknameDraft}
+                  onChange={(e) => setV3NicknameDraft(e.target.value)}
+                  placeholder="Leave blank to use character name"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-v3-edit-nickname"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setV3NameEditOpen(false)} data-testid="button-v3-name-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-amber-600 hover:bg-amber-700"
+                  disabled={!v3NameDraft.trim()}
+                  onClick={() => {
+                    onUpdate?.({ name: v3NameDraft.trim(), nickname: v3NicknameDraft.trim() || null });
+                    setV3NameEditOpen(false);
+                  }}
+                  data-testid="button-v3-name-save"
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Portrait upload/browse machinery (shared by Background tab in V2 and Overview long-press in V3) */}
+      <input
+        ref={portraitInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePortraitUpload}
+        data-testid="input-portrait-file"
+      />
+      {/* Image Browser Dialog */}
+      <ImageBrowser
+        open={showImageBrowser}
+        onOpenChange={setShowImageBrowser}
+        onSelect={(imageBase64) => {
+          if (onUpdate) {
+            onUpdate({ portrait: imageBase64 });
+          }
+        }}
+        title="Select Character Portrait"
+      />
+      {/* Portrait Cropping Dialog */}
+      <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Crop Portrait</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Drag to position the crop area. The portrait will be cropped as a square for circular token display.
+            </DialogDescription>
+          </DialogHeader>
+          {uploadedImage && (
+            <div className="relative">
+              <div className="relative overflow-hidden bg-stone-800 rounded-lg" style={{ maxHeight: '400px' }}>
+                <img 
+                  ref={cropImageRef}
+                  src={uploadedImage} 
+                  alt="Crop preview"
+                  onLoad={handleImageLoad}
+                  className="max-w-full"
+                  style={{ display: 'block' }}
+                />
+                {/* Crop Overlay */}
+                <div 
+                  className="absolute border-4 border-amber-500 bg-amber-500/10 cursor-move touch-none"
+                  style={{
+                    left: cropPosition.x,
+                    top: cropPosition.y,
+                    width: cropPosition.size,
+                    height: cropPosition.size,
+                    boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
+                  }}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                    
+                    const initialPointerX = e.clientX;
+                    const initialPointerY = e.clientY;
+                    const initialCropX = cropPosition.x;
+                    const initialCropY = cropPosition.y;
+                    const currentSize = cropPosition.size;
+                    
+                    const handleMove = (moveEvent: PointerEvent) => {
+                      const deltaX = moveEvent.clientX - initialPointerX;
+                      const deltaY = moveEvent.clientY - initialPointerY;
+                      
+                      const maxX = imageDimensions.width - currentSize;
+                      const maxY = imageDimensions.height - currentSize;
+                      
+                      const newX = Math.max(0, Math.min(maxX, initialCropX + deltaX));
+                      const newY = Math.max(0, Math.min(maxY, initialCropY + deltaY));
+                      setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
+                    };
+                    
+                    const handleUp = (upEvent: PointerEvent) => {
+                      (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId);
+                      document.removeEventListener('pointermove', handleMove);
+                      document.removeEventListener('pointerup', handleUp);
+                    };
+                    
+                    document.addEventListener('pointermove', handleMove);
+                    document.addEventListener('pointerup', handleUp);
+                  }}
+                />
+              </div>
+              {/* Size Slider */}
+              <div className="mt-4 space-y-2">
+                <Label className="text-stone-300">Crop Size</Label>
+                <input
+                  type="range"
+                  min="50"
+                  max={Math.min(imageDimensions.width || 300, imageDimensions.height || 300)}
+                  value={cropPosition.size}
+                  onChange={(e) => {
+                    const newSize = parseInt(e.target.value);
+                    const maxX = Math.max(0, (imageDimensions.width || 300) - newSize);
+                    const maxY = Math.max(0, (imageDimensions.height || 300) - newSize);
+                    setCropPosition(prev => ({
+                      x: Math.min(prev.x, maxX),
+                      y: Math.min(prev.y, maxY),
+                      size: newSize
+                    }));
+                  }}
+                  className="w-full accent-amber-600"
+                  data-testid="slider-crop-size"
+                />
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={handleCropCancel} data-testid="button-cancel-crop">
+              Cancel
+            </Button>
+            <Button onClick={handleCropConfirm} className="bg-amber-600 hover:bg-amber-700" data-testid="button-confirm-crop">
+              Save Portrait
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Item Detail Dialog (in-sheet fallback; when onOpenItemDetail is provided
           the parent hosts a detached copy so it survives closing this sheet) */}
       {!onOpenItemDetail && (
@@ -23266,6 +23532,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         floatingZIndices={floatingZIndices}
         campaignSystem={campaignSystem}
         charPanelSuffix={charPanelSuffix}
+        trustedPlayer={trustedPlayer}
       />
       )}
 
@@ -26904,12 +27171,13 @@ interface ItemDetailDialogProps {
   floatingZIndices?: Record<string, number>;
   campaignSystem?: string;
   charPanelSuffix?: string;
+  trustedPlayer?: boolean;
 }
 
 // AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
 // (count by rarity), lets the owner socket an owned rune into the next free slot
-// (consuming it) and remove a removable rune (which permanently lowers the host's
-// max durability), and exposes each socketed rune's skill-check action.
+// (consuming it) and remove a removable rune (permanent — the rune is destroyed,
+// no durability cost), and exposes each socketed rune's skill-check action.
 // V3-only — callers gate this behind campaignSystem === 'aa-v3'.
 function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; character: any; items: any[]; canEdit: boolean }) {
   const queryClient = useQueryClient();
@@ -26958,8 +27226,8 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
     }
   };
 
-  const handleRemove = async (slotIndex: number, cost: number) => {
-    if (cost > 0 && !window.confirm(`Removing this rune permanently lowers this item's max durability by ${cost}. Continue?`)) return;
+  const handleRemove = async (slotIndex: number) => {
+    if (!window.confirm('Removing this rune is permanent — it will be destroyed. Continue?')) return;
     setBusy(true);
     try {
       const hostId = resolveLiveOwnedItemId(item, items);
@@ -27069,10 +27337,10 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
                             variant="outline"
                             className="h-7 text-[11px] border-red-900 text-red-300 hover:bg-red-950"
                             disabled={busy}
-                            onClick={() => { setOpenRuneSlot(null); handleRemove(rune.slotIndex, rune.removeDurabilityCost || 0); }}
+                            onClick={() => { setOpenRuneSlot(null); handleRemove(rune.slotIndex); }}
                             data-testid={`button-remove-rune-${i}`}
                           >
-                            Remove{(rune.removeDurabilityCost || 0) > 0 ? ` (-${rune.removeDurabilityCost} dur)` : ''}
+                            Remove
                           </Button>
                         )
                       )}
@@ -27226,9 +27494,62 @@ function V3ConsumableUsePanel({ item, character, canUse }: { item: any; characte
   );
 }
 
-// AA V3 weapon usage surface (Task #180): a leveled base attack plus the
-// techniques unlocked by the technique groups assigned to the weapon. Rendered
-// inside the weapon ItemDetailDialog and the battlemap hotbar info panel.
+// Read-only list of the techniques a V3 character has unlocked (globally, via
+// weapon Unlock buttons). Shown in the character sheet's Traits tab.
+function V3UnlockedTechniquesList({ character }: { character: any }) {
+  const { data: techniques = [] } = useQuery({
+    queryKey: ['v3-techniques'],
+    queryFn: () => api.getV3Techniques(),
+  });
+  const unlockedIds: string[] = Array.isArray(character?.v3UnlockedTechniqueIds)
+    ? character.v3UnlockedTechniqueIds
+    : [];
+  const unlocked = techniques
+    .filter((t: any) => unlockedIds.includes(t.id))
+    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+
+  if (unlocked.length === 0) {
+    return (
+      <div className="text-center py-4 text-stone-500 text-sm" data-testid="text-v3-no-techniques">
+        No weapon techniques unlocked yet
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {unlocked.map((t: any) => {
+        const skill = t.rollMode === 'skill_check' ? V3_SKILLS.find((s) => s.key === t.skillKey) : null;
+        return (
+          <div
+            key={t.id}
+            className="flex items-center gap-2 rounded border border-stone-700 bg-stone-900/60 p-2"
+            data-testid={`row-v3-known-technique-${t.id}`}
+          >
+            {t.image ? (
+              <img src={t.image} alt={t.name} className="h-8 w-8 rounded object-cover flex-shrink-0" />
+            ) : (
+              <div className="h-8 w-8 rounded bg-stone-800 flex items-center justify-center flex-shrink-0">
+                <Swords className="h-4 w-4 text-amber-500" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-stone-200 truncate">{t.name}</p>
+              <p className="text-[11px] text-stone-500 truncate">
+                {t.energyCost ?? 0} energy · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
+              </p>
+              {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// AA V3 weapon usage surface: a leveled base attack plus the techniques
+// granted by the technique groups assigned to the weapon (locked ones show an
+// Unlock button that spends a class skill point). Rendered inside the weapon
+// ItemDetailDialog and the battlemap hotbar info panel.
 // V3-only — callers gate this behind campaignSystem === 'aa-v3'.
 function V3WeaponUsePanel({ item, character, items }: { item: any; character: any; items: any[] }) {
   const queryClient = useQueryClient();
@@ -27267,7 +27588,14 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
 
   const castChar = character as V3WeaponCastCharacter;
 
-  const unlocked = useMemo(() => {
+  // All techniques granted by this weapon's groups, annotated with whether the
+  // character has unlocked them (global per character) and whether the
+  // knowledge/item requirements are currently met (needed to unlock).
+  const unlockedIds: string[] = Array.isArray(character?.v3UnlockedTechniqueIds)
+    ? character.v3UnlockedTechniqueIds
+    : [];
+  const skillPoints = Math.max(0, Math.floor(character?.classSkillPoints ?? 0));
+  const grantedTechniques = useMemo(() => {
     const assigned: string[] = Array.isArray(item?.v3TechniqueGroupIds) ? item.v3TechniqueGroupIds : [];
     if (assigned.length === 0) return [] as any[];
     const techIds = new Set<string>();
@@ -27278,12 +27606,37 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
       knowledgeNames: (customSkills ?? []).map((s: any) => s.name).filter(Boolean),
       items: (items ?? []).map((it: any) => ({ templateItemId: it.templateItemId, name: it.name })),
     };
-    return techniques.filter((t: any) => {
-      if (!techIds.has(t.id)) return false;
-      const reqs = Array.isArray(t.requirements) ? t.requirements : [];
-      return evaluateV3ElementEligibility(reqs as any, input).usable;
-    });
-  }, [item?.v3TechniqueGroupIds, groups, techniques, customSkills, items]);
+    return techniques
+      .filter((t: any) => techIds.has(t.id))
+      .map((t: any) => {
+        const reqs = Array.isArray(t.requirements) ? t.requirements : [];
+        return {
+          ...t,
+          isUnlocked: unlockedIds.includes(t.id),
+          eligible: evaluateV3ElementEligibility(reqs as any, input).usable,
+        };
+      })
+      .sort((a: any, b: any) => {
+        if (a.isUnlocked !== b.isUnlocked) return a.isUnlocked ? -1 : 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+  }, [item?.v3TechniqueGroupIds, groups, techniques, customSkills, items, unlockedIds]);
+
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
+  const handleUnlockTechnique = async (t: any) => {
+    if (!character?.id || !item?.id || unlockingId) return;
+    setUnlockingId(t.id);
+    try {
+      await api.unlockV3Technique(t.id, character.id, item.id);
+      toast({ title: 'Technique unlocked', description: `${t.name} is now usable from any weapon that grants it.` });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+    } catch (err: any) {
+      toast({ title: 'Unlock failed', description: err?.message || 'Could not unlock technique', variant: 'destructive' });
+    } finally {
+      setUnlockingId(null);
+    }
+  };
 
   const baseEnergy = v3WeaponBaseAttackEnergy(lv);
   // At exhaustion 4+, V3 energy costs are doubled (must match v3weaponcast).
@@ -27398,31 +27751,55 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
         </Button>
       )}
 
-      {unlocked.length > 0 && (
+      {grantedTechniques.length > 0 && (
         <div className="space-y-2 pt-2">
-          <h4 className="text-xs font-bold text-stone-300 uppercase tracking-wide">Techniques</h4>
-          {unlocked.map((t: any) => {
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-stone-300 uppercase tracking-wide">Techniques</h4>
+            <span className="text-[11px] text-violet-300" data-testid="text-v3-skill-points">
+              Skill points: {skillPoints}
+            </span>
+          </div>
+          {grantedTechniques.map((t: any) => {
             const skill = t.rollMode === 'skill_check' ? V3_SKILLS.find((s) => s.key === t.skillKey) : null;
             return (
               <div
                 key={t.id}
-                className="flex items-center gap-2 rounded border border-stone-700 bg-stone-900/60 p-2"
+                className={`flex items-center gap-2 rounded border p-2 ${t.isUnlocked ? 'border-stone-700 bg-stone-900/60' : 'border-stone-800 bg-stone-950/60 opacity-80'}`}
                 data-testid={`row-v3-technique-${t.id}`}
               >
                 {t.image ? (
-                  <img src={t.image} alt={t.name} className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                  <img src={t.image} alt={t.name} className={`h-8 w-8 rounded object-cover flex-shrink-0 ${t.isUnlocked ? '' : 'grayscale'}`} />
                 ) : (
                   <div className="h-8 w-8 rounded bg-stone-800 flex items-center justify-center flex-shrink-0">
-                    <Swords className="h-4 w-4 text-amber-500" />
+                    {t.isUnlocked ? <Swords className="h-4 w-4 text-amber-500" /> : <Lock className="h-4 w-4 text-stone-500" />}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-stone-200 truncate">{t.name}</p>
+                  <p className={`text-sm truncate ${t.isUnlocked ? 'text-stone-200' : 'text-stone-400'}`}>{t.name}</p>
                   <p className="text-[11px] text-stone-500 truncate">
                     {(t.energyCost ?? 0) * weaponExMult} energy{weaponExMult > 1 ? <span className="text-red-400/90"> (doubled — Exhaustion)</span> : ''} · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
                   </p>
                   {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
+                  {!t.isUnlocked && !t.eligible && (
+                    <p className="text-[11px] text-red-400/90 truncate" data-testid={`text-v3-technique-requirements-${t.id}`}>
+                      Requirements not met
+                    </p>
+                  )}
                 </div>
+                {!t.isUnlocked ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-700 text-violet-300 hover:bg-violet-950/50 flex-shrink-0"
+                    disabled={!t.eligible || skillPoints < 1 || unlockingId === t.id}
+                    onClick={() => handleUnlockTechnique(t)}
+                    data-testid={`button-v3-technique-unlock-${t.id}`}
+                  >
+                    <Lock className="h-3.5 w-3.5 mr-1" />
+                    {unlockingId === t.id ? 'Unlocking…' : skillPoints < 1 ? 'No points' : 'Unlock (1 pt)'}
+                  </Button>
+                ) : (
                 <Button
                   type="button"
                   size="sm"
@@ -27472,6 +27849,7 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
                 >
                   Use
                 </Button>
+                )}
               </div>
             );
           })}
@@ -27947,7 +28325,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   );
 }
 
-export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '' }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -27999,7 +28377,19 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
         quantity: Number(editData.quantity) || 1,
         carryCapacity: optionalNum(editData.carryCapacity),
       };
-      onUpdate(cleanedData);
+      // Non-GMs may only send the fields the server accepts for them —
+      // sending the full item would get the whole update rejected with a 403.
+      if (!isGM) {
+        const allowed = ['name', 'description', 'containerId', 'isEquipped'];
+        if (canEditDurability) allowed.push('durability');
+        const filtered: any = {};
+        for (const key of allowed) {
+          if (key in cleanedData && (cleanedData as any)[key] !== undefined) filtered[key] = (cleanedData as any)[key];
+        }
+        onUpdate(filtered);
+      } else {
+        onUpdate(cleanedData);
+      }
       setIsEditing(false);
     }
   };
@@ -28278,6 +28668,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   const currentData = isEditing ? editData : item;
   const canEditItem = isOwner || isGM;
   const canEditAllFields = isGM;
+  // Durability is GM-controlled bookkeeping, but trusted players (and assistant
+  // GMs, who arrive here with isGM=true) may adjust it too.
+  const canEditDurability = isGM || (isOwner && trustedPlayer);
 
   if (!open || !item) return null;
   return (
@@ -28437,7 +28830,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     </div>
                     <div>
                       <Label className="text-xs text-stone-400">Durability</Label>
-                      {isEditing && canEditItem ? (
+                      {isEditing && canEditDurability ? (
                         <div className="space-y-1">
                           <Slider value={[currentData.durability]} onValueChange={(v) => setEditData({ ...editData, durability: v[0] })} min={0} max={currentData.maxDurability ?? 10} step={1} className="mt-1" data-testid="slider-durability" />
                           <div className="text-xs text-stone-400">{currentData.durability}/{currentData.maxDurability ?? 10}</div>
@@ -29002,20 +29395,20 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Label className="text-xs text-stone-400">Durability</Label>
-                    {isEditing && !canEditAllFields && (
+                    {isEditing && !canEditDurability && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger>
                             <Lock className="h-3 w-3 text-amber-600" />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Only GMs can edit this field</p>
+                            <p>Only GMs and trusted players can edit this field</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
                   </div>
-                  {isEditing && canEditItem ? (
+                  {isEditing && canEditDurability ? (
                     <div className="space-y-2">
                       <Slider 
                         value={[currentData.durability]} 

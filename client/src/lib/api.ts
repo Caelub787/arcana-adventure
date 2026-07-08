@@ -529,6 +529,7 @@ export interface SystemTrait {
   description?: string;
   parentAttribute: string;
   usesPerLongRest: number;
+  usesPerShortRest?: number;
   createdAt: string;
 }
 
@@ -540,6 +541,7 @@ export interface CharacterTrait {
   description?: string;
   parentAttribute: string;
   usesPerLongRest: number;
+  usesPerShortRest?: number;
   currentUses: number;
   createdAt: string;
 }
@@ -2766,6 +2768,20 @@ class ApiClient {
     });
   }
 
+  // Unlock a technique for a character by spending 1 class skill point (GMs
+  // unlock for free). Unlocks are global per character — the technique becomes
+  // usable from every weapon that grants it.
+  async unlockV3Technique(
+    techniqueId: string,
+    characterId: string,
+    weaponItemId: string,
+  ): Promise<{ success: boolean; pointSpent: number; character: any }> {
+    return this.request(`/v3/techniques/${techniqueId}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId, weaponItemId }),
+    });
+  }
+
   async getAdminV3Techniques(personal?: boolean): Promise<V3Technique[]> {
     const params = personal ? '?personal=true' : '';
     return this.request(`/admin/v3-techniques${params}`);
@@ -3040,7 +3056,7 @@ export function isV3SpellConflict(res: V3SpellApproveResult | V3SpellCreateResul
 
 export interface V3CraftResult {
   success: boolean;
-  roll: { d20: number; anemos: number; total: number; dc: number };
+  roll?: { d20: number; anemos: number; total: number; dc: number };
   manaCost: number;
   manaSpent: number;
   tokenSpent: boolean;

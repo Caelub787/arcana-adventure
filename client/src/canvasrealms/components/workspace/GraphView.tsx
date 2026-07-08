@@ -513,7 +513,7 @@ function GraphInner() {
   );
 
   return (
-    <div className="absolute inset-0 pt-topbar">
+    <div className="absolute inset-0 pt-[calc(3.5rem_+_env(safe-area-inset-top))]">
       <ReactFlow
         nodes={rfNodes}
         edges={flowEdges}

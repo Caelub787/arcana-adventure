@@ -513,7 +513,7 @@ describe("POST /api/characters/:characterId/items/:itemId/socket-rune", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/characters/:characterId/items/:itemId/remove-rune", () => {
-  it("reverts stat effects and permanently lowers max durability", async () => {
+  it("reverts stat effects and never touches durability (removal is free)", async () => {
     mockItems({
       [hostId]: {
         id: hostId,
@@ -542,8 +542,9 @@ describe("POST /api/characters/:characterId/items/:itemId/remove-rune", () => {
     const patch = h.storage.updateItem.mock.calls.at(-1)![1];
     expect(patch.socketedRunes).toHaveLength(0);
     expect(patch.mod).toBe(1); // 3 - 2
-    expect(patch.maxDurability).toBe(7); // 10 - 3
-    expect(patch.durability).toBe(7); // clamped down to new max
+    // Removal no longer costs durability — even with a legacy removeDurabilityCost.
+    expect(patch).not.toHaveProperty("maxDurability");
+    expect(patch).not.toHaveProperty("durability");
   });
 
   it("does not touch durability when the rune has no remove cost", async () => {

@@ -402,9 +402,9 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
   });
 
-  it("failed DC check consumes mana but NO token and creates no spell", async () => {
+  it("crafting has no roll — even a low d20 stub still succeeds", async () => {
     const { user, characterId, patches } = setupCharacter({ mana: 5, tokens: 3 });
-    stubD20(0); // d20 = 1 -> fail vs DC 6
+    stubD20(0); // d20 = 1 — irrelevant: there is no craft roll anymore
 
     const res = await api("/api/v3/spells/craft", {
       method: "POST",
@@ -413,15 +413,14 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.success).toBe(false);
-    expect(body.tokenSpent).toBe(false);
+    expect(body.success).toBe(true);
+    expect(body.tokenSpent).toBe(true);
     expect(body.manaSpent).toBe(MANA_COST);
 
-    // Mana debited, token untouched, no spell row written.
+    // Mana and token debited, spell row written.
     expect(h.storage.updateCharacter).toHaveBeenCalledTimes(1);
-    expect(patches[0]).toEqual({ mana: 5 - MANA_COST });
-    expect("spellCreationTokens" in patches[0]).toBe(false);
-    expect(h.storage.createV3Spell).not.toHaveBeenCalled();
+    expect(patches[0]).toEqual({ mana: 5 - MANA_COST, spellCreationTokens: 3 - 1 });
+    expect(h.storage.createV3Spell).toHaveBeenCalledTimes(1);
   });
 
   it("aborts with 400 when mana is insufficient and consumes nothing", async () => {

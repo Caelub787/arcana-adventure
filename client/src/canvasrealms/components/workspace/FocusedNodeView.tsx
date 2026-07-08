@@ -32,7 +32,7 @@ export function FocusedNodeView({ nodeId }: Props) {
   return (
     <div
       data-pane-root="true"
-      className="flex flex-col h-full w-full bg-transparent relative overflow-hidden outline-none pt-topbar"
+      className="flex flex-col h-full w-full bg-transparent relative overflow-hidden outline-none pt-[calc(3.5rem_+_env(safe-area-inset-top))]"
     >
       {!node && isLoading && (
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -45,11 +45,12 @@ export function FocusedNodeView({ nodeId }: Props) {
         </div>
       )}
       {node && isCanvas && (
-        <CanvasPaneBody canvasNode={node} paneId={`focus-${nodeId}`} />
+        <CanvasPaneBody key={node.id} canvasNode={node} paneId={`focus-${nodeId}`} />
       )}
-      {node && isMap && <MapNodeView node={node} paneId={`focus-${nodeId}`} />}
+      {node && isMap && <MapNodeView key={node.id} node={node} paneId={`focus-${nodeId}`} />}
       {node && !isCanvas && !isMap && (
         <DocumentEditor
+          key={node.id}
           node={node}
           paneId={`focus-${nodeId}`}
           isFocusedPane
@@ -66,7 +67,7 @@ export function FocusedNodeView({ nodeId }: Props) {
           onClick={() => setFocusedNodeFullscreen(null)}
           title="Exit focus mode"
           aria-label="Exit focus mode"
-          style={{ top: "calc(var(--app-topbar-h) + 0.5rem)" }}
+          style={{ top: "calc(3.5rem + env(safe-area-inset-top) + 0.5rem)" }}
           className="absolute right-2 z-40 h-7 w-7 rounded-full flex items-center justify-center bg-card/90 border border-border shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           <Minimize2 className="h-3.5 w-3.5" />

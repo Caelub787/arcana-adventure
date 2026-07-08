@@ -16,7 +16,19 @@ const sharedZRegistry: Record<string, number> = {};
 // `baseline` lets a panel that was given an explicit high zIndex (e.g. a
 // quick-search panel at 20000) push the counter above that value so subsequent
 // panels still open above it.
+export function isFloatingPanelOnTop(panelKey?: string): boolean {
+  return !!panelKey && sharedZRegistry[panelKey] === sharedZCounter;
+}
+
 export function bringFloatingPanelToFront(panelKey?: string, baseline?: number): number {
+  // Already the topmost panel and nothing (baseline) demands a higher slot:
+  // return the existing z instead of bumping the counter. This keeps repeated
+  // clicks inside the focused panel from churning the shared counter (which
+  // made every open Radix overlay's fixed z stale and caused visible
+  // stacking flicker while editing).
+  if (panelKey && sharedZRegistry[panelKey] === sharedZCounter && (baseline ?? 0) <= sharedZCounter) {
+    return sharedZCounter;
+  }
   sharedZCounter = Math.max(sharedZCounter, baseline ?? 0) + 1;
   const z = sharedZCounter;
   if (panelKey) {
@@ -142,37 +154,15 @@ export const FloatingPanel = React.memo(function FloatingPanel({
 
   if (isMobile) {
     return (
-      <div
-        className={cn(
-          "fixed inset-0 bg-stone-900 flex flex-col",
-          className
-        )}
-        style={{ zIndex: Math.max(zIndex, 10500) }}
-        data-testid="floating-panel"
-        data-floating-panel
-        data-panel-key={panelKey}
+      <MobileFloatingPanel
+        onClose={onClose}
+        title={title}
+        className={className}
+        zIndex={zIndex}
+        panelKey={panelKey}
       >
-        <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
-            <span className="truncate">{title}</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200 shrink-0"
-            data-testid="floating-panel-close"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        <div
-          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
-          data-panel-content
-          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
-        >
-          {children}
-        </div>
-      </div>
+        {children}
+      </MobileFloatingPanel>
     );
   }
 
@@ -194,6 +184,66 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   >
     {children}
   </DesktopFloatingPanel>;
+});
+
+// Mobile full-screen panel. On open (mount) it acquires the next-highest
+// z-index from the SAME shared counter the desktop panels use, so a newly
+// opened panel ALWAYS sits above every already-open panel — previously the
+// mobile branch used only the static zIndex prop, which made new panels open
+// BEHIND panels that had already been raised past that value.
+const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
+  onClose,
+  title,
+  children,
+  className,
+  zIndex = 10500,
+  panelKey,
+}: {
+  onClose: () => void;
+  title?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  zIndex?: number;
+  panelKey?: string;
+}) {
+  const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
+  React.useLayoutEffect(() => {
+    setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      className={cn(
+        "fixed inset-0 bg-stone-900 flex flex-col",
+        className
+      )}
+      style={{ zIndex: z }}
+      data-testid="floating-panel"
+      data-floating-panel
+      data-panel-key={panelKey}
+    >
+      <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
+        <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
+          <span className="truncate">{title}</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200 shrink-0"
+          data-testid="floating-panel-close"
+        >
+          <X className="h-6 w-6" />
+        </button>
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+        data-panel-content
+        style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+      >
+        {children}
+      </div>
+    </div>
+  );
 });
 
 const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
@@ -541,8 +591,16 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     };
   }, []);
 
+  // NOTE: no stopPropagation here — swallowing pointerdown broke Radix's
+  // document-level outside-press detection, so open dropdowns/popovers never
+  // dismissed when clicking into a panel and were left z-fighting with it
+  // (visible as random flicker/glitches while editing). Instead we tag the
+  // native event so an ANCESTOR panel (portals bubble through the React tree)
+  // doesn't also raise itself above the panel the user actually clicked.
   const handleBringToFront = React.useCallback((e: React.PointerEvent | React.MouseEvent) => {
-    e.stopPropagation();
+    const native = e.nativeEvent as any;
+    if (native.__floatingPanelHandled) return;
+    native.__floatingPanelHandled = true;
     acquireTopZ();
     onBringToFront?.();
   }, [acquireTopZ, onBringToFront]);

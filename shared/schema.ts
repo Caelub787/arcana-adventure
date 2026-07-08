@@ -283,6 +283,11 @@ export const characters = pgTable("characters", {
   v3SkillBoosts: jsonb("v3_skill_boosts").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
   spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
+  // AA V3 weapon techniques: technique ids this character has unlocked by
+  // spending class skill points on the weapon item's Unlock button. Unlocks are
+  // GLOBAL per character — a technique unlocked on one weapon is usable from
+  // every weapon that grants it.
+  v3UnlockedTechniqueIds: text("v3_unlocked_technique_ids").array().notNull().default(sql`ARRAY[]::text[]`),
   // Legacy attributes (kept for backward compatibility)
   agility: integer("agility").notNull().default(0),
   charisma: integer("charisma").notNull().default(0),
