@@ -12,6 +12,7 @@ import { realmsTable } from "@shared/cr-schema";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import { registerCanvasRealmsRoutes } from "./canvasrealms";
+import { isAdminUser } from "./lib/library-acl";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -2919,10 +2920,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Admin allowlist + admin detection moved to server/lib/library-acl.ts as
-  // the single source of truth shared with the sync API. Re-exported here so
-  // existing in-file references keep working.
-  const { ADMIN_EMAILS, isAdminUser } = await import("./lib/library-acl");
+  // Admin allowlist moved to server/lib/library-acl.ts as the single source
+  // of truth shared with the sync API. `isAdminUser` is statically imported
+  // at the top of this file.
+  const { ADMIN_EMAILS } = await import("./lib/library-acl");
 
   const hasGmAccess = async (userId: string, campaignId: string, gmUserId: string, req?: any): Promise<boolean> => {
     // Spectator mode always reports as a player so GM-only data is never returned.
@@ -7569,7 +7570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- V3 Action Token Types CRUD (admin) ---
   app.get("/api/admin/v3-action-tokens", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -7586,7 +7587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, image, description, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
       const isPersonal = personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createV3ActionTokenType({
         name: String(name).trim(),
@@ -7650,7 +7651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // (item dialog picker, recipe editor, player repair surface).
   app.get("/api/admin/advanced-item-types", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -7667,7 +7668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, sortOrder, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A name is required" });
       const isPersonal = personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createAdvancedItemType({
         name: String(name).trim(),
@@ -7783,7 +7784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- Techniques CRUD (admin) ---
   app.get("/api/admin/v3-techniques", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -7800,7 +7801,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, image, description, energyCost, rollMode, skillKey, requirements, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A technique name is required" });
       const isPersonal = personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const mode = V3_TECHNIQUE_ROLL_MODES.includes(rollMode) ? rollMode : "base_damage";
       const created = await storage.createV3Technique({
@@ -7866,7 +7867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- Technique groups CRUD ---
   app.get("/api/admin/v3-technique-groups", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -7891,7 +7892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "A group name is required" });
       const isPersonal = personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createV3TechniqueGroup({ name: String(name).trim(), system: "aa-v3", ownerUserId: isPersonal ? req.session.userId! : null } as any);
       res.json({ ...created, techniqueIds: [] });
@@ -7994,7 +7995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- AA V3 Ammunition Types ---
   app.get("/api/admin/v3-ammunition-types", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -8011,7 +8012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, personal } = req.body || {};
       if (!String(name || "").trim()) return res.status(400).json({ error: "An ammunition type name is required" });
       const isPersonal = personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const created = await storage.createV3AmmunitionType({ name: String(name).trim(), system: "aa-v3", ownerUserId: isPersonal ? req.session.userId! : null } as any);
       res.json(created);
@@ -11924,7 +11925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System Skills routes (admin)
   app.get("/api/admin/skills", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const system = req.query.system as string | undefined;
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
@@ -11954,7 +11955,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/skills", requireAuth, async (req, res) => {
     try {
       const isPersonal = req.body.personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const { personal: _p, ...skillData } = req.body;
       const skill = await storage.createSystemSkill({ ...skillData, ownerUserId: isPersonal ? req.session.userId! : null });
@@ -12478,7 +12479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System Traits routes (admin)
   app.get("/api/admin/traits", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const system = req.query.system as string | undefined;
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
@@ -12508,7 +12509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/traits", requireAuth, async (req, res) => {
     try {
       const isPersonal = req.body.personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const { personal: _p, ...traitData } = req.body;
       const trait = await storage.createSystemTrait({ ...traitData, ownerUserId: isPersonal ? req.session.userId! : null });
@@ -15879,7 +15880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin Token Effects CRUD routes
   app.get("/api/admin/token-effects", requireAuth, async (req, res) => {
     try {
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
@@ -15895,7 +15896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/token-effects", requireAuth, async (req, res) => {
     try {
       const isPersonal = req.body.personal === true;
-      const isA = (req.session as any).isAdmin;
+      const isA = await isAdminUser(req.session.userId);
       if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
       const { personal: _p, ...effectBody } = req.body;
       const effectData = insertTokenEffectSchema.parse(effectBody);
