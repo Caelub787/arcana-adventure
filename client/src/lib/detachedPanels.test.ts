@@ -92,6 +92,88 @@ describe("cross-panel data isolation (shared ['items', charId] cache)", () => {
   });
 });
 
+describe("spellbook panel cache isolation (DetachedSpellbookPanel shares ['items', charId])", () => {
+  // The detached spellbook panel now runs its update/delete mutations through
+  // the same tested helpers. These tests mirror its two mutation paths — a
+  // spellbook edit and the scroll-cast consume (decrement / delete-at-1) —
+  // and verify neither disturbs other items' cached rows.
+  const spellbook = { id: "book-1", name: "Tome of Embers", itemType: "spellbook", quantity: 1 };
+  const scroll = { id: "scroll-1", name: "Scroll of Frost", itemType: "scroll", quantity: 2 };
+
+  it("a spellbook-panel update leaves other items' cached rows untouched (same identity)", () => {
+    const qc = new QueryClient();
+    const key = ["items", character.id];
+    qc.setQueryData(key, [spellbook, scroll, swordA, shieldB]);
+
+    // updateItemMutation.onMutate for the spellbook panel
+    qc.setQueryData(key, (old: any[] = []) =>
+      applyOptimisticItemUpdate(old, spellbook.id, { name: "Tome of Embers II" }),
+    );
+
+    const items = qc.getQueryData<any[]>(key)!;
+    expect(items).toHaveLength(4);
+    // Concurrently open ITEM panels resolve from the same cache — untouched.
+    expect(items.find((i) => i.id === swordA.id)).toBe(swordA);
+    expect(items.find((i) => i.id === shieldB.id)).toBe(shieldB);
+    expect(resolveLivePanelItem(swordA, items)).toEqual(swordA);
+    // The spellbook itself sees its edit.
+    expect(resolveLivePanelItem(spellbook, items)).toMatchObject({
+      id: "book-1",
+      name: "Tome of Embers II",
+      itemType: "spellbook",
+    });
+  });
+
+  it("scroll cast with quantity > 1 decrements only the scroll's row", () => {
+    const qc = new QueryClient();
+    const key = ["items", character.id];
+    qc.setQueryData(key, [spellbook, scroll, swordA]);
+
+    // onSpellCast path: qty > 1 → update quantity - 1
+    qc.setQueryData(key, (old: any[] = []) =>
+      applyOptimisticItemUpdate(old, scroll.id, { quantity: (scroll.quantity ?? 1) - 1 }),
+    );
+
+    const items = qc.getQueryData<any[]>(key)!;
+    expect(items.find((i) => i.id === scroll.id)).toMatchObject({ id: "scroll-1", quantity: 1 });
+    expect(items.find((i) => i.id === spellbook.id)).toBe(spellbook);
+    expect(items.find((i) => i.id === swordA.id)).toBe(swordA);
+  });
+
+  it("scroll cast at quantity 1 deletes only the scroll's row", () => {
+    const qc = new QueryClient();
+    const key = ["items", character.id];
+    const lastScroll = { ...scroll, quantity: 1 };
+    qc.setQueryData(key, [spellbook, lastScroll, swordA, shieldB]);
+
+    // onSpellCast path: qty === 1 → delete
+    qc.setQueryData(key, (old: any[]) => applyOptimisticItemDelete(old, lastScroll.id));
+
+    const items = qc.getQueryData<any[]>(key)!;
+    expect(items.map((i) => i.id)).toEqual(["book-1", "item-a", "item-b"]);
+    // Other open panels (item + spellbook) still resolve their own live data.
+    expect(resolveLivePanelItem(spellbook, items)).toEqual(spellbook);
+    expect(resolveLivePanelItem(shieldB, items)).toEqual(shieldB);
+  });
+
+  it("an open spellbook panel survives another panel's failed-mutation rollback", () => {
+    const qc = new QueryClient();
+    const key = ["items", character.id];
+    const initial = [spellbook, scroll, swordA];
+    qc.setQueryData(key, initial);
+
+    // Item panel fires an optimistic update, then errors and rolls back
+    const previousItems = qc.getQueryData(key);
+    qc.setQueryData(key, (old: any[] = []) => applyOptimisticItemUpdate(old, swordA.id, { quantity: 99 }));
+    qc.setQueryData(key, previousItems); // onError rollback
+
+    const items = qc.getQueryData<any[]>(key)!;
+    expect(resolveLivePanelItem(spellbook, items)).toEqual(spellbook);
+    expect(resolveLivePanelItem(swordA, items)).toEqual(swordA);
+    expect(items).toEqual(initial);
+  });
+});
+
 describe("panel open/close bookkeeping", () => {
   it("closing one panel does not close other open panels for the same character", () => {
     let panels = openAll();

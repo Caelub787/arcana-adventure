@@ -17245,8 +17245,22 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
     enabled: !!character?.id,
   });
 
+  // Cache writes reuse the tested helpers from lib/detachedPanels.ts so a
+  // spellbook-panel mutation can never disturb other rows in the shared
+  // ['items', characterId] cache (which concurrently open item panels read).
   const updateItemMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateItem(id, data),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) =>
+        applyOptimisticItemUpdate(old, id, data)
+      );
+      return { previousItems };
+    },
+    onError: (_e, _v, context) => {
+      if (context?.previousItems) queryClient.setQueryData(['items', character.id], context.previousItems);
+    },
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
@@ -17256,6 +17270,17 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   });
   const deleteItemMutation = useMutation({
     mutationFn: (id: string) => api.deleteItem(id),
+    onMutate: async (deletedId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      queryClient.setQueryData(['items', character.id], (old: any[]) =>
+        applyOptimisticItemDelete(old, deletedId)
+      );
+      return { previousItems };
+    },
+    onError: (_e, _id, context) => {
+      if (context?.previousItems) queryClient.setQueryData(['items', character.id], context.previousItems);
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
@@ -17263,7 +17288,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
     },
   });
 
-  const liveItem = item ? { ...item, ...(items?.find((it: any) => it.id === item.id) || {}) } : item;
+  const liveItem = resolveLivePanelItem(item, items);
 
   return (
     <SpellbookPanel
