@@ -20,13 +20,15 @@ export function isFloatingPanelOnTop(panelKey?: string): boolean {
   return !!panelKey && sharedZRegistry[panelKey] === sharedZCounter;
 }
 
-export function bringFloatingPanelToFront(panelKey?: string, baseline?: number): number {
+export function bringFloatingPanelToFront(panelKey?: string, baseline?: number, force = false): number {
   // Already the topmost panel and nothing (baseline) demands a higher slot:
   // return the existing z instead of bumping the counter. This keeps repeated
   // clicks inside the focused panel from churning the shared counter (which
   // made every open Radix overlay's fixed z stale and caused visible
-  // stacking flicker while editing).
-  if (panelKey && sharedZRegistry[panelKey] === sharedZCounter && (baseline ?? 0) <= sharedZCounter) {
+  // stacking flicker while editing). `force` (used on panel OPEN) always bumps
+  // so a freshly opened panel is strictly above everything, never tied with a
+  // stale registry slot.
+  if (!force && panelKey && sharedZRegistry[panelKey] === sharedZCounter && (baseline ?? 0) <= sharedZCounter) {
     return sharedZCounter;
   }
   sharedZCounter = Math.max(sharedZCounter, baseline ?? 0) + 1;
@@ -208,7 +210,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
 }) {
   const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
   React.useLayoutEffect(() => {
-    setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500)));
+    setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500), true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
@@ -316,8 +318,8 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // Acquire the next-highest z-index from the single shared counter and apply
   // it directly. This is what guarantees "rise to top" regardless of whether
   // the call site wired up panelKey / onBringToFront.
-  const acquireTopZ = React.useCallback(() => {
-    const z = bringFloatingPanelToFront(panelKey, zIndexRef.current);
+  const acquireTopZ = React.useCallback((force = false) => {
+    const z = bringFloatingPanelToFront(panelKey, zIndexRef.current, force);
     zIndexRef.current = z;
     const el = panelRef.current;
     if (el) el.style.zIndex = String(isFullscreen ? Math.max(z, 10500) : z);
@@ -332,7 +334,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // useLayoutEffect fires before the browser paints, preventing the one-frame
   // z-index mismatch that caused panels to briefly appear behind overlays.
   React.useLayoutEffect(() => {
-    acquireTopZ();
+    acquireTopZ(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -598,6 +600,13 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // native event so an ANCESTOR panel (portals bubble through the React tree)
   // doesn't also raise itself above the panel the user actually clicked.
   const handleBringToFront = React.useCallback((e: React.PointerEvent | React.MouseEvent) => {
+    // Only raise for genuine presses on THIS panel's own surface. Events from
+    // portaled overlays declared in our children (Radix dialogs, selects,
+    // popovers, nested panels) bubble here through the React tree even though
+    // their DOM lives elsewhere — raising on those made the panel leapfrog
+    // ABOVE its own open dialog/dropdown ("everything opens behind the panel").
+    const el = panelRef.current;
+    if (!el || !el.contains(e.target as Node)) return;
     const native = e.nativeEvent as any;
     if (native.__floatingPanelHandled) return;
     native.__floatingPanelHandled = true;

@@ -2447,6 +2447,7 @@ function AdminSearchMultiPicker({
   testId: string;
 }) {
   const [search, setSearch] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const selSet = new Set(selectedIds);
   const selectedOptions = options.filter((o) => selSet.has(o.value));
   const trimmed = search.trim().toLowerCase();
@@ -2455,7 +2456,7 @@ function AdminSearchMultiPicker({
     .slice(0, 100);
   return (
     <div className="space-y-1.5">
-      {selectedOptions.length > 0 && (
+      {selectedOptions.length > 0 ? (
         <div className="space-y-1" data-testid={`selected-list-${testId}`}>
           {selectedOptions.map((o) => (
             <div key={o.value} className="flex items-center justify-between gap-2 rounded border border-stone-700 bg-stone-950/40 px-2 py-1 text-xs">
@@ -2466,27 +2467,36 @@ function AdminSearchMultiPicker({
             </div>
           ))}
         </div>
+      ) : (
+        <p className="text-xs text-stone-500 italic px-1" data-testid={`empty-selected-${testId}`}>Nothing added yet.</p>
       )}
       {options.length === 0 ? (
         <p className="text-xs text-stone-500 italic px-1 py-1" data-testid={`empty-${testId}`}>{emptyText ?? 'Nothing to choose yet.'}</p>
       ) : (
-        <>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
-            <Input className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
-          </div>
-          <div className="max-h-40 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
-            {filtered.length === 0 ? (
-              <p className="text-xs text-stone-500 p-2 italic">{trimmed ? 'No matches' : 'All selected'}</p>
-            ) : (
-              filtered.map((o) => (
-                <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onAdd(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
-                  {o.label}
-                </button>
-              ))
-            )}
-          </div>
-        </>
+        <Popover open={pickerOpen} onOpenChange={(o) => { setPickerOpen(o); if (!o) setSearch(''); }}>
+          <PopoverTrigger asChild>
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:text-stone-100" data-testid={`button-open-picker-${testId}`}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-2 bg-stone-900 border-stone-700 space-y-1.5">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500 pointer-events-none" />
+              <Input autoFocus className="pl-7 h-8 text-xs" placeholder={placeholder ?? 'Search…'} value={search} onChange={(e) => setSearch(e.target.value)} data-testid={`input-${testId}-search`} />
+            </div>
+            <div className="max-h-52 overflow-y-auto border border-stone-700 rounded bg-stone-800" data-testid={`list-${testId}`}>
+              {filtered.length === 0 ? (
+                <p className="text-xs text-stone-500 p-2 italic">{trimmed ? 'No matches' : 'All added'}</p>
+              ) : (
+                filtered.map((o) => (
+                  <button key={o.value} type="button" className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition-colors" onClick={() => { onAdd(o.value); setSearch(''); }} data-testid={`button-${testId}-option-${o.value}`}>
+                    {o.label}
+                  </button>
+                ))
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   );
