@@ -16,3 +16,4 @@
 - [Neon driver empty-result crash](neon-empty-result-bug.md) — neon-http crashes on zero-row queries (fields:null); server/db.ts must use the neon-serverless WebSocket Pool; don't bump neon to 1.x (breaks drizzle 0.39).
 - [V3 rune baked-column conflicts](v3-rune-baked-columns.md) — runes bake into shared item columns; dcBonusValue doubles as a manual field, so save-normalization must preserve the rune contribution; copy paths must explicitly carry socketedRunes.
 - [Detached floating panels](detached-floating-panels.md) — panels opened from CharacterSheet must be hosted by Campaign (not as sheet children) so closing the sheet doesn't unmount them.
+- [CR doc editor stale refetch](cr-doc-editor-stale-refetch.md) — never re-sync blocks from a refetch while a save is in flight or a block is focused; stale snapshot teleports the caret.

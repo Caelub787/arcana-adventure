@@ -2315,7 +2315,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                         ref={newNodeMenuPortalRef}
                         role="menu"
                         aria-label="Create new node"
-                        className="fixed w-60 max-w-[calc(100vw-1rem)] max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100]"
+                        className="fixed w-60 max-w-[calc(100vw-1rem)] max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100] pointer-events-auto"
                         style={{
                           left: Math.max(
                             8,
@@ -2909,7 +2909,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
           role="menu"
           aria-label="Create new node"
           onContextMenu={(e) => e.preventDefault()}
-          className="fixed w-60 max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100]"
+          className="fixed w-60 max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100] pointer-events-auto"
           style={{
             left: Math.max(0, Math.min(kindPickerPos.x, (typeof window !== "undefined" ? window.innerWidth : 0) - 248)),
             top: Math.max(0, Math.min(kindPickerPos.y, (typeof window !== "undefined" ? window.innerHeight : 0) - 320)),

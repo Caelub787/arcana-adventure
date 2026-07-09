@@ -248,6 +248,19 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
   const localStateRef = useRef({ title, nodeKey, imageUrl, blocks });
   localStateRef.current = { title, nodeKey, imageUrl, blocks };
 
+  // Count of in-flight PATCH saves. While > 0, upstream refetches may hold
+  // PRE-save content (a realtime "nodes" bump from an earlier save landing
+  // while a later save is still in flight), so the body re-sync effect must
+  // not accept them — doing so reverted the user's text and teleported the
+  // caret mid-typing.
+  const pendingSavesRef = useRef(0);
+  // Mirror of `focusedBlockId` readable inside the re-sync effect without
+  // adding it to the deps: while the user is actively editing a block we
+  // never rewrite the block list from upstream (Yjs handles live co-edits
+  // at the text level; a wholesale setBlocks would reset the caret).
+  const focusedBlockIdRef = useRef<string | null>(null);
+  focusedBlockIdRef.current = focusedBlockId;
+
   useEffect(() => {
     if (initializedForId.current !== id) {
       initializedForId.current = id;
@@ -284,6 +297,12 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
     const last = lastSaved.current;
     const blocksDirty = !blocksEqual(cur.blocks, last.blocks);
     if (blocksDirty) return;
+    // A save is still in flight, or the user is actively typing in a block:
+    // any refetch arriving now may be stale (pre-save) — skip the re-sync.
+    // The save's own onSuccess (patchLocal) writes the confirmed server row
+    // into the cache, so nothing is lost by skipping here.
+    if (pendingSavesRef.current > 0) return;
+    if (focusedBlockIdRef.current !== null) return;
     const fresh = initBlocks(node);
     if (blocksEqual(fresh, cur.blocks)) return;
     setBlocks(fresh);
@@ -377,9 +396,15 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
           data.content = "";
         }
       }
+      pendingSavesRef.current += 1;
       mutateFnRef.current(
         { nodeId: id, data },
-        { onSuccess: patchLocal },
+        {
+          onSuccess: patchLocal,
+          onSettled: () => {
+            pendingSavesRef.current = Math.max(0, pendingSavesRef.current - 1);
+          },
+        },
       );
       lastSaved.current = {
         ...lastSaved.current,
@@ -411,9 +436,15 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
       data.blocks = blocks;
       if (last.content && last.content.length > 0) data.content = "";
     }
+    pendingSavesRef.current += 1;
     mutateFnRef.current(
       { nodeId: id, data },
-      { onSuccess: patchLocal },
+      {
+        onSuccess: patchLocal,
+        onSettled: () => {
+          pendingSavesRef.current = Math.max(0, pendingSavesRef.current - 1);
+        },
+      },
     );
     lastSaved.current = {
       ...lastSaved.current,
