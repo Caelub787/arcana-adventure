@@ -728,8 +728,19 @@ function RecipeRow({
                       searchPlaceholder="Search item types..."
                     />
                   </div>
+                  <div>
+                    <Label className="text-xs">Durability restored (default)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="bg-stone-800 border-stone-700 h-8 text-xs w-28"
+                      value={draft.repairAmount ?? 1}
+                      onChange={(e) => setDraft({ ...draft, repairAmount: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                      data-testid={`input-repair-amount-${recipe.id}`}
+                    />
+                  </div>
                   <p className="text-[11px] text-stone-500">
-                    Players use this recipe at a crafter they own to repair any item tagged with one of these types. The repair cost (ingredients consumed + durability restored) is configured on each item, not here.
+                    Players use this recipe at a crafter they own to repair any item tagged with one of these types. Repair ingredients are configured on each item. Durability restored uses the item's own "repair amount" if set; otherwise this recipe's default applies.
                   </p>
                 </div>
               )}

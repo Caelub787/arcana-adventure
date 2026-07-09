@@ -27903,13 +27903,14 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
       : (r.repairTargetTypeId ? [r.repairTargetTypeId] : []);
 
   // Items in this character's inventory eligible for a given repair recipe:
-  // tagged with one of the recipe's target types, configured with a repair
-  // amount, AND below their max durability.
+  // tagged with one of the recipe's target types, with a repair amount
+  // available (item's own, or the recipe's default), AND below max durability.
   const eligibleRepairItems = (r: any) => {
     const types = repairTypeIds(r);
+    const recipeAmount = Math.max(0, r.repairAmount ?? 0);
     return inventory.filter((inv: any) =>
       inv.advancedItemTypeId && types.includes(inv.advancedItemTypeId) &&
-      (inv.repairAmount ?? 0) > 0 &&
+      ((inv.repairAmount ?? 0) > 0 || recipeAmount > 0) &&
       (inv.durability ?? 0) < (inv.maxDurability ?? 0));
   };
 
@@ -28038,11 +28039,13 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
     const eligible = isRepair ? eligibleRepairItems(r) : [];
     const selectedTargetId = repairTargetByRecipe[r.id] || '';
     const selectedTarget = isRepair ? (eligible.find((e: any) => e.id === selectedTargetId) || null) : null;
-    // For repair, the ingredient list + restore amount live on the target ITEM,
-    // not the recipe. The recipe only declares which item types it can repair.
+    // For repair, the ingredient list lives on the target ITEM. The restore
+    // amount uses the item's own value if set, else the recipe's default.
     const repairIngredients = isRepair && selectedTarget && Array.isArray(selectedTarget.repairIngredients)
       ? selectedTarget.repairIngredients : [];
-    const repairAmount = isRepair ? (selectedTarget?.repairAmount ?? 0) : 0;
+    const repairAmount = isRepair
+      ? (((selectedTarget?.repairAmount ?? 0) > 0) ? selectedTarget.repairAmount : Math.max(0, r.repairAmount ?? 0))
+      : 0;
 
     const ingredientList = isRepair ? repairIngredients : (r.ingredients || []);
     const allHave = isRepair

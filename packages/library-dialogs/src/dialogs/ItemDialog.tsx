@@ -536,7 +536,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   data-testid="input-repair-amount"
                 />
                 <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
-                  How much durability one repair restores (0 = this item can't be repaired).
+                  How much durability one repair restores (0 = use the repair recipe's default amount).
                 </p>
               </div>
               <div style={{ marginTop: 12 }}>

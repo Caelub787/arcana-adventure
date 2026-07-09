@@ -9319,7 +9319,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let linkToTemplate = false;
           if (srcOut.isTemplate) {
             if (srcOut.isLiveTemplate && !srcOut.campaignId && !srcOut.characterId) {
-              if (!srcOut.system || character.system === srcOut.system) {
+              const charSystem = campaign?.system ?? crafter.system ?? null;
+              if (!srcOut.system || charSystem === srcOut.system) {
                 linkToTemplate = true;
               }
             } else if (srcOut.campaignId && character.campaignId === srcOut.campaignId) {
@@ -9513,10 +9514,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!targetTypeId || !targetTypeIds.includes(targetTypeId)) {
         return res.status(400).json({ error: "This item cannot be repaired by this recipe" });
       }
-      // Repair cost lives on the ITEM, not the recipe.
-      const repairAmount = Math.max(0, (targetItem as any).repairAmount ?? 0);
+      // Repair amount: the ITEM's own value wins; if the item doesn't set one,
+      // fall back to the recipe's default repair amount.
+      const itemRepairAmount = Math.max(0, (targetItem as any).repairAmount ?? 0);
+      const recipeRepairAmount = Math.max(0, (recipe as any).repairAmount ?? 0);
+      const repairAmount = itemRepairAmount > 0 ? itemRepairAmount : recipeRepairAmount;
       if (repairAmount < 1) {
-        return res.status(400).json({ error: "This item has no repair amount configured" });
+        return res.status(400).json({ error: "No repair amount configured on the item or the recipe" });
       }
       const curDur = (targetItem as any).durability ?? 0;
       const maxDur = (targetItem as any).maxDurability ?? curDur;

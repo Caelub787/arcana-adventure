@@ -711,8 +711,10 @@ export const craftRecipes = pgTable("craft_recipes", {
   // restores durability instead of producing an output item. It only DECLARES
   // which advanced item types it can repair (repairTargetTypeIds, multi-select);
   // the actual cost (ingredients consumed + durability restored) lives on each
-  // target ITEM (items.repairIngredients / items.repairAmount).
-  // repairTargetTypeId/repairAmount are legacy single-type columns, kept for
+  // target ITEM (items.repairIngredients / items.repairAmount). repairAmount
+  // here is the recipe's DEFAULT durability restored, used when the target
+  // item doesn't set its own repairAmount.
+  // repairTargetTypeId is a legacy single-type column, kept for
   // back-compat but no longer used by the repair flow.
   isRepairRecipe: boolean("is_repair_recipe").default(false).notNull(),
   repairTargetTypeId: varchar("repair_target_type_id"),
