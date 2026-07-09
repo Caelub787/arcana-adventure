@@ -17347,11 +17347,34 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [v3NameDraft, setV3NameDraft] = useState('');
   const [v3NicknameDraft, setV3NicknameDraft] = useState('');
   const v3OverviewLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Long-press must NOT open the (modal) dialog while the finger is still down:
+  // opening a modal mid-touch sets body pointer-events:none during the active
+  // gesture, and the touch release then fires synthetic events into a dead
+  // layout (dialog instantly dismissed / UI appears frozen on mobile).
+  // Instead the timer only ARMS the action; it opens on pointer release.
+  const v3OverviewPendingOpenRef = useRef<(() => void) | null>(null);
   const cancelV3OverviewLongPress = () => {
     if (v3OverviewLongPressRef.current) {
       clearTimeout(v3OverviewLongPressRef.current);
       v3OverviewLongPressRef.current = null;
     }
+    v3OverviewPendingOpenRef.current = null;
+  };
+  const startV3OverviewLongPress = (open: () => void) => {
+    cancelV3OverviewLongPress();
+    v3OverviewLongPressRef.current = setTimeout(() => {
+      v3OverviewLongPressRef.current = null;
+      v3OverviewPendingOpenRef.current = open;
+    }, 500);
+  };
+  const releaseV3OverviewLongPress = () => {
+    if (v3OverviewLongPressRef.current) {
+      clearTimeout(v3OverviewLongPressRef.current);
+      v3OverviewLongPressRef.current = null;
+    }
+    const open = v3OverviewPendingOpenRef.current;
+    v3OverviewPendingOpenRef.current = null;
+    if (open) open();
   };
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -19644,17 +19667,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       data-testid="text-character-name"
                       className={isAAV3 && canEdit && onUpdate ? 'cursor-pointer select-none' : undefined}
                       onPointerDown={isAAV3 && canEdit && onUpdate ? () => {
-                        cancelV3OverviewLongPress();
-                        v3OverviewLongPressRef.current = setTimeout(() => {
-                          v3OverviewLongPressRef.current = null;
+                        startV3OverviewLongPress(() => {
                           setV3NameDraft(liveCharacter.name || '');
                           setV3NicknameDraft(liveCharacter.nickname || '');
                           setV3NameEditOpen(true);
-                        }, 500);
+                        });
                       } : undefined}
-                      onPointerUp={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                      onPointerUp={isAAV3 ? releaseV3OverviewLongPress : undefined}
                       onPointerLeave={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                      onPointerCancel={isAAV3 ? cancelV3OverviewLongPress : undefined}
                       onContextMenu={isAAV3 && canEdit && onUpdate ? (e) => e.preventDefault() : undefined}
+                      style={isAAV3 && canEdit && onUpdate ? { WebkitTouchCallout: 'none' } as React.CSSProperties : undefined}
                     >
                       {liveCharacter.name}
                     </span>
@@ -19776,15 +19799,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <div
                     className={`w-28 h-28 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0 ${isAAV3 && canEdit && onUpdate ? 'cursor-pointer select-none' : ''}`}
                     onPointerDown={isAAV3 && canEdit && onUpdate ? () => {
-                      cancelV3OverviewLongPress();
-                      v3OverviewLongPressRef.current = setTimeout(() => {
-                        v3OverviewLongPressRef.current = null;
-                        setV3PortraitMenuOpen(true);
-                      }, 500);
+                      startV3OverviewLongPress(() => setV3PortraitMenuOpen(true));
                     } : undefined}
-                    onPointerUp={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                    onPointerUp={isAAV3 ? releaseV3OverviewLongPress : undefined}
                     onPointerLeave={isAAV3 ? cancelV3OverviewLongPress : undefined}
+                    onPointerCancel={isAAV3 ? cancelV3OverviewLongPress : undefined}
                     onContextMenu={isAAV3 && canEdit && onUpdate ? (e) => e.preventDefault() : undefined}
+                    style={isAAV3 && canEdit && onUpdate ? { WebkitTouchCallout: 'none' } as React.CSSProperties : undefined}
                   >
                     {effectivePortrait ? (
                       <img src={effectivePortrait} alt={liveCharacter.name} className="w-full h-full object-cover pointer-events-none" data-testid="img-portrait" draggable={false} />
