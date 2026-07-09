@@ -3103,8 +3103,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     bottom: (() => {
                       if (!character) return 2;
                       if (campaignSystem === 'aa-v3') {
-                        // V3: only the HP bar sits at the bottom (mana/energy are vertical side bars).
-                        return hpPercent !== null ? 2 + 8 : 2;
+                        // V3: name sits ABOVE the topmost visible bar.
+                        // Bars stack: HP at bottom 2px, combined Energy/Mana above it (bottom 10px, or 2px without HP).
+                        // If all bars are hidden (showBars toggle off / no permission), name drops to the token bottom.
+                        const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id] ?? '');
+                        const barsOn = canSeeBars && showBars;
+                        const v3ShowHp = barsOn && hpPercent !== null;
+                        const v3ShowCombined = barsOn && (energyPercent !== null || manaPercent !== null);
+                        if (v3ShowCombined) return (v3ShowHp ? 10 : 2) + 8;
+                        if (v3ShowHp) return 10;
+                        return 2;
                       }
                       let visibleBars = 0;
                       if (hpPercent !== null && (character.showHpBar ?? true)) visibleBars++;
