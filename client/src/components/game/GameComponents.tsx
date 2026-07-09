@@ -973,6 +973,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Nametag visibility toggle
   const [showNametags, setShowNametags] = useState(true);
+
+  // V3-only per-player resource bar visibility toggle (local, not synced)
+  const [showBars, setShowBars] = useState(true);
   
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
@@ -2269,6 +2272,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
+        {campaignSystem === 'aa-v3' && (
+          <Button
+            size="sm"
+            variant="secondary"
+            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showBars ? 'border-white/10' : 'border-amber-500 text-amber-400'}`}
+            onClick={() => setShowBars(!showBars)}
+            data-testid="button-toggle-bars"
+            title={showBars ? "Hide resource bars" : "Show resource bars"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+              <rect x="2" y="7" width="20" height="4" rx="1" />
+              <rect x="2" y="13" width="14" height="4" rx="1" opacity={showBars ? "1" : "0.3"} />
+            </svg>
+          </Button>
+        )}
         {onNotesClick && (
           <Button 
              size="sm" 
@@ -3109,17 +3127,45 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {/* Token Resource Bars.
                   V2 (and V1): HP/Energy/Mana horizontally stacked from the bottom,
                   honoring the per-character show*Bar visibility flags.
-                  V3: bars are ALWAYS shown (no display options) with a fixed layout —
+                  V3: HP horizontal at the bottom + combined Energy/Mana split bar above it.
+                  The split bar has energy on the left half (fills right-to-left from center)
+                  and mana on the right half (fills left-to-right from center).
+                  The V3 showBars toggle (per-player, local-only) can hide all bars.
+
+                  ── PRESERVED ORIGINAL V3 SIDE-BAR LAYOUT (revert by replacing the V3 branch below) ──
                   HP horizontal at the bottom, mana vertical on the RIGHT edge,
-                  energy vertical on the LEFT edge of the token. */}
+                  energy vertical on the LEFT edge of the token:
+
+                  {showHp && (
+                    <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex" data-testid={`bar-hp-${token.id}`}>
+                      <div className={`h-full transition-all duration-700 ease-in-out ${hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${clamp(hpPercent!)}%` }} />
+                      {tempHpPercent > 0 && <div className="h-full bg-violet-400/90" style={{ width: `${Math.max(0, Math.min(100 - clamp(hpPercent!), tempHpPercent))}%` }} />}
+                    </div>
+                  )}
+                  {showEnergy && (
+                    <div className="absolute left-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-energy-${token.id}`}>
+                      {tempEnergyPercent > 0 && <div className="w-full bg-violet-400/90" style={{ height: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }} />}
+                      <div className="w-full transition-all duration-700 ease-in-out bg-cyan-500" style={{ height: `${clamp(energyPercent!)}%` }} />
+                    </div>
+                  )}
+                  {showMana && (
+                    <div className="absolute right-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-mana-${token.id}`}>
+                      {tempManaPercent > 0 && <div className="w-full bg-fuchsia-200/90" style={{ height: `${Math.max(0, Math.min(100 - clamp(manaPercent!), tempManaPercent))}%` }} />}
+                      <div className="w-full transition-all duration-700 ease-in-out bg-fuchsia-500" style={{ height: `${clamp(manaPercent!)}%` }} />
+                    </div>
+                  )}
+                  ── END PRESERVED LAYOUT ──
+              */}
               {(() => {
                 const isV3Bars = campaignSystem === 'aa-v3';
                 const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
-                const showMana = character && manaPercent !== null && (isV3Bars || (character.showManaBar ?? true)) && canSeeBars;
-                const showEnergy = character && energyPercent !== null && (isV3Bars || (character.showEnergyBar ?? true)) && canSeeBars;
-                const showHp = character && hpPercent !== null && (isV3Bars || (character.showHpBar ?? true)) && canSeeBars;
+                // In V3, showBars toggle controls all bars; in V1/V2, per-character flags apply
+                const showMana = character && manaPercent !== null && canSeeBars && (!isV3Bars ? (character.showManaBar ?? true) : showBars);
+                const showEnergy = character && energyPercent !== null && canSeeBars && (!isV3Bars ? (character.showEnergyBar ?? true) : showBars);
+                const showHp = character && hpPercent !== null && canSeeBars && (!isV3Bars ? (character.showHpBar ?? true) : showBars);
                 if (isV3Bars) {
                   const clamp = (v: number) => Math.max(0, Math.min(100, v));
+                  const showCombined = (showEnergy || showMana) && (energyPercent !== null || manaPercent !== null);
                   return (
                     <>
                       {showHp && (
@@ -3138,32 +3184,50 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                           )}
                         </div>
                       )}
-                      {showEnergy && (
-                        <div className="absolute left-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-energy-${token.id}`}>
-                          {tempEnergyPercent > 0 && (
-                            <div
-                              className="w-full bg-violet-400/90"
-                              style={{ height: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }}
-                            />
-                          )}
-                          <div
-                            className="w-full transition-all duration-700 ease-in-out bg-cyan-500"
-                            style={{ height: `${clamp(energyPercent!)}%` }}
-                          />
-                        </div>
-                      )}
-                      {showMana && (
-                        <div className="absolute right-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-mana-${token.id}`}>
-                          {tempManaPercent > 0 && (
-                            <div
-                              className="w-full bg-fuchsia-200/90"
-                              style={{ height: `${Math.max(0, Math.min(100 - clamp(manaPercent!), tempManaPercent))}%` }}
-                            />
-                          )}
-                          <div
-                            className="w-full transition-all duration-700 ease-in-out bg-fuchsia-500"
-                            style={{ height: `${clamp(manaPercent!)}%` }}
-                          />
+                      {showCombined && (
+                        // Combined Energy/Mana split bar: energy on left half, mana on right half.
+                        // Each half is full when fill reaches the center; drains toward its outer edge.
+                        <div
+                          className="absolute left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex"
+                          style={{ bottom: showHp ? '10px' : '2px' }}
+                          data-testid={`bar-combined-${token.id}`}
+                        >
+                          {/* Left half: Energy — right-aligned so it fills from center leftward */}
+                          <div className="relative flex-1 h-full overflow-hidden flex justify-end">
+                            {showEnergy && energyPercent !== null && (
+                              <>
+                                {tempEnergyPercent > 0 && (
+                                  <div
+                                    className="h-full bg-violet-400/90"
+                                    style={{ width: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }}
+                                  />
+                                )}
+                                <div
+                                  className="h-full bg-cyan-500 transition-all duration-700 ease-in-out"
+                                  style={{ width: `${clamp(energyPercent!)}%` }}
+                                />
+                              </>
+                            )}
+                          </div>
+                          {/* 1px center divider */}
+                          <div className="w-px h-full bg-black/60 flex-shrink-0" />
+                          {/* Right half: Mana — left-aligned so it fills from center rightward */}
+                          <div className="relative flex-1 h-full overflow-hidden flex justify-start">
+                            {showMana && manaPercent !== null && (
+                              <>
+                                <div
+                                  className="h-full bg-fuchsia-500 transition-all duration-700 ease-in-out"
+                                  style={{ width: `${clamp(manaPercent!)}%` }}
+                                />
+                                {tempManaPercent > 0 && (
+                                  <div
+                                    className="h-full bg-fuchsia-200/90"
+                                    style={{ width: `${Math.max(0, Math.min(100 - clamp(manaPercent!), tempManaPercent))}%` }}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
                     </>
@@ -3224,83 +3288,123 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 );
               })()}
               
-              {/* Active Effects Display - Show on right side INSIDE the token */}
-              {tokenActiveEffects && tokenActiveEffects[token.id] && tokenActiveEffects[token.id].length > 0 && (
-                <div 
-                  className="absolute flex flex-col gap-px z-20"
-                  style={{
-                    right: 2,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                  }}
-                >
-                  {tokenActiveEffects[token.id].slice(0, 3).map((ae) => (
-                    <Popover key={ae.id}>
-                      <PopoverTrigger asChild>
-                        <button
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden relative"
-                          style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22) }}
-                          title={ae.effect.name}
-                        >
-                          {ae.effect.imageUrl ? (
-                            <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
-                          ) : (
-                            <Flame className="w-2 h-2 text-violet-400" />
-                          )}
-                          {ae.duration !== null && ae.duration > 0 && (
-                            <div 
-                              className="absolute -bottom-0.5 -right-0.5 bg-amber-600 text-white rounded-full flex items-center justify-center font-bold"
-                              style={{ 
-                                width: Math.max(8, tokenSize * 0.12), 
-                                height: Math.max(8, tokenSize * 0.12),
-                                fontSize: Math.max(6, tokenSize * 0.08)
-                              }}
-                            >
-                              {ae.duration}
-                            </div>
-                          )}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-40 bg-stone-900 border-stone-700 p-2">
-                        <div className="flex items-center gap-2 mb-1">
-                          {ae.effect.imageUrl && <img src={ae.effect.imageUrl} className="w-6 h-6 rounded" />}
-                          <span className="font-medium text-sm text-stone-200">{ae.effect.name}</span>
-                        </div>
-                        {ae.effect.description && (
-                          <p className="text-xs text-stone-400 mb-2">{ae.effect.description}</p>
+              {/* Active Effects Display
+                  V1/V2: right-side vertical stack (up to 3 + overflow chip)
+                  V3: top-left grid flowing across then wrapping, icons scale with token size */}
+              {tokenActiveEffects && tokenActiveEffects[token.id] && tokenActiveEffects[token.id].length > 0 && (() => {
+                const isV3Effects = campaignSystem === 'aa-v3';
+                const iconSize = Math.max(10, tokenSize * 0.22);
+                const activeEffects = tokenActiveEffects[token.id];
+
+                const renderEffectButton = (ae: typeof activeEffects[0]) => (
+                  <Popover key={ae.id}>
+                    <PopoverTrigger asChild>
+                      <button
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden relative flex-shrink-0"
+                        style={{ width: iconSize, height: iconSize }}
+                        title={ae.effect.name}
+                      >
+                        {ae.effect.imageUrl ? (
+                          <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
+                        ) : (
+                          <Flame className="w-2 h-2 text-violet-400" />
                         )}
-                        {ae.effect.causesDamage && (
-                          <p className="text-xs text-red-400">{ae.effect.diceAmount} {ae.effect.damageType} damage</p>
-                        )}
-                        {ae.duration !== null && ae.duration > 0 && (
-                          <p className="text-xs text-amber-400 mt-1">{ae.duration} {ae.effect.durationType === 'rounds' ? 'rounds' : 'turns'} remaining</p>
-                        )}
-                        {role === 'gm' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRemoveEffect?.(ae.id);
+                        {!isV3Effects && ae.duration !== null && ae.duration > 0 && (
+                          <div
+                            className="absolute -bottom-0.5 -right-0.5 bg-amber-600 text-white rounded-full flex items-center justify-center font-bold"
+                            style={{
+                              width: Math.max(8, tokenSize * 0.12),
+                              height: Math.max(8, tokenSize * 0.12),
+                              fontSize: Math.max(6, tokenSize * 0.08)
                             }}
-                            className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1"
                           >
-                            Remove Effect
-                          </button>
+                            {ae.duration}
+                          </div>
                         )}
-                      </PopoverContent>
-                    </Popover>
-                  ))}
-                  {tokenActiveEffects[token.id].length > 3 && (
-                    <div 
-                      className="rounded-sm bg-stone-700/80 border border-stone-600 text-stone-300 flex items-center justify-center"
-                      style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22), fontSize: Math.max(6, tokenSize * 0.12) }}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 bg-stone-900 border-stone-700 p-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        {ae.effect.imageUrl && <img src={ae.effect.imageUrl} className="w-6 h-6 rounded" />}
+                        <span className="font-medium text-sm text-stone-200">{ae.effect.name}</span>
+                      </div>
+                      {ae.effect.description && (
+                        <p className="text-xs text-stone-400 mb-2">{ae.effect.description}</p>
+                      )}
+                      {!isV3Effects && ae.effect.causesDamage && (
+                        <p className="text-xs text-red-400">{ae.effect.diceAmount} {ae.effect.damageType} damage</p>
+                      )}
+                      {!isV3Effects && ae.duration !== null && ae.duration > 0 && (
+                        <p className="text-xs text-amber-400 mt-1">{ae.duration} {ae.effect.durationType === 'rounds' ? 'rounds' : 'turns'} remaining</p>
+                      )}
+                      {role === 'gm' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveEffect?.(ae.id);
+                          }}
+                          className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1"
+                        >
+                          Remove Effect
+                        </button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                );
+
+                if (isV3Effects) {
+                  // V3: top-left grid, icons flow across and wrap, scale with tokenSize
+                  const MAX_V3 = 12;
+                  const gap = Math.max(1, Math.floor(tokenSize * 0.02));
+                  const visibleEffects = activeEffects.slice(0, MAX_V3);
+                  const overflow = activeEffects.length - MAX_V3;
+                  return (
+                    <div
+                      className="absolute z-20 flex flex-wrap"
+                      style={{
+                        top: 2,
+                        left: 2,
+                        maxWidth: tokenSize - 4,
+                        gap: gap,
+                      }}
                     >
-                      +{tokenActiveEffects[token.id].length - 3}
+                      {visibleEffects.map(renderEffectButton)}
+                      {overflow > 0 && (
+                        <div
+                          className="rounded-sm bg-stone-700/80 border border-stone-600 text-stone-300 flex items-center justify-center flex-shrink-0"
+                          style={{ width: iconSize, height: iconSize, fontSize: Math.max(6, tokenSize * 0.10) }}
+                        >
+                          +{overflow}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+                  );
+                }
+
+                // V1/V2: right-side vertical stack (existing behavior)
+                return (
+                  <div
+                    className="absolute flex flex-col gap-px z-20"
+                    style={{
+                      right: 2,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                    }}
+                  >
+                    {activeEffects.slice(0, 3).map(renderEffectButton)}
+                    {activeEffects.length > 3 && (
+                      <div
+                        className="rounded-sm bg-stone-700/80 border border-stone-600 text-stone-300 flex items-center justify-center"
+                        style={{ width: iconSize, height: iconSize, fontSize: Math.max(6, tokenSize * 0.12) }}
+                      >
+                        +{activeEffects.length - 3}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               
               {/* Attached Thrown Items Display - Show on left side of token (like effects but orange) */}
               {(() => {

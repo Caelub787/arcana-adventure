@@ -8042,10 +8042,11 @@ export default function Campaign() {
     enabled: role === 'gm' && speciesFormOpen,
   });
 
-  // Token effects queries
+  // Token effects queries — V3 campaigns only fetch V3-tagged effects
+  const isAAV3Campaign = campaignSystem === 'aa-v3';
   const tokenEffectsQuery = useQuery({
-    queryKey: ['token-effects'],
-    queryFn: () => api.getTokenEffects(),
+    queryKey: ['token-effects', isAAV3Campaign ? 'aa-v3' : undefined],
+    queryFn: () => api.getTokenEffects(false, isAAV3Campaign ? 'aa-v3' : undefined),
   });
 
   const tokenActiveEffectsQuery = useQuery({

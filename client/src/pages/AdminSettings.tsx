@@ -430,9 +430,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     enabled: currentView === 'characters',
   });
 
+  const tokenEffectSystem = systemSlug === 'aa-v3' ? 'aa-v3' : undefined;
   const { data: tokenEffects = [], isLoading: tokenEffectsLoading } = useQuery({
-    queryKey: ['token-effects', personalMode],
-    queryFn: () => api.getTokenEffects(personalMode),
+    queryKey: ['token-effects', personalMode, tokenEffectSystem],
+    queryFn: () => api.getTokenEffects(personalMode, tokenEffectSystem),
     enabled: currentView === 'token-effects',
   });
 
@@ -873,7 +874,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   };
 
   const createTokenEffectMutation = useMutation({
-    mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect({ ...effect, ...(personalMode ? { personal: true } : {}) } as any),
+    mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect({ ...effect, system: systemSlug, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['token-effects'] });
       setShowAddTokenEffect(false);
@@ -5551,6 +5552,7 @@ interface TokenEffectFormDialogProps {
 }
 
 function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoading, systemSlug }: TokenEffectFormDialogProps) {
+  const isV3 = systemSlug === 'aa-v3';
   const [formData, setFormData] = useState<{
     name: string;
     imageUrl: string;
@@ -5735,6 +5737,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
               />
             </div>
 
+            {!isV3 && (
             <div>
               <Label className="text-stone-300">Timing</Label>
               <Select
@@ -5753,7 +5756,9 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                 When the effect triggers during combat
               </p>
             </div>
+            )}
 
+            {!isV3 && (
             <div className="flex items-center gap-2">
               <Checkbox
                 id="causesDamage"
@@ -5765,8 +5770,9 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                 Causes Damage
               </Label>
             </div>
+            )}
 
-            {formData.causesDamage && (
+            {!isV3 && formData.causesDamage && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-stone-300">{getEffectTypeLabel(systemSlug)}</Label>
@@ -5797,6 +5803,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
               </div>
             )}
 
+            {!isV3 && (
             <div className="flex items-center gap-2">
               <Checkbox
                 id="hasDuration"
@@ -5808,8 +5815,9 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                 Has Duration (auto-expires)
               </Label>
             </div>
+            )}
 
-            {formData.hasDuration && (
+            {!isV3 && formData.hasDuration && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>

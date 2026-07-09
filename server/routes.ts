@@ -15869,7 +15869,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public route for getting all token effects (for battle map display)
   app.get("/api/token-effects", requireAuth, async (req, res) => {
     try {
-      const effects = await storage.getTokenEffects({ ownerScope: [] });
+      const system = req.query.system as string | undefined;
+      const effects = await storage.getTokenEffects({ ownerScope: [], ...(system ? { system } : {}) });
       res.json(effects);
     } catch (err) {
       console.error("Failed to fetch token effects:", err);
@@ -15882,9 +15883,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === 'true';
+      const system = req.query.system as string | undefined;
       const { getLibraryScope } = await import("./lib/library-acl");
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const opts = isA && !personal ? (system ? { system } : undefined) : { ownerScope: scope, personal, ...(system ? { system } : {}) };
       const effects = await storage.getTokenEffects(opts);
       res.json(effects);
     } catch (err) {

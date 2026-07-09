@@ -1391,6 +1391,7 @@ export const tokenEffects = pgTable("token_effects", {
   defaultDuration: integer("default_duration"), // Default number of rounds/turns until effect expires
   durationType: text("duration_type").default("turns"), // "turns" (player's turn) or "rounds" (full combat round)
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  system: text("system").notNull().default("arcana-adventure"), // system tag: 'arcana-adventure' | 'aa-v2' | 'aa-v3'
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

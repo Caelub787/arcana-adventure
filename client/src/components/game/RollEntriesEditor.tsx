@@ -1266,9 +1266,10 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
   const [newForm, setNewForm] = useState<Partial<RollEntry>>(() => emptyFormData(ownerType, ownerId || ''));
   const [editForm, setEditForm] = useState<Partial<RollEntry>>({});
 
+  const effectSystem = campaignSystem === 'aa-v3' ? 'aa-v3' : undefined;
   const { data: availableEffects = [] } = useQuery({
-    queryKey: ['token-effects-list'],
-    queryFn: () => api.getTokenEffects(),
+    queryKey: ['token-effects-list', effectSystem],
+    queryFn: () => api.getTokenEffects(false, effectSystem),
     enabled: canEdit,
   });
 

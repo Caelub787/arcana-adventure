@@ -2386,9 +2386,12 @@ class ApiClient {
   }
 
   // Token Effects - public read, admin write
-  async getTokenEffects(personal?: boolean): Promise<TokenEffect[]> {
-    const params = personal ? '?personal=true' : '';
-    return this.request(`/admin/token-effects${params}`);
+  async getTokenEffects(personal?: boolean, system?: string): Promise<TokenEffect[]> {
+    const p = new URLSearchParams();
+    if (personal) p.set('personal', 'true');
+    if (system) p.set('system', system);
+    const qs = p.toString() ? `?${p.toString()}` : '';
+    return this.request(`/admin/token-effects${qs}`);
   }
 
   async getTokenEffect(id: string): Promise<TokenEffect> {

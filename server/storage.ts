@@ -576,7 +576,7 @@ export interface IStorage {
   canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }>;
 
   // Token Effects CRUD operations
-  getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<TokenEffect[]>;
+  getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean; system?: string }): Promise<TokenEffect[]>;
   getTokenEffect(id: string): Promise<TokenEffect | undefined>;
   createTokenEffect(effect: InsertTokenEffect): Promise<TokenEffect>;
   updateTokenEffect(id: string, effect: Partial<InsertTokenEffect>): Promise<TokenEffect | undefined>;
@@ -4550,8 +4550,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Token Effects CRUD operations
-  async getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<TokenEffect[]> {
-    const cond = buildOwnerScopeCondition(tokenEffects.ownerUserId, opts);
+  async getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean; system?: string }): Promise<TokenEffect[]> {
+    const ownerCond = buildOwnerScopeCondition(tokenEffects.ownerUserId, opts);
+    // When system is specified, filter to that exact system.
+    // When system is NOT specified (V1/V2 contexts), exclude aa-v3 effects so
+    // V1/V2 lanes never see V3-tagged effects while V3 stays isolated.
+    const systemCond = opts?.system
+      ? eq(tokenEffects.system, opts.system)
+      : ne(tokenEffects.system, 'aa-v3');
+    const cond = ownerCond ? and(ownerCond, systemCond) : systemCond;
     return await db.select().from(tokenEffects).where(cond);
   }
 
