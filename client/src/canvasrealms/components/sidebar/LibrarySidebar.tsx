@@ -99,6 +99,7 @@ import { useIsMobile } from "@cr/hooks/use-mobile";
 import { cn } from "@cr/lib/utils";
 import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import {
   setSidebarNodeDrag,
@@ -377,11 +378,26 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
     });
   };
   const [newNodeMenuOpen, setNewNodeMenuOpen] = useState(false);
+  const [newNodeMenuAnchor, setNewNodeMenuAnchor] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const newNodeMenuRef = useRef<HTMLDivElement | null>(null);
+  // The menu itself renders in a body portal (it must escape the sidebar's
+  // backdrop-blur stacking context, or the part overhanging the canvas pane
+  // loses hit-testing to it), so outside-click checks both the trigger
+  // wrapper and the portaled menu.
+  const newNodeMenuPortalRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!newNodeMenuOpen) return;
     const onDoc = (e: MouseEvent) => {
-      if (newNodeMenuRef.current && !newNodeMenuRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (
+        newNodeMenuRef.current &&
+        !newNodeMenuRef.current.contains(t) &&
+        (!newNodeMenuPortalRef.current ||
+          !newNodeMenuPortalRef.current.contains(t))
+      ) {
         setNewNodeMenuOpen(false);
       }
     };
@@ -2279,7 +2295,11 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                       variant="default"
                       size="icon"
                       className="h-9 w-9 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0"
-                      onClick={() => setNewNodeMenuOpen((v) => !v)}
+                      onClick={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setNewNodeMenuAnchor({ left: r.left, top: r.bottom + 4 });
+                        setNewNodeMenuOpen((v) => !v);
+                      }}
                       disabled={createNode.isPending}
                       aria-label="Create new node"
                       title="Create new node"
@@ -2290,8 +2310,29 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                         <Plus className="w-4 h-4" />
                       )}
                     </Button>
-                    {newNodeMenuOpen && (
-                      <div className="absolute left-0 mt-1 w-60 max-w-[calc(100vw-1rem)] max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100]">
+                    {newNodeMenuOpen && newNodeMenuAnchor && createPortal(
+                      <div
+                        ref={newNodeMenuPortalRef}
+                        role="menu"
+                        aria-label="Create new node"
+                        className="fixed w-60 max-w-[calc(100vw-1rem)] max-h-[70dvh] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-2xl py-1 z-[100]"
+                        style={{
+                          left: Math.max(
+                            8,
+                            Math.min(
+                              newNodeMenuAnchor.left,
+                              (typeof window !== "undefined" ? window.innerWidth : 0) - 248,
+                            ),
+                          ),
+                          top: Math.max(
+                            8,
+                            Math.min(
+                              newNodeMenuAnchor.top,
+                              (typeof window !== "undefined" ? window.innerHeight : 0) - 320,
+                            ),
+                          ),
+                        }}
+                      >
                         <div className="flex items-center justify-end px-2 py-0.5 border-b border-border/60 mb-0.5">
                           <button
                             type="button"
@@ -2358,7 +2399,8 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                             </div>
                           );
                         })}
-                      </div>
+                      </div>,
+                      document.body,
                     )}
                   </div>
                 )}
@@ -2861,7 +2903,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
         />
       )}
 
-      {kindPickerPos && (canEdit || isViewer) && activeRealmId && (
+      {kindPickerPos && (canEdit || isViewer) && activeRealmId && createPortal(
         <div
           ref={kindPickerRef}
           role="menu"
@@ -2936,7 +2978,8 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {shareDialogRealmId && (() => {

@@ -5,6 +5,7 @@
 - [V3 spell official/canonical model](v3-spell-conflict-resolution.md) — "official" = GLOBAL admin row (campaignId+spellbookItemId null); duplicate resolution must never demote campaign-used rows; conflicts surface as a 2xx envelope, not an error.
 - [V3 weapon base attack & techniques](v3-weapon-techniques.md) — V3-only leveled base attack + technique groups; reuse evaluateV3ElementEligibility + level-dice ladder; cast via v3weaponcast.ts; one V3WeaponUsePanel in both player surfaces.
 - [Client Item/ItemDraft types are hand-maintained](client-item-types-handmaintained.md) — adding an `items` schema column does NOT auto-flow to client `Item` (lib/api.ts) or `ItemDraft` (library-dialogs ItemDialog.tsx); update both or tsc breaks.
+- [CR sidebar stacking context](cr-sidebar-stacking-context.md) — backdrop-blur sidebars trap child z-index; popovers overhanging the sidebar edge must portal to document.body or clicks fall through.
 - [Mobile modal dialog vs detached panels](mobile-modal-detached-panels.md) — panels detached outside the mobile character-sheet Dialog are untappable (Radix modal body pointer-events:none); render in-sheet on mobile.
 - [Floating panel z-order policy](floating-panel-zorder.md) — never raise panels from portaled-child events, force-bump z on open, never stopPropagation pointerdown; all learned from shipped regressions.
 - [FloatingPanel fit to a non-visible tab](floating-panel-fit-other-tab.md) — fitContent measures only the active tab; to size to a taller hidden tab, seed it active, lock via onFitLocked, switch back before paint.
