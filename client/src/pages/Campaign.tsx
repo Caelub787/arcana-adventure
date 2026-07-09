@@ -6521,7 +6521,7 @@ function FloatingWorldBuilder({
     <FloatingPanel
       open={open}
       onClose={onClose}
-      title={<span className="text-amber-500">World Builder</span>}
+      title={<span className="text-amber-500">{v3 ? 'World Info' : 'World Builder'}</span>}
       zIndex={zIndex}
       onBringToFront={onBringToFront}
       panelKey={panelKey}
@@ -10244,7 +10244,6 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {!isAAV3 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10280,7 +10279,6 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          )}
 
           {(!isAAV2 || isAAV3) && showWorldButton && (
           <TooltipProvider>
@@ -10313,7 +10311,7 @@ export default function Campaign() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>World Builder</p>
+                <p>{isAAV3 ? 'World Info' : 'World Builder'}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -10927,6 +10925,7 @@ export default function Campaign() {
           zIndex={floatingZIndicesRef.current['worldbuilder'] || 10200}
           onBringToFront={() => bringToFront('worldbuilder')}
           userId={user?.id}
+          v3={isAAV3}
         />
       )}
 
@@ -12936,7 +12935,7 @@ export default function Campaign() {
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
                 {activeSidePanel === 'notes' && 'Notes'}
-                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && 'World'}
+                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && (isAAV3 ? 'World Info' : 'World')}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
@@ -13058,7 +13057,7 @@ export default function Campaign() {
                   )}
                 </div>
               )}
-              {activeSidePanel === 'notes' && !isAAV3 && effectiveCampaignId && (
+              {activeSidePanel === 'notes' && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
                   <CampaignNotesPanel
                     campaignId={effectiveCampaignId}

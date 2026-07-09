@@ -79,8 +79,12 @@ export async function resolveRealmRole(
   if (collab) return collab.role as RealmRole;
   // Shared-world bridge: a standalone realm linked to a host campaign grants
   // read-only (viewer) access to every member of that campaign — including the
-  // campaign's GM, unless they are the realm owner (handled above). This lets a
-  // GM share one of their own worlds with their players.
+  // campaign's GM (unless they are the realm owner, handled above), assistant
+  // GMs, trusted players, and all other campaign-role variants. The isOwner
+  // flag from checkCampaignAccessShared is intentionally discarded here; edit
+  // rights on the linked world must come only from the world's own permission
+  // system (realm owner, accepted collaborator, or per-node edit grant). This
+  // is the V3 "World Info" path: campaign role must never confer edit access.
   if (realm.linkedCampaignId) {
     const linkedAccess = await checkCampaignAccessShared(
       userId,

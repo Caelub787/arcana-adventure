@@ -86,7 +86,7 @@ export default function EmbeddedWorldBuilder({
   if (isLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center p-6 text-sm text-muted-foreground" data-testid="status-worldbuilder-loading">
-        Loading World Builder…
+        {v3 ? 'Loading World Info…' : 'Loading World Builder…'}
       </div>
     );
   }
@@ -99,8 +99,8 @@ export default function EmbeddedWorldBuilder({
         {notLinked
           ? "The Game Master hasn't linked a world to this campaign yet."
           : notReady
-            ? "The Game Master hasn't opened the World Builder for this campaign yet."
-            : "Couldn't open the World Builder for this campaign."}
+            ? `The Game Master hasn't opened the ${v3 ? 'World Info' : 'World Builder'} for this campaign yet.`
+            : `Couldn't open the ${v3 ? 'World Info' : 'World Builder'} for this campaign.`}
       </div>
     );
   }
