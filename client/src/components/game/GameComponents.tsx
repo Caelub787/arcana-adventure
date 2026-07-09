@@ -19419,7 +19419,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-6' : 'grid-cols-7'}`}>
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-5' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}

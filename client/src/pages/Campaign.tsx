@@ -12767,8 +12767,13 @@ export default function Campaign() {
                 bringToFront={bringToFront}
                 floatingZIndices={floatingZIndicesRef.current}
                 campaignSystem={(campaign as any)?.system}
-                onOpenItemDetail={(item) => openDetachedItemDetail(openCharacterSheets[0], item)}
-                onOpenSpellbook={(item) => openDetachedSpellbook(openCharacterSheets[0], item)}
+                // On mobile the sheet lives inside a MODAL Radix Dialog, which sets
+                // pointer-events:none on the body. Detached panels render OUTSIDE the
+                // dialog content, so real taps on them fall through to the dialog
+                // behind (unlock buttons dead, stray taps close the sheet — reported
+                // as "glitches/freezes"). onOpenItemDetail/onOpenSpellbook are omitted
+                // here so the item-detail / spellbook panels render IN-SHEET, inside
+                // the dialog content, where taps work. Desktop keeps detaching.
                 trustedPlayer={(() => {
                   const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                   return !!m?.trustedPlayer;
