@@ -6700,16 +6700,24 @@ export default function Campaign() {
 
   // Item-detail / spellbook panels are hosted here (not inside the character
   // sheet) so they stay open/independent when a character sheet is closed.
-  // One of each per character; opening a new one for the same character replaces it.
+  // Multiple item panels can be open at once (keyed by character+item id);
+  // spellbook stays one-per-character.
   const [detachedItemPanels, setDetachedItemPanels] = useState<any[]>([]);
   const [detachedSpellbookPanels, setDetachedSpellbookPanels] = useState<any[]>([]);
 
   const openDetachedItemDetail = (character: any, item: any) => {
-    setDetachedItemPanels(prev => [...prev.filter(p => p.character.id !== character.id), { character, item }]);
-    bringToFront(`item-detail-${character.id}`);
+    const panelKey = `item-detail-${character.id}-${item.id}`;
+    setDetachedItemPanels(prev => {
+      if (prev.some(p => p.panelKey === panelKey)) {
+        bringToFront(panelKey);
+        return prev;
+      }
+      return [...prev, { character, item, panelKey, offsetIndex: prev.length }];
+    });
+    bringToFront(panelKey);
   };
-  const closeDetachedItemDetail = (charId: string) => {
-    setDetachedItemPanels(prev => prev.filter(p => p.character.id !== charId));
+  const closeDetachedItemDetail = (panelKey: string) => {
+    setDetachedItemPanels(prev => prev.filter(p => p.panelKey !== panelKey));
   };
   const openDetachedSpellbook = (character: any, item: any) => {
     setDetachedSpellbookPanels(prev => [...prev.filter(p => p.character.id !== character.id), { character, item }]);
@@ -12849,12 +12857,18 @@ export default function Campaign() {
         ))
       ))}
 
-      {/* Detached item-detail panels (hosted here so they survive closing the character sheet) */}
+      {/* Detached item-detail panels (hosted here so they survive closing the character sheet).
+          Multiple panels can be open at once — each keyed by character+item id. */}
       {detachedItemPanels.map((p) => (
         <DetachedItemDetailPanel
-          key={`detached-item-${p.character.id}`}
+          key={p.panelKey}
           character={p.character}
           item={p.item}
+          panelSuffix={`-${p.character.id}-${p.item.id}`}
+          defaultPosition={p.offsetIndex > 0 ? {
+            x: Math.max(20, Math.floor((window.innerWidth - 720) / 2) + p.offsetIndex * 30),
+            y: Math.max(20, Math.floor((window.innerHeight - Math.min(880, window.innerHeight - 40)) / 2) + p.offsetIndex * 30),
+          } : undefined}
           isGM={role === 'gm'}
           isOwner={
             p.character.userId === user?.id ||
@@ -12863,7 +12877,7 @@ export default function Campaign() {
           campaignSystem={(campaign as any)?.system}
           bringToFront={bringToFront}
           floatingZIndices={floatingZIndicesRef.current}
-          onClose={() => closeDetachedItemDetail(p.character.id)}
+          onClose={() => closeDetachedItemDetail(p.panelKey)}
           trustedPlayer={(() => {
             if (p.character.userId !== user?.id) return false;
             const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);

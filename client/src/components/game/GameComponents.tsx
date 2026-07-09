@@ -4817,6 +4817,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const [showModifiers, setShowModifiers] = useState(false);
 
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [syncingHotbarItem, setSyncingHotbarItem] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
 
@@ -8540,9 +8541,41 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               <h3 className="text-amber-400 text-lg font-bold" data-testid="text-info-panel-title">
                 {traitData?.name || hotbar?.skillName || spellData?.name || itemData?.name || 'Details'}
               </h3>
-              <button onClick={() => setShowInfoPanel(false)} className="text-stone-400 hover:text-stone-200" data-testid="button-close-info-panel">
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                {itemData && itemData.itemType === 'weapon' && itemData.templateItemId && campaignSystem === 'aa-v3' && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={async () => {
+                            if (!character?.id || !itemData?.id || syncingHotbarItem) return;
+                            setSyncingHotbarItem(true);
+                            try {
+                              await api.syncItemTechniques(character.id, itemData.id);
+                              queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+                              queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+                              toast({ title: 'Techniques synced', description: 'Pulled the latest technique groups from the library template.' });
+                            } catch (err: any) {
+                              toast({ title: 'Sync failed', description: err?.message || 'Could not sync techniques from template', variant: 'destructive' });
+                            } finally {
+                              setSyncingHotbarItem(false);
+                            }
+                          }}
+                          disabled={syncingHotbarItem}
+                          className="text-stone-400 hover:text-stone-200 p-1 disabled:opacity-50"
+                          data-testid="button-sync-techniques-hotbar"
+                        >
+                          <RefreshCw className={`h-4 w-4 ${syncingHotbarItem ? 'animate-spin' : ''}`} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent><p>Sync techniques from library</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <button onClick={() => setShowInfoPanel(false)} className="text-stone-400 hover:text-stone-200" data-testid="button-close-info-panel">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             
             {traitData && (
@@ -8664,7 +8697,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   )}
                 </div>
                 {itemData.itemType === 'weapon' && campaignSystem === 'aa-v3' && (
-                  <V3WeaponUsePanel item={itemData} character={character} items={allItems || []} />
+                  <V3WeaponUsePanel item={itemData} character={character} items={allItems || []} hideSyncButton={true} />
                 )}
               </div>
             )}
@@ -17107,7 +17140,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
 // Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
 // Campaign page) so it keeps living when the character sheet is closed. It owns
 // its own items query + update/delete mutations so the host page stays thin.
-export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false }: {
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -17117,9 +17150,11 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
   floatingZIndices?: Record<string, number>;
   onClose: () => void;
   trustedPlayer?: boolean;
+  panelSuffix?: string;
+  defaultPosition?: { x: number; y: number };
 }) {
   const queryClient = useQueryClient();
-  const charPanelSuffix = character?.id ? '-' + character.id : '';
+  const charPanelSuffix = externalPanelSuffix ?? (character?.id ? '-' + character.id : '');
   const { data: items = [] } = useQuery({
     queryKey: ['items', character.id],
     queryFn: () => api.getItems(character.id),
@@ -17192,6 +17227,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       campaignSystem={campaignSystem}
       charPanelSuffix={charPanelSuffix}
       trustedPlayer={trustedPlayer}
+      defaultPosition={defaultPosition}
     />
   );
 }
@@ -27297,6 +27333,7 @@ interface ItemDetailDialogProps {
   campaignSystem?: string;
   charPanelSuffix?: string;
   trustedPlayer?: boolean;
+  defaultPosition?: { x: number; y: number };
 }
 
 // AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
@@ -27676,7 +27713,7 @@ function V3UnlockedTechniquesList({ character }: { character: any }) {
 // Unlock button that spends a class skill point). Rendered inside the weapon
 // ItemDetailDialog and the battlemap hotbar info panel.
 // V3-only — callers gate this behind campaignSystem === 'aa-v3'.
-function V3WeaponUsePanel({ item, character, items }: { item: any; character: any; items: any[] }) {
+function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { item: any; character: any; items: any[]; hideSyncButton?: boolean }) {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState(1);
   const [syncing, setSyncing] = useState(false);
@@ -27861,7 +27898,7 @@ function V3WeaponUsePanel({ item, character, items }: { item: any; character: an
         <Dices className="h-4 w-4 mr-2" /> Attack ({v3LevelDiceNotation(effectiveDiceLevel)})
       </Button>
 
-      {item?.templateItemId && (
+      {item?.templateItemId && !hideSyncButton && (
         <Button
           type="button"
           variant="outline"
@@ -28453,10 +28490,25 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   );
 }
 
-export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [syncingTechniques, setSyncingTechniques] = useState(false);
+  const handleSyncTechniques = async () => {
+    if (!character?.id || !item?.id) return;
+    setSyncingTechniques(true);
+    try {
+      await api.syncItemTechniques(character.id, item.id);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+      toast({ title: 'Techniques synced', description: 'Pulled the latest technique groups from the library template.' });
+    } catch (err: any) {
+      toast({ title: 'Sync failed', description: err?.message || 'Could not sync techniques from template', variant: 'destructive' });
+    } finally {
+      setSyncingTechniques(false);
+    }
+  };
   const [editData, setEditData] = useState<any>(null);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
   const { data: hotbars = [] } = useQuery({
@@ -28807,6 +28859,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
       defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
+      defaultPosition={defaultPosition}
       minWidth={350}
       minHeight={300}
       panelKey={`item-detail${charPanelSuffix}`}
@@ -28825,10 +28878,33 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             ) : (
               <h2 className="text-amber-500 text-xl font-bold">{currentData.name}</h2>
             )}
-            {canEditItem && !isEditing && (
-              <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
-                Edit
-              </Button>
+            {!isEditing && (
+              <div className="flex items-center gap-1">
+                {isAAV3 && item.itemType === 'weapon' && item.templateItemId && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={handleSyncTechniques}
+                          disabled={syncingTechniques}
+                          className="h-8 w-8 text-stone-400 hover:text-stone-200"
+                          data-testid="button-sync-techniques-header"
+                        >
+                          <RefreshCw className={`h-4 w-4 ${syncingTechniques ? 'animate-spin' : ''}`} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent><p>Sync techniques from library</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {canEditItem && (
+                  <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
+                    Edit
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           <div className="space-y-4">
@@ -29803,7 +29879,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             )}
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
-              <V3WeaponUsePanel item={currentData} character={character} items={items} />
+              <V3WeaponUsePanel item={currentData} character={character} items={items} hideSyncButton={true} />
             )}
 
             {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && !isEditing && (
