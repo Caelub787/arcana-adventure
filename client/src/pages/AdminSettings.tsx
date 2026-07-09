@@ -3608,6 +3608,31 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
   if (systemSlug === 'aa-v3') {
     return (
       <div className="space-y-8" data-testid="dashboard-v3">
+        <DashSection title="Items & Templates" icon={Package} color="text-amber-400">
+          <DashCard
+            onClick={() => onNavigate('items')}
+            testId="card-system-items"
+            icon={Package}
+            title="System Items"
+            description="Manage weapons, armor, consumables, and other items available across all campaigns"
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+          <DashCard
+            onClick={() => onNavigate('crafter-recipe-templates')}
+            testId="card-crafter-recipe-templates"
+            icon={Hammer}
+            title="Crafter Recipe Templates"
+            description="Build shared recipe lists and link them to crafter items. Edits propagate to every linked crafter automatically."
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+        </DashSection>
+
         {isAdmin && (
           <DashSection title="Spells & Magic" icon={Wand2} color="text-violet-400">
             <DashCard
@@ -3736,42 +3761,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               titleColor="text-emerald-500"
             />
           )}
-        </DashSection>
-
-        <DashSection title="Items & Templates" icon={Package} color="text-amber-400">
-          <DashCard
-            onClick={() => onNavigate('items')}
-            testId="card-system-items"
-            icon={Package}
-            title="System Items"
-            description="Manage weapons, armor, consumables, and other items available across all campaigns"
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
-          />
-          <DashCard
-            onClick={() => onNavigate('item-templates')}
-            testId="card-item-templates"
-            icon={Layers}
-            title="Roll Templates"
-            description="Create live roll templates whose roll edits propagate to every linked item and spell, even on character sheets"
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
-          />
-          <DashCard
-            onClick={() => onNavigate('crafter-recipe-templates')}
-            testId="card-crafter-recipe-templates"
-            icon={Hammer}
-            title="Crafter Recipe Templates"
-            description="Build shared recipe lists and link them to crafter items. Edits propagate to every linked crafter automatically."
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
-          />
         </DashSection>
 
         <DashSection title="Characters & Mechanics" icon={User} color="text-cyan-400">

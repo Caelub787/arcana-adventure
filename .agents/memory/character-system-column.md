@@ -20,3 +20,8 @@ system-scoped library templates (e.g. an aa-v3 Crafter) never set
 items, treat the **campaign** system as authoritative for any system gating —
 an inventory copy's own `items.system` can be a stale default
 (`arcana-adventure`) and must not gate aa-v2/aa-v3 behavior.
+
+**World/template characters:** a non-campaign character's system comes from its
+world (`character.worldId` → `getWorld().system`). Imports compare source-side
+system (item/spell's own, or the source world's for characters) to the target
+`campaign.system`.
