@@ -41,6 +41,7 @@ interface SpellbookPanelProps {
   floatingZIndices?: Record<string, number>;
   charPanelSuffix?: string;
   onSpellCast?: () => void;
+  defaultPosition?: { x: number; y: number };
 }
 
 // One-line description of a crafted spell's composition (core + intent + delivery).
@@ -266,6 +267,7 @@ export function SpellbookPanel({
   floatingZIndices,
   charPanelSuffix = "",
   onSpellCast,
+  defaultPosition,
 }: SpellbookPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -314,6 +316,7 @@ export function SpellbookPanel({
         </span>
       }
       defaultSize={{ width: 640, height: Math.min(700, window.innerHeight - 40) }}
+      defaultPosition={defaultPosition}
       minWidth={360}
       minHeight={360}
       panelKey={panelKey}

@@ -6700,8 +6700,9 @@ export default function Campaign() {
 
   // Item-detail / spellbook panels are hosted here (not inside the character
   // sheet) so they stay open/independent when a character sheet is closed.
-  // Multiple item panels can be open at once (keyed by character+item id);
-  // spellbook stays one-per-character.
+  // Multiple item panels AND multiple spellbook panels can be open at once
+  // (each keyed by character+item id); reopening an already-open one just
+  // brings it to the front.
   const [detachedItemPanels, setDetachedItemPanels] = useState<any[]>([]);
   const [detachedSpellbookPanels, setDetachedSpellbookPanels] = useState<any[]>([]);
 
@@ -6720,11 +6721,18 @@ export default function Campaign() {
     setDetachedItemPanels(prev => prev.filter(p => p.panelKey !== panelKey));
   };
   const openDetachedSpellbook = (character: any, item: any) => {
-    setDetachedSpellbookPanels(prev => [...prev.filter(p => p.character.id !== character.id), { character, item }]);
-    bringToFront(`spellbook-${character.id}`);
+    const panelKey = `spellbook-${character.id}-${item.id}`;
+    setDetachedSpellbookPanels(prev => {
+      if (prev.some(p => p.panelKey === panelKey)) {
+        bringToFront(panelKey);
+        return prev;
+      }
+      return [...prev, { character, item, panelKey, offsetIndex: prev.length }];
+    });
+    bringToFront(panelKey);
   };
-  const closeDetachedSpellbook = (charId: string) => {
-    setDetachedSpellbookPanels(prev => prev.filter(p => p.character.id !== charId));
+  const closeDetachedSpellbook = (panelKey: string) => {
+    setDetachedSpellbookPanels(prev => prev.filter(p => p.panelKey !== panelKey));
   };
   
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
@@ -12886,12 +12894,18 @@ export default function Campaign() {
         />
       ))}
 
-      {/* Detached spellbook panels (hosted here so they survive closing the character sheet) */}
+      {/* Detached spellbook panels (hosted here so they survive closing the character sheet).
+          Multiple panels can be open at once — each keyed by character+item id. */}
       {detachedSpellbookPanels.map((p) => (
         <DetachedSpellbookPanel
-          key={`detached-spellbook-${p.character.id}`}
+          key={p.panelKey}
           character={p.character}
           item={p.item}
+          panelSuffix={`-${p.character.id}-${p.item.id}`}
+          defaultPosition={p.offsetIndex > 0 ? {
+            x: Math.max(20, Math.floor((window.innerWidth - 640) / 2) + p.offsetIndex * 30),
+            y: Math.max(20, Math.floor((window.innerHeight - Math.min(700, window.innerHeight - 40)) / 2) + p.offsetIndex * 30),
+          } : undefined}
           isGM={role === 'gm'}
           isOwner={
             p.character.userId === user?.id ||
@@ -12899,7 +12913,7 @@ export default function Campaign() {
           }
           bringToFront={bringToFront}
           floatingZIndices={floatingZIndicesRef.current}
-          onClose={() => closeDetachedSpellbook(p.character.id)}
+          onClose={() => closeDetachedSpellbook(p.panelKey)}
         />
       ))}
       

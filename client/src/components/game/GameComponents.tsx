@@ -17233,7 +17233,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
 }
 
 // Self-contained spellbook panel hosted OUTSIDE the character sheet (see above).
-export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringToFront, floatingZIndices, onClose }: {
+export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringToFront, floatingZIndices, onClose, panelSuffix: externalPanelSuffix, defaultPosition }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -17241,9 +17241,11 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
   onClose: () => void;
+  panelSuffix?: string;
+  defaultPosition?: { x: number; y: number };
 }) {
   const queryClient = useQueryClient();
-  const charPanelSuffix = character?.id ? '-' + character.id : '';
+  const charPanelSuffix = externalPanelSuffix ?? (character?.id ? '-' + character.id : '');
   const { data: items = [] } = useQuery({
     queryKey: ['items', character.id],
     queryFn: () => api.getItems(character.id),
@@ -17280,6 +17282,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
       bringToFront={bringToFront}
       floatingZIndices={floatingZIndices}
       charPanelSuffix={charPanelSuffix}
+      defaultPosition={defaultPosition}
       onSpellCast={liveItem?.itemType === 'scroll' ? () => {
         const qty = liveItem.quantity ?? 1;
         if (qty > 1) {
