@@ -3129,8 +3129,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   V2 (and V1): HP/Energy/Mana horizontally stacked from the bottom,
                   honoring the per-character show*Bar visibility flags.
                   V3: HP horizontal at the bottom + combined Energy/Mana split bar above it.
-                  The split bar has energy on the left half (fills right-to-left from center)
-                  and mana on the right half (fills left-to-right from center).
+                  The split bar has energy on the left half (anchored at the left edge,
+                  filling toward the center) and mana on the right half (anchored at the
+                  right edge, filling toward the center) — full bars meet in the middle.
                   The V3 showBars toggle (per-player, local-only) can hide all bars.
 
                   ── PRESERVED ORIGINAL V3 SIDE-BAR LAYOUT (revert by replacing the V3 branch below) ──
@@ -3193,39 +3194,39 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                           style={{ bottom: showHp ? '10px' : '2px' }}
                           data-testid={`bar-combined-${token.id}`}
                         >
-                          {/* Left half: Energy — right-aligned so it fills from center leftward */}
-                          <div className="relative flex-1 h-full overflow-hidden flex justify-end">
+                          {/* Left half: Energy — left-aligned so it fills from the left edge toward the center (full = meets the middle) */}
+                          <div className="relative flex-1 h-full overflow-hidden flex justify-start">
                             {showEnergy && energyPercent !== null && (
                               <>
+                                <div
+                                  className="h-full bg-cyan-500 transition-all duration-700 ease-in-out"
+                                  style={{ width: `${clamp(energyPercent!)}%` }}
+                                />
                                 {tempEnergyPercent > 0 && (
                                   <div
                                     className="h-full bg-violet-400/90"
                                     style={{ width: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }}
                                   />
                                 )}
-                                <div
-                                  className="h-full bg-cyan-500 transition-all duration-700 ease-in-out"
-                                  style={{ width: `${clamp(energyPercent!)}%` }}
-                                />
                               </>
                             )}
                           </div>
                           {/* 1px center divider */}
                           <div className="w-px h-full bg-black/60 flex-shrink-0" />
-                          {/* Right half: Mana — left-aligned so it fills from center rightward */}
-                          <div className="relative flex-1 h-full overflow-hidden flex justify-start">
+                          {/* Right half: Mana — right-aligned so it fills from the right edge toward the center (full = meets the middle) */}
+                          <div className="relative flex-1 h-full overflow-hidden flex justify-end">
                             {showMana && manaPercent !== null && (
                               <>
-                                <div
-                                  className="h-full bg-fuchsia-500 transition-all duration-700 ease-in-out"
-                                  style={{ width: `${clamp(manaPercent!)}%` }}
-                                />
                                 {tempManaPercent > 0 && (
                                   <div
                                     className="h-full bg-fuchsia-200/90"
                                     style={{ width: `${Math.max(0, Math.min(100 - clamp(manaPercent!), tempManaPercent))}%` }}
                                   />
                                 )}
+                                <div
+                                  className="h-full bg-fuchsia-500 transition-all duration-700 ease-in-out"
+                                  style={{ width: `${clamp(manaPercent!)}%` }}
+                                />
                               </>
                             )}
                           </div>
