@@ -6744,7 +6744,7 @@ export default function Campaign() {
   const [rulerShape, setRulerShape] = useState<RulerShape>('cone');
   const [rulerDims, setRulerDims] = useState({
     coneLength: 15,
-    coneArc: 90,
+    coneArc: 15,
     lineLength: 30,
     lineWidth: 5,
     squareSide: 15,
@@ -7690,7 +7690,7 @@ export default function Campaign() {
     };
     if (shape === 'cone') {
       marker.length = rulerDims.coneLength > 0 ? rulerDims.coneLength : 15;
-      marker.arc = rulerDims.coneArc > 0 ? rulerDims.coneArc : 90;
+      marker.arc = rulerDims.coneArc > 0 ? rulerDims.coneArc : 15;
     } else if (shape === 'line') {
       marker.length = rulerDims.lineLength > 0 ? rulerDims.lineLength : 30;
       marker.width = rulerDims.lineWidth > 0 ? rulerDims.lineWidth : 5;
@@ -12610,11 +12610,11 @@ export default function Campaign() {
                      </label>
                      <label className="flex items-center gap-1 text-xs text-stone-300">
                        Arc
-                       <input type="number" min={0} max={360} step={15} value={rulerDims.coneArc}
+                       <input type="number" min={0} step={5} value={rulerDims.coneArc}
                          onChange={(e) => setRulerDims(d => ({ ...d, coneArc: Number(e.target.value) || 0 }))}
                          className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                          data-testid="ruler-input-cone-arc" />
-                       °
+                       ft
                      </label>
                    </>
                  )}

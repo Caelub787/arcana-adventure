@@ -343,7 +343,7 @@ export interface RulerMarker {
   // Dimensions in feet (per-shape)
   length?: number; // cone, line
   width?: number;  // line
-  arc?: number;    // cone (degrees)
+  arc?: number;    // cone (arc width in feet at the far edge)
   side?: number;   // square
   radius?: number; // circle
 }
@@ -712,25 +712,30 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
 
   if (marker.shape === 'cone') {
     const lengthFeet = marker.length ?? 15;
-    const arcDeg = marker.arc ?? 90;
+    const arcFeet = marker.arc ?? 15;
     const radiusPx = lengthFeet * pxPerFoot;
-    const half = (arcDeg / 2) * (Math.PI / 180);
-    const leftX = casterX + Math.cos(angleRad - half) * radiusPx;
-    const leftY = casterY + Math.sin(angleRad - half) * radiusPx;
-    const rightX = casterX + Math.cos(angleRad + half) * radiusPx;
-    const rightY = casterY + Math.sin(angleRad + half) * radiusPx;
+    // Derive half-angle from arc length at the far edge: angle = arcLength / radius (radians).
+    // Clamp to just below π so the arc path never wraps a full circle.
+    const halfRad = lengthFeet > 0
+      ? Math.min(arcFeet / (2 * lengthFeet), Math.PI * 0.9999)
+      : 0;
+    const leftX = casterX + Math.cos(angleRad - halfRad) * radiusPx;
+    const leftY = casterY + Math.sin(angleRad - halfRad) * radiusPx;
+    const rightX = casterX + Math.cos(angleRad + halfRad) * radiusPx;
+    const rightY = casterY + Math.sin(angleRad + halfRad) * radiusPx;
+    const largeArc = halfRad * 2 >= Math.PI ? 1 : 0;
     const labelX = casterX + normX * radiusPx * 0.6;
     const labelY = casterY + normY * radiusPx * 0.6;
     return (
       <g>
         <path
-          d={`M ${casterX} ${casterY} L ${leftX} ${leftY} A ${radiusPx} ${radiusPx} 0 0 1 ${rightX} ${rightY} Z`}
+          d={`M ${casterX} ${casterY} L ${leftX} ${leftY} A ${radiusPx} ${radiusPx} 0 ${largeArc} 1 ${rightX} ${rightY} Z`}
           fill={fill}
           stroke={stroke}
           strokeWidth={2}
           strokeDasharray={dash}
         />
-        <text x={labelX} y={labelY} textAnchor="middle" style={labelStyle}>{lengthFeet} ft</text>
+        <text x={labelX} y={labelY} textAnchor="middle" style={labelStyle}>{lengthFeet} ft / {arcFeet} ft wide</text>
       </g>
     );
   }
