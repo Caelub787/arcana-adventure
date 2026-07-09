@@ -14,6 +14,11 @@ interface Props {
   onResize: (next: number) => void;
   /** Hidden below this breakpoint (matches the sidebar's reveal point). */
   hideBelow: "md" | "lg";
+  /**
+   * When true, the handle ignores pointer events entirely (e.g. while a
+   * menu/popover overlaps the sidebar edge and must win hit-testing).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -30,6 +35,7 @@ export function SidebarResizeHandle({
   max,
   onResize,
   hideBelow,
+  disabled = false,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const startRef = useRef<{ x: number; w: number } | null>(null);
@@ -90,6 +96,7 @@ export function SidebarResizeHandle({
         "absolute top-0 bottom-0 z-50 w-1.5 cursor-col-resize group select-none touch-none",
         hideBelow === "md" ? "hidden md:block" : "hidden lg:block",
         edge === "right" ? "-right-0.5" : "-left-0.5",
+        disabled && "pointer-events-none",
       )}
     >
       <div
