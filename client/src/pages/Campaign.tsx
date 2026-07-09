@@ -12552,6 +12552,7 @@ export default function Campaign() {
                notesPanelWidth={effectivePanelWidth}
                rulerShape={rulerShape}
                onRulerShapeChange={setRulerShape}
+               campaignSystem={(campaign as any)?.system}
              />
            )}
            

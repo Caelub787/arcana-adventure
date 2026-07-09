@@ -9067,6 +9067,7 @@ interface SelectionModeButtonsProps {
   notesPanelWidth?: number;
   rulerShape?: RulerShape;
   onRulerShapeChange?: (shape: RulerShape) => void;
+  campaignSystem?: string;
 }
 
 const SelectionModeButtonsInner = function SelectionModeButtons({ 
@@ -9076,7 +9077,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   notesPanelOpen = false,
   notesPanelWidth = 0,
   rulerShape = 'cone',
-  onRulerShapeChange
+  onRulerShapeChange,
+  campaignSystem
 }: SelectionModeButtonsProps) {
   
   const getColorClasses = (color: string, isActive: boolean) => {
@@ -9122,7 +9124,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
           </Tooltip>
         </TooltipProvider>
         
-        {character && (
+        {character && campaignSystem !== 'aa-v3' && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
