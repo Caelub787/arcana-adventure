@@ -46,6 +46,7 @@ import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expr
 import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
+import { itemPanelKey, openItemPanel, closeItemPanel, itemPanelStaggerPosition } from "@/lib/detachedPanels";
 import EmbeddedWorldBuilder from "@/canvasrealms/EmbeddedWorldBuilder";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2, Layout as LayoutIcon } from "lucide-react";
 
@@ -6707,18 +6708,12 @@ export default function Campaign() {
   const [detachedSpellbookPanels, setDetachedSpellbookPanels] = useState<any[]>([]);
 
   const openDetachedItemDetail = (character: any, item: any) => {
-    const panelKey = `item-detail-${character.id}-${item.id}`;
-    setDetachedItemPanels(prev => {
-      if (prev.some(p => p.panelKey === panelKey)) {
-        bringToFront(panelKey);
-        return prev;
-      }
-      return [...prev, { character, item, panelKey, offsetIndex: prev.length }];
-    });
+    const panelKey = itemPanelKey(character.id, item.id);
+    setDetachedItemPanels(prev => openItemPanel(prev, character, item));
     bringToFront(panelKey);
   };
   const closeDetachedItemDetail = (panelKey: string) => {
-    setDetachedItemPanels(prev => prev.filter(p => p.panelKey !== panelKey));
+    setDetachedItemPanels(prev => closeItemPanel(prev, panelKey));
   };
   const openDetachedSpellbook = (character: any, item: any) => {
     const panelKey = `spellbook-${character.id}-${item.id}`;
@@ -12873,10 +12868,7 @@ export default function Campaign() {
           character={p.character}
           item={p.item}
           panelSuffix={`-${p.character.id}-${p.item.id}`}
-          defaultPosition={p.offsetIndex > 0 ? {
-            x: Math.max(20, Math.floor((window.innerWidth - 720) / 2) + p.offsetIndex * 30),
-            y: Math.max(20, Math.floor((window.innerHeight - Math.min(880, window.innerHeight - 40)) / 2) + p.offsetIndex * 30),
-          } : undefined}
+          defaultPosition={itemPanelStaggerPosition(p.offsetIndex, window.innerWidth, window.innerHeight)}
           isGM={role === 'gm'}
           isOwner={
             p.character.userId === user?.id ||

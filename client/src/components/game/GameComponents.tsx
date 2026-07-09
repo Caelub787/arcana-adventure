@@ -10,6 +10,7 @@ import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
+import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17167,7 +17168,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       await queryClient.cancelQueries({ queryKey: ['items', character.id] });
       const previousItems = queryClient.getQueryData(['items', character.id]);
       queryClient.setQueryData(['items', character.id], (old: any[] = []) =>
-        old.map((it: any) => it.id === id ? { ...it, ...data } : it)
+        applyOptimisticItemUpdate(old, id, data)
       );
       return { previousItems };
     },
@@ -17187,17 +17188,9 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
     onMutate: async (deletedId: string) => {
       await queryClient.cancelQueries({ queryKey: ['items', character.id] });
       const previousItems = queryClient.getQueryData(['items', character.id]);
-      queryClient.setQueryData(['items', character.id], (old: any[]) => {
-        if (!old) return [];
-        const idsToRemove = new Set<string>([deletedId]);
-        const findChildren = (parentId: string) => {
-          old.forEach((it: any) => {
-            if (it.containerId === parentId) { idsToRemove.add(it.id); findChildren(it.id); }
-          });
-        };
-        findChildren(deletedId);
-        return old.filter((it: any) => !idsToRemove.has(it.id));
-      });
+      queryClient.setQueryData(['items', character.id], (old: any[]) =>
+        applyOptimisticItemDelete(old, deletedId)
+      );
       return { previousItems };
     },
     onError: (_e, _id, context) => {
@@ -17209,7 +17202,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
     },
   });
 
-  const liveItem = item ? { ...item, ...(items?.find((it: any) => it.id === item.id) || {}) } : item;
+  const liveItem = resolveLivePanelItem(item, items);
 
   return (
     <ItemDetailDialog
