@@ -442,3 +442,77 @@ export function v3HasEquippedAmmo(
       (it.quantity ?? 1) > 0,
   );
 }
+
+// --- V3 Durability-adjusted item value ---
+//
+// In AA V3, an item's effective sale/display value scales with its durability.
+// Each point of durability (baseline 10) represents 10% of the original value.
+// effectiveCopper = floor(originalCopper × min(durability, 10) / 10)
+//
+// Items without a durability value (null/undefined) are unaffected — their
+// original price is returned as-is (isDiscounted=false, adjustedCopper equals
+// the original copper value).
+//
+// Currency rates: 1 platinum = 10 gold = 100 silver = 1000 copper.
+
+const V3_CURRENCY_TO_COPPER: Record<string, number> = {
+  copper: 1,
+  silver: 10,
+  gold: 100,
+  platinum: 1000,
+};
+
+export interface V3AdjustedValue {
+  originalCopper: number;
+  adjustedCopper: number;
+  platinum: number;
+  gold: number;
+  silver: number;
+  copper: number;
+  isDiscounted: boolean;
+}
+
+export function v3DurabilityAdjustedValue(
+  price: number | null | undefined,
+  currency: string | null | undefined,
+  durability: number | null | undefined,
+): V3AdjustedValue {
+  const rate = V3_CURRENCY_TO_COPPER[(currency || "copper").toLowerCase()] ?? 1;
+  const originalCopper = (price || 0) * rate;
+
+  let adjustedCopper: number;
+  if (durability === null || durability === undefined) {
+    adjustedCopper = originalCopper;
+  } else {
+    adjustedCopper = Math.floor(originalCopper * Math.min(durability, 10) / 10);
+  }
+
+  const isDiscounted = adjustedCopper < originalCopper;
+
+  let remaining = adjustedCopper;
+  const p = Math.floor(remaining / 1000); remaining -= p * 1000;
+  const g = Math.floor(remaining / 100); remaining -= g * 100;
+  const s = Math.floor(remaining / 10); remaining -= s * 10;
+  const c = remaining;
+
+  return { originalCopper, adjustedCopper, platinum: p, gold: g, silver: s, copper: c, isDiscounted };
+}
+
+/** Format a V3AdjustedValue as a short compact string like "3g 2s 5c". */
+export function formatV3AdjustedValue(v: V3AdjustedValue): string {
+  if (v.adjustedCopper === 0) return "0c";
+  const parts: string[] = [];
+  if (v.platinum > 0) parts.push(`${v.platinum}p`);
+  if (v.gold > 0) parts.push(`${v.gold}g`);
+  if (v.silver > 0) parts.push(`${v.silver}s`);
+  if (v.copper > 0) parts.push(`${v.copper}c`);
+  return parts.join(" ");
+}
+
+/** Format the ORIGINAL price as a short string for "was X" display. */
+export function formatV3OriginalValue(price: number | null | undefined, currency: string | null | undefined): string {
+  const p = price || 0;
+  const curr = (currency || "copper").toLowerCase();
+  const suffix = curr === "platinum" ? "p" : curr === "gold" ? "g" : curr === "silver" ? "s" : "c";
+  return `${p}${suffix}`;
+}

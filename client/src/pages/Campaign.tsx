@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { V3_ATTRIBUTES } from "@shared/v3";
+import { V3_ATTRIBUTES, v3DurabilityAdjustedValue } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
 import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
@@ -11897,15 +11897,26 @@ export default function Campaign() {
                     return (
                       <div className="space-y-2">
                         {sellableItems.map((item: any) => {
-                          const itemPriceCopper = getPriceInCopper(item.price || 0, item.currency || 'copper');
+                          const isV3Campaign = campaign?.system === 'aa-v3';
+                          const rawPriceCopper = getPriceInCopper(item.price || 0, item.currency || 'copper');
+                          const durabilityAdj = isV3Campaign
+                            ? v3DurabilityAdjustedValue(item.price || 0, item.currency || 'copper', item.durability)
+                            : null;
+                          const itemPriceCopper = (isV3Campaign && durabilityAdj) ? durabilityAdj.adjustedCopper : rawPriceCopper;
                           const sellValueCopper = Math.floor(itemPriceCopper * (sellPercentage / 100));
                           const sellDisplay = convertCopperToDisplay(sellValueCopper);
+                          const isDurabilityDiscounted = !!(durabilityAdj?.isDiscounted);
                           return (
                             <div key={item.id} className="p-3 bg-stone-800 rounded border border-stone-700" data-testid={`shop-sell-item-${item.id}`}>
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-stone-200 font-medium">{item.name}</p>
-                                  <p className="text-xs text-stone-500">Base: {getCurrencySymbol(item.currency || 'copper')} {item.price || 0} {item.currency || 'copper'}</p>
+                                  <p className="text-xs text-stone-500">
+                                    Base: {getCurrencySymbol(item.currency || 'copper')} {item.price || 0} {item.currency || 'copper'}
+                                    {isDurabilityDiscounted && (
+                                      <span className="text-amber-500 ml-1">(effective: {convertCopperToDisplay(itemPriceCopper)})</span>
+                                    )}
+                                  </p>
                                   <p className="text-xs text-green-400 mt-0.5">Sell for: {sellDisplay}</p>
                                 </div>
                                 <Button

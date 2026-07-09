@@ -19090,7 +19090,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const currencyToCopper: Record<string, number> = { platinum: 1000, gold: 100, silver: 10, copper: 1 };
-      const itemValueCopper = item.price * (currencyToCopper[item.currency] || 1);
+      const rawItemValueCopper = item.price * (currencyToCopper[item.currency] || 1);
+      // AA V3: effective value scales with durability (each point = 10% of base value,
+      // baseline 10). Items without durability (null/undefined) are unaffected.
+      let itemValueCopper = rawItemValueCopper;
+      if (campaign.system === 'aa-v3' && item.durability !== null && item.durability !== undefined) {
+        itemValueCopper = Math.floor(rawItemValueCopper * Math.min(item.durability, 10) / 10);
+      }
       const sellValueCopper = Math.floor(itemValueCopper * (sellPercentage / 100));
 
       if (item.quantity > 1) {

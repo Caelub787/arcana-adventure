@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
-import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
+import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -15373,16 +15373,37 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                   </div>
                   <span className="text-[10px]">{item.durability}/{item.maxDurability ?? 10}</span>
                 </div>
-                {item.price > 0 && (
-                  <span className={
-                    item.currency === 'platinum' ? 'text-purple-400' :
-                    item.currency === 'gold' ? 'text-yellow-500' :
-                    item.currency === 'silver' ? 'text-gray-400' :
-                    'text-orange-600'
-                  }>
-                    {item.price}{item.currency === 'platinum' ? 'p' : item.currency === 'gold' ? 'g' : item.currency === 'silver' ? 's' : 'c'}
-                  </span>
-                )}
+                {item.price > 0 && (() => {
+                  if (isAAV3) {
+                    const adj = v3DurabilityAdjustedValue(item.price, item.currency, item.durability);
+                    const adjStr = formatV3AdjustedValue(adj);
+                    const origStr = formatV3OriginalValue(item.price, item.currency);
+                    return adj.isDiscounted ? (
+                      <span className="text-amber-400 font-medium" title={`Base: ${origStr}`}>
+                        {adjStr} <span className="line-through text-stone-500 text-[10px]">{origStr}</span>
+                      </span>
+                    ) : (
+                      <span className={
+                        item.currency === 'platinum' ? 'text-purple-400' :
+                        item.currency === 'gold' ? 'text-yellow-500' :
+                        item.currency === 'silver' ? 'text-gray-400' :
+                        'text-orange-600'
+                      }>
+                        {adjStr}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className={
+                      item.currency === 'platinum' ? 'text-purple-400' :
+                      item.currency === 'gold' ? 'text-yellow-500' :
+                      item.currency === 'silver' ? 'text-gray-400' :
+                      'text-orange-600'
+                    }>
+                      {item.price}{item.currency === 'platinum' ? 'p' : item.currency === 'gold' ? 'g' : item.currency === 'silver' ? 's' : 'c'}
+                    </span>
+                  );
+                })()}
               </div>
               {/* AA V3 only: rune indicators for items with socketed runes */}
               {isAAV3 && Array.isArray(item.socketedRunes) && item.socketedRunes.length > 0 && (
@@ -28972,7 +28993,25 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                           </Select>
                         </div>
                       ) : (
-                        <p className="text-stone-200 text-sm">{currentData.price || 0} <span className={`capitalize ${currentData.currency === 'platinum' ? 'text-cyan-400' : currentData.currency === 'gold' ? 'text-amber-400' : currentData.currency === 'silver' ? 'text-stone-300' : 'text-orange-400'}`}>{currentData.currency || 'copper'}</span></p>
+                        (() => {
+                          if (isAAV3) {
+                            const adj = v3DurabilityAdjustedValue(currentData.price, currentData.currency, currentData.durability);
+                            if (adj.isDiscounted) {
+                              const adjStr = formatV3AdjustedValue(adj);
+                              const origStr = formatV3OriginalValue(currentData.price, currentData.currency);
+                              return (
+                                <p className="text-stone-200 text-sm">
+                                  <span className="text-amber-400 font-medium">{adjStr}</span>{' '}
+                                  <span className="line-through text-stone-500 text-xs">{origStr}</span>
+                                  <span className="text-stone-500 text-xs ml-1">(durability)</span>
+                                </p>
+                              );
+                            }
+                          }
+                          return (
+                            <p className="text-stone-200 text-sm">{currentData.price || 0} <span className={`capitalize ${currentData.currency === 'platinum' ? 'text-cyan-400' : currentData.currency === 'gold' ? 'text-amber-400' : currentData.currency === 'silver' ? 'text-stone-300' : 'text-orange-400'}`}>{currentData.currency || 'copper'}</span></p>
+                          );
+                        })()
                       )}
                     </div>
                     {currentData.itemType === 'armor' && (
@@ -29610,6 +29649,20 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   )}
                 </div>
               </div>
+              {/* AA V3: durability-adjusted effective value */}
+              {isAAV3 && !isEditing && (() => {
+                const adj = v3DurabilityAdjustedValue(currentData.price, currentData.currency, currentData.durability);
+                if (!adj.isDiscounted) return null;
+                const adjStr = formatV3AdjustedValue(adj);
+                const origStr = formatV3OriginalValue(currentData.price, currentData.currency);
+                return (
+                  <p className="text-xs text-amber-400 mt-1" data-testid="text-durability-value">
+                    Effective value: <span className="font-medium">{adjStr}</span>{' '}
+                    <span className="line-through text-stone-500">{origStr}</span>
+                    <span className="text-stone-500 ml-1">(reduced by durability)</span>
+                  </p>
+                );
+              })()}
             </div>}
 
             {(isOwner || isGM) && !currentData.isContainer && !isEditing && !isAAV3 && (
