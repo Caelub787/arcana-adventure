@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy, RotateCcw, Folder as FolderIcon, Layers } from "lucide-react";
@@ -633,15 +634,11 @@ function RollForm({
         </div>
         <div>
           <Label className="text-xs text-stone-400">Priority</Label>
-          <Input
+          <NumberInput
             className="bg-stone-900 border-stone-600 h-7 text-xs"
-            type="number"
             value={form.priority ?? 1}
-            onChange={(e) => {
-              const raw = e.target.value;
-              const parsed = parseInt(raw, 10);
-              setForm((f) => ({ ...f, priority: Number.isFinite(parsed) ? parsed : 1 }));
-            }}
+            onChange={(v) => setForm((f) => ({ ...f, priority: v ?? 1 }))}
+            fallback={1}
             placeholder="1"
             data-testid={`input-${prefix}-priority`}
           />
@@ -673,11 +670,10 @@ function RollForm({
         </div>
         <div>
           <Label className="text-xs text-stone-400">Mod</Label>
-          <Input
+          <NumberInput
             className="bg-stone-900 border-stone-600 h-7 text-xs"
-            type="number"
             value={form.mod ?? 0}
-            onChange={(e) => setForm((f) => ({ ...f, mod: parseInt(e.target.value) || 0 }))}
+            onChange={(v) => setForm((f) => ({ ...f, mod: v ?? 0 }))}
             data-testid={`input-${prefix}-mod`}
           />
         </div>
@@ -747,11 +743,11 @@ function RollForm({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label className="text-xs text-stone-400">Range (ft)</Label>
-            <Input
+            <NumberInput
               className="bg-stone-900 border-stone-600 h-7 text-xs"
-              type="number"
-              value={form.range ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, range: e.target.value ? parseInt(e.target.value) : undefined }))}
+              value={form.range ?? undefined}
+              onChange={(v) => setForm((f) => ({ ...f, range: v }))}
+              optional
               placeholder="—"
               data-testid={`input-${prefix}-range`}
             />
@@ -782,11 +778,11 @@ function RollForm({
             </div>
             <div>
               <Label className="text-xs text-stone-400">AOE Range (ft)</Label>
-              <Input
+              <NumberInput
                 className="bg-stone-900 border-stone-600 h-7 text-xs"
-                type="number"
-                value={form.aoeRange ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, aoeRange: e.target.value ? parseInt(e.target.value) : undefined }))}
+                value={form.aoeRange ?? undefined}
+                onChange={(v) => setForm((f) => ({ ...f, aoeRange: v }))}
+                optional
                 data-testid={`input-${prefix}-aoeRange`}
               />
             </div>
@@ -844,11 +840,11 @@ function RollForm({
               {(form.saveDcType === "value" || !form.saveDcType) && (
                 <div>
                   <Label className="text-xs text-stone-400">Save DC</Label>
-                  <Input
+                  <NumberInput
                     className="bg-stone-900 border-stone-600 h-7 text-xs"
-                    type="number"
-                    value={form.saveDc ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, saveDc: e.target.value ? parseInt(e.target.value) : undefined }))}
+                    value={form.saveDc ?? undefined}
+                    onChange={(v) => setForm((f) => ({ ...f, saveDc: v }))}
+                    optional
                     data-testid={`input-${prefix}-saveDc`}
                   />
                 </div>
@@ -905,11 +901,11 @@ function RollForm({
         {form.requiresEnergy && (
           <div className="mt-2">
             <Label className="text-xs text-stone-400">Energy Cost</Label>
-            <Input
+            <NumberInput
               className="bg-stone-900 border-stone-600 h-7 text-xs"
-              type="number"
-              value={form.energyCost ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, energyCost: e.target.value ? parseInt(e.target.value) : undefined }))}
+              value={form.energyCost ?? undefined}
+              onChange={(v) => setForm((f) => ({ ...f, energyCost: v }))}
+              optional
               placeholder="Energy cost"
               data-testid={`input-${prefix}-energyCost`}
             />
@@ -928,11 +924,11 @@ function RollForm({
           {form.requiresMana && (
             <div className="mt-2">
               <Label className="text-xs text-violet-400">Mana Cost</Label>
-              <Input
+              <NumberInput
                 className="bg-stone-900 border-violet-700 h-7 text-xs"
-                type="number"
-                value={form.manaCost ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, manaCost: e.target.value ? parseInt(e.target.value) : undefined }))}
+                value={form.manaCost ?? undefined}
+                onChange={(v) => setForm((f) => ({ ...f, manaCost: v }))}
+                optional
                 placeholder="Mana cost"
                 data-testid={`input-${prefix}-manaCost`}
               />
@@ -1090,11 +1086,11 @@ function RollForm({
               {(form.dcToSucceedType === "value" || !form.dcToSucceedType) && (
                 <div>
                   <Label className="text-xs text-stone-400">DC Value</Label>
-                  <Input
+                  <NumberInput
                     className="bg-stone-900 border-stone-600 h-7 text-xs"
-                    type="number"
-                    value={form.dcToSucceed ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, dcToSucceed: e.target.value ? parseInt(e.target.value) : undefined }))}
+                    value={form.dcToSucceed ?? undefined}
+                    onChange={(v) => setForm((f) => ({ ...f, dcToSucceed: v }))}
+                    optional
                     placeholder="e.g. 15"
                     data-testid={`input-${prefix}-dcToSucceed`}
                   />

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -518,7 +519,7 @@ function CreateSpellTemplateDialog({ open, onOpenChange, onSave, isPending, camp
             </div>
             <div>
               <Label className="text-xs">Energy Cost</Label>
-              <Input type="number" value={energyCost} onChange={(e) => setEnergyCost(Number(e.target.value) || 0)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
+              <NumberInput value={energyCost} onChange={(v) => setEnergyCost(v ?? 0)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
           </div>
           <div>
@@ -588,7 +589,7 @@ function EditSpellTemplateDialog({ open, onOpenChange, spell, onSave, isPending,
             </div>
             <div>
               <Label className="text-xs">Energy Cost</Label>
-              <Input type="number" value={energyCost} onChange={(e) => setEnergyCost(Number(e.target.value) || 0)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
+              <NumberInput value={energyCost} onChange={(v) => setEnergyCost(v ?? 0)} className="bg-stone-800 border-stone-700 h-8 text-xs" />
             </div>
           </div>
         </div>

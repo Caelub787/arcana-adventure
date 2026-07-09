@@ -18,6 +18,7 @@ import {
   Button, Input, Textarea, Label, Checkbox, Select, SelectItem,
   Stack, Row, Grid2, Grid3, Section, Panel,
 } from "../ui/primitives";
+import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
 import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRecipesEditor";
@@ -486,16 +487,16 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
           <Section title="Economy & inventory">
             <Grid3>
               <div><Label>Quantity</Label>
-                <Input type="number" value={draft.quantity ?? 1} onChange={e => set({ quantity: optionalNum(e.target.value) ?? 1 })} />
+                <NumberInput value={draft.quantity ?? 1} fallback={1} onChange={(v) => set({ quantity: v ?? 1 })} />
               </div>
               <div><Label>Weight (lb)</Label>
-                <Input type="number" step="0.1" value={draft.itemWeight ?? 0} onChange={e => set({ itemWeight: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput integer={false} value={draft.itemWeight ?? 0} onChange={(v) => set({ itemWeight: v ?? 0 })} />
               </div>
               <div><Label>Durability (0–10)</Label>
-                <Input type="number" min={0} max={10} value={draft.durability ?? 10} onChange={e => set({ durability: optionalNum(e.target.value) ?? 10 })} />
+                <NumberInput min={0} max={10} value={draft.durability ?? 10} fallback={10} onChange={(v) => set({ durability: v ?? 10 })} />
               </div>
               <div><Label>Price</Label>
-                <Input type="number" value={draft.price ?? 0} onChange={e => set({ price: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={draft.price ?? 0} onChange={(v) => set({ price: v ?? 0 })} />
               </div>
               <div><Label>Currency</Label>
                 <Select value={draft.currency ?? "copper"} onValueChange={v => set({ currency: v })}>
@@ -505,7 +506,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               <Row><Checkbox checked={!!draft.isContainer} onCheckedChange={v => set({ isContainer: v })} /><Label>Is container</Label></Row>
               {draft.isContainer && (
                 <div><Label>Carry capacity</Label>
-                  <Input type="number" value={draft.carryCapacity ?? 0} onChange={e => set({ carryCapacity: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={draft.carryCapacity ?? 0} onChange={(v) => set({ carryCapacity: v ?? 0 })} />
                 </div>
               )}
             </Grid3>
@@ -528,11 +529,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               </div>
               <div style={{ marginTop: 12 }}>
                 <Label>Durability restored per repair</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={draft.repairAmount ?? 0}
-                  onChange={e => set({ repairAmount: Math.max(0, optionalNum(e.target.value) ?? 0) })}
+                <NumberInput
+                  min={0} value={draft.repairAmount ?? 0}
+                  onChange={(v) => set({ repairAmount: v ?? 0 })}
                   data-testid="input-repair-amount"
                 />
                 <p style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
@@ -548,13 +547,11 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   {(draft.repairIngredients ?? []).map((ing, idx) => (
                     <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }} data-testid={`repair-ingredient-${idx}`}>
                       <span style={{ flex: 1, fontSize: 13, color: "#e7e5e4" }}>{ing.itemName || "Unnamed item"}</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={ing.quantity}
-                        onChange={e => {
+                      <NumberInput
+                        min={1} value={ing.quantity} fallback={1}
+                        onChange={(v) => {
                           const next = [...(draft.repairIngredients ?? [])];
-                          next[idx] = { ...next[idx], quantity: Math.max(1, optionalNum(e.target.value) ?? 1) };
+                          next[idx] = { ...next[idx], quantity: v ?? 1 };
                           set({ repairIngredients: next });
                         }}
                         style={{ width: 70 }}
@@ -658,10 +655,10 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   </Select>
                 </div>
                 <div><Label>Mod</Label>
-                  <Input type="number" value={draft.mod ?? 0} onChange={e => set({ mod: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={draft.mod ?? 0} onChange={(v) => set({ mod: v ?? 0 })} />
                 </div>
                 <div><Label>Range (ft)</Label>
-                  <Input type="number" value={draft.range ?? ""} onChange={e => set({ range: optionalNum(e.target.value) ?? null })} />
+                  <NumberInput optional value={draft.range ?? undefined} onChange={(v) => set({ range: v ?? null })} />
                 </div>
                 <div><Label>AOE</Label>
                   <Select value={draft.aoe ?? ""} onValueChange={v => set({ aoe: v || null })}>
@@ -689,8 +686,8 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       onChange={e => set({ weaponCategory: e.target.value || null })} />
                   </div>
                   <div><Label>Break chance %</Label>
-                    <Input type="number" min={0} max={100} value={draft.breakChance ?? 10}
-                      onChange={e => set({ breakChance: optionalNum(e.target.value) ?? 10 })} />
+                    <NumberInput min={0} max={100} value={draft.breakChance ?? 10} fallback={10}
+                      onChange={(v) => set({ breakChance: v ?? 10 })} />
                   </div>
                 </Grid3>
               )}
@@ -767,10 +764,10 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   </Select>
                 </div>
                 {!aav3 && <div><Label>Armor Bonus</Label>
-                  <Input type="number" value={draft.armorBonus ?? 0} onChange={e => set({ armorBonus: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={draft.armorBonus ?? 0} onChange={(v) => set({ armorBonus: v ?? 0 })} />
                 </div>}
                 {!aav3 && <div><Label>Damage Reduction</Label>
-                  <Input type="number" value={draft.damageReduction ?? 0} onChange={e => set({ damageReduction: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={draft.damageReduction ?? 0} onChange={(v) => set({ damageReduction: v ?? 0 })} />
                 </div>}
                 {!aav3 && <div><Label>Reduction Type</Label>
                   <Select value={draft.damageReductionType ?? ""} onValueChange={v => set({ damageReductionType: v || null })}>
@@ -781,7 +778,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 {!aav3 && <Row><Checkbox checked={!!draft.grantsDcBonus} onCheckedChange={v => set({ grantsDcBonus: v })} /><Label>Grants DC bonus</Label></Row>}
                 {!aav3 && draft.grantsDcBonus && (
                   <div><Label>DC bonus value</Label>
-                    <Input type="number" value={draft.dcBonusValue ?? 0} onChange={e => set({ dcBonusValue: optionalNum(e.target.value) ?? 0 })} />
+                    <NumberInput value={draft.dcBonusValue ?? 0} onChange={(v) => set({ dcBonusValue: v ?? 0 })} />
                   </div>
                 )}
               </Grid3>
@@ -800,7 +797,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                           </Select>
                         </div>
                         <div style={{ width: 90 }}>
-                          <Input type="number" value={row.amount ?? 1} onChange={e => set({ v3ArmorBoosts: rows.map((r, i) => i === idx ? { ...r, amount: optionalNum(e.target.value) ?? 0 } : r) })} />
+                          <NumberInput value={row.amount ?? 1} fallback={1} onChange={(v) => set({ v3ArmorBoosts: rows.map((r, i) => i === idx ? { ...r, amount: v ?? 0 } : r) })} />
                         </div>
                         <Button size="sm" variant="ghost" onClick={() => set({ v3ArmorBoosts: rows.filter((_, i) => i !== idx) })}>✕</Button>
                       </Row>
@@ -818,7 +815,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             <Section title="Consumable">
               <Grid3>
                 <div><Label>Ration servings</Label>
-                  <Input type="number" value={draft.rationServings ?? 0} onChange={e => set({ rationServings: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={draft.rationServings ?? 0} onChange={(v) => set({ rationServings: v ?? 0 })} />
                 </div>
                 <Row><Checkbox checked={!!draft.isDamaging} onCheckedChange={v => set({ isDamaging: v })} /><Label>Damaging (rollable)</Label></Row>
                 <Row><Checkbox checked={!!draft.isDetonatable} onCheckedChange={v => set({ isDetonatable: v })} /><Label>Detonatable</Label></Row>
@@ -831,7 +828,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                     </Select>
                   </div>
                   <div><Label>Detonate AOE Range</Label>
-                    <Input type="number" value={draft.detonateAoeRange ?? 15} onChange={e => set({ detonateAoeRange: optionalNum(e.target.value) ?? 15 })} />
+                    <NumberInput value={draft.detonateAoeRange ?? 15} fallback={15} onChange={(v) => set({ detonateAoeRange: v ?? 15 })} />
                   </div>
                 </Grid2>
               )}
@@ -841,13 +838,13 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                   <div style={{ fontSize: 12, opacity: 0.7 }}>When a player uses this consumable, apply these to their character. Positive numbers add, negative subtract. Leave at 0 for none.</div>
                   <Grid3>
                     <div><Label>HP change</Label>
-                      <Input type="number" value={draft.consumableHpChange ?? 0} onChange={e => set({ consumableHpChange: optionalNum(e.target.value) ?? 0 })} />
+                      <NumberInput value={draft.consumableHpChange ?? 0} onChange={(v) => set({ consumableHpChange: v ?? 0 })} />
                     </div>
                     <div><Label>Mana change</Label>
-                      <Input type="number" value={draft.consumableManaChange ?? 0} onChange={e => set({ consumableManaChange: optionalNum(e.target.value) ?? 0 })} />
+                      <NumberInput value={draft.consumableManaChange ?? 0} onChange={(v) => set({ consumableManaChange: v ?? 0 })} />
                     </div>
                     <div><Label>Energy change</Label>
-                      <Input type="number" value={draft.consumableEnergyChange ?? 0} onChange={e => set({ consumableEnergyChange: optionalNum(e.target.value) ?? 0 })} />
+                      <NumberInput value={draft.consumableEnergyChange ?? 0} onChange={(v) => set({ consumableEnergyChange: v ?? 0 })} />
                     </div>
                   </Grid3>
                   <div><Label>Effect description</Label>
@@ -895,10 +892,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       </Select>
                     </div>
                     <div><Label>Value</Label>
-                      <Input
-                        type="number"
+                      <NumberInput
                         value={draft.scrollKnowledgeValue ?? 0}
-                        onChange={e => set({ scrollKnowledgeValue: optionalNum(e.target.value) ?? 0 })}
+                        onChange={(v) => set({ scrollKnowledgeValue: v ?? 0 })}
                         data-testid="input-scroll-knowledge-value"
                       />
                     </div>
@@ -919,10 +915,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       </Select>
                     </div>
                     <div><Label>Amount (raises modifier + cap)</Label>
-                      <Input
-                        type="number"
-                        value={draft.scrollSkillAmount ?? 1}
-                        onChange={e => set({ scrollSkillAmount: optionalNum(e.target.value) ?? 1 })}
+                      <NumberInput
+                        value={draft.scrollSkillAmount ?? 1} fallback={1}
+                        onChange={(v) => set({ scrollSkillAmount: v ?? 1 })}
                         data-testid="input-scroll-skill-amount"
                       />
                     </div>
@@ -951,11 +946,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             <Section title="Spellbook">
               <Stack gap="sm">
                 <div><Label>Max spells (0 = unlimited)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={draft.maxSpells ?? 0}
-                    onChange={e => set({ maxSpells: optionalNum(e.target.value) ?? 0 })}
+                  <NumberInput
+                    min={0} value={draft.maxSpells ?? 0}
+                    onChange={(v) => set({ maxSpells: v ?? 0 })}
                     data-testid="input-spellbook-max-spells"
                   />
                 </div>
@@ -1009,12 +1002,11 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                           <SelectItem value="">—</SelectItem>
                           {V3_RUNE_STAT_TARGET_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                         </Select>
-                        <Input
-                          type="number"
+                        <NumberInput
                           value={eff.amount ?? 0}
-                          onChange={e => {
+                          onChange={(v) => {
                             const next = [...(draft.runeStatEffects ?? [])];
-                            next[i] = { ...next[i], amount: optionalNum(e.target.value) ?? 0 };
+                            next[i] = { ...next[i], amount: v ?? 0 };
                             set({ runeStatEffects: next });
                           }}
                           data-testid={`input-rune-stat-amount-${i}`}
@@ -1033,11 +1025,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
 
                 <Grid2>
                   <div><Label>Remove cost (max durability lost)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={draft.runeRemoveDurabilityCost ?? 1}
-                      onChange={e => set({ runeRemoveDurabilityCost: optionalNum(e.target.value) ?? 1 })}
+                    <NumberInput
+                      min={0} value={draft.runeRemoveDurabilityCost ?? 1} fallback={1}
+                      onChange={(v) => set({ runeRemoveDurabilityCost: v ?? 1 })}
                       data-testid="input-rune-remove-cost"
                     />
                   </div>
@@ -1069,10 +1059,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       </Select>
                     </div>
                     <div><Label>Adjustment (+/-)</Label>
-                      <Input
-                        type="number"
+                      <NumberInput
                         value={draft.runeSkillAdjustment ?? 0}
-                        onChange={e => set({ runeSkillAdjustment: optionalNum(e.target.value) ?? 0 })}
+                        onChange={(v) => set({ runeSkillAdjustment: v ?? 0 })}
                         data-testid="input-rune-skill-adjustment"
                       />
                     </div>
@@ -1080,11 +1069,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 )}
                 {(draft.runeTargetItemType ?? "any") === "weapon" && (
                   <div><Label>Weapon base-damage-level bonus (stacks, no extra mana)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={draft.runeWeaponDamageLevelBonus ?? 0}
-                      onChange={e => set({ runeWeaponDamageLevelBonus: optionalNum(e.target.value) ?? 0 })}
+                    <NumberInput
+                      min={0} value={draft.runeWeaponDamageLevelBonus ?? 0}
+                      onChange={(v) => set({ runeWeaponDamageLevelBonus: v ?? 0 })}
                       data-testid="input-rune-weapon-damage-level-bonus"
                     />
                   </div>

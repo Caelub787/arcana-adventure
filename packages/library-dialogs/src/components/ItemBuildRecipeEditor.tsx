@@ -14,6 +14,7 @@
  */
 import * as React from "react";
 import { Button, Input, Select, SelectItem, Stack, Row, Section } from "../ui/primitives";
+import { NumberInput } from "./NumberInput";
 import { optionalNum } from "../lib/utils";
 import type { HostAdapter } from "../types";
 
@@ -285,11 +286,9 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
 
       <div style={{ maxWidth: 200 }}>
         <span className="ld-label">Output quantity</span>
-        <Input
-          type="number"
-          min={1}
-          value={outputQuantity}
-          onChange={e => setOutputQuantity(Math.max(1, optionalNum(e.target.value) ?? 1))}
+        <NumberInput
+          min={1} value={outputQuantity} fallback={1}
+          onChange={(v) => setOutputQuantity(v ?? 1)}
           data-testid="input-build-output-quantity"
         />
       </div>
@@ -320,10 +319,10 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
                 {items.map(it => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
               </Select>
             )}
-            <Input style={{ width: 80 }} type="number" min={1} value={ing.quantity}
-              onChange={e => {
+            <NumberInput style={{ width: 80 }} min={1} value={ing.quantity} fallback={1}
+              onChange={(v) => {
                 const next = ingredients.slice();
-                next[ii] = { ...ing, quantity: Math.max(1, optionalNum(e.target.value) ?? 1) };
+                next[ii] = { ...ing, quantity: v ?? 1 };
                 setIngredients(next);
               }} />
             <Button size="sm" variant="danger" onClick={() => setIngredients(ingredients.filter((_, i) => i !== ii))} data-testid={`button-remove-build-ingredient-${ii}`}>×</Button>

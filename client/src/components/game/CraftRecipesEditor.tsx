@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -675,7 +676,7 @@ function RecipeRow({
             </div>
             <div>
               <Label className="text-xs">Output Quantity</Label>
-              <Input type="number" min={1} value={draft.outputQuantity} onChange={(e) => setDraft({ ...draft, outputQuantity: Math.max(1, parseInt(e.target.value) || 1) })} className="bg-stone-800 border-stone-700 h-8" />
+              <NumberInput min={1} fallback={1} value={draft.outputQuantity} onChange={(v) => setDraft({ ...draft, outputQuantity: v ?? 1 })} className="bg-stone-800 border-stone-700 h-8" />
             </div>
             </>)}
             {!isV3 && (
@@ -730,12 +731,11 @@ function RecipeRow({
                   </div>
                   <div>
                     <Label className="text-xs">Durability restored (default)</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
                       className="bg-stone-800 border-stone-700 h-8 text-xs w-28"
                       value={draft.repairAmount ?? 1}
-                      onChange={(e) => setDraft({ ...draft, repairAmount: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                      onChange={(v) => setDraft({ ...draft, repairAmount: v ?? 0 })}
                       data-testid={`input-repair-amount-${recipe.id}`}
                     />
                   </div>
@@ -755,7 +755,7 @@ function RecipeRow({
               </div>
               <div>
                 <Label className="text-xs">Modifier</Label>
-                <Input type="number" value={draft.mod} onChange={(e) => setDraft({ ...draft, mod: parseInt(e.target.value) || 0 })} className="bg-stone-800 border-stone-700 h-8" />
+                <NumberInput value={draft.mod} onChange={(v) => setDraft({ ...draft, mod: v ?? 0 })} className="bg-stone-800 border-stone-700 h-8" />
               </div>
               <div>
                 <Label className="text-xs">Attribute</Label>
@@ -791,9 +791,9 @@ function RecipeRow({
                     next[idx] = { ...next[idx], itemId: id, itemName: name || next[idx].itemName };
                     setDraft({ ...draft, ingredients: next });
                   })}
-                  <Input type="number" min={1} value={ing.quantity} onChange={(e) => {
+                  <NumberInput min={1} fallback={1} value={ing.quantity} onChange={(v) => {
                     const next = [...draft.ingredients];
-                    next[idx] = { ...next[idx], quantity: Math.max(1, parseInt(e.target.value) || 1) };
+                    next[idx] = { ...next[idx], quantity: v ?? 1 };
                     setDraft({ ...draft, ingredients: next });
                   }} className="bg-stone-800 border-stone-700 h-8" />
                   <Button type="button" size="sm" variant="ghost" onClick={() => setDraft({ ...draft, ingredients: draft.ingredients.filter((_, i) => i !== idx) })} className="h-7 w-7 p-0 text-red-400">
@@ -839,17 +839,17 @@ function RecipeRow({
                       <>
                         <div>
                           <Label className="text-xs">Min Total</Label>
-                          <Input type="number" value={o.minTotal ?? ''} onChange={(e) => {
+                          <NumberInput optional value={o.minTotal ?? undefined} onChange={(v) => {
                             const next = [...draft.outcomes];
-                            next[idx] = { ...next[idx], minTotal: e.target.value === '' ? null : parseInt(e.target.value) };
+                            next[idx] = { ...next[idx], minTotal: v ?? null };
                             setDraft({ ...draft, outcomes: next });
                           }} className="bg-stone-800 border-stone-700 h-8" />
                         </div>
                         <div>
                           <Label className="text-xs">Max Total</Label>
-                          <Input type="number" value={o.maxTotal ?? ''} onChange={(e) => {
+                          <NumberInput optional value={o.maxTotal ?? undefined} onChange={(v) => {
                             const next = [...draft.outcomes];
-                            next[idx] = { ...next[idx], maxTotal: e.target.value === '' ? null : parseInt(e.target.value) };
+                            next[idx] = { ...next[idx], maxTotal: v ?? null };
                             setDraft({ ...draft, outcomes: next });
                           }} className="bg-stone-800 border-stone-700 h-8" />
                         </div>
@@ -885,17 +885,17 @@ function RecipeRow({
                     </div>
                     <div>
                       <Label className="text-xs">Override Qty</Label>
-                      <Input type="number" value={o.overrideOutputQuantity ?? ''} onChange={(e) => {
+                      <NumberInput optional value={o.overrideOutputQuantity ?? undefined} onChange={(v) => {
                         const next = [...draft.outcomes];
-                        next[idx] = { ...next[idx], overrideOutputQuantity: e.target.value === '' ? null : parseInt(e.target.value) };
+                        next[idx] = { ...next[idx], overrideOutputQuantity: v ?? null };
                         setDraft({ ...draft, outcomes: next });
                       }} className="bg-stone-800 border-stone-700 h-8" />
                     </div>
                     <div>
                       <Label className="text-xs">Override Durability</Label>
-                      <Input type="number" value={o.overrideDurability ?? ''} onChange={(e) => {
+                      <NumberInput optional value={o.overrideDurability ?? undefined} onChange={(v) => {
                         const next = [...draft.outcomes];
-                        next[idx] = { ...next[idx], overrideDurability: e.target.value === '' ? null : parseInt(e.target.value) };
+                        next[idx] = { ...next[idx], overrideDurability: v ?? null };
                         setDraft({ ...draft, outcomes: next });
                       }} className="bg-stone-800 border-stone-700 h-8" />
                     </div>
@@ -959,10 +959,9 @@ function RecipeRow({
                 </div>
                 <div>
                   <Label className="text-xs">Min Value</Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     value={draft.requiredSkillMinValue ?? 0}
-                    onChange={(e) => setDraft({ ...draft, requiredSkillMinValue: parseInt(e.target.value) || 0 })}
+                    onChange={(v) => setDraft({ ...draft, requiredSkillMinValue: v ?? 0 })}
                     className="bg-stone-800 border-stone-700 h-8"
                     data-testid="input-required-skill-min"
                   />
@@ -1003,12 +1002,11 @@ function RecipeRow({
                     <Label className="text-xs">{label}</Label>
                   </div>
                   <div />
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={0}
                     disabled={!(draft as any)[enabledKey]}
                     value={(draft as any)[valueKey] ?? 0}
-                    onChange={(e) => setDraft({ ...draft, [valueKey]: Math.max(0, parseInt(e.target.value) || 0) } as any)}
+                    onChange={(v) => setDraft({ ...draft, [valueKey]: v ?? 0 } as any)}
                     className="bg-stone-800 border-stone-700 h-8 disabled:opacity-50"
                     data-testid={`input-cost-${slug}`}
                   />

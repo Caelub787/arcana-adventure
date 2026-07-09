@@ -19,6 +19,7 @@ import * as React from "react";
 import {
   Input, Textarea, Label, Stack, Grid2, Grid3, Section,
 } from "../ui/primitives";
+import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import {
   FeatTreeCanvas, stripLocalIds,
@@ -187,19 +188,17 @@ export const FeatTreeDialog: React.FC<DialogProps<FeatTreeDraft>> = ({
               <Grid3>
                 <div>
                   <Label>Grid Width (cells)</Label>
-                  <Input
-                    type="number" min={1}
-                    value={draft.gridWidth}
-                    onChange={e => numChange("gridWidth", e.target.value, 7)}
+                  <NumberInput
+                    min={1} value={draft.gridWidth} fallback={7}
+                    onChange={(v) => set({ gridWidth: v ?? 7 })}
                     data-testid="input-feattree-grid-width"
                   />
                 </div>
                 <div>
                   <Label>Grid Height (cells)</Label>
-                  <Input
-                    type="number" min={1}
-                    value={draft.gridHeight}
-                    onChange={e => numChange("gridHeight", e.target.value, 10)}
+                  <NumberInput
+                    min={1} value={draft.gridHeight} fallback={10}
+                    onChange={(v) => set({ gridHeight: v ?? 10 })}
                     data-testid="input-feattree-grid-height"
                   />
                 </div>
@@ -216,19 +215,17 @@ export const FeatTreeDialog: React.FC<DialogProps<FeatTreeDraft>> = ({
               <Grid2>
                 <div>
                   <Label>Default View Center X</Label>
-                  <Input
-                    type="number"
-                    value={draft.defaultViewX ?? ""}
-                    onChange={e => set({ defaultViewX: e.target.value === "" ? null : parseInt(e.target.value, 10) })}
+                  <NumberInput
+                    optional value={draft.defaultViewX ?? undefined}
+                    onChange={(v) => set({ defaultViewX: v ?? null })}
                     data-testid="input-feattree-default-view-x"
                   />
                 </div>
                 <div>
                   <Label>Default View Center Y</Label>
-                  <Input
-                    type="number"
-                    value={draft.defaultViewY ?? ""}
-                    onChange={e => set({ defaultViewY: e.target.value === "" ? null : parseInt(e.target.value, 10) })}
+                  <NumberInput
+                    optional value={draft.defaultViewY ?? undefined}
+                    onChange={(v) => set({ defaultViewY: v ?? null })}
                     data-testid="input-feattree-default-view-y"
                   />
                 </div>

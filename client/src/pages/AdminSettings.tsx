@@ -29,6 +29,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -2916,7 +2917,7 @@ function V3TechniquesView({ systemSlug, personal }: { systemSlug: string; person
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-stone-400">Energy Cost</Label>
-                <Input type="number" min={0} value={draft.energyCost} onChange={(e) => setDraft((d) => ({ ...d, energyCost: Math.max(0, parseInt(e.target.value) || 0) }))} data-testid="input-technique-energy" />
+                <NumberInput min={0} value={draft.energyCost} fallback={0} onChange={(v) => setDraft((d) => ({ ...d, energyCost: v ?? 0 }))} data-testid="input-technique-energy" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-stone-400">Roll Mode</Label>
@@ -3439,10 +3440,9 @@ function AdvancedItemTypesView({ personal }: { personal?: boolean }) {
             </div>
             <div>
               <Label className="text-stone-300 mb-1 block">Sort Order</Label>
-              <Input
-                type="number"
-                value={draft.sortOrder}
-                onChange={(e) => setDraft((d) => ({ ...d, sortOrder: parseInt(e.target.value) || 0 }))}
+              <NumberInput
+                value={draft.sortOrder} fallback={0}
+                onChange={(v) => setDraft((d) => ({ ...d, sortOrder: v ?? 0 }))}
                 className="bg-stone-900 border-stone-700 text-stone-200"
                 data-testid="input-advanced-item-type-sort"
               />
@@ -5314,11 +5314,9 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label className="text-stone-300">Uses Per Long Rest</Label>
-              <Input
-                type="number"
-                min={0}
-                value={formData.usesPerLongRest}
-                onChange={(e) => setFormData({ ...formData, usesPerLongRest: Math.max(0, parseInt(e.target.value) || 0) })}
+              <NumberInput
+                min={0} value={formData.usesPerLongRest} fallback={0}
+                onChange={(v) => setFormData({ ...formData, usesPerLongRest: v ?? 0 })}
                 className="bg-stone-800 border-stone-700 mt-1"
                 data-testid="input-trait-uses-long"
               />
@@ -5328,11 +5326,9 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
             </div>
             <div>
               <Label className="text-stone-300">Uses Per Short Rest</Label>
-              <Input
-                type="number"
-                min={0}
-                value={formData.usesPerShortRest}
-                onChange={(e) => setFormData({ ...formData, usesPerShortRest: Math.max(0, parseInt(e.target.value) || 0) })}
+              <NumberInput
+                min={0} value={formData.usesPerShortRest} fallback={0}
+                onChange={(v) => setFormData({ ...formData, usesPerShortRest: v ?? 0 })}
                 className="bg-stone-800 border-stone-700 mt-1"
                 data-testid="input-trait-uses-short"
               />
@@ -5386,11 +5382,9 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
               {formData.damageModifierType === 'reduce' && (
                 <div>
                   <Label className="text-stone-300">Reduction Value</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={formData.damageModifierValue}
-                    onChange={(e) => setFormData({ ...formData, damageModifierValue: Math.max(1, parseInt(e.target.value) || 1) })}
+                  <NumberInput
+                    min={1} value={formData.damageModifierValue} fallback={1}
+                    onChange={(v) => setFormData({ ...formData, damageModifierValue: v ?? 1 })}
                     className="bg-stone-800 border-stone-700 mt-1"
                     data-testid="input-damage-modifier-value"
                   />
@@ -5811,12 +5805,9 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-stone-300">Duration</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.defaultDuration}
-                      onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 1 })}
-                      placeholder="Number"
+                    <NumberInput
+                      min={1} value={formData.defaultDuration} fallback={1}
+                      onChange={(v) => setFormData({ ...formData, defaultDuration: v ?? 1 })}
                       className="bg-stone-800 border-stone-700 mt-1"
                       data-testid="input-default-duration"
                     />
@@ -6393,20 +6384,18 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-[10px] text-stone-500">Day Vision (ft)</Label>
-                <Input
-                  type="number"
-                  value={dayVisionDistance}
-                  onChange={(e) => setDayVisionDistance(parseInt(e.target.value) || 0)}
+                <NumberInput
+                  value={dayVisionDistance} fallback={120}
+                  onChange={(v) => setDayVisionDistance(v ?? 120)}
                   className="bg-stone-800 border-stone-700 text-stone-200"
                   data-testid="input-character-day-vision"
                 />
               </div>
               <div>
                 <Label className="text-[10px] text-stone-500">Night Vision (ft)</Label>
-                <Input
-                  type="number"
-                  value={nightVisionDistance}
-                  onChange={(e) => setNightVisionDistance(parseInt(e.target.value) || 0)}
+                <NumberInput
+                  value={nightVisionDistance} fallback={60}
+                  onChange={(v) => setNightVisionDistance(v ?? 60)}
                   className="bg-stone-800 border-stone-700 text-stone-200"
                   data-testid="input-character-night-vision"
                 />
@@ -8381,12 +8370,9 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
           </div>
           <div>
             <Label>Cost (feat points)</Label>
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={formData.cost}
-              onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
+            <NumberInput
+              min={1} max={10} value={formData.cost} fallback={1}
+              onChange={(v) => setFormData({ ...formData, cost: v ?? 1 })}
               className="bg-stone-800 border-stone-700"
               data-testid="input-feat-cost"
             />
@@ -8486,11 +8472,9 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
 
                   {/* Value input - shown for all except spell/item/skill/trait grants */}
                   {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && newEffect.type !== 'trait_grant' && (
-                    <Input
-                      type="number"
-                      value={newEffect.value}
-                      onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
-                      placeholder="Value"
+                    <NumberInput
+                      value={newEffect.value} fallback={0}
+                      onChange={(v) => setNewEffect({ ...newEffect, value: v ?? 0 })}
                       className="bg-stone-800 border-stone-700 text-xs"
                     />
                   )}
@@ -9593,11 +9577,9 @@ function TemplateFormDialog({ open, onOpenChange, onSave, initialData, isLoading
                 <Label htmlFor="template-priority" className="text-stone-300 text-xs">
                   Template Priority
                 </Label>
-                <Input
-                  id="template-priority"
-                  type="number"
-                  value={templatePriority}
-                  onChange={(e) => setTemplatePriority(Number(e.target.value))}
+                <NumberInput
+                  value={templatePriority} fallback={1}
+                  onChange={(v) => setTemplatePriority(v ?? 1)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-template-priority"
                 />
@@ -11229,12 +11211,9 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
           </div>
           <div>
             <Label>Cost (skill points)</Label>
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={formData.cost}
-              onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
+            <NumberInput
+              min={1} max={10} value={formData.cost} fallback={1}
+              onChange={(v) => setFormData({ ...formData, cost: v ?? 1 })}
               className="bg-stone-800 border-stone-700"
               data-testid="input-node-cost"
             />
@@ -11332,11 +11311,9 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
                   </Select>
 
                   {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && newEffect.type !== 'trait_grant' && (
-                    <Input
-                      type="number"
-                      value={newEffect.value}
-                      onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
-                      placeholder="Value"
+                    <NumberInput
+                      value={newEffect.value} fallback={0}
+                      onChange={(v) => setNewEffect({ ...newEffect, value: v ?? 0 })}
                       className="bg-stone-800 border-stone-700 text-xs"
                     />
                   )}
@@ -12749,11 +12726,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                       {Number(formData.rationServings) > 0 && (
                         <div className="flex items-center gap-2">
                           <Label>Servings:</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={formData.rationServings}
-                            onChange={(e) => setFormData({ ...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
+                          <NumberInput
+                            min={1} value={Number(formData.rationServings) || 1} fallback={1}
+                            onChange={(v) => setFormData({ ...formData, rationServings: v ?? 1 })}
                             className="bg-stone-800 border-stone-700 w-20"
                             data-testid="input-ration-servings"
                           />
@@ -12859,12 +12834,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   </div>
                   <div>
                     <Label>DC Armor Bonus</Label>
-                    <Input
-                      type="number"
-                      value={formData.armorBonus}
-                      onChange={(e) => handleItemNumericChange('armorBonus', e.target.value)}
+                    <NumberInput
+                      value={Number(formData.armorBonus) || 0} fallback={0}
+                      onChange={(v) => handleItemNumericChange('armorBonus', String(v ?? 0))}
                       className="bg-stone-800 border-stone-700"
-                      placeholder="Added to character DC"
                       data-testid="input-armor-bonus"
                     />
                     <p className="text-xs text-stone-500 mt-1">Directly added to character's DC when equipped</p>
@@ -12895,12 +12868,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   </div>
                   <div>
                     <Label>Damage Reduction Value</Label>
-                    <Input
-                      type="number"
-                      value={formData.damageReduction}
-                      onChange={(e) => handleItemNumericChange('damageReduction', e.target.value)}
+                    <NumberInput
+                      value={Number(formData.damageReduction) || 0} fallback={0}
+                      onChange={(v) => handleItemNumericChange('damageReduction', String(v ?? 0))}
                       className="bg-stone-800 border-stone-700"
-                      placeholder="Amount reduced"
                       data-testid="input-damage-reduction"
                     />
                     <p className="text-xs text-stone-500 mt-1">HP damage reduced when hit by matching damage type</p>
@@ -12920,12 +12891,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                 {formData.grantsDcBonus && (
                   <div>
                     <Label>DC Bonus Value</Label>
-                    <Input
-                      type="number"
-                      value={formData.dcBonusValue}
-                      onChange={(e) => handleItemNumericChange('dcBonusValue', e.target.value)}
+                    <NumberInput
+                      value={Number(formData.dcBonusValue) || 0} fallback={0}
+                      onChange={(v) => handleItemNumericChange('dcBonusValue', String(v ?? 0))}
                       className="bg-stone-800 border-stone-700"
-                      placeholder="0"
                       data-testid="input-dc-bonus-value"
                     />
                     <p className="text-xs text-stone-500 mt-1">Added to character's DC when this item is equipped</p>
@@ -12935,11 +12904,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
 
               <div>
                 <Label>Weight (lbs)</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={formData.itemWeight}
-                  onChange={(e) => setFormData({ ...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                <NumberInput
+                  integer={false} value={Number(formData.itemWeight) || 0} fallback={0}
+                  onChange={(v) => setFormData({ ...formData, itemWeight: v ?? 0 })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-weight"
                 />
@@ -12947,12 +12914,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
 
               <div>
                 <Label>Durability (0-10)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="10"
-                  value={formData.durability}
-                  onChange={(e) => setFormData({ ...formData, durability: e.target.value === '' ? '' : Math.min(10, Math.max(0, parseInt(e.target.value))) })}
+                <NumberInput
+                  min={0} max={10} value={Number(formData.durability) || 0} fallback={0}
+                  onChange={(v) => setFormData({ ...formData, durability: v ?? 0 })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-durability"
                 />
@@ -12960,10 +12924,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
 
               <div>
                 <Label>Price</Label>
-                <Input
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => handleItemNumericChange('price', e.target.value)}
+                <NumberInput
+                  value={Number(formData.price) || 0} fallback={0}
+                  onChange={(v) => handleItemNumericChange('price', String(v ?? 0))}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-price"
                 />
@@ -12997,10 +12960,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   {formData.isContainer && (
                     <div>
                       <Label>Carry Capacity (lbs)</Label>
-                      <Input
-                        type="number"
-                        value={formData.carryCapacity}
-                        onChange={(e) => handleItemNumericChange('carryCapacity', e.target.value)}
+                      <NumberInput
+                        value={Number(formData.carryCapacity) || 0} fallback={0}
+                        onChange={(v) => handleItemNumericChange('carryCapacity', String(v ?? 0))}
                         className="bg-stone-800 border-stone-700"
                         data-testid="input-carry-capacity"
                       />

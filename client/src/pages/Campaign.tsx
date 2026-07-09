@@ -10,6 +10,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
+import { NumberInput } from "@/components/ui/number-input";
 import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -187,14 +188,9 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
               className="flex-1 accent-amber-600"
               data-testid="slider-grid-size"
             />
-            <input
-              type="number"
-              min="1"
-              value={localSettings.gridSize}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                if (!isNaN(val) && val > 0) updateSetting('gridSize', val);
-              }}
+            <NumberInput
+              min={1} value={localSettings.gridSize} fallback={10}
+              onChange={(v) => { if (v != null && v > 0) updateSetting('gridSize', v); }}
               className="w-16 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-sm text-center"
               data-testid="input-grid-size"
             />
@@ -644,12 +640,11 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
               <div>
                 <Label>Lifespan (years)</Label>
-                <Input
-                  type="number"
-                  value={formData.lifespan}
-                  onChange={(e) => handleNumericChange('lifespan', e.target.value)}
+                <NumberInput
+                  value={formData.lifespan as number}
+                  fallback={100}
+                  onChange={(v) => setFormData({ ...formData, lifespan: v ?? 100 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="100"
                 />
               </div>
 
@@ -669,35 +664,31 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
               <div>
                 <Label>Speed (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.speed}
-                  onChange={(e) => handleNumericChange('speed', e.target.value)}
+                <NumberInput
+                  value={formData.speed as number}
+                  fallback={30}
+                  onChange={(v) => setFormData({ ...formData, speed: v ?? 30 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="30"
                 />
               </div>
 
               <div>
                 <Label>Fly Speed (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.flySpeed}
-                  onChange={(e) => handleNumericChange('flySpeed', e.target.value)}
+                <NumberInput
+                  value={formData.flySpeed as number}
+                  onChange={(v) => setFormData({ ...formData, flySpeed: v ?? 0 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="0"
                 />
               </div>
 
               {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Natural Armor</Label>
-                <Input
-                  type="number"
-                  value={formData.naturalArmor}
-                  onChange={(e) => handleNumericChange('naturalArmor', e.target.value)}
+                <NumberInput
+                  value={formData.naturalArmor as number}
+                  fallback={5}
+                  onChange={(v) => setFormData({ ...formData, naturalArmor: v ?? 5 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="5"
                 />
               </div>
               )}
@@ -718,33 +709,33 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Starting HP</Label>
-                <Input
-                  type="number"
-                  value={formData.startingHp}
-                  onChange={(e) => handleNumericChange('startingHp', e.target.value)}
+                <NumberInput
+                  value={formData.startingHp as number}
+                  fallback={10}
+                  onChange={(v) => setFormData({ ...formData, startingHp: v ?? 10 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="10"
                 />
               </div>
               )}
               <div>
                 <Label>Max HP</Label>
-                <Input
-                  type="number"
-                  value={formData.startingMaxHp}
-                  onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxHp', 'startingHp', e.target.value) : handleNumericChange('startingMaxHp', e.target.value)}
+                <NumberInput
+                  value={formData.startingMaxHp as number}
+                  fallback={10}
+                  onChange={(v) => {
+                    const n = v ?? 10;
+                    setFormData({ ...formData, startingMaxHp: n, ...(campaignSystem === 'aa-v3' ? { startingHp: n } : {}) });
+                  }}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="10"
                 />
               </div>
               <div>
                 <Label>HP Per Level</Label>
-                <Input
-                  type="number"
-                  value={formData.hpPerLevel}
-                  onChange={(e) => handleNumericChange('hpPerLevel', e.target.value)}
+                <NumberInput
+                  value={formData.hpPerLevel as number}
+                  fallback={5}
+                  onChange={(v) => setFormData({ ...formData, hpPerLevel: v ?? 5 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="5"
                 />
               </div>
 
@@ -754,34 +745,34 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               {campaignSystem !== 'aa-v3' && (
               <div>
                 <Label>Starting Energy</Label>
-                <Input
-                  type="number"
-                  value={formData.startingEnergy}
-                  onChange={(e) => handleNumericChange('startingEnergy', e.target.value)}
+                <NumberInput
+                  value={formData.startingEnergy as number}
+                  fallback={10}
+                  onChange={(v) => setFormData({ ...formData, startingEnergy: v ?? 10 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="10"
                 />
               </div>
               )}
               <div>
                 <Label>Max Energy</Label>
-                <Input
-                  type="number"
-                  value={formData.startingMaxEnergy}
-                  onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxEnergy', 'startingEnergy', e.target.value) : handleNumericChange('startingMaxEnergy', e.target.value)}
+                <NumberInput
+                  value={formData.startingMaxEnergy as number}
+                  fallback={10}
+                  onChange={(v) => {
+                    const n = v ?? 10;
+                    setFormData({ ...formData, startingMaxEnergy: n, ...(campaignSystem === 'aa-v3' ? { startingEnergy: n } : {}) });
+                  }}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="10"
                 />
               </div>
               {campaignSystem !== 'aa-v2' && campaignSystem !== 'aa-v3' && (
                 <div>
                   <Label>Energy Per Level</Label>
-                  <Input
-                    type="number"
-                    value={formData.energyPerLevel}
-                    onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
+                  <NumberInput
+                    value={formData.energyPerLevel as number}
+                    fallback={6}
+                    onChange={(v) => setFormData({ ...formData, energyPerLevel: v ?? 6 })}
                     className="bg-stone-800 border-stone-700"
-                    placeholder="6"
                   />
                 </div>
               )}
@@ -794,23 +785,22 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   {campaignSystem !== 'aa-v3' && (
                   <div>
                     <Label>Starting Mana</Label>
-                    <Input
-                      type="number"
-                      value={formData.startingMana}
-                      onChange={(e) => handleNumericChange('startingMana', e.target.value)}
+                    <NumberInput
+                      value={formData.startingMana as number}
+                      onChange={(v) => setFormData({ ...formData, startingMana: v ?? 0 })}
                       className="bg-stone-800 border-stone-700"
-                      placeholder="0"
                     />
                   </div>
                   )}
                   <div>
                     <Label>Max Mana</Label>
-                    <Input
-                      type="number"
-                      value={formData.startingMaxMana}
-                      onChange={(e) => campaignSystem === 'aa-v3' ? handleV3MaxChange('startingMaxMana', 'startingMana', e.target.value) : handleNumericChange('startingMaxMana', e.target.value)}
+                    <NumberInput
+                      value={formData.startingMaxMana as number}
+                      onChange={(v) => {
+                        const n = v ?? 0;
+                        setFormData({ ...formData, startingMaxMana: n, ...(campaignSystem === 'aa-v3' ? { startingMana: n } : {}) });
+                      }}
                       className="bg-stone-800 border-stone-700"
-                      placeholder="0"
                     />
                   </div>
                 </>
@@ -818,12 +808,11 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
               <div>
                 <Label>Carry Weight</Label>
-                <Input
-                  type="number"
-                  value={formData.carryWeight}
-                  onChange={(e) => handleNumericChange('carryWeight', e.target.value)}
+                <NumberInput
+                  value={formData.carryWeight as number}
+                  fallback={50}
+                  onChange={(v) => setFormData({ ...formData, carryWeight: v ?? 50 })}
                   className="bg-stone-800 border-stone-700"
-                  placeholder="50"
                 />
               </div>
 
@@ -849,10 +838,10 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
               <div>
                 <Label>Day Vision Distance (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.dayVisionDistance}
-                  onChange={(e) => handleNumericChange('dayVisionDistance', e.target.value)}
+                <NumberInput
+                  value={formData.dayVisionDistance as number}
+                  fallback={60}
+                  onChange={(v) => setFormData({ ...formData, dayVisionDistance: v ?? 60 })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-campaign-species-dayvision"
                 />
@@ -860,10 +849,10 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
 
               <div>
                 <Label>Night Vision Distance (ft)</Label>
-                <Input
-                  type="number"
-                  value={formData.nightVisionDistance}
-                  onChange={(e) => handleNumericChange('nightVisionDistance', e.target.value)}
+                <NumberInput
+                  value={formData.nightVisionDistance as number}
+                  fallback={30}
+                  onChange={(v) => setFormData({ ...formData, nightVisionDistance: v ?? 30 })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-campaign-species-nightvision"
                 />
@@ -3304,9 +3293,9 @@ function SandboxSheetEditor({
                 </Label>
               )}
               <div className="flex items-center gap-1 flex-1 min-w-0">
-                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
+                <NumberInput value={current} readOnly={hasFormula} className={`bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} onChange={(v) => { let newCurrent = v ?? 0; if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} />
                 <span className="text-stone-500 text-xs">/</span>
-                <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
+                <NumberInput value={max} className="bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} onChange={(v) => handleActorValueChange(prop.key, JSON.stringify({ current, max: v ?? 0 }))} />
               </div>
               {prop.showBar && (
                 <div className="w-full h-2 bg-stone-900/60 rounded-full overflow-hidden mt-1" data-testid={`bar-actor-${prop.key}`}>
@@ -3402,17 +3391,13 @@ function SandboxSheetEditor({
                 />
               )}
               {prop.type === 'number' && (
-                <Input
-                  type="number"
-                  value={hasFormula ? displayVal : val}
-                  min={prop.min}
-                  max={prop.max}
-                  step={prop.step || 1}
-                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  readOnly={hasFormula}
+                <NumberInput
+                  integer={!prop.step || prop.step === 1} value={hasFormula ? Number(displayVal) : Number(val)}
+                  min={prop.min} max={prop.max} readOnly={hasFormula}
                   className={`bg-stone-800 border-stone-700 text-stone-200 h-8 w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
                   style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`input-actor-${prop.key}`}
+                  onChange={(v) => handleActorValueChange(prop.key, String(v ?? 0))}
                 />
               )}
             </div>
@@ -3912,9 +3897,9 @@ function SandboxSheetEditor({
               {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
             </Label>
             <div className="flex items-center gap-1">
-              <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
+              <NumberInput value={current} readOnly={hasFormula} className={`bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} onChange={(v) => { let newCurrent = v ?? 0; if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} />
               <span className="text-stone-500 text-xs">/</span>
-              <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
+              <NumberInput value={max} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} onChange={(v) => handleActorValueChange(prop.key, JSON.stringify({ current, max: v ?? 0 }))} />
             </div>
             {prop.showBar && (
               <div className="w-full h-1.5 bg-stone-700 rounded-full overflow-hidden" data-testid={`bar-actor-mobile-${prop.key}`}>
@@ -3942,17 +3927,13 @@ function SandboxSheetEditor({
             />
           )}
           {prop.type === 'number' && (
-            <Input
-              type="number"
-              value={hasFormula ? displayVal : val}
-              min={prop.min}
-              max={prop.max}
-              step={prop.step || 1}
-              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-              readOnly={hasFormula}
+            <NumberInput
+              integer={!prop.step || prop.step === 1} value={hasFormula ? Number(displayVal) : Number(val)}
+              min={prop.min} max={prop.max} readOnly={hasFormula}
               className={`bg-stone-800 border-stone-700 text-stone-200 h-8 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
               style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
               data-testid={`input-actor-${prop.key}`}
+              onChange={(v) => handleActorValueChange(prop.key, String(v ?? 0))}
             />
           )}
           {prop.type === 'boolean' && (
@@ -4676,40 +4657,36 @@ function SandboxSheetEditor({
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">X</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.x ?? 10}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
+                  <NumberInput
+                    value={selectedProperty.x ?? 10} fallback={10}
+                    onChange={(v) => updatePropertyLayout(selectedProperty.id, { x: Math.max(0, v ?? 0) })}
                     className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                     data-testid={`input-prop-x-${selectedProperty.key}`}
                   />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">Y</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.y ?? 10}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
+                  <NumberInput
+                    value={selectedProperty.y ?? 10} fallback={10}
+                    onChange={(v) => updatePropertyLayout(selectedProperty.id, { y: Math.max(0, v ?? 0) })}
                     className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                     data-testid={`input-prop-y-${selectedProperty.key}`}
                   />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">Width</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.width ?? 200}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { width: Math.max(60, parseInt(e.target.value) || 60) })}
+                  <NumberInput
+                    value={selectedProperty.width ?? 200} fallback={200}
+                    onChange={(v) => updatePropertyLayout(selectedProperty.id, { width: Math.max(60, v ?? 60) })}
                     className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                     data-testid={`input-prop-width-${selectedProperty.key}`}
                   />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">Height</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.height ?? 40}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { height: Math.max(20, parseInt(e.target.value) || 20) })}
+                  <NumberInput
+                    value={selectedProperty.height ?? 40} fallback={40}
+                    onChange={(v) => updatePropertyLayout(selectedProperty.id, { height: Math.max(20, v ?? 20) })}
                     className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                     data-testid={`input-prop-height-${selectedProperty.key}`}
                   />
@@ -4717,12 +4694,9 @@ function SandboxSheetEditor({
                 {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'label' && selectedProperty.type !== 'divider' && (
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Label Font</Label>
-                    <Input
-                      type="number"
-                      min={8}
-                      max={24}
-                      value={selectedProperty.labelFontSize ?? 11}
-                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 11)) })}
+                    <NumberInput
+                      min={8} max={24} value={selectedProperty.labelFontSize ?? 11} fallback={11}
+                      onChange={(v) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, v ?? 11)) })}
                       className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                       data-testid={`input-prop-labelfont-${selectedProperty.key}`}
                     />
@@ -4731,12 +4705,9 @@ function SandboxSheetEditor({
                 {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'divider' && (
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Value Font</Label>
-                    <Input
-                      type="number"
-                      min={8}
-                      max={24}
-                      value={selectedProperty.valueFontSize ?? 13}
-                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 13)) })}
+                    <NumberInput
+                      min={8} max={24} value={selectedProperty.valueFontSize ?? 13} fallback={13}
+                      onChange={(v) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, v ?? 13)) })}
                       className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                       data-testid={`input-prop-valuefont-${selectedProperty.key}`}
                     />
@@ -4847,30 +4818,27 @@ function SandboxSheetEditor({
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <Label className="text-stone-500 text-[10px]">Min</Label>
-                      <Input
-                        type="number"
-                        value={selectedProperty.min ?? ''}
-                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { min: e.target.value ? Number(e.target.value) : undefined })}
+                      <NumberInput
+                        optional value={selectedProperty.min ?? undefined}
+                        onChange={(v) => updatePropertyLayout(selectedProperty.id, { min: v ?? undefined })}
                         className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
                         data-testid="input-prop-min"
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-stone-500 text-[10px]">Max</Label>
-                      <Input
-                        type="number"
-                        value={selectedProperty.max ?? ''}
-                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { max: e.target.value ? Number(e.target.value) : undefined })}
+                      <NumberInput
+                        optional value={selectedProperty.max ?? undefined}
+                        onChange={(v) => updatePropertyLayout(selectedProperty.id, { max: v ?? undefined })}
                         className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
                         data-testid="input-prop-max"
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-stone-500 text-[10px]">Step</Label>
-                      <Input
-                        type="number"
-                        value={selectedProperty.step ?? 1}
-                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { step: Number(e.target.value) || 1 })}
+                      <NumberInput
+                        integer={false} value={selectedProperty.step ?? 1} fallback={1}
+                        onChange={(v) => updatePropertyLayout(selectedProperty.id, { step: v ?? 1 })}
                         className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
                         data-testid="input-prop-step"
                       />
@@ -4953,14 +4921,11 @@ function SandboxSheetEditor({
                       )}
                       {(selectedProperty.colorThresholds || []).map((th: any, idx: number) => (
                         <div key={idx} className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={th.percent}
-                            onChange={(e) => {
+                          <NumberInput
+                            min={0} max={100} value={th.percent} fallback={0}
+                            onChange={(v) => {
                               const updated = [...(selectedProperty.colorThresholds || [])];
-                              updated[idx] = { ...updated[idx], percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) };
+                              updated[idx] = { ...updated[idx], percent: v ?? 0 };
                               updatePropertyLayout(selectedProperty.id, { colorThresholds: updated });
                             }}
                             className="bg-stone-900 border border-stone-600 text-stone-200 h-6 w-14 text-[10px] rounded px-1"
@@ -5054,13 +5019,11 @@ function SandboxSheetEditor({
                         className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono flex-1"
                         data-testid="input-prop-resourcecost-key"
                       />
-                      <Input
-                        type="number"
-                        value={selectedProperty.resourceCost?.amount || ''}
-                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { 
-                          resourceCost: { ...(selectedProperty.resourceCost || {}), propertyKey: selectedProperty.resourceCost?.propertyKey || '', amount: Number(e.target.value) || 0 }
+                      <NumberInput
+                        value={selectedProperty.resourceCost?.amount || 0} fallback={0}
+                        onChange={(v) => updatePropertyLayout(selectedProperty.id, { 
+                          resourceCost: { ...(selectedProperty.resourceCost || {}), propertyKey: selectedProperty.resourceCost?.propertyKey || '', amount: v ?? 0 }
                         })}
-                        placeholder="cost"
                         className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs w-16"
                         data-testid="input-prop-resourcecost-amount"
                       />
@@ -5070,11 +5033,9 @@ function SandboxSheetEditor({
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Max Uses</Label>
                     <div className="flex gap-2 items-center">
-                      <Input
-                        type="number"
-                        value={selectedProperty.maxUses || ''}
-                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { maxUses: Number(e.target.value) || 0 })}
-                        placeholder="0 = unlimited"
+                      <NumberInput
+                        value={selectedProperty.maxUses || 0} fallback={0}
+                        onChange={(v) => updatePropertyLayout(selectedProperty.id, { maxUses: v ?? 0 })}
                         className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
                         data-testid="input-prop-maxuses"
                       />
@@ -5138,12 +5099,12 @@ function SandboxSheetEditor({
                           </div>
                           <div className="flex-1">
                             <label className="text-xs text-stone-500 block mb-0.5">AOE Size (ft)</label>
-                            <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
-                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeRange || 20}
-                              onChange={(e) => {
+                            <NumberInput className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeRange || 20} fallback={20}
+                              onChange={(v) => {
                                 const cc = selectedProperty?.metadata?.buttonConfig || {};
                                 const ct = cc.targetingConfig || {};
-                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeRange: Number(e.target.value) } } });
+                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeRange: v ?? 20 } } });
                               }}
                               data-testid="aoe-range-input"
                             />
@@ -5152,12 +5113,12 @@ function SandboxSheetEditor({
                         <div className="flex gap-2">
                           <div className="flex-1">
                             <label className="text-xs text-stone-500 block mb-0.5">Cast Range (ft)</label>
-                            <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
-                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.spellRange || 60}
-                              onChange={(e) => {
+                            <NumberInput className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.spellRange || 60} fallback={60}
+                              onChange={(v) => {
                                 const cc = selectedProperty?.metadata?.buttonConfig || {};
                                 const ct = cc.targetingConfig || {};
-                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, spellRange: Number(e.target.value) } } });
+                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, spellRange: v ?? 60 } } });
                               }}
                               data-testid="spell-range-input"
                             />
@@ -5165,12 +5126,12 @@ function SandboxSheetEditor({
                           {(selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeShape === 'line' || selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeShape === 'cone') && (
                             <div className="flex-1">
                               <label className="text-xs text-stone-500 block mb-0.5">Width (ft)</label>
-                              <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
-                                value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeWidth || 5}
-                                onChange={(e) => {
+                              <NumberInput className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                                value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeWidth || 5} fallback={5}
+                                onChange={(v) => {
                                   const cc = selectedProperty?.metadata?.buttonConfig || {};
                                   const ct = cc.targetingConfig || {};
-                                  updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeWidth: Number(e.target.value) } } });
+                                  updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeWidth: v ?? 5 } } });
                                 }}
                               />
                             </div>
@@ -5709,19 +5670,19 @@ function SandboxSheetEditor({
               <div className="grid grid-cols-4 gap-1.5 mt-1">
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">X</Label>
-                  <Input type="number" value={newPropX} onChange={(e) => setNewPropX(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropX} onChange={(v) => setNewPropX(v ?? 0)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">Y</Label>
-                  <Input type="number" value={newPropY} onChange={(e) => setNewPropY(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropY} onChange={(v) => setNewPropY(v ?? 0)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">Width</Label>
-                  <Input type="number" value={newPropWidth} onChange={(e) => setNewPropWidth(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropWidth} onChange={(v) => setNewPropWidth(v ?? 0)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">Height</Label>
-                  <Input type="number" value={newPropHeight} onChange={(e) => setNewPropHeight(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropHeight} onChange={(v) => setNewPropHeight(v ?? 0)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
               </div>
             </div>
@@ -5731,11 +5692,11 @@ function SandboxSheetEditor({
               <div className="grid grid-cols-2 gap-2 mt-1">
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">Label Font</Label>
-                  <Input type="number" value={newPropLabelFontSize} onChange={(e) => setNewPropLabelFontSize(Number(e.target.value))} min={8} max={24} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropLabelFontSize} min={8} max={24} fallback={10} onChange={(v) => setNewPropLabelFontSize(v ?? 10)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
                 <div className="space-y-0.5">
                   <Label className="text-stone-500 text-[9px]">Value Font</Label>
-                  <Input type="number" value={newPropValueFontSize} onChange={(e) => setNewPropValueFontSize(Number(e.target.value))} min={8} max={24} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                  <NumberInput value={newPropValueFontSize} min={8} max={24} fallback={14} onChange={(v) => setNewPropValueFontSize(v ?? 14)} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
                 </div>
               </div>
             </div>
@@ -6577,6 +6538,24 @@ function FloatingNotesEditor({
         />
       </div>
     </FloatingPanel>
+  );
+}
+
+function RulerInput({ value, onChange, ...rest }: { value: number; onChange: (v: number) => void } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value' | 'type'>) {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const display = draft !== null ? draft : String(value);
+  return (
+    <input
+      type="number"
+      {...rest}
+      value={display}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value !== '' && Number.isFinite(n) && n >= 0) onChange(n);
+      }}
+      onBlur={() => setDraft(null)}
+    />
   );
 }
 
@@ -12602,16 +12581,16 @@ export default function Campaign() {
                    <>
                      <label className="flex items-center gap-1 text-xs text-stone-300">
                        Length
-                       <input type="number" min={0} step={5} value={rulerDims.coneLength}
-                         onChange={(e) => setRulerDims(d => ({ ...d, coneLength: Number(e.target.value) || 0 }))}
+                       <RulerInput min={0} step={5} value={rulerDims.coneLength}
+                         onChange={(v) => setRulerDims(d => ({ ...d, coneLength: v }))}
                          className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                          data-testid="ruler-input-cone-length" />
                        ft
                      </label>
                      <label className="flex items-center gap-1 text-xs text-stone-300">
                        Arc
-                       <input type="number" min={0} step={5} value={rulerDims.coneArc}
-                         onChange={(e) => setRulerDims(d => ({ ...d, coneArc: Number(e.target.value) || 0 }))}
+                       <RulerInput min={0} step={5} value={rulerDims.coneArc}
+                         onChange={(v) => setRulerDims(d => ({ ...d, coneArc: v }))}
                          className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                          data-testid="ruler-input-cone-arc" />
                        ft
@@ -12622,16 +12601,16 @@ export default function Campaign() {
                    <>
                      <label className="flex items-center gap-1 text-xs text-stone-300">
                        Length
-                       <input type="number" min={0} step={5} value={rulerDims.lineLength}
-                         onChange={(e) => setRulerDims(d => ({ ...d, lineLength: Number(e.target.value) || 0 }))}
+                       <RulerInput min={0} step={5} value={rulerDims.lineLength}
+                         onChange={(v) => setRulerDims(d => ({ ...d, lineLength: v }))}
                          className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                          data-testid="ruler-input-line-length" />
                        ft
                      </label>
                      <label className="flex items-center gap-1 text-xs text-stone-300">
                        Width
-                       <input type="number" min={0} step={5} value={rulerDims.lineWidth}
-                         onChange={(e) => setRulerDims(d => ({ ...d, lineWidth: Number(e.target.value) || 0 }))}
+                       <RulerInput min={0} step={5} value={rulerDims.lineWidth}
+                         onChange={(v) => setRulerDims(d => ({ ...d, lineWidth: v }))}
                          className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                          data-testid="ruler-input-line-width" />
                        ft
@@ -12641,8 +12620,8 @@ export default function Campaign() {
                  {rulerShape === 'square' && (
                    <label className="flex items-center gap-1 text-xs text-stone-300">
                      Side
-                     <input type="number" min={0} step={5} value={rulerDims.squareSide}
-                       onChange={(e) => setRulerDims(d => ({ ...d, squareSide: Number(e.target.value) || 0 }))}
+                     <RulerInput min={0} step={5} value={rulerDims.squareSide}
+                       onChange={(v) => setRulerDims(d => ({ ...d, squareSide: v }))}
                        className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                        data-testid="ruler-input-square-side" />
                      ft
@@ -12651,8 +12630,8 @@ export default function Campaign() {
                  {rulerShape === 'circle' && (
                    <label className="flex items-center gap-1 text-xs text-stone-300">
                      Diameter
-                     <input type="number" min={0} step={5} value={rulerDims.circleRadius}
-                       onChange={(e) => setRulerDims(d => ({ ...d, circleRadius: Number(e.target.value) || 0 }))}
+                     <RulerInput min={0} step={5} value={rulerDims.circleRadius}
+                       onChange={(v) => setRulerDims(d => ({ ...d, circleRadius: v }))}
                        className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
                        data-testid="ruler-input-circle-radius" />
                      ft
@@ -14016,10 +13995,9 @@ export default function Campaign() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs text-stone-400">Extra Modifier</label>
-                  <input
-                    type="number"
-                    value={dcSaveModifier}
-                    onChange={(e) => setDcSaveModifier(parseInt(e.target.value) || 0)}
+                  <NumberInput
+                    value={dcSaveModifier} fallback={0}
+                    onChange={(v) => setDcSaveModifier(v ?? 0)}
                     className="w-full bg-stone-800 border border-stone-600 rounded px-3 py-1.5 text-sm text-stone-200"
                     data-testid="dc-save-modifier-input"
                   />

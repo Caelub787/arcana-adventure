@@ -12,6 +12,7 @@ import {
   Button, Input, Textarea, Label, Select, SelectItem,
   Stack, Row, Grid2, Grid3, Section,
 } from "../ui/primitives";
+import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import type { DialogProps } from "../types";
 
@@ -205,27 +206,27 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
               </div>
               <div>
                 <Label>Size Bonus</Label>
-                <Input type="number" value={draft.sizeBonus} onChange={e => numChange("sizeBonus", e.target.value)} data-testid="input-species-size-bonus" />
+                <NumberInput value={draft.sizeBonus} onChange={(v) => set({ sizeBonus: v ?? 0 })} data-testid="input-species-size-bonus" />
               </div>
               <div>
                 <Label>Natural Armor</Label>
-                <Input type="number" value={draft.naturalArmor} onChange={e => numChange("naturalArmor", e.target.value, 5)} data-testid="input-species-natural-armor" />
+                <NumberInput value={draft.naturalArmor} fallback={5} onChange={(v) => set({ naturalArmor: v ?? 5 })} data-testid="input-species-natural-armor" />
               </div>
               <div>
                 <Label>Lifespan (yrs)</Label>
-                <Input type="number" value={draft.lifespan} onChange={e => numChange("lifespan", e.target.value, 100)} data-testid="input-species-lifespan" />
+                <NumberInput value={draft.lifespan} fallback={100} onChange={(v) => set({ lifespan: v ?? 100 })} data-testid="input-species-lifespan" />
               </div>
               <div>
                 <Label>Speed (ft)</Label>
-                <Input type="number" value={draft.speed} onChange={e => numChange("speed", e.target.value, 30)} data-testid="input-species-speed" />
+                <NumberInput value={draft.speed} fallback={30} onChange={(v) => set({ speed: v ?? 30 })} data-testid="input-species-speed" />
               </div>
               <div>
                 <Label>Fly Speed (ft)</Label>
-                <Input type="number" value={draft.flySpeed} onChange={e => numChange("flySpeed", e.target.value, 0)} data-testid="input-species-fly-speed" />
+                <NumberInput value={draft.flySpeed} onChange={(v) => set({ flySpeed: v ?? 0 })} data-testid="input-species-fly-speed" />
               </div>
               <div>
                 <Label>Carry Weight</Label>
-                <Input type="number" value={draft.carryWeight} onChange={e => numChange("carryWeight", e.target.value, 50)} data-testid="input-species-carry-weight" />
+                <NumberInput value={draft.carryWeight} fallback={50} onChange={(v) => set({ carryWeight: v ?? 50 })} data-testid="input-species-carry-weight" />
               </div>
             </Grid3>
           </Section>
@@ -235,43 +236,43 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
               <Grid3>
                 <div>
                   <Label>Starting HP</Label>
-                  <Input type="number" value={draft.startingHp} onChange={e => numChange("startingHp", e.target.value, 10)} data-testid="input-species-starting-hp" />
+                  <NumberInput value={draft.startingHp} fallback={10} onChange={(v) => set({ startingHp: v ?? 10 })} data-testid="input-species-starting-hp" />
                 </div>
                 <div>
                   <Label>Starting Max HP</Label>
-                  <Input type="number" value={draft.startingMaxHp} onChange={e => numChange("startingMaxHp", e.target.value, 10)} data-testid="input-species-starting-max-hp" />
+                  <NumberInput value={draft.startingMaxHp} fallback={10} onChange={(v) => set({ startingMaxHp: v ?? 10 })} data-testid="input-species-starting-max-hp" />
                 </div>
                 <div>
                   <Label>HP / Level</Label>
-                  <Input type="number" value={draft.hpPerLevel} onChange={e => numChange("hpPerLevel", e.target.value, 5)} data-testid="input-species-hp-per-level" />
+                  <NumberInput value={draft.hpPerLevel} fallback={5} onChange={(v) => set({ hpPerLevel: v ?? 5 })} data-testid="input-species-hp-per-level" />
                 </div>
               </Grid3>
               <Grid3>
                 <div>
                   <Label>Starting Energy</Label>
-                  <Input type="number" value={draft.startingEnergy} onChange={e => numChange("startingEnergy", e.target.value, 10)} data-testid="input-species-starting-energy" />
+                  <NumberInput value={draft.startingEnergy} fallback={10} onChange={(v) => set({ startingEnergy: v ?? 10 })} data-testid="input-species-starting-energy" />
                 </div>
                 <div>
                   <Label>Starting Max Energy</Label>
-                  <Input type="number" value={draft.startingMaxEnergy} onChange={e => numChange("startingMaxEnergy", e.target.value, 10)} data-testid="input-species-starting-max-energy" />
+                  <NumberInput value={draft.startingMaxEnergy} fallback={10} onChange={(v) => set({ startingMaxEnergy: v ?? 10 })} data-testid="input-species-starting-max-energy" />
                 </div>
                 <div>
                   <Label>Energy / Level (die size)</Label>
-                  <Input type="number" value={draft.energyPerLevel} onChange={e => numChange("energyPerLevel", e.target.value, 6)} data-testid="input-species-energy-per-level" />
+                  <NumberInput value={draft.energyPerLevel} fallback={6} onChange={(v) => set({ energyPerLevel: v ?? 6 })} data-testid="input-species-energy-per-level" />
                 </div>
               </Grid3>
               <Grid3>
                 <div>
                   <Label>Starting Mana</Label>
-                  <Input type="number" value={draft.startingMana} onChange={e => numChange("startingMana", e.target.value, 0)} data-testid="input-species-starting-mana" />
+                  <NumberInput value={draft.startingMana} onChange={(v) => set({ startingMana: v ?? 0 })} data-testid="input-species-starting-mana" />
                 </div>
                 <div>
                   <Label>Starting Max Mana</Label>
-                  <Input type="number" value={draft.startingMaxMana} onChange={e => numChange("startingMaxMana", e.target.value, 0)} data-testid="input-species-starting-max-mana" />
+                  <NumberInput value={draft.startingMaxMana} onChange={(v) => set({ startingMaxMana: v ?? 0 })} data-testid="input-species-starting-max-mana" />
                 </div>
                 <div>
                   <Label>Mana / Level</Label>
-                  <Input type="number" value={draft.manaPerLevel} onChange={e => numChange("manaPerLevel", e.target.value, 0)} data-testid="input-species-mana-per-level" />
+                  <NumberInput value={draft.manaPerLevel} onChange={(v) => set({ manaPerLevel: v ?? 0 })} data-testid="input-species-mana-per-level" />
                 </div>
               </Grid3>
             </Stack>
@@ -287,11 +288,11 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
               </div>
               <div>
                 <Label>Day Vision (ft)</Label>
-                <Input type="number" value={draft.dayVisionDistance} onChange={e => numChange("dayVisionDistance", e.target.value, 60)} data-testid="input-species-day-vision" />
+                <NumberInput value={draft.dayVisionDistance} fallback={60} onChange={(v) => set({ dayVisionDistance: v ?? 60 })} data-testid="input-species-day-vision" />
               </div>
               <div>
                 <Label>Night Vision (ft)</Label>
-                <Input type="number" value={draft.nightVisionDistance} onChange={e => numChange("nightVisionDistance", e.target.value, 30)} data-testid="input-species-night-vision" />
+                <NumberInput value={draft.nightVisionDistance} fallback={30} onChange={(v) => set({ nightVisionDistance: v ?? 30 })} data-testid="input-species-night-vision" />
               </div>
             </Grid3>
           </Section>

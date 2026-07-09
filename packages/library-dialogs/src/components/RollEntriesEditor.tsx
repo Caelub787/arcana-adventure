@@ -18,6 +18,7 @@ import {
 import { sortRollsForDisplay, collectFolderNames } from "../lib/rollSort";
 import { AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES, isAAv2 } from "../lib/effectTypes";
 import { uid, optionalNum } from "../lib/utils";
+import { NumberInput } from "./NumberInput";
 import type { HostAdapter } from "../types";
 
 /* ----- public draft shape ----- */
@@ -324,8 +325,8 @@ const RollRow: React.FC<{
             </div>
             <div>
               <Label>Mod</Label>
-              <Input type="number" value={roll.mod ?? 0}
-                onChange={e => onChange({ mod: optionalNum(e.target.value) ?? 0 })}
+              <NumberInput value={roll.mod ?? 0}
+                onChange={(v) => onChange({ mod: v ?? 0 })}
                 data-testid="input-roll-mod" />
             </div>
             <div>
@@ -388,7 +389,7 @@ const RollRow: React.FC<{
               </div>
               <div>
                 <Label>AOE Range</Label>
-                <Input type="number" value={roll.aoeRange ?? ""} onChange={e => onChange({ aoeRange: optionalNum(e.target.value) ?? null })} />
+                <NumberInput optional value={roll.aoeRange ?? undefined} onChange={(v) => onChange({ aoeRange: v ?? null })} />
               </div>
               <Row><Checkbox checked={!!roll.passesThroughWalls} onCheckedChange={v => onChange({ passesThroughWalls: v })} /><Label>Through walls</Label></Row>
             </Grid3>
@@ -397,7 +398,7 @@ const RollRow: React.FC<{
           <Grid2>
             <div>
               <Label>Range (ft)</Label>
-              <Input type="number" value={roll.range ?? ""} onChange={e => onChange({ range: optionalNum(e.target.value) ?? null })} />
+              <NumberInput optional value={roll.range ?? undefined} onChange={(v) => onChange({ range: v ?? null })} />
             </div>
             <div>
               <Label>Primary Color (hex)</Label>
@@ -418,11 +419,11 @@ const RollRow: React.FC<{
               </div>
               <div>
                 <Label>Priority</Label>
-                <Input type="number" value={roll.priority ?? 1} onChange={e => onChange({ priority: optionalNum(e.target.value) ?? 1 })} />
+                <NumberInput value={roll.priority ?? 1} fallback={1} onChange={(v) => onChange({ priority: v ?? 1 })} />
               </div>
               <div>
                 <Label>Sort Order</Label>
-                <Input type="number" value={roll.sortOrder ?? 0} onChange={e => onChange({ sortOrder: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={roll.sortOrder ?? 0} onChange={(v) => onChange({ sortOrder: v ?? 0 })} />
               </div>
             </Grid3>
           </Section>
@@ -432,7 +433,7 @@ const RollRow: React.FC<{
               <Row><Checkbox checked={!!roll.requiresEnergy} onCheckedChange={v => onChange({ requiresEnergy: v })} /><Label>Requires Energy</Label></Row>
               {roll.requiresEnergy && (
                 <div><Label>Energy Cost</Label>
-                  <Input type="number" value={roll.energyCost ?? 0} onChange={e => onChange({ energyCost: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={roll.energyCost ?? 0} onChange={(v) => onChange({ energyCost: v ?? 0 })} />
                 </div>
               )}
               <Row><Checkbox checked={!!roll.gainEnergy} onCheckedChange={v => onChange({ gainEnergy: v })} /><Label>Gain Energy</Label></Row>
@@ -442,7 +443,7 @@ const RollRow: React.FC<{
                 <Row><Checkbox checked={!!roll.requiresMana} onCheckedChange={v => onChange({ requiresMana: v })} /><Label>Requires Mana</Label></Row>
                 {roll.requiresMana && (
                   <div><Label>Mana Cost</Label>
-                    <Input type="number" value={roll.manaCost ?? 0} onChange={e => onChange({ manaCost: optionalNum(e.target.value) ?? 0 })} />
+                    <NumberInput value={roll.manaCost ?? 0} onChange={(v) => onChange({ manaCost: v ?? 0 })} />
                   </div>
                 )}
               </Grid2>
@@ -467,7 +468,7 @@ const RollRow: React.FC<{
                 </div>
                 {roll.saveDcType === "value" ? (
                   <div><Label>DC</Label>
-                    <Input type="number" value={roll.saveDc ?? ""} onChange={e => onChange({ saveDc: optionalNum(e.target.value) ?? null })} />
+                    <NumberInput optional value={roll.saveDc ?? undefined} onChange={(v) => onChange({ saveDc: v ?? null })} />
                   </div>
                 ) : (
                   <div><Label>DC Attribute</Label>
@@ -503,7 +504,7 @@ const RollRow: React.FC<{
                 </div>
                 {roll.dcToSucceedType === "value" && (
                   <div><Label>DC</Label>
-                    <Input type="number" value={roll.dcToSucceed ?? ""} onChange={e => onChange({ dcToSucceed: optionalNum(e.target.value) ?? null })} />
+                    <NumberInput optional value={roll.dcToSucceed ?? undefined} onChange={(v) => onChange({ dcToSucceed: v ?? null })} />
                   </div>
                 )}
                 {roll.dcCheckRollMode === "separate" && (

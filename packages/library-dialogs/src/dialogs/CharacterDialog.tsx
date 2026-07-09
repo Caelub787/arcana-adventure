@@ -23,6 +23,7 @@ import {
   Button, Input, Textarea, Label, Checkbox, Select, SelectItem,
   Stack, Row, Grid2, Grid3, Section,
 } from "../ui/primitives";
+import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { optionalNum } from "../lib/utils";
 import {
@@ -251,6 +252,9 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
   const setNum = (field: keyof CharacterDraft, fallback = 0) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       set({ [field]: optionalNum(e.target.value) ?? fallback } as Partial<CharacterDraft>);
+  const setN = (field: keyof CharacterDraft, fallback = 0) =>
+    (v: number | undefined) =>
+      set({ [field]: v ?? fallback } as Partial<CharacterDraft>);
 
   const handleSave = async () => {
     if (!draft.name.trim()) { host.notify("warning", "Character name is required."); return; }
@@ -330,10 +334,10 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
                   </Select>
                 </div>
                 <div><Label>Size bonus</Label>
-                  <Input type="number" value={draft.sizeBonus} onChange={setNum("sizeBonus")} />
+                  <NumberInput value={draft.sizeBonus as number} onChange={setN("sizeBonus")} />
                 </div>
                 <div><Label>Level</Label>
-                  <Input type="number" value={draft.level} onChange={setNum("level", 1)} />
+                  <NumberInput value={draft.level as number} fallback={1} onChange={setN("level", 1)} />
                 </div>
                 <div><Label>Class (legacy text)</Label>
                   <Input value={draft.class ?? ""} onChange={e => set({ class: e.target.value })} />
@@ -342,13 +346,13 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
                   <Input value={draft.featTree ?? ""} onChange={e => set({ featTree: e.target.value })} />
                 </div>
                 <div><Label>Speed</Label>
-                  <Input type="number" value={draft.speed} onChange={setNum("speed", 30)} />
+                  <NumberInput value={draft.speed as number} fallback={30} onChange={setN("speed", 30)} />
                 </div>
                 <div><Label>Fly speed</Label>
-                  <Input type="number" value={draft.flySpeed} onChange={setNum("flySpeed")} />
+                  <NumberInput value={draft.flySpeed as number} onChange={setN("flySpeed")} />
                 </div>
                 <div><Label>Lifespan</Label>
-                  <Input type="number" value={draft.lifespan} onChange={setNum("lifespan", 100)} />
+                  <NumberInput value={draft.lifespan as number} fallback={100} onChange={setN("lifespan", 100)} />
                 </div>
               </Grid3>
               {!hideScopeFields && (
@@ -382,45 +386,45 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
           <Section title="Pools">
             <Grid3>
               <div><Label>HP</Label>
-                <Input type="number" value={draft.hp} onChange={setNum("hp", 10)} />
+                <NumberInput value={draft.hp as number} fallback={10} onChange={setN("hp", 10)} />
               </div>
               <div><Label>Max HP</Label>
-                <Input type="number" value={draft.maxHp} onChange={setNum("maxHp", 10)} />
+                <NumberInput value={draft.maxHp as number} fallback={10} onChange={setN("maxHp", 10)} />
               </div>
               <div><Label>Natural armor (DC)</Label>
-                <Input type="number" value={draft.naturalArmor} onChange={setNum("naturalArmor", 5)} />
+                <NumberInput value={draft.naturalArmor as number} fallback={5} onChange={setN("naturalArmor", 5)} />
               </div>
               <div><Label>Energy</Label>
-                <Input type="number" value={draft.energy} onChange={setNum("energy", 5)} />
+                <NumberInput value={draft.energy as number} fallback={5} onChange={setN("energy", 5)} />
               </div>
               <div><Label>Max Energy</Label>
-                <Input type="number" value={draft.maxEnergy} onChange={setNum("maxEnergy", 5)} />
+                <NumberInput value={draft.maxEnergy as number} fallback={5} onChange={setN("maxEnergy", 5)} />
               </div>
               <div><Label>Class skill points</Label>
-                <Input type="number" value={draft.classSkillPoints} onChange={setNum("classSkillPoints")} />
+                <NumberInput value={draft.classSkillPoints as number} onChange={setN("classSkillPoints")} />
               </div>
               <div><Label>Mana</Label>
-                <Input type="number" value={draft.mana} onChange={setNum("mana")} />
+                <NumberInput value={draft.mana as number} onChange={setN("mana")} />
               </div>
               <div><Label>Max Mana</Label>
-                <Input type="number" value={draft.maxMana} onChange={setNum("maxMana")} />
+                <NumberInput value={draft.maxMana as number} onChange={setN("maxMana")} />
               </div>
               <div />
               <Row><Checkbox checked={draft.showHpBar} onCheckedChange={v => set({ showHpBar: v })} /><Label>Show HP bar</Label></Row>
               <Row><Checkbox checked={draft.showEnergyBar} onCheckedChange={v => set({ showEnergyBar: v })} /><Label>Show energy bar</Label></Row>
               <Row><Checkbox checked={draft.showManaBar} onCheckedChange={v => set({ showManaBar: v })} /><Label>Show mana bar</Label></Row>
               <div><Label>Bonus HP from level-ups</Label>
-                <Input type="number" value={draft.bonusHpFromLevelUps} onChange={setNum("bonusHpFromLevelUps")} />
+                <NumberInput value={draft.bonusHpFromLevelUps as number} onChange={setN("bonusHpFromLevelUps")} />
               </div>
               <div><Label>Last level HP rolled at</Label>
-                <Input type="number" value={draft.lastLevelUpRolled} onChange={setNum("lastLevelUpRolled", 1)} />
+                <NumberInput value={draft.lastLevelUpRolled as number} fallback={1} onChange={setN("lastLevelUpRolled", 1)} />
               </div>
               <div />
               <div><Label>Bonus energy from level-ups</Label>
-                <Input type="number" value={draft.bonusEnergyFromLevelUps} onChange={setNum("bonusEnergyFromLevelUps")} />
+                <NumberInput value={draft.bonusEnergyFromLevelUps as number} onChange={setN("bonusEnergyFromLevelUps")} />
               </div>
               <div><Label>Last level energy rolled at</Label>
-                <Input type="number" value={draft.lastEnergyLevelUpRolled} onChange={setNum("lastEnergyLevelUpRolled", 1)} />
+                <NumberInput value={draft.lastEnergyLevelUpRolled as number} fallback={1} onChange={setN("lastEnergyLevelUpRolled", 1)} />
               </div>
               <div />
             </Grid3>
@@ -430,8 +434,8 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
             <Grid3>
               {(["might", "finesse", "wit", "presence", "will", "craft"] as const).map(a => (
                 <div key={a}><Label>{a}</Label>
-                  <Input type="number" min={-2} max={5} value={draft[a] as number}
-                    onChange={setNum(a)} data-testid={`input-attr-${a}`} />
+                  <NumberInput min={-2} max={5} value={draft[a] as number}
+                    onChange={setN(a)} data-testid={`input-attr-${a}`} />
                 </div>
               ))}
             </Grid3>
@@ -441,7 +445,7 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
             <Grid3>
               {(["agility", "charisma", "strength", "wisdom", "arcana", "concentration"] as const).map(a => (
                 <div key={a}><Label>{a}</Label>
-                  <Input type="number" value={draft[a] as number} onChange={setNum(a)} />
+                  <NumberInput value={draft[a] as number} onChange={setN(a)} />
                 </div>
               ))}
             </Grid3>
@@ -458,16 +462,16 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
                 ["skillSurvival", "Survival"], ["skillBeastHandling", "Beast Handling"],
               ] as Array<[keyof CharacterDraft, string]>).map(([key, label]) => (
                 <div key={key as string}><Label>{label}</Label>
-                  <Input type="number" value={draft[key] as number} onChange={setNum(key)} />
+                  <NumberInput value={draft[key] as number} onChange={setN(key)} />
                 </div>
               ))}
             </Grid3>
             <Grid2 style={{ marginTop: 8 }}>
               <div><Label>Cancelled attribute points</Label>
-                <Input type="number" min={0} max={2} value={draft.cancelledAttrPoints} onChange={setNum("cancelledAttrPoints")} />
+                <NumberInput min={0} max={2} value={draft.cancelledAttrPoints as number} onChange={setN("cancelledAttrPoints")} />
               </div>
               <div><Label>Cancelled skill points</Label>
-                <Input type="number" min={0} max={2} value={draft.cancelledSkillPoints} onChange={setNum("cancelledSkillPoints")} />
+                <NumberInput min={0} max={2} value={draft.cancelledSkillPoints as number} onChange={setN("cancelledSkillPoints")} />
               </div>
             </Grid2>
           </Section>
@@ -480,13 +484,13 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
                 </Select>
               </div>
               <div><Label>Day vision (ft)</Label>
-                <Input type="number" value={draft.dayVisionDistance} onChange={setNum("dayVisionDistance", 60)} />
+                <NumberInput value={draft.dayVisionDistance as number} fallback={60} onChange={setN("dayVisionDistance", 60)} />
               </div>
               <div><Label>Night vision (ft)</Label>
-                <Input type="number" value={draft.nightVisionDistance} onChange={setNum("nightVisionDistance", 30)} />
+                <NumberInput value={draft.nightVisionDistance as number} fallback={30} onChange={setN("nightVisionDistance", 30)} />
               </div>
               <div><Label>Exhaustion (0–7)</Label>
-                <Input type="number" min={0} max={7} value={draft.exhaustion} onChange={setNum("exhaustion")} />
+                <NumberInput min={0} max={7} value={draft.exhaustion as number} onChange={setN("exhaustion")} />
               </div>
               <div style={{ gridColumn: "span 2" }}><Label>Special vision notes</Label>
                 <Input value={draft.specialVisionNotes ?? ""} onChange={e => set({ specialVisionNotes: e.target.value || null })} />

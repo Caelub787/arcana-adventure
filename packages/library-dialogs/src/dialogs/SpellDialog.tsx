@@ -3,6 +3,7 @@ import {
   Button, Input, Textarea, Label, Checkbox, Select, SelectItem,
   Stack, Row, Grid2, Section,
 } from "../ui/primitives";
+import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
@@ -319,10 +320,9 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                 </div>
                 <div>
                   <Label>Level</Label>
-                  <Input
-                    type="number" min={0} max={9}
-                    value={draft.level ?? 1}
-                    onChange={e => numChange("level", e.target.value, 1)}
+                  <NumberInput
+                    min={0} max={9} value={draft.level ?? 1} fallback={1}
+                    onChange={(v) => set({ level: v ?? 1 })}
                     data-testid="input-spell-level"
                   />
                 </div>
@@ -406,11 +406,9 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                 {!aav3 && (
                 <div>
                   <Label>Flat Modifier</Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     value={draft.mod ?? 0}
-                    onChange={e => numChange("mod", e.target.value, 0)}
-                    placeholder="Bonus added after dice roll"
+                    onChange={(v) => set({ mod: v ?? 0 })}
                     data-testid="input-spell-mod"
                   />
                 </div>
@@ -429,20 +427,18 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
               <Grid2>
                 <div>
                   <Label>Energy Cost</Label>
-                  <Input
-                    type="number" min={0}
-                    value={draft.energyCost ?? 0}
-                    onChange={e => numChange("energyCost", e.target.value, 0)}
+                  <NumberInput
+                    min={0} value={draft.energyCost ?? 0}
+                    onChange={(v) => set({ energyCost: v ?? 0 })}
                     data-testid="input-spell-energy-cost"
                   />
                 </div>
                 {aav2 && (
                   <div>
                     <Label>Mana Cost</Label>
-                    <Input
-                      type="number" min={0}
-                      value={draft.manaCost ?? 0}
-                      onChange={e => numChange("manaCost", e.target.value, 0)}
+                    <NumberInput
+                      min={0} value={draft.manaCost ?? 0}
+                      onChange={(v) => set({ manaCost: v ?? 0 })}
                       data-testid="input-spell-mana-cost"
                     />
                   </div>
@@ -481,10 +477,9 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
               <Grid2>
                 <div>
                   <Label>Range (ft)</Label>
-                  <Input
-                    type="number" min={0}
-                    value={draft.rangeNum ?? 30}
-                    onChange={e => numChange("rangeNum", e.target.value, 30)}
+                  <NumberInput
+                    min={0} value={draft.rangeNum ?? 30} fallback={30}
+                    onChange={(v) => set({ rangeNum: v ?? 30 })}
                     data-testid="input-spell-range"
                   />
                 </div>
@@ -543,11 +538,9 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     </div>
                     <div>
                       <Label>AoE Range (feet)</Label>
-                      <Input
-                        type="number" min={0}
-                        value={draft.aoeRange ?? 15}
-                        onChange={e => numChange("aoeRange", e.target.value, 15)}
-                        placeholder="e.g. 15"
+                      <NumberInput
+                        min={0} value={draft.aoeRange ?? 15} fallback={15}
+                        onChange={(v) => set({ aoeRange: v ?? 15 })}
                         data-testid="input-spell-aoe-range"
                       />
                     </div>
@@ -603,11 +596,9 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
                     </div>
                     <div>
                       <Label>Save DC</Label>
-                      <Input
-                        type="number" min={1}
-                        value={draft.saveDc ?? 15}
-                        onChange={e => numChange("saveDc", e.target.value, 15)}
-                        placeholder="e.g. 15"
+                      <NumberInput
+                        min={1} value={draft.saveDc ?? 15} fallback={15}
+                        onChange={(v) => set({ saveDc: v ?? 15 })}
                         data-testid="input-spell-save-dc"
                       />
                     </div>

@@ -13,6 +13,7 @@ import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolv
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8511,7 +8512,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                     <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-stone-600" onClick={() => setExtraModifier(prev => prev - 1)} data-testid="button-modifier-decrease">
                       <Minus className="h-4 w-4" />
                     </Button>
-                    <Input type="number" value={extraModifier} onChange={(e) => setExtraModifier(parseInt(e.target.value) || 0)} className="w-16 h-8 text-center bg-stone-800 border-stone-600" data-testid="input-extra-modifier" />
+                    <NumberInput value={extraModifier} fallback={0} onChange={(v) => setExtraModifier(v ?? 0)} className="w-16 h-8 text-center bg-stone-800 border-stone-600" data-testid="input-extra-modifier" />
                     <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-stone-600" onClick={() => setExtraModifier(prev => prev + 1)} data-testid="button-modifier-increase">
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -9989,10 +9990,9 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                     {/* Initiative Value */}
                     {editingId === entry.id ? (
                       <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          value={editValue === 0 ? '' : editValue}
-                          onChange={(e) => setEditValue(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                        <NumberInput
+                          value={editValue} fallback={0}
+                          onChange={(v) => setEditValue(v ?? 0)}
                           className="w-16 h-8 bg-stone-700 border-stone-600 text-center"
                           autoFocus
                           onKeyDown={(e) => {
@@ -15945,12 +15945,9 @@ function CustomSkillForm({
           )}
           <div>
             <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
-            <Input
-              type="number"
-              min={-2}
-              max={5}
-              value={skillValue}
-              onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+            <NumberInput
+              min={-2} max={5} value={skillValue} fallback={0}
+              onChange={(v) => setSkillValue(v ?? 0)}
               className="bg-stone-800 border-stone-700 mt-1"
               data-testid="input-skill-value"
             />
@@ -15986,12 +15983,9 @@ function CustomSkillForm({
               </div>
               <div>
                 <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={pendingSkillValue}
-                  onChange={(e) => setPendingSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+                <NumberInput
+                  min={-2} max={5} value={pendingSkillValue} fallback={0}
+                  onChange={(v) => setPendingSkillValue(v ?? 0)}
                   className="bg-stone-800 border-stone-700 mt-1"
                   data-testid="input-pending-skill-value"
                 />
@@ -16057,12 +16051,9 @@ function CustomSkillEditForm({
 
       <div>
         <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
-        <Input
-          type="number"
-          min={-2}
-          max={5}
-          value={skillValue}
-          onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+        <NumberInput
+          min={-2} max={5} value={skillValue} fallback={0}
+          onChange={(v) => setSkillValue(v ?? 0)}
           className="bg-stone-800 border-stone-700 mt-1"
           data-testid="input-edit-skill-value"
         />
@@ -16345,11 +16336,9 @@ function TraitForm({
 
           <div>
             <Label className="text-stone-300">Uses Per Long Rest</Label>
-            <Input
-              type="number"
-              min={1}
-              value={usesPerLongRest}
-              onChange={(e) => setUsesPerLongRest(Math.max(1, parseInt(e.target.value) || 1))}
+            <NumberInput
+              min={1} value={usesPerLongRest} fallback={1}
+              onChange={(v) => setUsesPerLongRest(v ?? 1)}
               className="bg-stone-800 border-stone-700 mt-1"
               data-testid="input-custom-trait-uses"
             />
@@ -16431,34 +16420,27 @@ function TraitEditForm({
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div>
           <Label className="text-stone-300 text-xs">Long Rest Uses</Label>
-          <Input
-            type="number"
-            min={0}
-            value={usesPerLongRest}
-            onChange={(e) => setUsesPerLongRest(Math.max(0, parseInt(e.target.value) || 0))}
+          <NumberInput
+            min={0} value={usesPerLongRest} fallback={0}
+            onChange={(v) => setUsesPerLongRest(v ?? 0)}
             className="bg-stone-800 border-stone-700 mt-1"
             data-testid="input-edit-trait-uses-long"
           />
         </div>
         <div>
           <Label className="text-stone-300 text-xs">Short Rest Uses</Label>
-          <Input
-            type="number"
-            min={0}
-            value={usesPerShortRest}
-            onChange={(e) => setUsesPerShortRest(Math.max(0, parseInt(e.target.value) || 0))}
+          <NumberInput
+            min={0} value={usesPerShortRest} fallback={0}
+            onChange={(v) => setUsesPerShortRest(v ?? 0)}
             className="bg-stone-800 border-stone-700 mt-1"
             data-testid="input-edit-trait-uses-short"
           />
         </div>
         <div>
           <Label className="text-stone-300 text-xs">Current Uses</Label>
-          <Input
-            type="number"
-            min={0}
-            max={maxUses}
-            value={currentUses}
-            onChange={(e) => setCurrentUses(Math.max(0, Math.min(maxUses, parseInt(e.target.value) || 0)))}
+          <NumberInput
+            min={0} max={maxUses} value={currentUses} fallback={0}
+            onChange={(v) => setCurrentUses(v ?? 0)}
             className="bg-stone-800 border-stone-700 mt-1"
             data-testid="input-edit-trait-uses-current"
           />
@@ -16532,10 +16514,9 @@ function V3ArmorBoostsEditor({
             </div>
             <div className="w-24">
               {idx === 0 && <Label className="text-xs">Amount</Label>}
-              <Input
-                type="number"
-                value={row.amount}
-                onChange={(e) => update(idx, { amount: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+              <NumberInput
+                value={row.amount} fallback={0}
+                onChange={(v) => update(idx, { amount: v ?? 0 })}
                 className="bg-stone-800 border-stone-700"
                 data-testid={`input-armor-boost-amount-${idx}`}
               />
@@ -16809,16 +16790,10 @@ function V3AttrsAndSkillsTab({
                   </div>
                   {editing ? (
                     <>
-                      <Input
-                        type="number"
-                        min={minAttr}
-                        max={5}
-                        value={attrData[attr.key] ?? 0}
-                        onChange={e => {
-                          const v = e.target.value === '' ? minAttr : Math.max(minAttr, Math.min(5, parseInt(e.target.value) || 0));
-                          setAttrData({ ...attrData, [attr.key]: v });
-                        }}
-                        onClick={(e) => e.stopPropagation()}
+                      <NumberInput
+                        min={minAttr} max={5} value={attrData[attr.key] ?? 0} fallback={minAttr}
+                        onChange={v => setAttrData({ ...attrData, [attr.key]: v ?? minAttr })}
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
                         className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
                         data-testid={`input-v3-attr-${attr.key}`}
                       />
@@ -16886,15 +16861,9 @@ function V3AttrsAndSkillsTab({
                   </button>
                   {editing ? (
                     <div className="flex flex-col items-end shrink-0">
-                      <Input
-                        type="number"
-                        min={-2}
-                        max={skillMax}
-                        value={skillData[skill.key] ?? 0}
-                        onChange={e => {
-                          const v = e.target.value === '' ? 0 : Math.max(-2, Math.min(skillMax, parseInt(e.target.value) || 0));
-                          setSkillData({ ...skillData, [skill.key]: v });
-                        }}
+                      <NumberInput
+                        min={-2} max={skillMax} value={skillData[skill.key] ?? 0} fallback={0}
+                        onChange={v => setSkillData({ ...skillData, [skill.key]: v ?? 0 })}
                         className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
                         data-testid={`input-v3-skill-${skill.key}`}
                       />
@@ -17816,11 +17785,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           <div className="text-[10px] font-bold uppercase text-amber-400">Quick Edit Level</div>
           <div className="flex items-center gap-2">
             <Label className="text-[10px] text-stone-400 w-16">Level</Label>
-            <Input
-              type="number"
-              min={1}
-              value={quickEditData.current}
-              onChange={(e) => setQuickEditData({ ...quickEditData, current: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+            <NumberInput
+              min={1} value={typeof quickEditData.current === 'number' ? quickEditData.current : undefined} fallback={1}
+              onChange={(v) => setQuickEditData({ ...quickEditData, current: v ?? 1 })}
               className="h-7 text-xs bg-stone-900 border-amber-700 text-stone-200"
               data-testid="input-quick-level-current"
             />
@@ -17861,21 +17828,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         <div className={`text-[10px] font-bold uppercase ${labels.color}`}>Quick Edit {labels.title}</div>
         <div className="flex items-center gap-2">
           <Label className="text-[10px] text-stone-400 w-16">Current</Label>
-          <Input
-            type="number"
-            value={quickEditData.current}
-            onChange={(e) => setQuickEditData({ ...quickEditData, current: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+          <NumberInput
+            value={typeof quickEditData.current === 'number' ? quickEditData.current : undefined} fallback={0}
+            onChange={(v) => setQuickEditData({ ...quickEditData, current: v ?? 0 })}
             className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
             data-testid={`input-quick-${bar}-current`}
           />
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-[10px] text-stone-400 w-16">Max</Label>
-          <Input
-            type="number"
-            value={quickEditData.max}
+          <NumberInput
+            value={typeof quickEditData.max === 'number' ? quickEditData.max : undefined} fallback={0}
             disabled={!canEditAsGM}
-            onChange={(e) => setQuickEditData({ ...quickEditData, max: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+            onChange={(v) => setQuickEditData({ ...quickEditData, max: v ?? 0 })}
             className={`h-7 text-xs bg-stone-900 text-stone-200 ${canEditAsGM ? 'border-amber-700' : 'border-stone-800'}`}
             data-testid={`input-quick-${bar}-max`}
           />
@@ -17883,11 +17848,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-[10px] text-violet-400 w-16">Temp Bonus</Label>
-          <Input
-            type="number"
-            min={0}
-            value={quickEditData.bonus}
-            onChange={(e) => handleQuickEditBonusChange(e.target.value)}
+          <NumberInput
+            min={0} value={quickEditData.bonus} fallback={0}
+            onChange={(v) => handleQuickEditBonusChange(String(v ?? 0))}
             className="h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
             data-testid={`input-quick-${bar}-bonus`}
           />
@@ -19840,19 +19803,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </Label>
                         {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
-                            <Input
-                              type="number"
-                              value={overviewData.hp}
-                              onChange={(e) => setOverviewData({ ...overviewData, hp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              value={typeof overviewData.hp === 'number' ? overviewData.hp : undefined} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, hp: v ?? 0 })}
                               className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                               data-testid="input-edit-hp"
                             />
                             <span className="text-xs">/</span>
                             <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                value={overviewData.maxHp}
-                                onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              <NumberInput
+                                value={typeof overviewData.maxHp === 'number' ? overviewData.maxHp : undefined} fallback={0}
+                                onChange={(v) => setOverviewData({ ...overviewData, maxHp: v ?? 0 })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                                 disabled={!canEditAsGM}
                                 data-testid="input-edit-max-hp"
@@ -19871,11 +19832,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               )}
                             </div>
                             <span className="text-xs text-violet-400">+T</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={overviewData.tempHp}
-                              onChange={(e) => setOverviewData({ ...overviewData, tempHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              min={0} value={typeof overviewData.tempHp === 'number' ? overviewData.tempHp : undefined} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, tempHp: v ?? 0 })}
                               className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
                               data-testid="input-edit-temp-hp"
                             />
@@ -19961,19 +19920,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </Label>
                         {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
-                            <Input
-                              type="number"
-                              value={overviewData.energy}
-                              onChange={(e) => setOverviewData({ ...overviewData, energy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              value={typeof overviewData.energy === 'number' ? overviewData.energy : undefined} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, energy: v ?? 0 })}
                               className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                               data-testid="input-edit-energy"
                             />
                             <span className="text-xs">/</span>
                             <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                value={overviewData.maxEnergy}
-                                onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              <NumberInput
+                                value={typeof overviewData.maxEnergy === 'number' ? overviewData.maxEnergy : undefined} fallback={0}
+                                onChange={(v) => setOverviewData({ ...overviewData, maxEnergy: v ?? 0 })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                                 disabled={!canEditAsGM}
                                 data-testid="input-edit-max-energy"
@@ -19992,11 +19949,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               )}
                             </div>
                             <span className="text-xs text-violet-400">+T</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={overviewData.tempEnergy}
-                              onChange={(e) => setOverviewData({ ...overviewData, tempEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              min={0} value={typeof overviewData.tempEnergy === 'number' ? overviewData.tempEnergy : undefined} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, tempEnergy: v ?? 0 })}
                               className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
                               data-testid="input-edit-temp-energy"
                             />
@@ -20075,19 +20030,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </Label>
                         {editingOverview && !isAAV2 ? (
                           <div className="flex gap-1 items-center">
-                            <Input
-                              type="number"
-                              value={overviewData.mana ?? liveCharacter.mana ?? 0}
-                              onChange={(e) => setOverviewData({ ...overviewData, mana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              value={overviewData.mana ?? liveCharacter.mana ?? 0} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, mana: v ?? 0 })}
                               className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                               data-testid="input-mana"
                             />
                             <span className="text-xs">/</span>
                             <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                value={overviewData.maxMana ?? liveCharacter.maxMana ?? 0}
-                                onChange={(e) => setOverviewData({ ...overviewData, maxMana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              <NumberInput
+                                value={overviewData.maxMana ?? liveCharacter.maxMana ?? 0} fallback={0}
+                                onChange={(v) => setOverviewData({ ...overviewData, maxMana: v ?? 0 })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                                 disabled={!canEditAsGM}
                                 data-testid="input-max-mana"
@@ -20106,11 +20059,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               )}
                             </div>
                             <span className="text-xs text-violet-400">+T</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={overviewData.tempMana}
-                              onChange={(e) => setOverviewData({ ...overviewData, tempMana: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                            <NumberInput
+                              min={0} value={typeof overviewData.tempMana === 'number' ? overviewData.tempMana : undefined} fallback={0}
+                              onChange={(v) => setOverviewData({ ...overviewData, tempMana: v ?? 0 })}
                               className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
                               data-testid="input-edit-temp-mana"
                             />
@@ -20262,12 +20213,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <div>
                       <Label className="text-xs text-stone-400">Level</Label>
                       {editingOverview ? (
-                        <Input
-                          type="number"
-                          min="1"
-                          max="20"
-                          value={overviewData.level}
-                          onChange={(e) => setOverviewData({ ...overviewData, level: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                        <NumberInput
+                          min={1} max={20} value={typeof overviewData.level === 'number' ? overviewData.level : undefined} fallback={1}
+                          onChange={(v) => setOverviewData({ ...overviewData, level: v ?? 1 })}
                           className="bg-stone-900 border-stone-700 text-stone-200"
                           data-testid="input-edit-level"
                         />
@@ -20336,20 +20284,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <Label className="text-[10px] text-stone-500">Day Vision (ft)</Label>
-                              <Input
-                                type="number"
-                                value={overviewData.dayVisionDistance}
-                                onChange={(e) => setOverviewData({ ...overviewData, dayVisionDistance: parseInt(e.target.value) || 0 })}
+                              <NumberInput
+                                value={overviewData.dayVisionDistance} fallback={0}
+                                onChange={(v) => setOverviewData({ ...overviewData, dayVisionDistance: v ?? 0 })}
                                 className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                                 data-testid="input-day-vision"
                               />
                             </div>
                             <div>
                               <Label className="text-[10px] text-stone-500">Night Vision (ft)</Label>
-                              <Input
-                                type="number"
-                                value={overviewData.nightVisionDistance}
-                                onChange={(e) => setOverviewData({ ...overviewData, nightVisionDistance: parseInt(e.target.value) || 0 })}
+                              <NumberInput
+                                value={overviewData.nightVisionDistance} fallback={0}
+                                onChange={(v) => setOverviewData({ ...overviewData, nightVisionDistance: v ?? 0 })}
                                 className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                                 data-testid="input-night-vision"
                               />
@@ -20830,26 +20776,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <Label className="text-xs text-stone-400">{attr.name}</Label>
                           </div>
                           {editingAttributes ? (
-                            <Input
-                              type="number"
-                              min="-2"
-                              max="5"
-                              value={value}
-                              onChange={(e) => {
-                                if (e.target.value === '') {
-                                  setAttributesData({
-                                    ...attributesData,
-                                    [attr.key]: ''
-                                  });
-                                } else {
-                                  const parsed = parseInt(e.target.value);
-                                  const newVal = Math.max(-2, Math.min(5, parsed));
-                                  setAttributesData({
-                                    ...attributesData,
-                                    [attr.key]: newVal
-                                  });
-                                }
-                              }}
+                            <NumberInput
+                              min={-2} max={5} value={typeof value === 'number' ? value : undefined} fallback={0}
+                              onChange={(v) => setAttributesData({ ...attributesData, [attr.key]: v ?? 0 })}
                               className="text-2xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
                               data-testid={`input-attribute-${attr.key}`}
                             />
@@ -21076,26 +21005,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     return editingSkills ? (
                       <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
                         <Label className="text-xs text-stone-400">{skill.name} <span className="text-stone-500">({skill.attr})</span></Label>
-                        <Input
-                          type="number"
-                          min="-2"
-                          max="5"
-                          value={value}
-                          onChange={(e) => {
-                            if (e.target.value === '') {
-                              setSkillsData({
-                                ...skillsData,
-                                [skill.key]: ''
-                              });
-                            } else {
-                              const parsed = parseInt(e.target.value);
-                              const newVal = Math.max(-2, Math.min(5, parsed));
-                              setSkillsData({
-                                ...skillsData,
-                                [skill.key]: newVal
-                              });
-                            }
-                          }}
+                        <NumberInput
+                          min={-2} max={5} value={typeof value === 'number' ? value : undefined} fallback={0}
+                          onChange={(v) => setSkillsData({ ...skillsData, [skill.key]: v ?? 0 })}
                           className="bg-stone-800 border-amber-700 text-center font-bold"
                           data-testid={`input-skill-${skill.key}`}
                         />
@@ -21284,26 +21196,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         return (
                           <div key={customSkill.id} className="flex flex-col gap-1 p-3 bg-stone-900 border border-cyan-700 rounded-md">
                             <Label className="text-xs text-cyan-300">{customSkill.name} <span className="text-stone-500 capitalize">({parentAttr})</span></Label>
-                            <Input
-                              type="number"
-                              min="-2"
-                              max="5"
-                              value={rawSkillValue}
-                              onChange={(e) => {
-                                if (e.target.value === '') {
-                                  setCustomSkillsEditData({
-                                    ...customSkillsEditData,
-                                    [customSkill.id]: ''
-                                  });
-                                } else {
-                                  const parsed = parseInt(e.target.value);
-                                  const newVal = Math.max(-2, Math.min(5, parsed));
-                                  setCustomSkillsEditData({
-                                    ...customSkillsEditData,
-                                    [customSkill.id]: newVal
-                                  });
-                                }
-                              }}
+                            <NumberInput
+                              min={-2} max={5} value={typeof rawSkillValue === 'number' ? rawSkillValue : undefined} fallback={0}
+                              onChange={(v) => setCustomSkillsEditData({ ...customSkillsEditData, [customSkill.id]: v ?? 0 })}
                               className="bg-stone-800 border-cyan-700 text-center font-bold"
                               data-testid={`input-custom-skill-${customSkill.id}`}
                             />
@@ -22627,11 +22522,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              value={spellFormData.energyCost}
-                              onChange={(e) => handleSpellNumericChange('energyCost', e.target.value)}
+                            <NumberInput
+                              min={0} value={spellFormData.energyCost} fallback={0}
+                              onChange={(v) => handleSpellNumericChange('energyCost', String(v ?? 0))}
                               className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                               disabled={!canEditAsGM}
                               data-testid="input-spell-energy-cost"
@@ -22654,11 +22547,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              value={spellFormData.manaCost || 0}
-                              onChange={(e) => handleSpellNumericChange('manaCost', e.target.value)}
+                            <NumberInput
+                              min={0} value={spellFormData.manaCost || 0} fallback={0}
+                              onChange={(v) => handleSpellNumericChange('manaCost', String(v ?? 0))}
                               className={`bg-stone-800 ${isGM ? 'border-violet-700' : 'border-stone-700'}`}
                               disabled={!canEditAsGM}
                               data-testid="input-spell-mana-cost"
@@ -22806,11 +22697,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               </div>
                               <div>
                                 <Label>AoE Range (feet)</Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  value={spellFormData.aoeRange}
-                                  onChange={(e) => handleSpellNumericChange('aoeRange', e.target.value)}
+                                <NumberInput
+                                  min={0} value={spellFormData.aoeRange} fallback={0}
+                                  onChange={(v) => handleSpellNumericChange('aoeRange', String(v ?? 0))}
                                   placeholder="e.g. 15"
                                   className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                                   disabled={!canEditAsGM}
@@ -22866,11 +22755,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </div>
                             <div>
                               <Label>Save DC</Label>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={spellFormData.saveDc}
-                                onChange={(e) => handleSpellNumericChange('saveDc', e.target.value)}
+                              <NumberInput
+                                min={1} value={spellFormData.saveDc} fallback={1}
+                                onChange={(v) => handleSpellNumericChange('saveDc', String(v ?? 1))}
                                 placeholder="e.g. 15"
                                 className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                                 disabled={!canEditAsGM}
@@ -25759,11 +25646,9 @@ function AddItemQuantityDialog({ template, onConfirm, onCancel }: {
             >
               <Minus className="h-4 w-4" />
             </Button>
-            <Input
-              type="number"
-              min="1"
-              value={qty === 0 ? '' : qty}
-              onChange={(e) => setQty(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value) || 1))}
+            <NumberInput
+              min={1} value={qty} fallback={1}
+              onChange={(v) => setQty(v ?? 1)}
               className="bg-stone-800 border-stone-700 text-center w-20"
               data-testid="input-add-quantity"
             />
@@ -26462,11 +26347,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               </div>
               <div>
                 <Label>Quantity</Label>
-                <Input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 1})} className="bg-stone-800 border-stone-700" />
+                <NumberInput min={1} value={formData.quantity} fallback={1} onChange={(v) => setFormData({...formData, quantity: v ?? 1})} className="bg-stone-800 border-stone-700" />
               </div>
               <div>
                 <Label>Weight (lbs)</Label>
-                <Input type="number" min="0" step="0.01" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                <NumberInput min={0} integer={false} optional value={typeof formData.itemWeight === 'number' ? formData.itemWeight : undefined} fallback={0} onChange={(v) => setFormData({...formData, itemWeight: v ?? ''})} className="bg-stone-800 border-stone-700" />
               </div>
             </div>
             <div>
@@ -26520,11 +26405,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                 </div>
                 <div>
                   <Label>Modifier</Label>
-                  <Input type="number" value={formData.mod} onChange={(e) => setFormData({...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <NumberInput value={typeof formData.mod === 'number' ? formData.mod : undefined} fallback={0} onChange={(v) => setFormData({...formData, mod: v ?? ''})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Range (feet)</Label>
-                  <Input type="number" min="0" value={formData.range} onChange={(e) => setFormData({...formData, range: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <NumberInput min={0} value={typeof formData.range === 'number' ? formData.range : undefined} fallback={0} onChange={(v) => setFormData({...formData, range: v ?? ''})} className="bg-stone-800 border-stone-700" />
                 </div>
               </div>
             </div>
@@ -26534,7 +26419,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Price</Label>
-                  <Input type="number" min="0" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <NumberInput min={0} value={typeof formData.price === 'number' ? formData.price : undefined} fallback={0} onChange={(v) => setFormData({...formData, price: v ?? ''})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Currency</Label>
@@ -26575,12 +26460,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     {(formData.rationServings !== '' && Number(formData.rationServings) > 0) && (
                       <div className="mt-3">
                         <Label>Ration Servings</Label>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          step="1"
-                          value={formData.rationServings} 
-                          onChange={(e) => setFormData({...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                        <NumberInput 
+                          min={1} value={typeof formData.rationServings === 'number' ? formData.rationServings : undefined} fallback={1}
+                          onChange={(v) => setFormData({...formData, rationServings: v ?? ''})} 
                           className="bg-stone-800 border-stone-700 w-32"
                           data-testid="input-ration-servings"
                         />
@@ -26745,11 +26627,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                   {!isAAV3 && (
                   <div>
                     <Label>Armor Bonus (DC)</Label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      value={formData.armorBonus} 
-                      onChange={(e) => setFormData({...formData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                    <NumberInput 
+                      min={0} value={typeof formData.armorBonus === 'number' ? formData.armorBonus : undefined} fallback={0}
+                      onChange={(v) => setFormData({...formData, armorBonus: v ?? ''})} 
                       className="bg-stone-800 border-stone-700"
                       placeholder="0"
                       data-testid="input-armor-bonus"
@@ -26785,11 +26665,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                   {!isAAV3 && (
                   <div>
                     <Label>Damage Reduction Amount</Label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      value={formData.damageReduction} 
-                      onChange={(e) => setFormData({...formData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                    <NumberInput 
+                      min={0} value={typeof formData.damageReduction === 'number' ? formData.damageReduction : undefined} fallback={0}
+                      onChange={(v) => setFormData({...formData, damageReduction: v ?? ''})} 
                       className="bg-stone-800 border-stone-700"
                       placeholder="0"
                       data-testid="input-damage-reduction"
@@ -26821,11 +26699,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                   {formData.isContainer && (
                     <div className="flex items-center gap-2">
                       <Label>Carry Capacity Bonus:</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        value={formData.carryCapacity} 
-                        onChange={(e) => setFormData({...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                      <NumberInput 
+                        min={0} value={typeof formData.carryCapacity === 'number' ? formData.carryCapacity : undefined} fallback={0}
+                        onChange={(v) => setFormData({...formData, carryCapacity: v ?? ''})} 
                         className="w-20 bg-stone-800 border-stone-700"
                         data-testid="input-carry-capacity"
                       />
@@ -26861,10 +26737,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               {formData.grantsDcBonus && (
                 <div>
                   <Label>DC Bonus Value</Label>
-                  <Input
-                    type="number"
-                    value={formData.dcBonusValue}
-                    onChange={(e) => setFormData({...formData, dcBonusValue: e.target.value === '' ? '' : parseInt(e.target.value)})}
+                  <NumberInput
+                    value={typeof formData.dcBonusValue === 'number' ? formData.dcBonusValue : undefined} fallback={0}
+                    onChange={(v) => setFormData({...formData, dcBonusValue: v ?? ''})}
                     className="bg-stone-800 border-stone-700"
                     placeholder="0"
                     data-testid="input-dc-bonus-value"
@@ -27168,7 +27043,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
                   </div>
                   <div>
                     <Label>Weight (lbs)</Label>
-                    <Input type="number" min="0" step="0.01" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                    <NumberInput min={0} integer={false} optional value={typeof newItem.itemWeight === 'number' ? newItem.itemWeight : undefined} fallback={0} onChange={(v) => setNewItem({...newItem, itemWeight: v ?? ''})} className="bg-stone-800 border-stone-700" />
                   </div>
                 </div>
                 <div>
@@ -27251,7 +27126,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Price</Label>
-                      <Input type="number" min="0" value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <NumberInput min={0} value={typeof newItem.price === 'number' ? newItem.price : undefined} fallback={0} onChange={(v) => setNewItem({...newItem, price: v ?? ''})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Currency</Label>
@@ -27990,14 +27865,9 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
         >
           <Minus className="h-4 w-4" />
         </Button>
-        <Input
-          type="number"
-          min={1}
-          value={lv}
-          onChange={(e) => {
-            const n = parseInt(e.target.value, 10);
-            setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
-          }}
+        <NumberInput
+          min={1} value={lv} fallback={1}
+          onChange={(v) => setLevel(v ?? 1)}
           className="h-8 w-20 text-center bg-stone-950 border-stone-600"
           data-testid="input-v3-weapon-level"
         />
@@ -29201,7 +29071,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     <div>
                       <Label className="text-xs text-stone-400">Weight</Label>
                       {isEditing && canEditAllFields ? (
-                        <Input type="number" step="0.01" min="0" value={currentData.itemWeight ?? ''} onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })} className="bg-stone-800 border-amber-700" />
+                        <NumberInput min={0} integer={false} optional value={typeof currentData.itemWeight === 'number' ? currentData.itemWeight : undefined} fallback={0} onChange={(v) => setEditData({ ...editData, itemWeight: v ?? '' })} className="bg-stone-800 border-amber-700" />
                       ) : (
                         <p className="text-stone-200 text-sm">{currentData.itemWeight} lbs <span className="text-stone-400 text-xs">(total: {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(2)} lbs)</span></p>
                       )}
@@ -29231,7 +29101,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       <Label className="text-xs text-stone-400">Price</Label>
                       {isEditing && canEditAllFields ? (
                         <div className="flex gap-1">
-                          <Input type="number" min="0" value={currentData.price ?? ''} onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? '' : parseInt(e.target.value) })} className="bg-stone-800 border-amber-700 flex-1" data-testid="input-price" />
+                          <NumberInput min={0} optional value={typeof currentData.price === 'number' ? currentData.price : undefined} fallback={0} onChange={(v) => setEditData({ ...editData, price: v ?? '' })} className="bg-stone-800 border-amber-700 flex-1" data-testid="input-price" />
                           <Select value={currentData.currency || 'copper'} onValueChange={(v) => setEditData({ ...editData, currency: v })}>
                             <SelectTrigger className="bg-stone-800 border-amber-700 w-24" data-testid="select-currency"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -29593,10 +29463,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       )}
                     </div>
                     {isEditing && canEditAllFields ? (
-                      <Input 
-                        type="number"
-                        value={currentData.armorBonus ?? ''} 
-                        onChange={(e) => setEditData({ ...editData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                      <NumberInput 
+                        optional value={typeof currentData.armorBonus === 'number' ? currentData.armorBonus : undefined} fallback={0}
+                        onChange={(v) => setEditData({ ...editData, armorBonus: v ?? '' })}
                         className="bg-stone-800 border-amber-700"
                         data-testid="input-armor-bonus"
                       />
@@ -29623,10 +29492,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       )}
                     </div>
                     {isEditing && canEditAllFields ? (
-                      <Input 
-                        type="number"
-                        value={currentData.damageReduction ?? ''} 
-                        onChange={(e) => setEditData({ ...editData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                      <NumberInput 
+                        min={0} optional value={typeof currentData.damageReduction === 'number' ? currentData.damageReduction : undefined} fallback={0}
+                        onChange={(v) => setEditData({ ...editData, damageReduction: v ?? '' })}
                         className="bg-stone-800 border-amber-700"
                         data-testid="input-damage-reduction"
                       />
@@ -29729,10 +29597,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   {currentData.grantsDcBonus && (
                     <div>
                       <Label>DC Bonus Value</Label>
-                      <Input
-                        type="number"
-                        value={currentData.dcBonusValue ?? 0}
-                        onChange={(e) => setEditData({ ...editData, dcBonusValue: parseInt(e.target.value) || 0 })}
+                      <NumberInput
+                        value={typeof currentData.dcBonusValue === 'number' ? currentData.dcBonusValue : 0} fallback={0}
+                        onChange={(v) => setEditData({ ...editData, dcBonusValue: v ?? 0 })}
                         className="bg-stone-800 border-amber-700"
                         data-testid="input-edit-dc-bonus-value"
                       />
@@ -29770,12 +29637,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     )}
                   </div>
                   {isEditing && canEditAllFields ? (
-                    <Input 
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={currentData.itemWeight ?? ''} 
-                      onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                    <NumberInput 
+                      min={0} integer={false} optional value={typeof currentData.itemWeight === 'number' ? currentData.itemWeight : undefined} fallback={0}
+                      onChange={(v) => setEditData({ ...editData, itemWeight: v ?? '' })}
                       className="bg-stone-800 border-amber-700"
                     />
                   ) : (
@@ -29849,11 +29713,9 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     )}
                   </div>
                   {isEditing && canEditAllFields ? (
-                    <Input 
-                      type="number"
-                      min="0"
-                      value={currentData.price ?? ''} 
-                      onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                    <NumberInput 
+                      min={0} optional value={typeof currentData.price === 'number' ? currentData.price : undefined} fallback={0}
+                      onChange={(v) => setEditData({ ...editData, price: v ?? '' })}
                       className="bg-stone-800 border-amber-700"
                       data-testid="input-price"
                     />
@@ -30020,15 +29882,15 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label className="text-xs text-stone-400">HP</Label>
-                    <Input type="number" value={currentData.consumableHpChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableHpChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-hp" />
+                    <NumberInput value={currentData.consumableHpChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableHpChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-hp" />
                   </div>
                   <div>
                     <Label className="text-xs text-stone-400">Mana</Label>
-                    <Input type="number" value={currentData.consumableManaChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableManaChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-mana" />
+                    <NumberInput value={currentData.consumableManaChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableManaChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-mana" />
                   </div>
                   <div>
                     <Label className="text-xs text-stone-400">Energy</Label>
-                    <Input type="number" value={currentData.consumableEnergyChange ?? 0} onChange={(e) => setEditData({ ...editData, consumableEnergyChange: e.target.value === '' ? 0 : parseInt(e.target.value) })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-energy" />
+                    <NumberInput value={currentData.consumableEnergyChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableEnergyChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-energy" />
                   </div>
                 </div>
                 <div>

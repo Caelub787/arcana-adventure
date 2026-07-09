@@ -5,6 +5,7 @@ import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { useToast } from "@/hooks/use-toast";
 import { V3SpellCrafter } from "./V3SpellCrafter";
 import { castV3Spell, v3ReachExtraMana, type V3CastCharacter } from "@/lib/v3cast";
@@ -211,14 +212,11 @@ export function V3SpellDetailDialog({
               >
                 <Minus className="h-4 w-4" />
               </Button>
-              <Input
-                type="number"
-                min={1}
+              <NumberInput
                 value={lv}
-                onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
-                  setLevel(Number.isFinite(n) && n >= 1 ? n : 1);
-                }}
+                onChange={(v) => setLevel(v ?? 1)}
+                min={1}
+                fallback={1}
                 className="h-8 w-20 text-center bg-stone-950 border-stone-600"
                 data-testid="input-v3-level"
               />

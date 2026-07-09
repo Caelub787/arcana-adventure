@@ -19,6 +19,7 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { optionalNum, uid } from "../lib/utils";
+import { NumberInput } from "./NumberInput";
 import { RollEntriesEditor, type RollEntryDraft } from "./RollEntriesEditor";
 import type { HostAdapter } from "../types";
 
@@ -143,7 +144,7 @@ export const CharacterItemsEditor: React.FC<{
                   <Input value={it.itemType ?? ""} onChange={e => set(i, { itemType: e.target.value })} placeholder="weapon, armor, …" />
                 </div>
                 <div><Label>Quantity</Label>
-                  <Input type="number" value={it.quantity ?? 1} onChange={e => set(i, { quantity: optionalNum(e.target.value) ?? 1 })} />
+                  <NumberInput value={it.quantity ?? 1} fallback={1} onChange={(v) => set(i, { quantity: v ?? 1 })} />
                 </div>
               </Grid3>
               <Grid3>
@@ -154,10 +155,10 @@ export const CharacterItemsEditor: React.FC<{
                   <Input value={it.damageType ?? ""} onChange={e => set(i, { damageType: e.target.value || null })} />
                 </div>
                 <div><Label>Mod</Label>
-                  <Input type="number" value={it.mod ?? 0} onChange={e => set(i, { mod: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={it.mod ?? 0} onChange={(v) => set(i, { mod: v ?? 0 })} />
                 </div>
                 <div><Label>Armor bonus</Label>
-                  <Input type="number" value={it.armorBonus ?? 0} onChange={e => set(i, { armorBonus: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={it.armorBonus ?? 0} onChange={(v) => set(i, { armorBonus: v ?? 0 })} />
                 </div>
                 <div><Label>Armor slot</Label>
                   <Input value={it.armorSlot ?? ""} placeholder="helm, chest…" onChange={e => set(i, { armorSlot: e.target.value || null })} />
@@ -216,7 +217,7 @@ export const CharacterSpellsEditor: React.FC<{
                   <Input value={sp.name} onChange={e => set(i, { name: e.target.value })} data-testid={`input-charspell-name-${i}`} />
                 </div>
                 <div><Label>Level</Label>
-                  <Input type="number" value={sp.level ?? 1} onChange={e => set(i, { level: optionalNum(e.target.value) ?? 1 })} />
+                  <NumberInput value={sp.level ?? 1} fallback={1} onChange={(v) => set(i, { level: v ?? 1 })} />
                 </div>
                 <div><Label>Attribute</Label>
                   <Select value={sp.attribute ?? ""} onValueChange={v => set(i, { attribute: v || null })}>
@@ -232,10 +233,10 @@ export const CharacterSpellsEditor: React.FC<{
                 </div>
                 <Row><Checkbox checked={!!sp.isEquipped} onCheckedChange={v => set(i, { isEquipped: v })} /><Label>Equipped</Label></Row>
                 <div><Label>Energy cost</Label>
-                  <Input type="number" value={sp.energyCost ?? 1} onChange={e => set(i, { energyCost: optionalNum(e.target.value) ?? 1 })} />
+                  <NumberInput value={sp.energyCost ?? 1} fallback={1} onChange={(v) => set(i, { energyCost: v ?? 1 })} />
                 </div>
                 <div><Label>Mana cost</Label>
-                  <Input type="number" value={sp.manaCost ?? 0} onChange={e => set(i, { manaCost: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={sp.manaCost ?? 0} onChange={(v) => set(i, { manaCost: v ?? 0 })} />
                 </div>
               </Grid3>
               <div><Label>Description</Label>
@@ -292,7 +293,7 @@ export const CharacterHotbarsEditor: React.FC<{
                 </Select>
               </div>
               <div><Label>Slot</Label>
-                <Input type="number" value={hb.slotNumber} onChange={e => set(i, { slotNumber: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={hb.slotNumber} onChange={(v) => set(i, { slotNumber: v ?? 0 })} />
               </div>
               <Row><Button variant="danger" size="sm" onClick={() => remove(i)}>Remove</Button></Row>
               <div><Label>Item</Label>
@@ -354,7 +355,7 @@ export const CharacterCustomSkillsEditor: React.FC<{
             </div>
             <Row>
               <div style={{ flex: 1 }}><Label>Value</Label>
-                <Input type="number" value={s.value} onChange={e => set(i, { value: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={s.value} onChange={(v) => set(i, { value: v ?? 0 })} />
               </div>
               <Button variant="danger" size="sm" onClick={() => remove(i)}>×</Button>
             </Row>
@@ -402,13 +403,13 @@ export const CharacterTraitsEditor: React.FC<{
                 </div>
                 <Row><Button variant="danger" size="sm" onClick={() => remove(i)}>Remove</Button></Row>
                 <div><Label>Uses / long rest</Label>
-                  <Input type="number" value={t.usesPerLongRest} onChange={e => set(i, { usesPerLongRest: optionalNum(e.target.value) ?? 1 })} />
+                  <NumberInput value={t.usesPerLongRest} fallback={1} onChange={(v) => set(i, { usesPerLongRest: v ?? 1 })} />
                 </div>
                 <div><Label>Uses / short rest</Label>
-                  <Input type="number" value={t.usesPerShortRest ?? 0} onChange={e => set(i, { usesPerShortRest: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={t.usesPerShortRest ?? 0} onChange={(v) => set(i, { usesPerShortRest: v ?? 0 })} />
                 </div>
                 <div><Label>Current uses</Label>
-                  <Input type="number" value={t.currentUses} onChange={e => set(i, { currentUses: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={t.currentUses} onChange={(v) => set(i, { currentUses: v ?? 0 })} />
                 </div>
                 <div><Label>Damage mod type</Label>
                   <Select value={t.damageModifierType ?? "none"} onValueChange={v => set(i, { damageModifierType: v })}>
@@ -422,10 +423,10 @@ export const CharacterTraitsEditor: React.FC<{
                   <Input value={t.damageModifierDamageType ?? ""} onChange={e => set(i, { damageModifierDamageType: e.target.value || null })} />
                 </div>
                 <div><Label>Damage mod value</Label>
-                  <Input type="number" value={t.damageModifierValue ?? 0} onChange={e => set(i, { damageModifierValue: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={t.damageModifierValue ?? 0} onChange={(v) => set(i, { damageModifierValue: v ?? 0 })} />
                 </div>
                 <div><Label>Vision modifier</Label>
-                  <Input type="number" value={t.visionModifier ?? 0} onChange={e => set(i, { visionModifier: optionalNum(e.target.value) ?? 0 })} />
+                  <NumberInput value={t.visionModifier ?? 0} onChange={(v) => set(i, { visionModifier: v ?? 0 })} />
                 </div>
               </Grid3>
               <div><Label>Description</Label>
@@ -496,11 +497,11 @@ export const CharacterClassesEditor: React.FC<{
               <Input value={c.classId} onChange={e => set(i, { classId: e.target.value })} />
             </div>
             <div><Label>Level</Label>
-              <Input type="number" value={c.classLevel} onChange={e => set(i, { classLevel: optionalNum(e.target.value) ?? 1 })} />
+              <NumberInput value={c.classLevel} fallback={1} onChange={(v) => set(i, { classLevel: v ?? 1 })} />
             </div>
             <Row>
               <div style={{ flex: 1 }}><Label>Points</Label>
-                <Input type="number" value={c.classPoints} onChange={e => set(i, { classPoints: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={c.classPoints} onChange={(v) => set(i, { classPoints: v ?? 0 })} />
               </div>
               <Button variant="danger" size="sm" onClick={() => remove(i)}>×</Button>
             </Row>

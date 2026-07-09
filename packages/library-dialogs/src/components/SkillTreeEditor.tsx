@@ -26,6 +26,7 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { uid } from "../lib/utils";
+import { NumberInput } from "./NumberInput";
 
 const CELL_SIZE = 100;
 const NODE_RADIUS = 36;
@@ -412,17 +413,17 @@ const SkillNodeEditorPanel: React.FC<SkillNodeEditorPanelProps> = ({ node, onCha
         <Grid3>
           <div>
             <Label>Class Level Gate</Label>
-            <Input type="number" min={1} value={node.tier} onChange={e => numChange("tier", e.target.value, 1)} data-testid="input-skillnode-tier" />
+            <NumberInput min={1} value={node.tier} fallback={1} onChange={(v) => onChange({ tier: v ?? 1 })} data-testid="input-skillnode-tier" />
           </div>
           <div>
             <Label>Cost (skill points)</Label>
-            <Input type="number" min={0} value={node.cost} onChange={e => numChange("cost", e.target.value, 1)} data-testid="input-skillnode-cost" />
+            <NumberInput min={0} value={node.cost} fallback={1} onChange={(v) => onChange({ cost: v ?? 1 })} data-testid="input-skillnode-cost" />
           </div>
           <div>
             <Label>Position (x, y)</Label>
             <Row>
-              <Input type="number" value={node.gridX} onChange={e => numChange("gridX", e.target.value, 0)} data-testid="input-skillnode-gridx" />
-              <Input type="number" value={node.gridY} onChange={e => numChange("gridY", e.target.value, 0)} data-testid="input-skillnode-gridy" />
+              <NumberInput value={node.gridX} onChange={(v) => onChange({ gridX: v ?? 0 })} data-testid="input-skillnode-gridx" />
+              <NumberInput value={node.gridY} onChange={(v) => onChange({ gridY: v ?? 0 })} data-testid="input-skillnode-gridy" />
             </Row>
           </div>
         </Grid3>
@@ -441,10 +442,9 @@ const SkillNodeEditorPanel: React.FC<SkillNodeEditorPanelProps> = ({ node, onCha
                   </div>
                   <div>
                     <Label>Value</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       value={eff.value ?? 0}
-                      onChange={e => setEffect(idx, { value: parseInt(e.target.value, 10) || 0 })}
+                      onChange={(v) => setEffect(idx, { value: v ?? 0 })}
                       data-testid={`input-skillnode-effect-value-${idx}`}
                     />
                   </div>

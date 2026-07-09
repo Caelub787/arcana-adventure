@@ -16,6 +16,7 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { uid } from "../lib/utils";
+import { NumberInput } from "./NumberInput";
 
 const CELL_SIZE = 100;
 const NODE_RADIUS = 36;
@@ -408,17 +409,17 @@ const FeatEditorPanel: React.FC<FeatEditorPanelProps> = ({ feat, onChange, onDel
         <Grid3>
           <div>
             <Label>Tier</Label>
-            <Input type="number" min={1} value={feat.tier} onChange={e => numChange("tier", e.target.value, 1)} data-testid="input-feat-tier" />
+            <NumberInput min={1} value={feat.tier} fallback={1} onChange={(v) => onChange({ tier: v ?? 1 })} data-testid="input-feat-tier" />
           </div>
           <div>
             <Label>Cost (points)</Label>
-            <Input type="number" min={0} value={feat.cost} onChange={e => numChange("cost", e.target.value, 1)} data-testid="input-feat-cost" />
+            <NumberInput min={0} value={feat.cost} fallback={1} onChange={(v) => onChange({ cost: v ?? 1 })} data-testid="input-feat-cost" />
           </div>
           <div>
             <Label>Position (x, y)</Label>
             <Row>
-              <Input type="number" value={feat.gridX} onChange={e => numChange("gridX", e.target.value, 0)} data-testid="input-feat-gridx" />
-              <Input type="number" value={feat.gridY} onChange={e => numChange("gridY", e.target.value, 0)} data-testid="input-feat-gridy" />
+              <NumberInput value={feat.gridX} onChange={(v) => onChange({ gridX: v ?? 0 })} data-testid="input-feat-gridx" />
+              <NumberInput value={feat.gridY} onChange={(v) => onChange({ gridY: v ?? 0 })} data-testid="input-feat-gridy" />
             </Row>
           </div>
         </Grid3>
@@ -437,10 +438,9 @@ const FeatEditorPanel: React.FC<FeatEditorPanelProps> = ({ feat, onChange, onDel
                   </div>
                   <div>
                     <Label>Value</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       value={eff.value ?? 0}
-                      onChange={e => setEffect(idx, { value: parseInt(e.target.value, 10) || 0 })}
+                      onChange={(v) => setEffect(idx, { value: v ?? 0 })}
                       data-testid={`input-feat-effect-value-${idx}`}
                     />
                   </div>

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -104,23 +105,22 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
     },
   });
 
-  const num = (field: keyof typeof form) => ({
-    type: "number" as const,
-    value: (form[field] as number) ?? 0,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm({ ...form, [field]: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 }),
+  const num = (field: keyof typeof form, fb = 0) => ({
+    value: (form[field] as number) ?? fb,
+    onChange: (v: number | undefined) => setForm({ ...form, [field]: v ?? fb }),
+    fallback: fb,
     className: "bg-stone-800 border-stone-700 h-8",
   });
 
   // V3 stats are Max-only; keep the legacy "starting/current" column equal to Max
   // so new characters start full and downstream readers stay consistent.
-  const maxStat = (maxField: keyof typeof form, startField: keyof typeof form) => ({
-    type: "number" as const,
-    value: (form[maxField] as number) ?? 0,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value === "" ? 0 : parseInt(e.target.value) || 0;
-      setForm({ ...form, [maxField]: v, [startField]: v });
+  const maxStat = (maxField: keyof typeof form, startField: keyof typeof form, fb = 0) => ({
+    value: (form[maxField] as number) ?? fb,
+    onChange: (v: number | undefined) => {
+      const val = v ?? fb;
+      setForm({ ...form, [maxField]: val, [startField]: val });
     },
+    fallback: fb,
     className: "bg-stone-800 border-stone-700 h-8",
   });
 
@@ -164,15 +164,15 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs">Lifespan</Label>
-                <Input {...num("lifespan")} data-testid="input-v3-system-species-lifespan" />
+                <NumberInput {...num("lifespan", 100)} data-testid="input-v3-system-species-lifespan" />
               </div>
               <div>
                 <Label className="text-xs">Speed</Label>
-                <Input {...num("speed")} data-testid="input-v3-system-species-speed" />
+                <NumberInput {...num("speed", 30)} data-testid="input-v3-system-species-speed" />
               </div>
               <div>
                 <Label className="text-xs">Fly Speed</Label>
-                <Input {...num("flySpeed")} data-testid="input-v3-system-species-flyspeed" />
+                <NumberInput {...num("flySpeed")} data-testid="input-v3-system-species-flyspeed" />
               </div>
               <div>
                 <Label className="text-xs">Size</Label>
@@ -187,27 +187,27 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
               </div>
               <div>
                 <Label className="text-xs">Carry Weight</Label>
-                <Input {...num("carryWeight")} data-testid="input-v3-system-species-carry" />
+                <NumberInput {...num("carryWeight", 50)} data-testid="input-v3-system-species-carry" />
               </div>
               <div>
                 <Label className="text-xs">Max HP</Label>
-                <Input {...maxStat("startingMaxHp", "startingHp")} data-testid="input-v3-system-species-maxhp" />
+                <NumberInput {...maxStat("startingMaxHp", "startingHp", 10)} data-testid="input-v3-system-species-maxhp" />
               </div>
               <div>
                 <Label className="text-xs">HP / Level</Label>
-                <Input {...num("hpPerLevel")} data-testid="input-v3-system-species-hpperlevel" />
+                <NumberInput {...num("hpPerLevel", 5)} data-testid="input-v3-system-species-hpperlevel" />
               </div>
               <div>
                 <Label className="text-xs">Max Energy</Label>
-                <Input {...maxStat("startingMaxEnergy", "startingEnergy")} data-testid="input-v3-system-species-maxenergy" />
+                <NumberInput {...maxStat("startingMaxEnergy", "startingEnergy", 10)} data-testid="input-v3-system-species-maxenergy" />
               </div>
               <div>
                 <Label className="text-xs">Energy / Level</Label>
-                <Input {...num("energyPerLevel")} data-testid="input-v3-system-species-energyperlevel" />
+                <NumberInput {...num("energyPerLevel", 6)} data-testid="input-v3-system-species-energyperlevel" />
               </div>
               <div>
                 <Label className="text-xs">Max Mana</Label>
-                <Input {...maxStat("startingMaxMana", "startingMana")} data-testid="input-v3-system-species-maxmana" />
+                <NumberInput {...maxStat("startingMaxMana", "startingMana")} data-testid="input-v3-system-species-maxmana" />
               </div>
             </div>
 

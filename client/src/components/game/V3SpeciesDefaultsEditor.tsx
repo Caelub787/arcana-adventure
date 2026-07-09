@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2 } from "lucide-react";
@@ -120,10 +120,9 @@ export function V3SpeciesDefaultsEditor({
           {V3_ATTRIBUTES.map((attr) => (
             <div key={attr.key} className="flex items-center gap-2">
               <Label className="text-xs text-stone-300 w-24 shrink-0">{attr.name}</Label>
-              <Input
-                type="number"
+              <NumberInput
                 value={attributeBonuses[attr.key] ?? 0}
-                onChange={(e) => setBonus(attr.key, e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                onChange={(v) => setBonus(attr.key, v ?? 0)}
                 className="bg-stone-800 border-stone-700 h-8"
                 data-testid={`input-v3-species-bonus-${attr.key}`}
               />
@@ -140,10 +139,9 @@ export function V3SpeciesDefaultsEditor({
           {[...V3_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map((skill) => (
             <div key={skill.key} className="flex items-center gap-2">
               <Label className="text-xs text-stone-300 w-24 shrink-0" title={skill.description}>{skill.name}</Label>
-              <Input
-                type="number"
+              <NumberInput
                 value={skillBonuses[skill.key] ?? 0}
-                onChange={(e) => setSkillBonus(skill.key, e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                onChange={(v) => setSkillBonus(skill.key, v ?? 0)}
                 className="bg-stone-800 border-stone-700 h-8"
                 data-testid={`input-v3-species-skillbonus-${skill.key}`}
               />
@@ -181,10 +179,9 @@ export function V3SpeciesDefaultsEditor({
                 </Select>
                 <div className="flex items-center gap-1">
                   <Label className="text-[10px] text-stone-400 whitespace-nowrap">Bonus</Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     value={skill.value}
-                    onChange={(e) => updateSkill(i, { value: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
+                    onChange={(v) => updateSkill(i, { value: v ?? 0 })}
                     className="bg-stone-800 border-stone-700 h-8 w-16"
                     data-testid={`input-v3-species-skill-value-${i}`}
                   />
@@ -228,11 +225,10 @@ export function V3SpeciesDefaultsEditor({
                 </Select>
                 <div className="flex items-center gap-1">
                   <Label className="text-[10px] text-stone-400 whitespace-nowrap">Uses/LR</Label>
-                  <Input
-                    type="number"
-                    min={0}
+                  <NumberInput
                     value={trait.usesPerLongRest}
-                    onChange={(e) => updateTrait(i, { usesPerLongRest: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
+                    onChange={(v) => updateTrait(i, { usesPerLongRest: v ?? 0 })}
+                    min={0}
                     className="bg-stone-800 border-stone-700 h-8 w-14"
                     data-testid={`input-v3-species-trait-uses-${i}`}
                   />

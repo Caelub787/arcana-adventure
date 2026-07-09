@@ -14,6 +14,7 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { uid, optionalNum } from "../lib/utils";
+import { NumberInput } from "./NumberInput";
 import type { HostAdapter } from "../types";
 
 export type CraftRecipeIngredientDraft = {
@@ -139,7 +140,7 @@ export const CraftRecipesEditor: React.FC<CraftRecipesEditorProps> = ({ value, o
             </div>
             <Grid3>
               <div><Label>Output Quantity</Label>
-                <Input type="number" value={r.outputQuantity} onChange={e => update(idx, { outputQuantity: optionalNum(e.target.value) ?? 1 })} />
+                <NumberInput value={r.outputQuantity} fallback={1} onChange={(v) => update(idx, { outputQuantity: v ?? 1 })} />
               </div>
               <div><Label>Dice Formula</Label>
                 <Input value={r.diceFormula} onChange={e => update(idx, { diceFormula: e.target.value })} disabled={r.noRoll} />
@@ -152,7 +153,7 @@ export const CraftRecipesEditor: React.FC<CraftRecipesEditorProps> = ({ value, o
             </Grid3>
             <Grid3>
               <div><Label>Mod</Label>
-                <Input type="number" value={r.mod} onChange={e => update(idx, { mod: optionalNum(e.target.value) ?? 0 })} />
+                <NumberInput value={r.mod} onChange={(v) => update(idx, { mod: v ?? 0 })} />
               </div>
               <Row><Checkbox checked={r.noRoll} onCheckedChange={v => update(idx, { noRoll: v })} /><Label>No roll (auto)</Label></Row>
               <div />
@@ -166,7 +167,7 @@ export const CraftRecipesEditor: React.FC<CraftRecipesEditorProps> = ({ value, o
                     <Input value={r.requiredSkillName} onChange={e => update(idx, { requiredSkillName: e.target.value })} />
                   </div>
                   <div><Label>Min value</Label>
-                    <Input type="number" value={r.requiredSkillMinValue} onChange={e => update(idx, { requiredSkillMinValue: optionalNum(e.target.value) ?? 0 })} />
+                    <NumberInput value={r.requiredSkillMinValue} onChange={(v) => update(idx, { requiredSkillMinValue: v ?? 0 })} />
                   </div>
                 </Grid2>
               )}
@@ -175,17 +176,17 @@ export const CraftRecipesEditor: React.FC<CraftRecipesEditorProps> = ({ value, o
             <Section title="Resource cost">
               <Grid3>
                 <Row><Checkbox checked={r.costEnergyEnabled} onCheckedChange={v => update(idx, { costEnergyEnabled: v })} /><Label>Energy</Label></Row>
-                {r.costEnergyEnabled && <Input type="number" value={r.costEnergy} onChange={e => update(idx, { costEnergy: optionalNum(e.target.value) ?? 0 })} />}
+                {r.costEnergyEnabled && <NumberInput value={r.costEnergy} onChange={(v) => update(idx, { costEnergy: v ?? 0 })} />}
                 {!r.costEnergyEnabled && <div />}
               </Grid3>
               <Grid3 style={{ marginTop: 6 }}>
                 <Row><Checkbox checked={r.costManaEnabled} onCheckedChange={v => update(idx, { costManaEnabled: v })} /><Label>Mana</Label></Row>
-                {r.costManaEnabled && <Input type="number" value={r.costMana} onChange={e => update(idx, { costMana: optionalNum(e.target.value) ?? 0 })} />}
+                {r.costManaEnabled && <NumberInput value={r.costMana} onChange={(v) => update(idx, { costMana: v ?? 0 })} />}
                 {!r.costManaEnabled && <div />}
               </Grid3>
               <Grid3 style={{ marginTop: 6 }}>
                 <Row><Checkbox checked={r.costHpEnabled} onCheckedChange={v => update(idx, { costHpEnabled: v })} /><Label>HP</Label></Row>
-                {r.costHpEnabled && <Input type="number" value={r.costHp} onChange={e => update(idx, { costHp: optionalNum(e.target.value) ?? 0 })} />}
+                {r.costHpEnabled && <NumberInput value={r.costHp} onChange={(v) => update(idx, { costHp: v ?? 0 })} />}
                 {!r.costHpEnabled && <div />}
               </Grid3>
             </Section>
@@ -202,10 +203,10 @@ export const CraftRecipesEditor: React.FC<CraftRecipesEditorProps> = ({ value, o
                     <SelectItem value="">— item —</SelectItem>
                     {adminItems.map(it => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
                   </Select>
-                  <Input style={{ width: 80 }} type="number" value={ing.quantity}
-                    onChange={e => {
+                  <NumberInput style={{ width: 80 }} value={ing.quantity} fallback={1}
+                    onChange={v => {
                       const next = r.ingredients.slice();
-                      next[ii] = { ...ing, quantity: optionalNum(e.target.value) ?? 1 };
+                      next[ii] = { ...ing, quantity: v ?? 1 };
                       update(idx, { ingredients: next });
                     }} />
                   <Button size="sm" variant="danger" onClick={() => {

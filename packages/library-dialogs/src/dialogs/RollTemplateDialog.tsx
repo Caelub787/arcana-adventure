@@ -20,6 +20,7 @@ import {
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
 import { optionalNum } from "../lib/utils";
+import { NumberInput } from "../components/NumberInput";
 import type { DialogProps } from "../types";
 
 export interface RollTemplateDraft {
@@ -135,8 +136,8 @@ export const RollTemplateDialog: React.FC<DialogProps<RollTemplateDraft>> = ({
           <Section title="Template ordering">
             <Grid3>
               <div><Label>Template Priority</Label>
-                <Input type="number" value={draft.templatePriority ?? 1}
-                  onChange={e => set({ templatePriority: optionalNum(e.target.value) ?? 1 })} />
+                <NumberInput value={draft.templatePriority ?? 1} fallback={1}
+                  onChange={(v) => set({ templatePriority: v ?? 1 })} />
               </div>
               <Row><Checkbox checked={!!draft.templateUseOwnOrder}
                 onCheckedChange={v => set({ templateUseOwnOrder: v })} /><Label>Use own order (group)</Label></Row>

@@ -6,6 +6,7 @@ import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, S
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
@@ -827,10 +828,9 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400" onClick={() => setJumpYear(y => y - 1)}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Input
-                  type="number"
-                  value={jumpYear}
-                  onChange={(e) => setJumpYear(parseInt(e.target.value, 10) || 1)}
+                <NumberInput
+                  value={jumpYear} fallback={1}
+                  onChange={(v) => setJumpYear(v ?? 1)}
                   className="bg-stone-800 border-stone-700 text-stone-200 text-center flex-1"
                   data-testid="input-jump-year"
                 />

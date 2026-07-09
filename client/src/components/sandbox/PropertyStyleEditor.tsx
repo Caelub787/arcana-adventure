@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -525,16 +526,13 @@ export function PropertyStyleEditor({
 
             <div className="space-y-1">
               <Label className="text-stone-400 text-xs">Width (px)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={style.border.width}
-                onChange={(e) =>
+              <NumberInput
+                min={1} max={10} value={style.border.width} fallback={1}
+                onChange={(v) =>
                   update({
                     border: {
                       ...style.border!,
-                      width: Math.min(10, Math.max(1, parseInt(e.target.value) || 1)),
+                      width: Math.min(10, Math.max(1, v ?? 1)),
                     },
                   })
                 }
@@ -545,16 +543,13 @@ export function PropertyStyleEditor({
 
             <div className="space-y-1">
               <Label className="text-stone-400 text-xs">Radius (px)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={50}
-                value={style.border.radius}
-                onChange={(e) =>
+              <NumberInput
+                min={0} max={50} value={style.border.radius} fallback={0}
+                onChange={(v) =>
                   update({
                     border: {
                       ...style.border!,
-                      radius: Math.min(50, Math.max(0, parseInt(e.target.value) || 0)),
+                      radius: Math.min(50, Math.max(0, v ?? 0)),
                     },
                   })
                 }
@@ -672,14 +667,11 @@ export function PropertyStyleEditor({
 
         <div className="space-y-1">
           <Label className="text-stone-400 text-xs">Padding (px)</Label>
-          <Input
-            type="number"
-            min={0}
-            max={20}
-            value={style.padding ?? 0}
-            onChange={(e) =>
+          <NumberInput
+            min={0} max={20} value={style.padding ?? 0} fallback={0}
+            onChange={(v) =>
               update({
-                padding: Math.min(20, Math.max(0, parseInt(e.target.value) || 0)),
+                padding: Math.min(20, Math.max(0, v ?? 0)),
               })
             }
             className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
