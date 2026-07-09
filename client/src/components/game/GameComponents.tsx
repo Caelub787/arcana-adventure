@@ -20281,7 +20281,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </div>
                     {isAAV2 && (
                       <div>
-                        <Label className="text-xs text-stone-400">Class Points</Label>
+                        <Label className="text-xs text-stone-400">{isAAV3 ? 'Level Up Points' : 'Class Points'}</Label>
                         <p className="text-stone-200" data-testid="text-class-skill-points">
                           {liveCharacter.classSkillPoints || 0}
                         </p>
@@ -21676,7 +21676,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </CardHeader>
                 <CardContent className={`pt-2 ${v3TechniquesOpen ? '' : 'hidden'}`}>
-                  <V3UnlockedTechniquesList character={liveCharacter} />
+                  <V3UnlockedTechniquesList character={liveCharacter} canManage={isGM || isTrustedSelf} />
                 </CardContent>
               </Card>
             )}
@@ -24205,7 +24205,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         )}
                         {hasClass && (
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-stone-500">Class Points Available: {globalAvailablePoints}</span>
+                            <span className="text-[10px] text-stone-500">{campaignSystem === 'aa-v3' ? 'Level Up Points' : 'Class Points Available'}: {globalAvailablePoints}</span>
                           </div>
                         )}
                       </div>
@@ -27709,13 +27709,39 @@ function V3ConsumableUsePanel({ item, character, canUse }: { item: any; characte
 
 // Read-only list of the techniques a V3 character has unlocked (globally, via
 // weapon Unlock buttons). Shown in the character sheet's Traits tab.
-function V3UnlockedTechniquesList({ character }: { character: any }) {
+function V3UnlockedTechniquesList({ character, canManage = false }: { character: any; canManage?: boolean }) {
+  const queryClient = useQueryClient();
+  const { data: liveChar = character } = useQuery({
+    queryKey: ['character', character?.id],
+    queryFn: () => api.getCharacter(character.id),
+    enabled: !!character?.id,
+    initialData: character,
+  });
   const { data: techniques = [] } = useQuery({
     queryKey: ['v3-techniques'],
     queryFn: () => api.getV3Techniques(),
   });
-  const unlockedIds: string[] = Array.isArray(character?.v3UnlockedTechniqueIds)
-    ? character.v3UnlockedTechniqueIds
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  const handleRemoveTechnique = async (t: any) => {
+    if (!character?.id || removingId) return;
+    setRemovingId(t.id);
+    setConfirmRemoveId(null);
+    try {
+      await api.removeV3Technique(t.id, character.id);
+      toast({ title: 'Technique removed', description: `${t.name} was removed and 1 Level Up Point refunded.` });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+    } catch (err: any) {
+      toast({ title: 'Remove failed', description: err?.message || 'Could not remove technique', variant: 'destructive' });
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  const unlockedIds: string[] = Array.isArray(liveChar?.v3UnlockedTechniqueIds)
+    ? liveChar.v3UnlockedTechniqueIds
     : [];
   const unlocked = techniques
     .filter((t: any) => unlockedIds.includes(t.id))
@@ -27752,6 +27778,39 @@ function V3UnlockedTechniquesList({ character }: { character: any }) {
               </p>
               {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
             </div>
+            {canManage && (
+              confirmRemoveId === t.id ? (
+                <div className="flex gap-1 flex-shrink-0">
+                  <Button
+                    type="button" size="sm"
+                    variant="destructive"
+                    className="h-7 text-xs"
+                    disabled={removingId === t.id}
+                    onClick={() => handleRemoveTechnique(t)}
+                    data-testid={`button-v3-confirm-remove-technique-${t.id}`}
+                  >
+                    {removingId === t.id ? '…' : 'Confirm'}
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    className="h-7 text-xs border-stone-600"
+                    onClick={() => setConfirmRemoveId(null)}
+                    data-testid={`button-v3-cancel-remove-technique-${t.id}`}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button" size="sm" variant="ghost"
+                  className="h-7 w-7 p-0 text-stone-500 hover:text-red-400 hover:bg-red-950/30 flex-shrink-0"
+                  onClick={() => setConfirmRemoveId(t.id)}
+                  data-testid={`button-v3-remove-technique-${t.id}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )
+            )}
           </div>
         );
       })}
@@ -27764,11 +27823,17 @@ function V3UnlockedTechniquesList({ character }: { character: any }) {
 // Unlock button that spends a class skill point). Rendered inside the weapon
 // ItemDetailDialog and the battlemap hotbar info panel.
 // V3-only — callers gate this behind campaignSystem === 'aa-v3'.
-function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { item: any; character: any; items: any[]; hideSyncButton?: boolean }) {
+function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canManage = false }: { item: any; character: any; items: any[]; hideSyncButton?: boolean; canManage?: boolean }) {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState(1);
   const [syncing, setSyncing] = useState(false);
   const lv = Math.max(1, Math.floor(level || 1));
+  const { data: liveChar = character } = useQuery({
+    queryKey: ['character', character?.id],
+    queryFn: () => api.getCharacter(character.id),
+    enabled: !!character?.id,
+    initialData: character,
+  });
 
   const handleSyncTechniques = async () => {
     if (!character?.id || !item?.id) return;
@@ -27804,10 +27869,10 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { 
   // All techniques granted by this weapon's groups, annotated with whether the
   // character has unlocked them (global per character) and whether the
   // knowledge/item requirements are currently met (needed to unlock).
-  const unlockedIds: string[] = Array.isArray(character?.v3UnlockedTechniqueIds)
-    ? character.v3UnlockedTechniqueIds
+  const unlockedIds: string[] = Array.isArray(liveChar?.v3UnlockedTechniqueIds)
+    ? liveChar.v3UnlockedTechniqueIds
     : [];
-  const skillPoints = Math.max(0, Math.floor(character?.classSkillPoints ?? 0));
+  const skillPoints = Math.max(0, Math.floor(liveChar?.classSkillPoints ?? 0));
   const grantedTechniques = useMemo(() => {
     const assigned: string[] = Array.isArray(item?.v3TechniqueGroupIds) ? item.v3TechniqueGroupIds : [];
     if (assigned.length === 0) return [] as any[];
@@ -27848,6 +27913,23 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { 
       toast({ title: 'Unlock failed', description: err?.message || 'Could not unlock technique', variant: 'destructive' });
     } finally {
       setUnlockingId(null);
+    }
+  };
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const handleRemoveTechnique = async (t: any) => {
+    if (!character?.id || removingId) return;
+    setRemovingId(t.id);
+    setConfirmRemoveId(null);
+    try {
+      await api.removeV3Technique(t.id, character.id);
+      toast({ title: 'Technique removed', description: `${t.name} was removed and 1 Level Up Point refunded.` });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+    } catch (err: any) {
+      toast({ title: 'Remove failed', description: err?.message || 'Could not remove technique', variant: 'destructive' });
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -27969,7 +28051,7 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { 
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-stone-300 uppercase tracking-wide">Techniques</h4>
             <span className="text-[11px] text-violet-300" data-testid="text-v3-skill-points">
-              Skill points: {skillPoints}
+              Level Up Points: {skillPoints}
             </span>
           </div>
           {grantedTechniques.map((t: any) => {
@@ -28013,10 +28095,43 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { 
                     {unlockingId === t.id ? 'Unlocking…' : skillPoints < 1 ? 'No points' : 'Unlock (1 pt)'}
                   </Button>
                 ) : (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                {canManage && (
+                  confirmRemoveId === t.id ? (
+                    <div className="flex gap-1">
+                      <Button
+                        type="button" size="sm" variant="destructive"
+                        className="h-7 text-xs"
+                        disabled={removingId === t.id}
+                        onClick={() => handleRemoveTechnique(t)}
+                        data-testid={`button-v3-confirm-remove-technique-${t.id}`}
+                      >
+                        {removingId === t.id ? '…' : 'Confirm'}
+                      </Button>
+                      <Button
+                        type="button" size="sm" variant="outline"
+                        className="h-7 text-xs border-stone-600"
+                        onClick={() => setConfirmRemoveId(null)}
+                        data-testid={`button-v3-cancel-remove-technique-${t.id}`}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button" size="sm" variant="ghost"
+                      className="h-7 w-7 p-0 text-stone-500 hover:text-red-400 hover:bg-red-950/30"
+                      onClick={() => setConfirmRemoveId(t.id)}
+                      data-testid={`button-v3-remove-technique-${t.id}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )
+                )}
                 <Button
                   type="button"
                   size="sm"
-                  className="bg-amber-700 hover:bg-amber-600 text-white flex-shrink-0"
+                  className="bg-amber-700 hover:bg-amber-600 text-white"
                   disabled={ammoBlocked}
                   onClick={async () => {
                     // The server is authoritative for resources: it validates
@@ -28062,6 +28177,7 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false }: { 
                 >
                   Use
                 </Button>
+                </div>
                 )}
               </div>
             );
@@ -29930,7 +30046,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             )}
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
-              <V3WeaponUsePanel item={currentData} character={character} items={items} hideSyncButton={true} />
+              <V3WeaponUsePanel item={currentData} character={character} items={items} hideSyncButton={true} canManage={isGM || trustedPlayer} />
             )}
 
             {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && !isEditing && (

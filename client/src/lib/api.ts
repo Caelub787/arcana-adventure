@@ -2785,6 +2785,16 @@ class ApiClient {
     });
   }
 
+  async removeV3Technique(
+    techniqueId: string,
+    characterId: string,
+  ): Promise<{ success: boolean; pointRefunded: number; character: any }> {
+    return this.request(`/v3/techniques/${techniqueId}/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId }),
+    });
+  }
+
   async getAdminV3Techniques(personal?: boolean): Promise<V3Technique[]> {
     const params = personal ? '?personal=true' : '';
     return this.request(`/admin/v3-techniques${params}`);

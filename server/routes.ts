@@ -7082,6 +7082,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Remove (re-lock) an unlocked technique and refund 1 Level Up Point.
+  // Allowed for real GMs and trusted players acting on their own character.
+  app.post("/api/v3/techniques/:id/remove", requireAuth, async (req, res) => {
+    try {
+      const { characterId } = req.body || {};
+      if (!characterId) return res.status(400).json({ error: "characterId is required" });
+
+      const access = await checkCharacterAccess(characterId, req.session.userId!, "edit");
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character" });
+
+      const character = access.character;
+      const campaign = access.campaign;
+      if (campaign?.system !== "aa-v3") {
+        return res.status(400).json({ error: "Techniques are only available in A.A. V3 campaigns" });
+      }
+
+      // Only real GMs and trusted players (both have isGM=true) can remove techniques.
+      if (!access.isGM) {
+        return res.status(403).json({ error: "Only GMs and trusted players can remove techniques" });
+      }
+
+      const technique = await storage.getV3Technique(req.params.id);
+      if (!technique) return res.status(404).json({ error: "Technique not found" });
+
+      const unlockedIds: string[] = Array.isArray((character as any).v3UnlockedTechniqueIds)
+        ? (character as any).v3UnlockedTechniqueIds
+        : [];
+      if (!unlockedIds.includes(technique.id)) {
+        return res.status(400).json({ error: "Technique is not unlocked" });
+      }
+
+      const newUnlockedIds = unlockedIds.filter((id) => id !== technique.id);
+      const points = character.classSkillPoints ?? 0;
+      const updatedCharacter = await storage.updateCharacter(character.id, {
+        v3UnlockedTechniqueIds: newUnlockedIds,
+        classSkillPoints: points + 1,
+      } as any);
+
+      if (campaign?.id) {
+        broadcastToCampaign(campaign.id, { type: "character_updated", character: updatedCharacter });
+      }
+
+      // Emit a GM-only audit message when a trusted player (not a real GM) removes a technique.
+      await emitTrustedAudit(access, req.session.userId!, `removed technique "${technique.name}"`);
+
+      res.json({
+        success: true,
+        pointRefunded: 1,
+        character: updatedCharacter,
+      });
+    } catch (err: any) {
+      console.error("[V3 Technique Remove] Error:", err?.message, err?.stack);
+      res.status(500).json({ error: "Failed to remove technique" });
+    }
+  });
+
   // GM authors a pending spell's name/description/image.
   app.post("/api/v3/spells/:id/author", requireAuth, async (req, res) => {
     try {
