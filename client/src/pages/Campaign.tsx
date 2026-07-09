@@ -8054,7 +8054,7 @@ export default function Campaign() {
   });
 
   // Token effects queries — V3 campaigns only fetch V3-tagged effects
-  const isAAV3Campaign = campaignSystem === 'aa-v3';
+  const isAAV3Campaign = campaignSystemSlug === 'aa-v3';
   const tokenEffectsQuery = useQuery({
     queryKey: ['token-effects', isAAV3Campaign ? 'aa-v3' : undefined],
     queryFn: () => api.getTokenEffects(false, isAAV3Campaign ? 'aa-v3' : undefined),
