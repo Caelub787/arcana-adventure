@@ -89,27 +89,18 @@ export function installMobileKeyboardScrollFix(): void {
     }
   };
 
-  // Core clamp. Runs SYNCHRONOUSLY (no rAF) so an illegal window shove is
-  // undone in the same event turn — deferring even one frame paints the
-  // shoved position and users see the page flash black for a beat.
+  // Core clamp. IMPORTANT: while the keyboard is OPEN we must never fight
+  // iOS's own caret-reveal pans — WebKit re-pans on every keystroke, and a
+  // scroll tug-of-war paints a black flash per letter (seen in admin
+  // dialogs). So with the keyboard open the window may move up to the
+  // keyboard inset, full stop. The clamp's real job is the snap-BACK: once
+  // the keyboard closes (or focus leaves), pull the window back into the
+  // page's natural range so the UI never stays shoved out of frame.
   const clampNow = () => {
     const inset = keyboardInset();
     if (inset > 80) lastKnownInset = inset;
-    const focused = document.activeElement;
-    const keyboardOpen = inset > 80 && isEditable(focused);
-    let limit = naturalMax();
-    if (keyboardOpen) {
-      const container = nearestScrollableAncestor(focused);
-      if (container) {
-        // Inner-scroll layout: window must not move; reveal within the
-        // container instead.
-        revealInContainer(focused, container);
-      } else {
-        // No inner container (e.g. login): allow just enough window
-        // scroll to lift the field above the keyboard.
-        limit += inset;
-      }
-    }
+    const keyboardOpen = inset > 80 && isEditable(document.activeElement);
+    const limit = keyboardOpen ? naturalMax() + inset : naturalMax();
     if (window.scrollY > limit) {
       window.scrollTo(0, limit);
     }
