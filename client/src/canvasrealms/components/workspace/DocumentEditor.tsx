@@ -1949,6 +1949,35 @@ function TextBlock({
     [setAutoGrowEl],
   );
 
+  // When this block becomes the focused one (the user tapped the parsed
+  // prose, which swaps in the textarea), hand keyboard focus straight to
+  // the textarea with preventScroll. Without this, mobile users tapped
+  // once (keyboard closed as the previous field blurred), then had to tap
+  // again — and each keyboard close/reopen let iOS shove the page out of
+  // frame. Guarded so we never steal focus the user already placed
+  // elsewhere (e.g. the block's heading input).
+  useEffect(() => {
+    if (!isFocused || readOnly) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const active = document.activeElement;
+    if (active === ta) return;
+    const activeIsField =
+      active instanceof HTMLElement &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.isContentEditable);
+    if (activeIsField) return;
+    try {
+      ta.focus({ preventScroll: true });
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+    } catch {
+      // best-effort
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused, readOnly]);
+
   // Listen for cross-component "apply this mention" events (dispatched
   // by the per-node suggestions strip or by the Compass sidebar). We
   // only react to events targeted at THIS block, then reuse the
