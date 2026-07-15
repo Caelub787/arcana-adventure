@@ -20,7 +20,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[10700] bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-[10700] bg-[rgba(0,0,0,0.65)]",
       className
     )}
     {...props}
@@ -46,16 +46,21 @@ const DialogContent = React.forwardRef<
   const contentCallback = React.useCallback(
     (el: React.ElementRef<typeof DialogPrimitive.Content> | null) => {
       if (el) {
-        // Two distinct z slots: overlay strictly BELOW content. Assigning
-        // both the same z made the backdrop tie with the panel — DOM order
-        // broke the tie on desktop, but iOS re-composites both layers on
-        // every keystroke and equal-z layers can momentarily flip, flashing
-        // the black backdrop over the form.
-        const overlayZ = bringFloatingPanelToFront();
-        const contentZ = bringFloatingPanelToFront();
-        el.style.zIndex = String(contentZ);
-        if (overlayRef.current) {
-          (overlayRef.current as HTMLElement).style.zIndex = String(overlayZ);
+        // Acquire z ONCE per mount (dataset guard). Radix re-attaches this
+        // ref on EVERY re-render, so without the guard each keystroke inside
+        // the dialog grabbed fresh z slots and rewrote both fixed layers —
+        // the browser re-composited the backdrop/panel pair per letter,
+        // which flashed the dark backdrop over the form (worst on mobile).
+        // Also: two DISTINCT slots, overlay strictly BELOW content — an
+        // equal-z tie let compositors transiently paint the backdrop on top.
+        if (el.dataset.zAcquired !== "1") {
+          el.dataset.zAcquired = "1";
+          const overlayZ = bringFloatingPanelToFront();
+          const contentZ = bringFloatingPanelToFront();
+          el.style.zIndex = String(contentZ);
+          if (overlayRef.current) {
+            (overlayRef.current as HTMLElement).style.zIndex = String(overlayZ);
+          }
         }
       }
       if (typeof ref === 'function') ref(el);
