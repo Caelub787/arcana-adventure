@@ -56,10 +56,22 @@ export function installMobileKeyboardScrollFix(): void {
     return null;
   };
 
+  // Last non-zero keyboard height we have observed. Used to PRE-reveal a
+  // field at focus time, before the keyboard/viewport has resized — on iOS
+  // the pan that hides content is done by the compositor and is NOT
+  // reported as a window scroll, so it cannot be undone after the fact.
+  // The only reliable cure is to make sure the field is already visible
+  // above where the keyboard will be, so WebKit never pans at all.
+  let lastKnownInset = 260;
+
   // Scroll the field's own container (never the window) so the caret area
   // clears the keyboard. Only moves as much as needed, in either direction.
-  const revealInContainer = (el: HTMLElement, container: HTMLElement) => {
-    const inset = keyboardInset();
+  const revealInContainer = (
+    el: HTMLElement,
+    container: HTMLElement,
+    insetOverride?: number,
+  ) => {
+    const inset = insetOverride ?? keyboardInset();
     const r = el.getBoundingClientRect();
     const c = container.getBoundingClientRect();
     // Bottom edge of the visible (non-keyboard) area in client coords.
@@ -82,6 +94,7 @@ export function installMobileKeyboardScrollFix(): void {
   // shoved position and users see the page flash black for a beat.
   const clampNow = () => {
     const inset = keyboardInset();
+    if (inset > 80) lastKnownInset = inset;
     const focused = document.activeElement;
     const keyboardOpen = inset > 80 && isEditable(focused);
     let limit = naturalMax();
@@ -122,7 +135,33 @@ export function installMobileKeyboardScrollFix(): void {
     window.setTimeout(correct, 100);
     window.setTimeout(correct, 350);
   };
-  window.addEventListener("focusin", later, true);
+  // PRE-REVEAL: the moment an editable gains focus, synchronously scroll
+  // its inner container so the field already sits above where the keyboard
+  // will be (using the last known keyboard height when the viewport hasn't
+  // resized yet). This runs before WebKit computes its compositor pan, so
+  // there is nothing left for it to pan — which is the only way to stop
+  // the black flash, since that pan is invisible to window.scrollY.
+  window.addEventListener(
+    "focusin",
+    (e) => {
+      const t = e.target;
+      // Only pre-reveal on touch devices — desktop has no on-screen
+      // keyboard, so assuming one would scroll containers for no reason.
+      const isTouch =
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia("(pointer: coarse)").matches;
+      if (isTouch && isEditable(t as Element | null)) {
+        const el = t as HTMLElement;
+        const container = nearestScrollableAncestor(el);
+        if (container) {
+          const inset = Math.max(keyboardInset(), lastKnownInset);
+          revealInContainer(el, container, inset);
+        }
+      }
+      later();
+    },
+    true,
+  );
   window.addEventListener("focusout", later, true);
   window.addEventListener("orientationchange", () =>
     window.setTimeout(correct, 250),
