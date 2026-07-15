@@ -43,11 +43,28 @@ export function useAutoGrowTextarea(
     const minPx = Number.isFinite(lineHeight)
       ? lineHeight * minRowsRef.current + paddingY + borderY
       : 0;
+    // Collapsing to 'auto' to measure momentarily shrinks the textarea,
+    // which lets the browser's scroll anchoring yank the surrounding
+    // scroll container (users saw the view snap to the bottom on every
+    // keystroke in nodes with 2+ text fields). Save every scrollable
+    // ancestor's scrollTop, do the measurement, then restore them all
+    // synchronously so the viewport never moves.
+    const savedScrolls: Array<{ el: HTMLElement; top: number }> = [];
+    let p: HTMLElement | null = target.parentElement;
+    while (p) {
+      if (p.scrollHeight > p.clientHeight) {
+        savedScrolls.push({ el: p, top: p.scrollTop });
+      }
+      p = p.parentElement;
+    }
     // Reset to 'auto' first so scrollHeight reflects the natural content
     // height rather than the previously-set height.
     target.style.height = "auto";
     const next = Math.max(minPx, target.scrollHeight);
     target.style.height = `${next}px`;
+    for (const { el: anc, top } of savedScrolls) {
+      if (anc.scrollTop !== top) anc.scrollTop = top;
+    }
   };
 
   // Resize whenever the controlled value changes OR the element itself

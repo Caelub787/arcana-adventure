@@ -48,6 +48,16 @@ import {
 import { useAppStore } from "@cr/lib/store";
 import { useRealmRole } from "@cr/lib/useRealmRole";
 import { Button } from "@cr/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@cr/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useNodeBlockYText,
@@ -587,11 +597,32 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
     );
   }, []);
 
-  const removeBlock = (blockId: string) => {
+  const doRemoveBlock = (blockId: string) => {
     pushBlocksSnapshot();
     setBlocks((prev) => prev.filter((b) => b.id !== blockId));
     setFocusedBlockId((cur) => (cur === blockId ? null : cur));
     setActiveSelection((cur) => (cur && cur.blockId === blockId ? null : cur));
+  };
+
+  // A block "has content" when deleting it would lose something the user
+  // put there: typed text / a heading, an applied image, or a linked
+  // map / canvas. Empty blocks are removed without asking.
+  const blockHasContent = (b: LocalBlock): boolean => {
+    if (b.type === "text")
+      return b.text.trim().length > 0 || (b.heading ?? "").trim().length > 0;
+    if (b.type === "media") return b.url.trim().length > 0;
+    return b.nodeId.trim().length > 0;
+  };
+
+  const [confirmRemoveBlockId, setConfirmRemoveBlockId] = useState<string | null>(null);
+
+  const removeBlock = (blockId: string) => {
+    const block = blocksRef.current.find((b) => b.id === blockId);
+    if (block && blockHasContent(block)) {
+      setConfirmRemoveBlockId(blockId);
+      return;
+    }
+    doRemoveBlock(blockId);
   };
 
   const moveBlock = useCallback(
@@ -1157,6 +1188,41 @@ export function DocumentEditor({ node, paneId, autoFocusTitle, onConsumeAutoFocu
 
       <ArcanaStatsSection node={node} readOnly={readOnly} />
       </div>
+
+      {/* Remove-field confirmation — only shown when the field already
+          has content (text, image, or a linked map/canvas). */}
+      <AlertDialog
+        open={confirmRemoveBlockId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRemoveBlockId(null);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-confirm-remove-field">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this field?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This field has content. Removing it will delete that content
+              from this node. You can undo with the editor's Undo button
+              right after, but not once you leave.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-remove-field">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-remove-field"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmRemoveBlockId) doRemoveBlock(confirmRemoveBlockId);
+                setConfirmRemoveBlockId(null);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {pendingMatch &&
         pendingMatch.nodeId === id &&
         matchesByBlock.flat.length > 0 && (
@@ -1409,7 +1475,7 @@ function BlockShell({
             type="button"
             onClick={onRemove}
             title="Remove field"
-            className="absolute -top-2 -right-2 z-10 h-5 w-5 rounded-full border border-border bg-background text-muted-foreground hover:text-destructive hover:border-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center"
+            className="absolute -top-2 -right-2 z-10 h-5 w-5 rounded-full border border-border bg-background text-muted-foreground hover:text-destructive hover:border-destructive opacity-60 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center"
           >
             <X className="h-3 w-3" />
           </button>
