@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
@@ -51,64 +52,73 @@ export function V3SpeciesDefaultsEditor({
     queryFn: () => api.getSystemTraits("aa-v3"),
   });
 
-  const setBonus = (key: string, value: number) => {
+  const setBonus = useCallback((key: string, value: number) => {
     onChange({ attributeBonuses: { ...attributeBonuses, [key]: value } });
-  };
+  }, [onChange, attributeBonuses]);
 
-  const setSkillBonus = (key: string, value: number) => {
+  const setSkillBonus = useCallback((key: string, value: number) => {
     onChange({ skillBonuses: { ...skillBonuses, [key]: value } });
-  };
+  }, [onChange, skillBonuses]);
 
-  const addSkill = () => {
+  const addSkill = useCallback(() => {
     onChange({
       defaultCustomSkills: [
         ...defaultCustomSkills,
         { name: "", description: "", parentAttribute: V3_ATTRIBUTES[0].key, value: 0 },
       ],
     });
-  };
-  const updateSkill = (i: number, patch: Partial<V3DefaultSkill>) => {
+  }, [onChange, defaultCustomSkills]);
+
+  const updateSkill = useCallback((i: number, patch: Partial<V3DefaultSkill>) => {
     const next = defaultCustomSkills.map((s, idx) => (idx === i ? { ...s, ...patch } : s));
     onChange({ defaultCustomSkills: next });
-  };
-  const pickKnowledge = (i: number, name: string) => {
+  }, [onChange, defaultCustomSkills]);
+
+  const pickKnowledge = useCallback((i: number, name: string) => {
     const k: any = (adminKnowledge as any[]).find((x) => x.name === name);
     if (!k) return;
-    updateSkill(i, {
-      name: k.name,
-      description: k.description || "",
-      parentAttribute: k.parentAttribute || V3_ATTRIBUTES[0].key,
-    });
-  };
-  const removeSkill = (i: number) => {
-    onChange({ defaultCustomSkills: defaultCustomSkills.filter((_, idx) => idx !== i) });
-  };
+    const next = defaultCustomSkills.map((s, idx) =>
+      idx === i ? { ...s, name: k.name, description: k.description || "", parentAttribute: k.parentAttribute || V3_ATTRIBUTES[0].key } : s
+    );
+    onChange({ defaultCustomSkills: next });
+  }, [onChange, adminKnowledge, defaultCustomSkills]);
 
-  const addTrait = () => {
+  const removeSkill = useCallback((i: number) => {
+    onChange({ defaultCustomSkills: defaultCustomSkills.filter((_, idx) => idx !== i) });
+  }, [onChange, defaultCustomSkills]);
+
+  const addTrait = useCallback(() => {
     onChange({
       defaultTraits: [
         ...defaultTraits,
         { name: "", description: "", parentAttribute: "will", usesPerLongRest: 1 },
       ],
     });
-  };
-  const updateTrait = (i: number, patch: Partial<V3DefaultTrait>) => {
+  }, [onChange, defaultTraits]);
+
+  const updateTrait = useCallback((i: number, patch: Partial<V3DefaultTrait>) => {
     const next = defaultTraits.map((t, idx) => (idx === i ? { ...t, ...patch } : t));
     onChange({ defaultTraits: next });
-  };
-  const pickTrait = (i: number, name: string) => {
+  }, [onChange, defaultTraits]);
+
+  const pickTrait = useCallback((i: number, name: string) => {
     const t: any = (adminTraits as any[]).find((x) => x.name === name);
     if (!t) return;
-    updateTrait(i, {
-      name: t.name,
-      description: t.description || "",
-      parentAttribute: t.parentAttribute || "will",
-      usesPerLongRest: Number(t.usesPerLongRest) || 1,
-    });
-  };
-  const removeTrait = (i: number) => {
+    const next = defaultTraits.map((tr, idx) =>
+      idx === i ? {
+        ...tr,
+        name: t.name,
+        description: t.description || "",
+        parentAttribute: t.parentAttribute || "will",
+        usesPerLongRest: Number(t.usesPerLongRest) || 1,
+      } : tr
+    );
+    onChange({ defaultTraits: next });
+  }, [onChange, adminTraits, defaultTraits]);
+
+  const removeTrait = useCallback((i: number) => {
     onChange({ defaultTraits: defaultTraits.filter((_, idx) => idx !== i) });
-  };
+  }, [onChange, defaultTraits]);
 
   return (
     <div className="space-y-5" data-testid="editor-v3-species-defaults">

@@ -340,7 +340,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // recipe editor (incl. repair recipes + tool requirements) and recipe-template
   // linking, keyed by the saved item id. New crafter items must be saved once
   // before recipes can be attached (they persist via dedicated endpoints).
-  const renderCrafterExtras = ({ itemId }: { itemId?: string }) => itemId ? (
+  const renderCrafterExtras = useCallback(({ itemId }: { itemId?: string }) => itemId ? (
     <div className="space-y-3">
       <CraftRecipesEditor itemId={itemId} systemSlug={systemSlug} />
       <CrafterTemplateLinksPanel itemId={itemId} systemSlug={systemSlug} personal={personalMode} />
@@ -349,7 +349,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     <p className="text-xs text-stone-500 italic" data-testid="text-crafter-save-first">
       Save the Crafter item first, then reopen it to add recipes, repair options, and required tools.
     </p>
-  );
+  ), [systemSlug, personalMode]);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 

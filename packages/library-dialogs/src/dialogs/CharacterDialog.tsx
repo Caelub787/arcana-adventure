@@ -248,13 +248,13 @@ export const CharacterDialog: React.FC<CharacterDialogInternalProps> = ({
       .finally(() => setLoading(false));
   }, [open, initialValue?.id, host, kind, isTemplateKind]);
 
-  const set = (patch: Partial<CharacterDraft>) => setDraft(d => ({ ...d, ...patch }));
-  const setNum = (field: keyof CharacterDraft, fallback = 0) =>
+  const set = React.useCallback((patch: Partial<CharacterDraft>) => setDraft(d => ({ ...d, ...patch })), []);
+  const setNum = React.useCallback((field: keyof CharacterDraft, fallback = 0) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
-      set({ [field]: optionalNum(e.target.value) ?? fallback } as Partial<CharacterDraft>);
-  const setN = (field: keyof CharacterDraft, fallback = 0) =>
+      setDraft(d => ({ ...d, [field]: optionalNum(e.target.value) ?? fallback })), []);
+  const setN = React.useCallback((field: keyof CharacterDraft, fallback = 0) =>
     (v: number | undefined) =>
-      set({ [field]: v ?? fallback } as Partial<CharacterDraft>);
+      setDraft(d => ({ ...d, [field]: v ?? fallback })), []);
 
   const handleSave = async () => {
     if (!draft.name.trim()) { host.notify("warning", "Character name is required."); return; }

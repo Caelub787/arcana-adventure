@@ -370,12 +370,12 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       .catch(() => { setRuneItems([]); setLibraryItems([]); });
   }, [open, aav3, host]);
 
-  const set = (patch: Partial<ItemDraft>) => setDraft(d => ({ ...d, ...patch }));
+  const set = React.useCallback((patch: Partial<ItemDraft>) => setDraft(d => ({ ...d, ...patch })), []);
 
-  const toggleTechniqueGroup = (id: string) => setDraft(d => {
+  const toggleTechniqueGroup = React.useCallback((id: string) => setDraft(d => {
     const cur = d.v3TechniqueGroupIds ?? [];
     return { ...d, v3TechniqueGroupIds: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] };
-  });
+  }), []);
 
   const handleSave = async () => {
     if (!draft.name.trim()) {

@@ -188,13 +188,13 @@ export const SpellDialog: React.FC<DialogProps<SpellDraft>> = ({
       .finally(() => setLoading(false));
   }, [open, initialValue?.id, host]);
 
-  const set = (patch: Partial<SpellDraft>) => setDraft(d => ({ ...d, ...patch }));
+  const set = React.useCallback((patch: Partial<SpellDraft>) => setDraft(d => ({ ...d, ...patch })), []);
 
-  const numChange = (field: keyof SpellDraft, value: string, fallback: number = 0) => {
-    if (value === "") return set({ [field]: fallback } as Partial<SpellDraft>);
+  const numChange = React.useCallback((field: keyof SpellDraft, value: string, fallback: number = 0) => {
+    if (value === "") { setDraft(d => ({ ...d, [field]: fallback })); return; }
     const n = parseInt(value, 10);
-    set({ [field]: Number.isFinite(n) ? n : fallback } as Partial<SpellDraft>);
-  };
+    setDraft(d => ({ ...d, [field]: Number.isFinite(n) ? n : fallback }));
+  }, []);
 
   const handleSave = async () => {
     if (!draft.name.trim()) {
