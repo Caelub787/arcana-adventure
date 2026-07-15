@@ -33,7 +33,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15734,7 +15734,7 @@ interface CharacterSheetProps {
 // Custom Skill Form for adding new skills to a character
 const PARENT_ATTRIBUTE_OPTIONS = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
-function CustomSkillForm({ 
+const CustomSkillForm = React.memo(function CustomSkillForm({ 
   systemSkills, 
   existingSkillIds, 
   onSave, 
@@ -16017,10 +16017,10 @@ function CustomSkillForm({
       </Dialog>
     </div>
   );
-}
+});
 
 // Custom Skill Edit Form
-function CustomSkillEditForm({ 
+const CustomSkillEditForm = React.memo(function CustomSkillEditForm({ 
   skill, 
   onSave, 
   onDelete,
@@ -16096,10 +16096,10 @@ function CustomSkillEditForm({
       </div>
     </div>
   );
-}
+});
 
 // Trait Form for adding traits from library or custom
-function TraitForm({ 
+const TraitForm = React.memo(function TraitForm({ 
   systemTraits, 
   existingTraitIds, 
   onSave, 
@@ -16362,10 +16362,10 @@ function TraitForm({
       </Tabs>
     </div>
   );
-}
+});
 
 // Trait Edit Form
-function TraitEditForm({ 
+const TraitEditForm = React.memo(function TraitEditForm({ 
   trait, 
   onSave, 
   onDelete,
@@ -16472,7 +16472,7 @@ function TraitEditForm({
       </div>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // AA V3: Armor boosts editor. Lets a GM/admin attach one or more attribute/skill
@@ -18777,6 +18777,49 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       });
     }
   });
+
+  // Stable handlers for the memoized skill/trait edit forms — keeps parent
+  // re-renders (live WS updates, etc.) from re-rendering the forms mid-typing.
+  const existingCustomSkillIds = useMemo(
+    () => characterCustomSkills.map((cs: CharacterCustomSkill) => cs.systemSkillId).filter(Boolean),
+    [characterCustomSkills]
+  );
+  const existingTraitIds = useMemo(
+    () => characterTraits.map((ct: CharacterTrait) => ct.systemTraitId).filter(Boolean),
+    [characterTraits]
+  );
+  const handleAddCustomSkillSave = useCallback(
+    (data: Partial<CharacterCustomSkill>) => addCustomSkillMutation.mutate(data),
+    [addCustomSkillMutation.mutate]
+  );
+  const editingCustomSkillId = editingCustomSkill?.id;
+  const handleEditCustomSkillSave = useCallback(
+    (data: Partial<CharacterCustomSkill>) => {
+      if (editingCustomSkillId) updateCustomSkillMutation.mutate({ skillId: editingCustomSkillId, data });
+    },
+    [editingCustomSkillId, updateCustomSkillMutation.mutate]
+  );
+  const handleEditCustomSkillDelete = useCallback(() => {
+    if (editingCustomSkillId && confirm('Are you sure you want to remove this skill?')) {
+      removeCustomSkillMutation.mutate(editingCustomSkillId);
+    }
+  }, [editingCustomSkillId, removeCustomSkillMutation.mutate]);
+  const handleAddTraitSave = useCallback(
+    (data: Partial<CharacterTrait>) => addTraitMutation.mutate(data),
+    [addTraitMutation.mutate]
+  );
+  const editingTraitId = editingTrait?.id;
+  const handleEditTraitSave = useCallback(
+    (data: Partial<CharacterTrait>) => {
+      if (editingTraitId) updateTraitMutation.mutate({ traitId: editingTraitId, data });
+    },
+    [editingTraitId, updateTraitMutation.mutate]
+  );
+  const handleEditTraitDelete = useCallback(() => {
+    if (editingTraitId && confirm('Are you sure you want to remove this trait?')) {
+      removeTraitMutation.mutate(editingTraitId);
+    }
+  }, [editingTraitId, removeTraitMutation.mutate]);
 
   const useTraitMutation = useMutation({
     mutationFn: (traitId: string) => api.useCharacterTrait(character.id, traitId),
@@ -21371,8 +21414,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <div className="p-4">
                 <CustomSkillForm
                   systemSkills={systemSkills}
-                  existingSkillIds={characterCustomSkills.map((cs: CharacterCustomSkill) => cs.systemSkillId).filter(Boolean)}
-                  onSave={(data) => addCustomSkillMutation.mutate(data)}
+                  existingSkillIds={existingCustomSkillIds}
+                  onSave={handleAddCustomSkillSave}
                   isLoading={addCustomSkillMutation.isPending}
                   campaignSystem={campaignSystem}
                 />
@@ -21395,12 +21438,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 <div className="p-4">
                   <CustomSkillEditForm
                     skill={editingCustomSkill}
-                    onSave={(data) => updateCustomSkillMutation.mutate({ skillId: editingCustomSkill.id, data })}
-                    onDelete={() => {
-                      if (confirm('Are you sure you want to remove this skill?')) {
-                        removeCustomSkillMutation.mutate(editingCustomSkill.id);
-                      }
-                    }}
+                    onSave={handleEditCustomSkillSave}
+                    onDelete={handleEditCustomSkillDelete}
                     isLoading={updateCustomSkillMutation.isPending}
                     campaignSystem={campaignSystem}
                   />
@@ -21629,8 +21668,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <div className="p-4">
                 <TraitForm
                   systemTraits={systemTraits}
-                  existingTraitIds={characterTraits.map((ct: CharacterTrait) => ct.systemTraitId).filter(Boolean)}
-                  onSave={(data) => addTraitMutation.mutate(data)}
+                  existingTraitIds={existingTraitIds}
+                  onSave={handleAddTraitSave}
                   isLoading={addTraitMutation.isPending}
                   isAAV3={isAAV3}
                 />
@@ -21654,12 +21693,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <TraitEditForm
                     trait={editingTrait}
                     isAAV3={isAAV3}
-                    onSave={(data) => updateTraitMutation.mutate({ traitId: editingTrait.id, data })}
-                    onDelete={() => {
-                      if (confirm('Are you sure you want to remove this trait?')) {
-                        removeTraitMutation.mutate(editingTrait.id);
-                      }
-                    }}
+                    onSave={handleEditTraitSave}
+                    onDelete={handleEditTraitDelete}
                     isLoading={updateTraitMutation.isPending}
                   />
                 </div>
