@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
+  esbuild: {
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "@shared": path.resolve(import.meta.dirname, "shared"),
@@ -20,7 +23,7 @@ export default defineConfig({
     include: [
       "shared/**/*.test.ts",
       "server/**/*.test.ts",
-      "client/**/*.test.ts",
+      "client/**/*.test.{ts,tsx}",
       "packages/**/*.test.ts",
     ],
     testTimeout: 15000,
