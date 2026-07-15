@@ -46,10 +46,16 @@ const DialogContent = React.forwardRef<
   const contentCallback = React.useCallback(
     (el: React.ElementRef<typeof DialogPrimitive.Content> | null) => {
       if (el) {
-        const newZ = bringFloatingPanelToFront();
-        el.style.zIndex = String(newZ);
+        // Two distinct z slots: overlay strictly BELOW content. Assigning
+        // both the same z made the backdrop tie with the panel — DOM order
+        // broke the tie on desktop, but iOS re-composites both layers on
+        // every keystroke and equal-z layers can momentarily flip, flashing
+        // the black backdrop over the form.
+        const overlayZ = bringFloatingPanelToFront();
+        const contentZ = bringFloatingPanelToFront();
+        el.style.zIndex = String(contentZ);
         if (overlayRef.current) {
-          (overlayRef.current as HTMLElement).style.zIndex = String(newZ);
+          (overlayRef.current as HTMLElement).style.zIndex = String(overlayZ);
         }
       }
       if (typeof ref === 'function') ref(el);

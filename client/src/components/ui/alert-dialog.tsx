@@ -47,10 +47,14 @@ const AlertDialogContent = React.forwardRef<
   const contentCallback = React.useCallback(
     (el: React.ElementRef<typeof AlertDialogPrimitive.Content> | null) => {
       if (el) {
-        const newZ = bringFloatingPanelToFront();
-        el.style.zIndex = String(newZ);
+        // Two distinct z slots: overlay strictly BELOW content (same fix as
+        // dialog.tsx — equal-z sibling layers can flip during iOS keystroke
+        // re-composites, flashing the black backdrop over the form).
+        const overlayZ = bringFloatingPanelToFront();
+        const contentZ = bringFloatingPanelToFront();
+        el.style.zIndex = String(contentZ);
         if (overlayRef.current) {
-          (overlayRef.current as HTMLElement).style.zIndex = String(newZ);
+          (overlayRef.current as HTMLElement).style.zIndex = String(overlayZ);
         }
       }
       if (typeof ref === 'function') ref(el);
