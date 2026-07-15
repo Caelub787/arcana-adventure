@@ -76,6 +76,32 @@ export function useTopLayerZIndex(): number {
   return z;
 }
 
+// Ref-callback variant for Radix popper content (Select/Popover/Dropdown/etc).
+// The wrapper COMPONENT for these mounts as soon as its parent renders (the
+// portal just renders null while closed), so a hook that acquires z at
+// component mount grabs a slot BEFORE e.g. the containing dialog does — the
+// popper then opens permanently BEHIND the dialog. This acquires z when the
+// actual DOM node appears (each open), via the same once-per-node dataset
+// guard the dialogs use, and composes the forwarded ref. An explicit zIndex
+// set through the style prop wins (we skip if one is already present).
+export function useTopLayerZRef<T extends HTMLElement>(
+  forwardedRef: React.ForwardedRef<T>,
+): (el: T | null) => void {
+  return React.useCallback(
+    (el: T | null) => {
+      if (el && el.dataset.zAcquired !== "1") {
+        el.dataset.zAcquired = "1";
+        if (!el.style.zIndex) {
+          el.style.zIndex = String(bringFloatingPanelToFront());
+        }
+      }
+      if (typeof forwardedRef === "function") forwardedRef(el);
+      else if (forwardedRef) forwardedRef.current = el;
+    },
+    [forwardedRef],
+  );
+}
+
 // Wrapper <div> for hand-rolled (non-Radix) modal/confirmation overlays that
 // would otherwise hardcode a z-index. It draws from the SAME shared counter the
 // floating panels use, so it always opens above every currently-open panel.

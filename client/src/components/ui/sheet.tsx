@@ -6,7 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { useTopLayerZIndex } from "@/components/ui/floating-panel"
+import { bringFloatingPanelToFront } from "@/components/ui/floating-panel"
 
 const Sheet = SheetPrimitive.Root
 
@@ -58,13 +58,33 @@ const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "right", className, children, style, ...props }, ref) => {
-  const z = useTopLayerZIndex();
+  // Same pattern as dialog.tsx: acquire two z slots (overlay below content)
+  // imperatively when the content node actually mounts (sheet opens), guarded
+  // once per node — NOT at wrapper-component mount, which can run before a
+  // containing/underlying layer claims its slots.
+  const overlayRef = React.useRef<React.ElementRef<typeof SheetPrimitive.Overlay> | null>(null);
+  const contentCallback = React.useCallback(
+    (el: React.ElementRef<typeof SheetPrimitive.Content> | null) => {
+      if (el && el.dataset.zAcquired !== "1") {
+        el.dataset.zAcquired = "1";
+        const overlayZ = bringFloatingPanelToFront();
+        const contentZ = bringFloatingPanelToFront();
+        el.style.zIndex = String(contentZ);
+        if (overlayRef.current) {
+          (overlayRef.current as HTMLElement).style.zIndex = String(overlayZ);
+        }
+      }
+      if (typeof ref === "function") ref(el);
+      else if (ref) (ref as React.MutableRefObject<typeof el>).current = el;
+    },
+    [ref],
+  );
   return (
   <SheetPortal>
-    <SheetOverlay style={{ zIndex: z }} />
+    <SheetOverlay ref={overlayRef} />
     <SheetPrimitive.Content
-      ref={ref}
-      style={{ zIndex: z + 1, ...style }}
+      ref={contentCallback}
+      style={style}
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >

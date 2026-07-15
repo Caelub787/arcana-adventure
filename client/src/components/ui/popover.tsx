@@ -2,7 +2,7 @@ import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
-import { useTopLayerZIndex } from "@/components/ui/floating-panel"
+import { useTopLayerZRef } from "@/components/ui/floating-panel"
 
 const Popover = PopoverPrimitive.Root
 
@@ -14,12 +14,12 @@ const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, align = "center", sideOffset = 4, style, ...props }, ref) => {
-  const z = useTopLayerZIndex();
+  const zRef = useTopLayerZRef(ref);
   return (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
-      ref={ref}
-      style={{ zIndex: z, ...style }}
+      ref={zRef}
+      style={style}
       align={align}
       sideOffset={sideOffset}
       className={cn(

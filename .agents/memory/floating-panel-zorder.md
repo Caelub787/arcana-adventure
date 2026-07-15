@@ -13,3 +13,6 @@ The floating panel system shares one module-level z counter with all Radix overl
 
 **Why:** all three were learned from real regressions; the z system looks simple but portals + shared counter interact non-obviously.
 **How to apply:** any change to floating-panel.tsx z/pointer logic must re-verify: open panel → dialog inside → select inside dialog stays on top; reopened panels rise above all; clicking a panel closes popovers opened elsewhere.
+
+**Rule 4 — poppers must acquire z at DOM-node mount, not component mount.** A Radix popper wrapper (SelectContent etc.) mounts as a React component as soon as its parent renders — the portal just renders null while closed. A hook acquiring z at component mount grabs a slot BEFORE a containing dialog claims its slots, so the popper opens permanently behind the dialog overlay (clicks intercepted). Use the ref-callback helper (useTopLayerZRef) with a once-per-node dataset guard; the node remounts each open, so each open gets a fresh top slot. Dialog/Sheet use the same node-mount pattern with two slots (overlay strictly below content).
+

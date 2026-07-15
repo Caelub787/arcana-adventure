@@ -2,7 +2,7 @@ import * as React from "react"
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card"
 
 import { cn } from "@/lib/utils"
-import { useTopLayerZIndex } from "@/components/ui/floating-panel"
+import { useTopLayerZRef } from "@/components/ui/floating-panel"
 
 const HoverCard = HoverCardPrimitive.Root
 
@@ -12,11 +12,11 @@ const HoverCardContent = React.forwardRef<
   React.ElementRef<typeof HoverCardPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Content>
 >(({ className, align = "center", sideOffset = 4, style, ...props }, ref) => {
-  const z = useTopLayerZIndex();
+  const zRef = useTopLayerZRef(ref);
   return (
   <HoverCardPrimitive.Content
-    ref={ref}
-    style={{ zIndex: z, ...style }}
+    ref={zRef}
+    style={style}
     align={align}
     sideOffset={sideOffset}
     className={cn(
