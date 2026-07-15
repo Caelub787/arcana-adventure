@@ -13,6 +13,7 @@ export interface V3DefaultSkill {
   description?: string;
   parentAttribute: string;
   value: number;
+  _key?: string;
 }
 
 export interface V3DefaultTrait {
@@ -20,6 +21,7 @@ export interface V3DefaultTrait {
   description?: string;
   parentAttribute: string;
   usesPerLongRest: number;
+  _key?: string;
 }
 
 interface V3SpeciesDefaultsEditorProps {
@@ -64,7 +66,7 @@ export function V3SpeciesDefaultsEditor({
     onChange({
       defaultCustomSkills: [
         ...defaultCustomSkills,
-        { name: "", description: "", parentAttribute: V3_ATTRIBUTES[0].key, value: 0 },
+        { name: "", description: "", parentAttribute: V3_ATTRIBUTES[0].key, value: 0, _key: Math.random().toString(36).slice(2) },
       ],
     });
   }, [onChange, defaultCustomSkills]);
@@ -91,7 +93,7 @@ export function V3SpeciesDefaultsEditor({
     onChange({
       defaultTraits: [
         ...defaultTraits,
-        { name: "", description: "", parentAttribute: "will", usesPerLongRest: 1 },
+        { name: "", description: "", parentAttribute: "will", usesPerLongRest: 1, _key: Math.random().toString(36).slice(2) },
       ],
     });
   }, [onChange, defaultTraits]);
@@ -175,7 +177,7 @@ export function V3SpeciesDefaultsEditor({
         {defaultCustomSkills.length === 0 && <p className="text-xs text-stone-500">No default knowledge.</p>}
         <div className="space-y-2">
           {defaultCustomSkills.map((skill, i) => (
-            <div key={i} className="bg-stone-800/60 border border-stone-700 rounded p-2" data-testid={`row-v3-species-skill-${i}`}>
+            <div key={skill._key || i} className="bg-stone-800/60 border border-stone-700 rounded p-2" data-testid={`row-v3-species-skill-${i}`}>
               <div className="flex gap-2 items-center">
                 <Select value={skill.name || undefined} onValueChange={(v) => pickKnowledge(i, v)}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 h-8 flex-1" data-testid={`select-v3-species-skill-name-${i}`}>
@@ -221,7 +223,7 @@ export function V3SpeciesDefaultsEditor({
         {defaultTraits.length === 0 && <p className="text-xs text-stone-500">No default traits.</p>}
         <div className="space-y-2">
           {defaultTraits.map((trait, i) => (
-            <div key={i} className="bg-stone-800/60 border border-stone-700 rounded p-2" data-testid={`row-v3-species-trait-${i}`}>
+            <div key={trait._key || i} className="bg-stone-800/60 border border-stone-700 rounded p-2" data-testid={`row-v3-species-trait-${i}`}>
               <div className="flex gap-2 items-center">
                 <Select value={trait.name || undefined} onValueChange={(v) => pickTrait(i, v)}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 h-8 flex-1" data-testid={`select-v3-species-trait-name-${i}`}>

@@ -82,11 +82,11 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
         nightVisionDistance: s?.nightVisionDistance ?? 30,
         attributeBonuses: s?.attributeBonuses || {},
         skillBonuses: s?.skillBonuses || {},
-        defaultCustomSkills: s?.defaultCustomSkills || [],
-        defaultTraits: s?.defaultTraits || [],
+        defaultCustomSkills: (s?.defaultCustomSkills || []).map((sk: any) => ({ ...sk, _key: sk._key || Math.random().toString(36).slice(2) })),
+        defaultTraits: (s?.defaultTraits || []).map((tr: any) => ({ ...tr, _key: tr._key || Math.random().toString(36).slice(2) })),
       });
     }
-  }, [open, initialData]);
+  }, [open, initialData?.id]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

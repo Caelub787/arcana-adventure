@@ -4980,7 +4980,7 @@ function SkillFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         parentAttribute: 'wit',
       });
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleSave = () => {
     if (!formData.name.trim()) {
@@ -5231,7 +5231,7 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading, s
         damageModifierValue: 0,
       });
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleSave = () => {
     if (!formData.name.trim()) {
@@ -5602,7 +5602,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
         durationType: 'turns',
       });
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleSave = () => {
     if (!formData.name.trim()) {
@@ -6237,7 +6237,7 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
       setDayVisionDistance((initialData as any)?.dayVisionDistance ?? 120);
       setNightVisionDistance((initialData as any)?.nightVisionDistance ?? 60);
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   useEffect(() => {
     if (selectedSpecies && !initialData) {
@@ -7927,7 +7927,7 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
     } else {
       setFormData({ name: '', description: '', gridWidth: 7, gridHeight: 5 });
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
@@ -8215,7 +8215,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
         effects: [],
       }));
     }
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
@@ -9173,16 +9173,17 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
     enabled: !!initialData?.id && isAaV2,
     staleTime: 60 * 1000,
   });
+  // Seed spell template links once per open+id; a ref prevents re-seeding
+  // on every background refetch of existingSpellLinks.
+  const spellLinksSeededForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (existingSpellLinks?.templateIds) {
+    if (!open) { spellLinksSeededForRef.current = null; return; }
+    if (!initialData?.id) { setSelectedTemplateLinks([]); return; }
+    if (existingSpellLinks?.templateIds && spellLinksSeededForRef.current !== initialData.id) {
+      spellLinksSeededForRef.current = initialData.id;
       setSelectedTemplateLinks(existingSpellLinks.templateIds);
     }
-  }, [existingSpellLinks]);
-  useEffect(() => {
-    if (!initialData?.id) {
-      setSelectedTemplateLinks([]);
-    }
-  }, [initialData?.id]);
+  }, [open, initialData?.id, existingSpellLinks]);
 
   // Normalize castingTime to new action format
   const normalizeCastingTime = (ct: string | undefined | null): string => {
@@ -9255,7 +9256,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
       });
     }
     setDraftRolls([]);
-  }, [initialData, open]);
+  }, [open, initialData?.id]);
 
   const handleNumericChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
@@ -12469,11 +12470,15 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
       setDraftRolls([]);
       setSelectedTemplateLinks([]);
     }
-  }, [open, initialData]);
+  }, [open, initialData?.id]);
 
-  // When existing-item links load, seed the selection state.
+  // When existing-item links load, seed the selection state once per open+id.
+  // Using a ref prevents re-seeding on every background refetch of existingLinks.
+  const linksSeededForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (open && initialData?.id && existingLinks?.templateIds) {
+    if (!open) { linksSeededForRef.current = null; return; }
+    if (initialData?.id && existingLinks?.templateIds && linksSeededForRef.current !== initialData.id) {
+      linksSeededForRef.current = initialData.id;
       setSelectedTemplateLinks(existingLinks.templateIds);
     }
   }, [open, initialData?.id, existingLinks]);

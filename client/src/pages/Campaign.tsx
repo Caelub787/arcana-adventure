@@ -495,11 +495,11 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
         attributeBonuses: (initialData as any)?.attributeBonuses || {},
         skillBonuses: (initialData as any)?.skillBonuses || {},
-        defaultCustomSkills: (initialData as any)?.defaultCustomSkills || [],
-        defaultTraits: (initialData as any)?.defaultTraits || [],
+        defaultCustomSkills: ((initialData as any)?.defaultCustomSkills || []).map((sk: any) => ({ ...sk, _key: sk._key || Math.random().toString(36).slice(2) })),
+        defaultTraits: ((initialData as any)?.defaultTraits || []).map((tr: any) => ({ ...tr, _key: tr._key || Math.random().toString(36).slice(2) })),
       });
     }
-  }, [open, initialData]);
+  }, [open, initialData?.id]);
 
   const handleSpeciesImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

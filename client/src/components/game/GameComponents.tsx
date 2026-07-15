@@ -14923,7 +14923,7 @@ function QuantityAdjustDialog({ open, onOpenChange, item, onSave }: QuantityAdju
       const qty = item?.totalQuantity || item?.quantity || 1;
       setTargetQuantity(String(qty));
     }
-  }, [open, item]);
+  }, [open, item?.id]);
   
   const targetNum = targetQuantity === '' ? 0 : parseInt(targetQuantity) || 0;
   const quantityChange = targetNum - currentQuantity;
