@@ -250,6 +250,7 @@ export const characters = pgTable("characters", {
   naturalArmor: integer("natural_armor").notNull().default(5),
   speed: integer("speed").notNull().default(30),
   flySpeed: integer("fly_speed").notNull().default(0),
+  swimSpeed: integer("swim_speed").notNull().default(0),
   lifespan: integer("lifespan").notNull().default(100),
   featTree: text("feat_tree").default(""), // Race-specific feat tree
   // Level-up HP tracking
@@ -775,6 +776,7 @@ export const systemSpecies = pgTable("system_species", {
   lifespan: integer("lifespan").default(100).notNull(),
   speed: integer("speed").default(30).notNull(),
   flySpeed: integer("fly_speed").default(0).notNull(),
+  swimSpeed: integer("swim_speed").default(0).notNull(),
   size: text("size").default("Medium").notNull(), // Tiny, Small, Medium, Large, Huge, Gargantuan
   naturalArmor: integer("natural_armor").default(5).notNull(),
   sizeBonus: integer("size_bonus").default(0).notNull(),
@@ -819,6 +821,7 @@ export const campaignSpecies = pgTable("campaign_species", {
   lifespan: integer("lifespan").default(100).notNull(),
   speed: integer("speed").default(30).notNull(),
   flySpeed: integer("fly_speed").default(0).notNull(),
+  swimSpeed: integer("swim_speed").default(0).notNull(),
   size: text("size").default("Medium").notNull(),
   naturalArmor: integer("natural_armor").default(5).notNull(),
   sizeBonus: integer("size_bonus").default(0).notNull(),

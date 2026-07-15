@@ -32,6 +32,7 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
     lifespan: 100,
     speed: 30,
     flySpeed: 0,
+    swimSpeed: 0,
     size: "Medium",
     naturalArmor: 5,
     sizeBonus: 0,
@@ -63,6 +64,7 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
         lifespan: s?.lifespan ?? 100,
         speed: s?.speed ?? 30,
         flySpeed: s?.flySpeed ?? 0,
+        swimSpeed: s?.swimSpeed ?? 0,
         size: s?.size || "Medium",
         naturalArmor: s?.naturalArmor ?? 5,
         sizeBonus: s?.sizeBonus ?? 0,
@@ -173,6 +175,10 @@ export function V3SystemSpeciesDialog({ open, onOpenChange, systemName, initialD
               <div>
                 <Label className="text-xs">Fly Speed</Label>
                 <NumberInput {...num("flySpeed")} data-testid="input-v3-system-species-flyspeed" />
+              </div>
+              <div>
+                <Label className="text-xs">Swim Speed</Label>
+                <NumberInput {...num("swimSpeed")} data-testid="input-v3-system-species-swimspeed" />
               </div>
               <div>
                 <Label className="text-xs">Size</Label>

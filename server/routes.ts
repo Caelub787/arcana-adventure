@@ -96,6 +96,11 @@ async function migrateEntityTypesToTags() {
       }
     }
 
+    // V3 Swim Speed columns (idempotent)
+    await db.execute(sql`ALTER TABLE characters ADD COLUMN IF NOT EXISTS swim_speed integer NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE system_species ADD COLUMN IF NOT EXISTS swim_speed integer NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE campaign_species ADD COLUMN IF NOT EXISTS swim_speed integer NOT NULL DEFAULT 0`);
+
     // V3 Action Tokens
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS v3_action_token_types (

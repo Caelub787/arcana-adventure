@@ -206,6 +206,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
       naturalArmor: humanSpecies.naturalArmor,
       speed: humanSpecies.speed,
       flySpeed: humanSpecies.flySpeed,
+      swimSpeed: (humanSpecies as any).swimSpeed || 0,
       lifespan: humanSpecies.lifespan,
       hp: humanSpecies.startingHp,
       maxHp: humanSpecies.startingMaxHp,
@@ -220,6 +221,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
       naturalArmor: 5,
       speed: 30,
       flySpeed: 0,
+      swimSpeed: 0,
       lifespan: 100,
       hp: 20,
       maxHp: 20,
@@ -9273,6 +9275,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
     sizeBonus: 0,
     speed: 30,
     flySpeed: 0,
+    swimSpeed: 0,
     startingHp: 10,
     startingMaxHp: 10,
     startingEnergy: 10,
@@ -9297,6 +9300,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       sizeBonus: selectedSpecies.sizeBonus || 0,
       speed: selectedSpecies.speed || 30,
       flySpeed: selectedSpecies.flySpeed || 0,
+      swimSpeed: (selectedSpecies as any).swimSpeed || 0,
       featTree: selectedSpecies.featTree || "",
       portrait: selectedSpecies.defaultImage || null,
       hp: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxHp : selectedSpecies.startingHp) || 10,
@@ -17406,6 +17410,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     featTree: string;
     speed: number;
     flySpeed: number;
+    swimSpeed: number;
     visionType: string;
     dayVisionDistance: number;
     nightVisionDistance: number;
@@ -17428,6 +17433,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     featTree: character?.featTree || "",
     speed: character?.speed || 30,
     flySpeed: character?.flySpeed || 0,
+    swimSpeed: character?.swimSpeed || 0,
     visionType: character?.visionType || 'normal',
     dayVisionDistance: character?.dayVisionDistance || 120,
     nightVisionDistance: character?.nightVisionDistance || 60,
@@ -17901,6 +17907,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         featTree: raceData.featTree || '',
         speed: raceData.speed,
         flySpeed: raceData.flySpeed,
+        swimSpeed: (raceData as any).swimSpeed || 0,
         hp: newHp,
         maxHp: newMaxHp,
         energy: newEnergy,
@@ -19756,6 +19763,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               featTree: liveCharacter.featTree || "",
                               speed: liveCharacter.speed || 30,
                               flySpeed: liveCharacter.flySpeed || 0,
+                              swimSpeed: (liveCharacter as any).swimSpeed || 0,
                               visionType: (liveCharacter as any).visionType || 'normal',
                               dayVisionDistance: (liveCharacter as any).dayVisionDistance || 120,
                               nightVisionDistance: (liveCharacter as any).nightVisionDistance || 60
@@ -20263,6 +20271,29 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         );
                       })()}
                     </div>
+                    {isAAV3 && (
+                    <div>
+                      <Label className="text-xs text-stone-400">Swim Speed</Label>
+                      {(() => {
+                        const baseSwimSpeed = editingOverview ? overviewData.swimSpeed : (liveCharacter.swimSpeed || 0);
+                        const exh = liveCharacter.exhaustion || 0;
+                        const effectiveSwimSpeed = exh >= 6 ? 0 : exh >= 2 ? Math.floor(baseSwimSpeed / 2) : baseSwimSpeed;
+                        const isReduced = effectiveSwimSpeed < baseSwimSpeed;
+                        return (
+                          <p className="text-stone-200" data-testid="text-swim-speed">
+                            {isReduced ? (
+                              <>
+                                <span className="line-through text-stone-500">{baseSwimSpeed} ft</span>
+                                <span className="text-red-400 ml-1">{effectiveSwimSpeed} ft</span>
+                              </>
+                            ) : (
+                              <>{baseSwimSpeed} ft</>
+                            )}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    )}
                     <div className="col-span-2">
                       <Label className="text-xs text-stone-400">Vision</Label>
                       {editingOverview ? (

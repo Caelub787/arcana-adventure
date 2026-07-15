@@ -412,6 +412,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     lifespan: number | string;
     speed: number | string;
     flySpeed: number | string;
+    swimSpeed: number | string;
     size: string;
     naturalArmor: number | string;
     sizeBonus: number;
@@ -439,6 +440,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     lifespan: '',
     speed: '',
     flySpeed: '',
+    swimSpeed: '',
     size: 'Medium',
     naturalArmor: '',
     sizeBonus: 0,
@@ -474,6 +476,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         lifespan: initialData?.lifespan ?? '',
         speed: initialData?.speed ?? '',
         flySpeed: initialData?.flySpeed ?? '',
+        swimSpeed: (initialData as any)?.swimSpeed ?? '',
         size: initialData?.size || 'Medium',
         naturalArmor: initialData?.naturalArmor ?? '',
         sizeBonus: initialData?.sizeBonus ?? getSizeBonusFromSize(initialData?.size || 'Medium'),
@@ -539,6 +542,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       lifespan: Number(formData.lifespan) || 100,
       speed: Number(formData.speed) || 30,
       flySpeed: Number(formData.flySpeed) || 0,
+      swimSpeed: Number(formData.swimSpeed) || 0,
       naturalArmor: Number(formData.naturalArmor) || 5,
       startingHp: Number(formData.startingHp) || 10,
       startingMaxHp: Number(formData.startingMaxHp) || 10,
@@ -680,6 +684,18 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   className="bg-stone-800 border-stone-700"
                 />
               </div>
+
+              {campaignSystem === 'aa-v3' && (
+              <div>
+                <Label>Swim Speed (ft)</Label>
+                <NumberInput
+                  value={formData.swimSpeed as number}
+                  onChange={(v) => setFormData({ ...formData, swimSpeed: v ?? 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-swimspeed"
+                />
+              </div>
+              )}
 
               {campaignSystem !== 'aa-v3' && (
               <div>

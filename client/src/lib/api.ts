@@ -70,6 +70,7 @@ export interface Character {
   naturalArmor: number;
   speed: number;
   flySpeed: number;
+  swimSpeed: number;
   lifespan: number;
   agility: number;
   charisma: number;
@@ -324,6 +325,7 @@ export interface SystemSpecies {
   lifespan: number;
   speed: number;
   flySpeed: number;
+  swimSpeed?: number;
   size: string;
   naturalArmor: number;
   sizeBonus: number;
@@ -350,6 +352,7 @@ export interface CampaignSpecies {
   lifespan: number;
   speed: number;
   flySpeed: number;
+  swimSpeed?: number;
   size: string;
   naturalArmor: number;
   sizeBonus: number;
