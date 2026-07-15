@@ -169,6 +169,11 @@ async function applyV3SpeciesDefaults(character: any, campaignId: string, raceNa
   let updated = character;
   const combinedUpdate: Record<string, any> = { ...attrUpdate };
   if (boostsChanged) combinedUpdate.v3SkillBoosts = curBoosts;
+  // Swim speed is defined by the species (absolute value, not additive).
+  const speciesSwimSpeed = Number(species.swimSpeed) || 0;
+  if ((Number(character.swimSpeed) || 0) !== speciesSwimSpeed) {
+    combinedUpdate.swimSpeed = speciesSwimSpeed;
+  }
   if (Object.keys(combinedUpdate).length > 0) {
     updated = (await storage.updateCharacter(character.id, combinedUpdate as any)) || character;
   }
@@ -251,6 +256,11 @@ async function reapplyV3SpeciesOnChange(character: any, campaignId: string, oldR
 
       const revertUpdate: Record<string, any> = { ...attrUpdate };
       if (boostsChanged) revertUpdate.v3SkillBoosts = curBoosts;
+      // Remove the old species' swim speed; applyV3SpeciesDefaults below sets
+      // the new species' value (species swim speed is absolute, not additive).
+      if ((Number(character.swimSpeed) || 0) !== 0) {
+        revertUpdate.swimSpeed = 0;
+      }
       if (Object.keys(revertUpdate).length > 0) {
         character = (await storage.updateCharacter(character.id, revertUpdate as any)) || character;
       }
