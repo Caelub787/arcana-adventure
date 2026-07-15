@@ -120,27 +120,45 @@ function emptyRoll(ownerType: "item" | "spell"): RollEntryDraft {
   };
 }
 
+/**
+ * Returns a referentially-stable callback that always invokes the latest
+ * render's version of `fn`. Lets memoized rows receive stable handler props
+ * even though the underlying handlers close over fresh `value`/`onChange`.
+ */
+function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = React.useRef(fn);
+  ref.current = fn;
+  return React.useCallback(((...args: any[]) => ref.current(...args)) as T, []);
+}
+
 export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
   value, onChange, ownerType, campaignSystem, host, adminItems: adminItemsProp,
 }) => {
   const [adminItems, setAdminItems] = React.useState<Array<{ id: string; name: string }>>(adminItemsProp ?? []);
 
   // Lazy-load admin items via the sync API the first time an item-cost picker opens.
-  const ensureAdminItems = React.useCallback(async () => {
-    if (adminItems.length > 0) return;
+  const adminItemsRef = React.useRef(adminItems);
+  adminItemsRef.current = adminItems;
+  const ensureAdminItems = useStableCallback(async () => {
+    if (adminItemsRef.current.length > 0) return;
     try {
       const res = await host.transport.list<{ id: string; name: string }>("item");
       setAdminItems((res.data ?? []).map((it: any) => ({ id: it.id, name: it.name })));
     } catch (e: any) {
       host.notify("warning", `Could not load items for cost picker: ${e?.message ?? e}`);
     }
-  }, [adminItems.length, host]);
+  });
 
   const aav2 = isAAv2(campaignSystem);
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
 
   const addRoll = () => onChange([...value, { ...emptyRoll(ownerType), sortOrder: value.length }]);
-  const updateAt = (idx: number, patch: Partial<RollEntryDraft>) => {
+  // Stable per-key handlers so React.memo on RollRow actually prevents
+  // sibling rows from re-rendering when one row changes.
+  const keyOf = (r: RollEntryDraft) => r._localId ?? r.id ?? "";
+  const updateByKey = useStableCallback((key: string, patch: Partial<RollEntryDraft>) => {
+    const idx = value.findIndex(v => keyOf(v) === key);
+    if (idx < 0) return;
     const next = value.slice();
     const cur = next[idx];
     next[idx] = { ...cur, ...patch };
@@ -149,45 +167,45 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
       next[idx].isOverridden = true;
     }
     onChange(next);
-  };
-  const removeAt = (idx: number) => {
+  });
+  const removeByKey = useStableCallback((key: string) => {
+    const idx = value.findIndex(v => keyOf(v) === key);
+    if (idx < 0) return;
     const cur = value[idx];
     if (cur.fromTemplateRollId && !cur.isOverridden) {
       host.notify("info", "Inherited rolls are detached on delete (the template still has its copy).");
     }
     onChange(value.filter((_, i) => i !== idx));
-  };
+  });
   // Reset-to-template is intentionally NOT wired in the foundation slice.
   // The endpoint POST /api/roll-entries/:id/reset-template lives outside the
   // sync API and isn't reachable through ArcanaSyncClient. The "(modified)"
   // badge still surfaces overridden status so users aren't misled.
 
   const sorted = React.useMemo(() => sortRollsForDisplay<RollEntryDraft>(value), [value]);
-  const folders = React.useMemo(() => collectFolderNames(value), [value]);
+  // Keep the folder-name array referentially stable across edits that don't
+  // change the folder set, so it doesn't defeat RollRow's memo on every keystroke.
+  const foldersRaw = React.useMemo(() => collectFolderNames(value), [value]);
+  const foldersRef = React.useRef(foldersRaw);
+  if (foldersRef.current !== foldersRaw && foldersRef.current.join("\u0000") !== foldersRaw.join("\u0000")) {
+    foldersRef.current = foldersRaw;
+  }
+  const folders = foldersRef.current;
 
-  // Resolve a sorted roll back to its index in the source `value` array so
-  // edits/removes target the right entry. Prefer client-only `_localId`
-  // (stable across server-id assignment), fall back to server `id`.
-  const indexOf = React.useCallback(
-    (r: RollEntryDraft) => value.findIndex(v => (v._localId ?? v.id) === (r._localId ?? r.id)),
-    [value],
-  );
-
-  const renderRoll = (r: RollEntryDraft) => {
-    const idx = indexOf(r);
-    if (idx < 0) return null;
-    const roll = value[idx];
+  const renderRoll = (roll: RollEntryDraft) => {
+    const key = keyOf(roll);
     return (
       <RollRow
-        key={roll._localId ?? roll.id ?? idx}
+        key={key}
+        rollKey={key}
         roll={roll}
         damageTypes={damageTypes}
         aav2={aav2}
         adminItems={adminItems}
         ensureAdminItems={ensureAdminItems}
         knownFolders={folders}
-        onChange={(patch) => updateAt(idx, patch)}
-        onRemove={() => removeAt(idx)}
+        onPatch={updateByKey}
+        onRemoveRow={removeByKey}
       />
     );
   };
@@ -255,19 +273,30 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
   );
 };
 
-/* ====== single-row editor — rendered once per roll ====== */
-const RollRow: React.FC<{
+/* ====== single-row editor — rendered once per roll ======
+ * Memoized: with stable `onPatch`/`onRemoveRow` handlers from the parent,
+ * editing one roll only re-renders that roll's row (siblings keep the same
+ * `roll` object reference and skip). */
+const RollRow = React.memo(function RollRow({
+  rollKey, roll, damageTypes, aav2, adminItems, ensureAdminItems, knownFolders, onPatch, onRemoveRow,
+}: {
+  rollKey: string;
   roll: RollEntryDraft;
   damageTypes: string[];
   aav2: boolean;
   adminItems: Array<{ id: string; name: string }>;
   ensureAdminItems: () => Promise<void>;
   knownFolders: string[];
-  onChange: (patch: Partial<RollEntryDraft>) => void;
-  onRemove: () => void;
-}> = ({ roll, damageTypes, aav2, adminItems, ensureAdminItems, knownFolders, onChange, onRemove }) => {
+  onPatch: (key: string, patch: Partial<RollEntryDraft>) => void;
+  onRemoveRow: (key: string) => void;
+}) {
   const [open, setOpen] = React.useState(true);
   const inherited = !!roll.fromTemplateRollId;
+  const onChange = React.useCallback(
+    (patch: Partial<RollEntryDraft>) => onPatch(rollKey, patch),
+    [onPatch, rollKey],
+  );
+  const onRemove = React.useCallback(() => onRemoveRow(rollKey), [onRemoveRow, rollKey]);
 
   return (
     <Panel data-testid={`roll-row-${roll._localId ?? roll.id}`}>
@@ -577,4 +606,4 @@ const RollRow: React.FC<{
       )}
     </Panel>
   );
-};
+});

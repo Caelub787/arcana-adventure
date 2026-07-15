@@ -270,6 +270,17 @@ function getRollDetails(roll: RollEntry): string[] {
   return details;
 }
 
+/**
+ * Returns a referentially-stable callback that always calls the latest
+ * render's `fn`. Lets memoized roll cards receive stable handler props even
+ * though the handlers close over fresh state (rolls, edit form, etc).
+ */
+function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = React.useRef(fn);
+  ref.current = fn;
+  return React.useCallback(((...args: any[]) => ref.current(...args)) as T, []);
+}
+
 function ToggleButton({ active, onClick, label, testId }: { active: boolean; onClick: () => void; label: string; testId: string }) {
   return (
     <Button
@@ -1334,16 +1345,25 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     },
   });
 
-  const handleResetTemplate = (id: string) => {
+  const handleResetTemplate = useStableCallback((id: string) => {
     if (isDraftMode) return;
     resetTemplateMutation.mutate(id);
-  };
+  });
 
-  const handleStartEdit = (roll: RollEntry) => {
+  const handleStartEdit = React.useCallback((roll: RollEntry) => {
     setEditingId(roll.id);
     setEditForm({ ...roll });
     setAddingNew(false);
-  };
+  }, []);
+
+  const handleToggleExpand = React.useCallback((id: string) => {
+    setExpandedId(cur => (cur === id ? null : id));
+  }, []);
+
+  const handleCancelEdit = React.useCallback(() => {
+    setEditingId(null);
+    setEditForm({});
+  }, []);
 
   const handleSaveNew = () => {
     if (isDraftMode) {
@@ -1361,7 +1381,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     createMutation.mutate({ ...newForm, ownerType, ownerId, sortOrder: maxSort + 1 });
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = useStableCallback(() => {
     if (!editingId) return;
     if (isDraftMode) {
       const updated = draftRollsData.map(r => r.id === editingId ? { ...r, ...editForm } : r);
@@ -1372,17 +1392,17 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     }
     const { id, ...data } = editForm as RollEntry;
     updateMutation.mutate({ id: editingId, data });
-  };
+  });
 
-  const handleDelete = (id: string) => {
+  const handleDelete = useStableCallback((id: string) => {
     if (isDraftMode) {
       onDraftRollsChange?.(draftRollsData.filter(r => r.id !== id));
       return;
     }
     deleteMutation.mutate(id);
-  };
+  });
 
-  const handleDuplicate = (roll: RollEntry) => {
+  const handleDuplicate = useStableCallback((roll: RollEntry) => {
     const { id, sortOrder, ...rest } = roll;
     const newName = `${roll.name} (Copy)`;
     const maxSort = rolls.length > 0 ? Math.max(...(rolls as RollEntry[]).map((r) => r.sortOrder ?? 0)) : -1;
@@ -1397,7 +1417,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
       return;
     }
     createMutation.mutate({ ...rest, name: newName, sortOrder: maxSort + 1 });
-  };
+  });
 
   // Filter rolls by visibility, then sort + group via the shared util.
   // Sort is now driven by `priority` (lower = higher up) with `sortOrder` as a
@@ -1429,7 +1449,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     return out;
   }, [displayNodes]);
 
-  const handleReorder = async (rollId: string, direction: 'up' | 'down') => {
+  const handleReorder = useStableCallback(async (rollId: string, direction: 'up' | 'down') => {
     const idx = flatDisplayOrder.findIndex(r => r.id === rollId);
     if (idx < 0) return;
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -1451,7 +1471,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     await api.updateRollEntry(current.id, { sortOrder: target.sortOrder ?? 0 });
     await api.updateRollEntry(target.id, { sortOrder: current.sortOrder ?? 0 });
     queryClient.invalidateQueries({ queryKey });
-  };
+  });
 
 
   return (
@@ -1503,10 +1523,107 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
       {(() => {
         // Per-roll renderer extracted so it can be reused inside folder bodies
-        // and template-group blocks. Captures the same closures as before.
+        // and template-group blocks. Delegates to the memoized <RollCard> so
+        // editing one roll doesn't re-render its siblings.
         const renderRoll = (roll: RollEntry): React.ReactNode => {
-        const isEditing = editingId === roll.id;
-        const isExpanded = expandedId === roll.id;
+          const isEditing = editingId === roll.id;
+          const flatIdx = flatDisplayOrder.indexOf(roll);
+          return (
+            <RollCard
+              key={roll.id}
+              roll={roll}
+              isEditing={isEditing}
+              isExpanded={expandedId === roll.id}
+              canEdit={canEdit}
+              campaignSystem={campaignSystem}
+              onExecuteRoll={onExecuteRoll}
+              systemSkills={systemSkills as any[]}
+              characterCustomSkills={characterCustomSkills}
+              characterEnergy={characterEnergy}
+              characterMana={characterMana}
+              characterItems={characterItems}
+              canMoveUp={flatIdx > 0}
+              canMoveDown={flatIdx >= 0 && flatIdx < flatDisplayOrder.length - 1}
+              availableEffects={availableEffects}
+              folderSuggestions={folderSuggestions}
+              editForm={isEditing ? editForm : undefined}
+              setEditForm={setEditForm}
+              saving={isEditing && !isDraftMode ? updateMutation.isPending : false}
+              onToggleExpand={handleToggleExpand}
+              onStartEdit={handleStartEdit}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={handleCancelEdit}
+              onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
+              onResetTemplate={handleResetTemplate}
+              onReorder={handleReorder}
+            />
+          );
+        };
+
+        return <DisplayNodes nodes={displayNodes} renderRoll={renderRoll} />;
+      })()}
+    </div>
+  );
+}
+
+// Memoized per-roll card. With stable handler props from the parent, only
+// the card whose roll object (or editing/expanded state) changed re-renders.
+const RollCard = React.memo(function RollCard({
+  roll,
+  isEditing,
+  isExpanded,
+  canEdit,
+  campaignSystem,
+  onExecuteRoll,
+  systemSkills,
+  characterCustomSkills,
+  characterEnergy,
+  characterMana,
+  characterItems,
+  canMoveUp,
+  canMoveDown,
+  availableEffects,
+  folderSuggestions,
+  editForm,
+  setEditForm,
+  saving,
+  onToggleExpand,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onDuplicate,
+  onResetTemplate,
+  onReorder,
+}: {
+  roll: RollEntry;
+  isEditing: boolean;
+  isExpanded: boolean;
+  canEdit: boolean;
+  campaignSystem?: string;
+  onExecuteRoll?: (roll: any) => void;
+  systemSkills: any[];
+  characterCustomSkills?: any[];
+  characterEnergy?: number;
+  characterMana?: number;
+  characterItems?: any[];
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  availableEffects: any[];
+  folderSuggestions: string[];
+  editForm?: Partial<RollEntry>;
+  setEditForm: React.Dispatch<React.SetStateAction<Partial<RollEntry>>>;
+  saving: boolean;
+  onToggleExpand: (id: string) => void;
+  onStartEdit: (roll: RollEntry) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (roll: RollEntry) => void;
+  onResetTemplate: (id: string) => void;
+  onReorder: (rollId: string, direction: 'up' | 'down') => void;
+}) {
         const summary = getRollSummary(roll);
         const details = getRollDetails(roll);
         const badgeClass = ROLL_TYPE_COLORS[roll.rollType] || "bg-stone-600 text-stone-200";
@@ -1559,17 +1676,16 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
         return (
           <div
-            key={roll.id}
             className={`rounded-lg border p-2 ${isHiddenRoll ? 'bg-stone-900/60 border-stone-700/50 opacity-50' : 'bg-stone-800/50 border-stone-700'}`}
             data-testid={`card-roll-${roll.id}`}
           >
             {isEditing ? (
               <RollForm
-                form={editForm}
+                form={editForm ?? {}}
                 setForm={setEditForm}
-                onSave={handleSaveEdit}
-                onCancel={() => { setEditingId(null); setEditForm({}); }}
-                saving={isDraftMode ? false : updateMutation.isPending}
+                onSave={onSaveEdit}
+                onCancel={onCancelEdit}
+                saving={saving}
                 isNew={false}
                 availableEffects={availableEffects}
                 campaignSystem={campaignSystem}
@@ -1580,7 +1696,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                 <div className="flex items-center gap-2">
                   <button
                     className="flex-1 flex items-center gap-2 text-left min-w-0"
-                    onClick={() => setExpandedId(isExpanded ? null : roll.id)}
+                    onClick={() => onToggleExpand(roll.id)}
                     data-testid={`button-toggle-roll-${roll.id}`}
                   >
                     {isExpanded ? <ChevronUp className="w-3 h-3 text-stone-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />}
@@ -1637,8 +1753,8 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           size="sm"
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
-                          onClick={() => handleReorder(roll.id, 'up')}
-                          disabled={flatDisplayOrder.indexOf(roll) === 0}
+                          onClick={() => onReorder(roll.id, 'up')}
+                          disabled={!canMoveUp}
                           data-testid={`button-move-roll-up-${roll.id}`}
                         >
                           <ArrowUp className="w-3 h-3" />
@@ -1647,8 +1763,8 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           size="sm"
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
-                          onClick={() => handleReorder(roll.id, 'down')}
-                          disabled={flatDisplayOrder.indexOf(roll) === flatDisplayOrder.length - 1}
+                          onClick={() => onReorder(roll.id, 'down')}
+                          disabled={!canMoveDown}
                           data-testid={`button-move-roll-down-${roll.id}`}
                         >
                           <ArrowDown className="w-3 h-3" />
@@ -1658,7 +1774,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                             size="sm"
                             variant="outline"
                             className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-blue-400"
-                            onClick={() => handleDuplicate(roll)}
+                            onClick={() => onDuplicate(roll)}
                             title="Duplicate roll"
                             data-testid={`button-duplicate-roll-${roll.id}`}
                           >
@@ -1670,7 +1786,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                             size="sm"
                             variant="outline"
                             className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-amber-400"
-                            onClick={() => handleResetTemplate(roll.id)}
+                            onClick={() => onResetTemplate(roll.id)}
                             title="Reset to template values"
                             data-testid={`button-reset-roll-${roll.id}`}
                           >
@@ -1681,7 +1797,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           size="sm"
                           variant="outline"
                           className="h-6 w-6 p-0 border-stone-600 text-stone-300"
-                          onClick={() => handleStartEdit(roll)}
+                          onClick={() => onStartEdit(roll)}
                           title={roll.fromTemplateRollId ? 'Edit (will mark as overridden so future template updates skip this roll)' : 'Edit roll'}
                           data-testid={`button-edit-roll-${roll.id}`}
                         >
@@ -1692,7 +1808,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                             size="sm"
                             variant="outline"
                             className="h-6 w-6 p-0 border-stone-600 text-red-400 hover:text-red-300"
-                            onClick={() => handleDelete(roll.id)}
+                            onClick={() => onDelete(roll.id)}
                             data-testid={`button-delete-roll-${roll.id}`}
                           >
                             <Trash2 className="w-3 h-3" />
@@ -1746,13 +1862,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
             )}
           </div>
         );
-        };
-
-        return <DisplayNodes nodes={displayNodes} renderRoll={renderRoll} />;
-      })()}
-    </div>
-  );
-}
+});
 
 // ---------- Folder + template-group rendering ----------
 //
