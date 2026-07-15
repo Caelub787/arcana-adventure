@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { installMobileKeyboardScrollFix } from "./lib/mobileKeyboardScrollFix";
+
+installMobileKeyboardScrollFix();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
