@@ -3131,7 +3131,7 @@ function RealmRowMenu({
           className={cn(
             "mr-1 h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground/60",
             "hover:text-foreground hover:bg-accent/30 transition-opacity",
-            open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+            open ? "opacity-100" : "opacity-60 group-hover:opacity-100 focus:opacity-100",
           )}
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -3349,7 +3349,7 @@ function NodeRowMenu({
           className={cn(
             "mr-1 h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground/60",
             "hover:text-foreground hover:bg-accent/30 transition-opacity",
-            open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+            open ? "opacity-100" : "opacity-60 group-hover:opacity-100 focus:opacity-100",
           )}
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -3528,7 +3528,7 @@ function FolderRowMenu({
           className={cn(
             "mr-1 h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground/60",
             "hover:text-foreground hover:bg-accent/30 transition-opacity",
-            open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+            open ? "opacity-100" : "opacity-60 group-hover:opacity-100 focus:opacity-100",
           )}
         >
           <MoreHorizontal className="w-4 h-4" />
