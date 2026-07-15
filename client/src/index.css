@@ -42,34 +42,34 @@
 }
 
 :root {
-  /* Dark Fantasy Theme */
-  --background: 240 10% 10%; /* Very dark slate */
+  /* Dark Fantasy Theme — campaign palette (warm stone + amber) */
+  --background: 24 10% 10%; /* stone-900 — matches campaign bg-stone-900 */
   --foreground: 40 20% 90%; /* Off-white parchment text */
   
-  --card: 240 12% 14%;
+  --card: 12 6% 15%; /* stone-800 — matches campaign bg-stone-800 */
   --card-foreground: 40 20% 90%;
   
-  --popover: 240 12% 14%;
+  --popover: 12 6% 15%;
   --popover-foreground: 40 20% 90%;
   
-  --primary: 260 60% 60%; /* Arcane Purple */
+  --primary: 26 90% 37%; /* amber-700 — matches campaign bg-amber-700 buttons */
   --primary-foreground: 0 0% 100%;
   
   --secondary: 35 30% 20%; /* Dark Wood/Leather */
   --secondary-foreground: 35 40% 80%;
   
-  --muted: 240 10% 20%;
-  --muted-foreground: 240 10% 60%;
+  --muted: 24 8% 20%;
+  --muted-foreground: 24 5% 60%; /* stone-400/500 */
   
-  --accent: 190 70% 40%; /* Magic Blue Glow */
-  --accent-foreground: 190 90% 90%;
+  --accent: 36 35% 26%; /* Warm ember highlight */
+  --accent-foreground: 40 85% 82%;
   
   --destructive: 0 60% 40%; /* Blood Red */
   --destructive-foreground: 0 0% 98%;
   
-  --border: 240 10% 25%;
-  --input: 240 10% 20%;
-  --ring: 260 60% 60%;
+  --border: 30 6% 25%; /* stone-700 — matches campaign border-stone-700 */
+  --input: 24 8% 18%;
+  --ring: 38 92% 50%; /* amber-500 */
   
   --radius: 0.5rem;
 }
@@ -91,7 +91,7 @@
   
   body {
     @apply font-sans antialiased bg-background text-foreground selection:bg-primary/30;
-    background-image: radial-gradient(circle at center, hsl(240 10% 12%), hsl(240 10% 8%));
+    background-image: radial-gradient(circle at center, hsl(24 10% 12%), hsl(24 12% 7%));
     min-height: 100%;
     /* Prevent overscroll bounce on iOS */
     overscroll-behavior: none;

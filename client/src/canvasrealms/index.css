@@ -67,8 +67,8 @@
 }
 
 /* Arcana Adventure dark-fantasy palette.
-   Mirrors the host theme in client/src/index.css (arcane purple, dark slate,
-   parchment/amber text). The host app is dark-only, so BOTH :root and .dark
+   Mirrors the host theme in client/src/index.css (warm stone, amber accents,
+   parchment text). The host app is dark-only, so BOTH :root and .dark
    resolve to the same palette — Canvas Realms reads as the same product
    whether or not the .dark class is present (standalone or campaign-embedded). */
 :root {
@@ -78,38 +78,38 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 240 10% 10%;
+  --background: 24 10% 10%; /* stone-900 */
   --foreground: 40 20% 90%;
-  --border: 240 10% 25%;
-  --card: 240 12% 14%;
+  --border: 30 6% 25%; /* stone-700 */
+  --card: 12 6% 15%; /* stone-800 */
   --card-foreground: 40 20% 90%;
-  --card-border: 240 10% 25%;
-  --sidebar: 240 11% 12%;
+  --card-border: 30 6% 25%;
+  --sidebar: 20 10% 12%;
   --sidebar-foreground: 40 20% 90%;
-  --sidebar-border: 240 10% 25%;
-  --sidebar-primary: 260 60% 60%;
+  --sidebar-border: 30 6% 25%;
+  --sidebar-primary: 26 90% 37%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 10% 20%;
+  --sidebar-accent: 24 8% 20%;
   --sidebar-accent-foreground: 40 20% 90%;
-  --sidebar-ring: 260 60% 60%;
-  --popover: 240 12% 14%;
+  --sidebar-ring: 38 92% 50%;
+  --popover: 12 6% 15%;
   --popover-foreground: 40 20% 90%;
-  --popover-border: 240 10% 25%;
-  --primary: 260 60% 60%; /* Arcane purple */
+  --popover-border: 30 6% 25%;
+  --primary: 26 90% 37%; /* amber-600 (campaign) */
   --primary-foreground: 0 0% 100%;
   --secondary: 35 30% 20%; /* Dark wood / leather */
   --secondary-foreground: 35 40% 80%;
-  --muted: 240 10% 20%;
-  --muted-foreground: 240 10% 60%;
-  --accent: 190 70% 40%; /* Magic blue glow */
-  --accent-foreground: 190 90% 90%;
+  --muted: 24 8% 20%;
+  --muted-foreground: 24 5% 60%;
+  --accent: 36 35% 26%; /* Magic blue glow */
+  --accent-foreground: 40 85% 82%;
   --destructive: 0 60% 40%;
   --destructive-foreground: 0 0% 98%;
-  --input: 240 10% 20%;
-  --ring: 260 60% 60%;
-  --chart-1: 260 60% 60%; /* Purple */
+  --input: 24 8% 18%;
+  --ring: 38 92% 50%;
+  --chart-1: 38 92% 50%; /* Amber */
   --chart-2: 190 70% 50%; /* Blue */
-  --chart-3: 40 80% 60%;  /* Amber */
+  --chart-3: 260 60% 60%; /* Purple */
   --chart-4: 0 60% 55%;   /* Red */
   --chart-5: 150 45% 55%; /* Green */
 
@@ -127,39 +127,39 @@
   --elevate-2: rgba(255,255,255, .09);
 
   /* Arcana Adventure dark-fantasy palette (matches host :root) */
-  --background: 240 10% 10%;
+  --background: 24 10% 10%; /* stone-900 */
   --foreground: 40 20% 90%;
-  --border: 240 10% 25%;
-  --card: 240 12% 14%;
+  --border: 30 6% 25%; /* stone-700 */
+  --card: 12 6% 15%; /* stone-800 */
   --card-foreground: 40 20% 90%;
-  --card-border: 240 10% 25%;
-  --sidebar: 240 11% 12%;
+  --card-border: 30 6% 25%;
+  --sidebar: 20 10% 12%;
   --sidebar-foreground: 40 20% 90%;
-  --sidebar-border: 240 10% 25%;
-  --sidebar-primary: 260 60% 60%; /* Arcane purple */
+  --sidebar-border: 30 6% 25%;
+  --sidebar-primary: 26 90% 37%; /* amber-600 (campaign) */
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 10% 20%;
+  --sidebar-accent: 24 8% 20%;
   --sidebar-accent-foreground: 40 20% 90%;
-  --sidebar-ring: 260 60% 60%;
-  --popover: 240 12% 14%;
+  --sidebar-ring: 38 92% 50%;
+  --popover: 12 6% 15%;
   --popover-foreground: 40 20% 90%;
-  --popover-border: 240 10% 25%;
-  --primary: 260 60% 60%; /* Arcane purple */
+  --popover-border: 30 6% 25%;
+  --primary: 26 90% 37%; /* amber-600 (campaign) */
   --primary-foreground: 0 0% 100%;
   --secondary: 35 30% 20%; /* Dark wood / leather */
   --secondary-foreground: 35 40% 80%;
-  --muted: 240 10% 20%;
-  --muted-foreground: 240 10% 60%;
-  --accent: 190 70% 40%; /* Magic blue glow */
-  --accent-foreground: 190 90% 90%;
+  --muted: 24 8% 20%;
+  --muted-foreground: 24 5% 60%;
+  --accent: 36 35% 26%; /* Magic blue glow */
+  --accent-foreground: 40 85% 82%;
   --destructive: 0 60% 40%;
   --destructive-foreground: 0 0% 98%;
 
-  --input: 240 10% 20%;
-  --ring: 260 60% 60%;
-  --chart-1: 260 60% 60%; /* Purple */
+  --input: 24 8% 18%;
+  --ring: 38 92% 50%;
+  --chart-1: 38 92% 50%; /* Amber */
   --chart-2: 190 70% 50%; /* Blue */
-  --chart-3: 40 80% 60%;  /* Amber */
+  --chart-3: 260 60% 60%; /* Purple */
   --chart-4: 0 60% 55%;   /* Red */
   --chart-5: 150 45% 55%; /* Green */
 }

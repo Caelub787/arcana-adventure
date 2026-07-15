@@ -2111,7 +2111,7 @@ export default function Notes() {
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         {note.type === "canvas" ? (
-                          <Grid3X3 className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                          <Grid3X3 className="h-4 w-4 text-amber-400 flex-shrink-0" />
                         ) : (
                           <FileText className="h-4 w-4 text-stone-500 flex-shrink-0" />
                         )}
@@ -2198,7 +2198,7 @@ export default function Notes() {
         </Button>
         <Button
           onClick={handleCreateCanvas}
-          className="h-14 w-14 rounded-full bg-indigo-700 hover:bg-indigo-600 shadow-lg shadow-indigo-900/30"
+          className="h-14 w-14 rounded-full bg-stone-700 hover:bg-stone-600 border border-amber-700/50 shadow-lg shadow-black/40"
           data-testid="button-new-canvas"
         >
           <Grid3X3 className="h-6 w-6" />
@@ -2235,7 +2235,7 @@ export default function Notes() {
           </Button>
           <Button
             onClick={handleCreateCanvas}
-            className="w-full sm:w-auto bg-indigo-700 hover:bg-indigo-600 text-lg px-6 py-6"
+            className="w-full sm:w-auto bg-stone-700 hover:bg-stone-600 border border-amber-700/50 text-lg px-6 py-6"
             data-testid="button-home-create-canvas"
           >
             <Grid3X3 className="h-5 w-5 mr-2" />
@@ -2659,7 +2659,7 @@ export default function Notes() {
 
           {campaignId && (
             <div className="flex items-center gap-2 py-3 px-4 border-b border-stone-800 bg-stone-950/40">
-              <Badge className="bg-indigo-900/50 text-indigo-300">Campaign Notes</Badge>
+              <Badge className="bg-amber-900/50 text-amber-300">Campaign Notes</Badge>
               <Button 
                 variant="ghost" 
                 size="sm" 

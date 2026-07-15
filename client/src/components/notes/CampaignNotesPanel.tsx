@@ -2118,7 +2118,7 @@ export function CampaignNotesPanel({
           <Button
             onClick={handleCreateCanvas}
             size="sm"
-            className="bg-indigo-700 hover:bg-indigo-600"
+            className="bg-stone-700 hover:bg-stone-600 border border-amber-700/50"
             data-testid="panel-button-home-create-canvas"
           >
             <Grid3X3 className="h-3 w-3 mr-1" />
@@ -2174,7 +2174,7 @@ export function CampaignNotesPanel({
                     <div className="flex items-start justify-between gap-1">
                       <div className="flex items-center gap-1 flex-1 min-w-0">
                         {note.type === "canvas" ? (
-                          <Grid3X3 className="h-3 w-3 text-indigo-400 flex-shrink-0" />
+                          <Grid3X3 className="h-3 w-3 text-amber-400 flex-shrink-0" />
                         ) : (
                           <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
                         )}
@@ -2272,7 +2272,7 @@ export function CampaignNotesPanel({
         <Button
           size="sm"
           onClick={handleCreateCanvas}
-          className="h-7 text-xs bg-indigo-700 hover:bg-indigo-600"
+          className="h-7 text-xs bg-stone-700 hover:bg-stone-600 border border-amber-700/50"
           data-testid="panel-button-create-canvas"
         >
           <Grid3X3 className="h-3 w-3" />
