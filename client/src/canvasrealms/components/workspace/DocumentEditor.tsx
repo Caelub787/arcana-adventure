@@ -1955,9 +1955,16 @@ function TextBlock({
   // once (keyboard closed as the previous field blurred), then had to tap
   // again — and each keyboard close/reopen let iOS shove the page out of
   // frame. Guarded so we never steal focus the user already placed
-  // elsewhere (e.g. the block's heading input).
+  // elsewhere (e.g. the block's heading input) — EXCEPT when the swap was
+  // explicitly user-initiated via a prose tap (wantsProseFocusRef): the
+  // prose's onMouseDown preventDefault keeps the previous field focused
+  // through the tap (so the keyboard never closes), and this effect then
+  // hands focus to the new textarea in the same discrete-event flush.
+  const wantsProseFocusRef = useRef(false);
   useEffect(() => {
     if (!isFocused || readOnly) return;
+    const userTapped = wantsProseFocusRef.current;
+    wantsProseFocusRef.current = false;
     const ta = textareaRef.current;
     if (!ta) return;
     const active = document.activeElement;
@@ -1967,7 +1974,7 @@ function TextBlock({
       (active.tagName === "INPUT" ||
         active.tagName === "TEXTAREA" ||
         active.isContentEditable);
-    if (activeIsField) return;
+    if (activeIsField && !userTapped) return;
     try {
       ta.focus({ preventScroll: true });
       const len = ta.value.length;
@@ -2116,7 +2123,18 @@ function TextBlock({
           always see the parsed prose. */}
       {readOnly || !isFocused ? (
         <div
-          onClick={onFocus}
+          // preventDefault on pointer-down keeps the currently-focused
+          // field (heading input / another textarea) focused through the
+          // tap, so the on-screen keyboard NEVER closes during the swap —
+          // the close/reopen cycle was what let iOS shove/flash the page.
+          onMouseDown={(e) => {
+            if (!readOnly) e.preventDefault();
+          }}
+          onClick={() => {
+            if (readOnly) return;
+            wantsProseFocusRef.current = true;
+            onFocus();
+          }}
           className="text-base text-foreground leading-7 whitespace-pre-wrap break-words py-1 cursor-text"
         >
           {(() => {

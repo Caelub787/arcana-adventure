@@ -77,34 +77,45 @@ export function installMobileKeyboardScrollFix(): void {
     }
   };
 
+  // Core clamp. Runs SYNCHRONOUSLY (no rAF) so an illegal window shove is
+  // undone in the same event turn — deferring even one frame paints the
+  // shoved position and users see the page flash black for a beat.
+  const clampNow = () => {
+    const inset = keyboardInset();
+    const focused = document.activeElement;
+    const keyboardOpen = inset > 80 && isEditable(focused);
+    let limit = naturalMax();
+    if (keyboardOpen) {
+      const container = nearestScrollableAncestor(focused);
+      if (container) {
+        // Inner-scroll layout: window must not move; reveal within the
+        // container instead.
+        revealInContainer(focused, container);
+      } else {
+        // No inner container (e.g. login): allow just enough window
+        // scroll to lift the field above the keyboard.
+        limit += inset;
+      }
+    }
+    if (window.scrollY > limit) {
+      window.scrollTo(0, limit);
+    }
+  };
+
   let raf = 0;
   const correct = () => {
+    clampNow();
+    // Re-check next frame too: iOS often applies its scroll adjustment
+    // after the event that announced it.
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
-      const inset = keyboardInset();
-      const focused = document.activeElement;
-      const keyboardOpen = inset > 80 && isEditable(focused);
-      let limit = naturalMax();
-      if (keyboardOpen) {
-        const container = nearestScrollableAncestor(focused);
-        if (container) {
-          // Inner-scroll layout: window must not move; reveal within the
-          // container instead.
-          revealInContainer(focused, container);
-        } else {
-          // No inner container (e.g. login): allow just enough window
-          // scroll to lift the field above the keyboard.
-          limit += inset;
-        }
-      }
-      if (window.scrollY > limit) {
-        window.scrollTo({ top: limit });
-      }
-    });
+    raf = requestAnimationFrame(clampNow);
   };
 
   vv.addEventListener("resize", correct);
   vv.addEventListener("scroll", correct);
+  // Any window scroll while a full-screen (non-window-scrolling) layout is
+  // active gets clamped immediately — this is what kills the black flash.
+  window.addEventListener("scroll", clampNow, { passive: true });
   // Focus moving between fields (or keyboard dismissal) settles over a few
   // frames on iOS — re-check shortly after both focus events.
   const later = () => {
