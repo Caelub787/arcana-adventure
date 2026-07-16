@@ -20259,6 +20259,52 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         );
                       })()}
                     </div>
+                    {isAAV3 && (
+                      <>
+                    <div>
+                      <Label className="text-xs text-stone-400">Fly Speed</Label>
+                      {(() => {
+                        const baseFlySpeed = editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed;
+                        const exh = liveCharacter.exhaustion || 0;
+                        const effectiveFlySpeed = exh >= (isAAV3 ? 6 : 5) ? 0 : exh >= 2 ? Math.floor(baseFlySpeed / 2) : baseFlySpeed;
+                        const isReduced = effectiveFlySpeed < baseFlySpeed;
+                        return (
+                          <p className="text-stone-200" data-testid="text-fly-speed">
+                            {isReduced ? (
+                              <>
+                                <span className="line-through text-stone-500">{baseFlySpeed} ft</span>
+                                <span className="text-red-400 ml-1">{effectiveFlySpeed} ft</span>
+                              </>
+                            ) : (
+                              <>{baseFlySpeed} ft</>
+                            )}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Swim Speed</Label>
+                      {(() => {
+                        const baseSwimSpeed = editingOverview ? overviewData.swimSpeed : (liveCharacter.swimSpeed || 0);
+                        const exh = liveCharacter.exhaustion || 0;
+                        const effectiveSwimSpeed = exh >= 6 ? 0 : exh >= 2 ? Math.floor(baseSwimSpeed / 2) : baseSwimSpeed;
+                        const isReduced = effectiveSwimSpeed < baseSwimSpeed;
+                        return (
+                          <p className="text-stone-200" data-testid="text-swim-speed">
+                            {isReduced ? (
+                              <>
+                                <span className="line-through text-stone-500">{baseSwimSpeed} ft</span>
+                                <span className="text-red-400 ml-1">{effectiveSwimSpeed} ft</span>
+                              </>
+                            ) : (
+                              <>{baseSwimSpeed} ft</>
+                            )}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                      </>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div>
@@ -20293,6 +20339,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </p>
                       </div>
                     )}
+                    {!isAAV3 && (
                     <div>
                       <Label className="text-xs text-stone-400">Fly Speed</Label>
                       {(() => {
@@ -20314,29 +20361,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         );
                       })()}
                     </div>
-                    {isAAV3 && (
-                    <div>
-                      <Label className="text-xs text-stone-400">Swim Speed</Label>
-                      {(() => {
-                        const baseSwimSpeed = editingOverview ? overviewData.swimSpeed : (liveCharacter.swimSpeed || 0);
-                        const exh = liveCharacter.exhaustion || 0;
-                        const effectiveSwimSpeed = exh >= 6 ? 0 : exh >= 2 ? Math.floor(baseSwimSpeed / 2) : baseSwimSpeed;
-                        const isReduced = effectiveSwimSpeed < baseSwimSpeed;
-                        return (
-                          <p className="text-stone-200" data-testid="text-swim-speed">
-                            {isReduced ? (
-                              <>
-                                <span className="line-through text-stone-500">{baseSwimSpeed} ft</span>
-                                <span className="text-red-400 ml-1">{effectiveSwimSpeed} ft</span>
-                              </>
-                            ) : (
-                              <>{baseSwimSpeed} ft</>
-                            )}
-                          </p>
-                        );
-                      })()}
-                    </div>
                     )}
+
                     <div className="col-span-2">
                       <Label className="text-xs text-stone-400">Vision</Label>
                       {editingOverview ? (
