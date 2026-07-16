@@ -114,7 +114,7 @@ export default function Home() {
           transition={{ duration: 0.8, ease: "easeOut" }}
           className="mb-8 text-center"
         >
-          <h1 className="font-display text-6xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-amber-100 to-amber-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] filter">
+          <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-amber-100 to-amber-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] filter">
             ArcanaVTT
           </h1>
           <p className="mt-2 font-display text-xl text-stone-400">
