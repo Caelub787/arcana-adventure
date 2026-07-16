@@ -10485,7 +10485,7 @@ export default function Campaign() {
               <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Scenes</SheetTitle>
             </SheetHeader>
             
-            <ScrollArea className="h-[calc(100vh-100px)] pr-4">
+            <ScrollArea className="h-[calc(100dvh-100px)] pr-4">
               <div className="mt-6 space-y-6">
                 {/* Create New Scene */}
                 <div className="space-y-3">
@@ -12150,7 +12150,7 @@ export default function Campaign() {
               <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Campaign Species</SheetTitle>
             </SheetHeader>
             
-            <ScrollArea className="h-[calc(100vh-100px)] pr-4">
+            <ScrollArea className="h-[calc(100dvh-100px)] pr-4">
               <div className="mt-6 space-y-6">
                 <p className="text-stone-400 text-sm">
                   Create custom species for this campaign. Players can select these species when creating characters.

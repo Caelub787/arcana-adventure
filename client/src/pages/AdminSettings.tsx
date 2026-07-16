@@ -7409,7 +7409,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
             connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
           }`}
           style={{ 
-            height: 'calc(100vh - 280px)',
+            height: 'calc(100dvh - 280px)',
             minHeight: '400px',
             touchAction: 'none',
             background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',
@@ -10700,7 +10700,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
           connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
         }`}
         style={{
-          height: 'calc(100vh - 280px)',
+          height: 'calc(100dvh - 280px)',
           minHeight: '400px',
           touchAction: 'none',
           background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',

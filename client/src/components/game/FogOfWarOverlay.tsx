@@ -2761,7 +2761,7 @@ export function FogToolsPanel({
     <div
       ref={panelElRef}
       className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
-      style={{ left: panelPosRef.current.x, top: panelPosRef.current.y, maxHeight: 'calc(100vh - 20px)', overflowY: 'auto', touchAction: 'none' }}
+      style={{ left: panelPosRef.current.x, top: panelPosRef.current.y, maxHeight: 'calc(100dvh - 20px)', overflowY: 'auto', touchAction: 'none' }}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onMouseMove={(e) => e.stopPropagation()}

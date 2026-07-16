@@ -13531,7 +13531,31 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
               </div>
             </div>
           )}
-          
+
+          {/* V3: Draggable spellbooks for the Spellbook slot */}
+          {isAAV3 && canEdit && items.filter((it: any) => it.itemType === 'spellbook').length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag spellbooks to equip:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
+                {items.filter((it: any) => it.itemType === 'spellbook').map((item: any) => (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                    onClick={() => openEquipPicker('weapons', { type: 'item', item, itemId: item.id }, item.name)}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target"
+                    data-testid={`drag-weapons-spellbook-${item.id}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-purple-400 truncate">{item.name}</span>
+                      <span className="text-stone-500 text-[10px] uppercase">Book</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Draggable Ammunition for slot 2 */}
           {canEdit && ammunitionItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">

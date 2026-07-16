@@ -1140,7 +1140,7 @@ export default function SharedWorldView() {
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-49px)] relative">
+      <div className="flex h-[calc(100dvh-49px)] relative">
         {mobileSidebarOpen && (
           <div className="absolute inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
         )}
