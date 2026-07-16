@@ -4895,6 +4895,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   });
   const [showV3Detail, setShowV3Detail] = useState(false);
   const [showMagicPanel, setShowMagicPanel] = useState(false);
+  // AA V3: a tap on an item hotbar slot opens the full item sheet (same
+  // dialog as the character-sheet inventory) instead of the roll popup.
+  const [showItemSheet, setShowItemSheet] = useState(false);
 
   // Fetch trait data if traitId exists
   const { data: traitData } = useQuery({
@@ -6045,7 +6048,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const isSpellClickable = !!spellData;
   const isTraitClickable = !!traitData;
   const isMagicItemClickable = !!itemData && campaignSystem === 'aa-v3' && (itemData.itemType === 'spellbook' || itemData.itemType === 'scroll');
-  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isDetonatableClickable || isSkillClickable || isSpellClickable || isTraitClickable || isMagicItemClickable;
+  // AA V3: any plain item on a hotbar (not a spellbook/scroll, not a crafted
+  // spell) opens the full item sheet on tap — same dialog as the inventory.
+  const isV3ItemSheetClickable = campaignSystem === 'aa-v3' && !!hotbar?.itemId && !!itemData && !isMagicItemClickable && !hotbar?.v3SpellId;
+  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isDetonatableClickable || isSkillClickable || isSpellClickable || isTraitClickable || isMagicItemClickable || isV3ItemSheetClickable;
 
   // Handle throwing an item (place at AOE target location or throw to targeted token)
   const handlePlaceDetonatable = async () => {
@@ -8329,9 +8335,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                         }
                         setShowMagicPanel(true);
                       }
-                    : isClickable
-                      ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
-                      : undefined
+                    : isV3ItemSheetClickable
+                      ? () => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } setShowItemSheet(true); }
+                      : isClickable
+                        ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
+                        : undefined
               }
               onContextMenu={(e) => e.preventDefault()}
               onPointerDown={handlePointerDown}
@@ -8782,6 +8790,18 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         <V3SpellDetailDialog open={showV3Detail} onOpenChange={setShowV3Detail} spell={v3SpellData} castCharacter={character} panelKey={`v3-spell-detail-hotbar-${hotbar?.id ?? v3SpellData.id}`} />
       )}
 
+      {isV3ItemSheetClickable && showItemSheet && itemData && (
+        <DetachedItemDetailPanel
+          character={character}
+          item={itemData}
+          isGM={!!campaignMembers?.some((m: any) => m.userId === currentUserId && (m.role === 'gm' || m.role === 'assistant_gm'))}
+          isOwner={character?.userId === currentUserId}
+          campaignSystem={campaignSystem}
+          onClose={() => setShowItemSheet(false)}
+          panelSuffix={`-bmhotbar-${hotbar?.id ?? itemData.id}`}
+        />
+      )}
+
       {isMagicItemClickable && showMagicPanel && itemData && (
         <SpellbookPanel
           open={showMagicPanel}
@@ -8892,7 +8912,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
   if (!character) return null;
 
   const hotbarTypes = [
-    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: campaignSystem === 'aa-v3' ? 2 : 3 },
+    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
     { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
@@ -9022,7 +9042,10 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             <div className="flex flex-col gap-1">
               {/* Hotbar Slots */}
               <div className="flex gap-1 justify-center">
-                {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
+                {(activeHotbarConfig.type === 'weapons' && campaignSystem === 'aa-v3'
+                  ? [2, 0, 1] // V3: Spellbook, Weapon, Ammo
+                  : Array.from({ length: activeHotbarConfig.maxSlots }, (_, i) => i)
+                ).map((slotIndex) => {
                   const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
                   
                   return (
@@ -13110,8 +13133,17 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
       // Special handling for weapons hotbar
       if (hotbarType === 'weapons') {
         if (isAAV3) {
-          // V3: slot 0 = weapon, slot 1 = ammo (2 slots total)
-          if (slotNumber === 1) {
+          // V3: slot 2 = spellbook, slot 0 = weapon, slot 1 = ammo (3 slots total)
+          if (slotNumber === 2) {
+            if (item.itemType !== 'spellbook') {
+              toast({
+                title: "Spellbooks Only",
+                description: "The spellbook slot only accepts spellbook items",
+                variant: "destructive"
+              });
+              return;
+            }
+          } else if (slotNumber === 1) {
             if (item.itemType !== 'ammunition') {
               toast({
                 title: "Ammunition Only",
@@ -13377,7 +13409,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
   // Helper to get slot display name
   const getSlotLabel = (hotbarType: string, slotNum: number): string => {
     if (hotbarType === 'weapons') {
-      if (isAAV3) return slotNum === 0 ? 'Weapon' : 'Ammunition';
+      if (isAAV3) return slotNum === 2 ? 'Spellbook' : slotNum === 0 ? 'Weapon' : 'Ammunition';
       return slotNum === 0 ? 'Left Hand' : slotNum === 1 ? 'Right Hand' : 'Ammunition';
     }
     if (hotbarType === 'armor') {
@@ -13389,7 +13421,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
 
   // Helper to get max slots for hotbar type
   const getMaxSlots = (hotbarType: string): number => {
-    if (hotbarType === 'weapons') return isAAV3 ? 2 : 3;
+    if (hotbarType === 'weapons') return 3;
     if (hotbarType === 'armor') return 5;
     return 5;
   };
@@ -13440,7 +13472,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 flex-wrap">
-            {Array.from({ length: isAAV3 ? 2 : 3 }).map((_, slotNum) => {
+            {(isAAV3 ? [2, 0, 1] : [0, 1, 2]).map((slotNum) => {
               // Slot 1 (right hand) is blocked in V2 when a heavy (2-handed) weapon is equipped
               const isSlot1Blocked = !isAAV3 && slotNum === 1 && heavyEquipped;
               
@@ -13448,7 +13480,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                 <div key={slotNum} className="flex flex-col items-center gap-1">
                   <Label className="text-xs text-stone-400">
                     {isAAV3
-                      ? (slotNum === 0 ? 'Weapon' : 'Ammo')
+                      ? (slotNum === 2 ? 'Spellbook' : slotNum === 0 ? 'Weapon' : 'Ammo')
                       : (slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo')}
                   </Label>
                   <HotbarSlot
@@ -13472,7 +13504,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
           </div>
           <p className="text-xs text-stone-500 mt-3">
             {isAAV3
-              ? 'Weapon slot for your equipped weapon, Ammo slot for ammunition.'
+              ? 'Spellbook slot for an equipped spellbook, Weapon slot for your equipped weapon, Ammo slot for ammunition.'
               : 'Left/Right for weapons, Far-right for ammunition. Heavy (two-handed) weapons use the left slot and block the right.'}
           </p>
           
@@ -13902,11 +13934,12 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = !isAAV3 && equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
-              // In V3: slot 1 = ammo-only, slot 0 = weapon-only; in V2: slot 2 = ammo-only
+              // In V3: slot 2 = spellbook-only, slot 1 = ammo-only, slot 0 = weapon-only; in V2: slot 2 = ammo-only
               const isAmmoSlotMismatch = equipPickerData.hotbarType === 'weapons' && (
                 isAAV3
-                  ? (slotNum === 1 && equipPickerData.payload?.item?.itemType !== 'ammunition') ||
-                    (slotNum === 0 && equipPickerData.payload?.item?.itemType === 'ammunition')
+                  ? (slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'spellbook') ||
+                    (slotNum === 1 && equipPickerData.payload?.item?.itemType !== 'ammunition') ||
+                    (slotNum === 0 && equipPickerData.payload?.item?.itemType !== 'weapon')
                   : slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition'
               );
               const isSlot2AmmoOnly = isAmmoSlotMismatch;
@@ -13943,6 +13976,26 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                 </Button>
               );
             })}
+            {/* V3: spellbooks can also go into the weapons loadout's Spellbook slot */}
+            {isAAV3 && equipPickerData?.hotbarType === 'magic' && equipPickerData?.payload?.item?.itemType === 'spellbook' && (
+              <Button
+                variant={getHotbarForSlot('weapons', 2) ? "secondary" : "outline"}
+                className="h-16 flex flex-col items-center justify-center gap-1"
+                onClick={() => {
+                  handleDrop('weapons', 2, equipPickerData.payload);
+                  setEquipPickerOpen(false);
+                  setEquipPickerData(null);
+                }}
+                data-testid="equip-picker-weapons-spellbook-slot"
+              >
+                <span className="text-xs text-stone-400">Weapons: Spellbook</span>
+                {getHotbarForSlot('weapons', 2) ? (
+                  <span className="text-xs text-amber-400 truncate max-w-full">(Replace)</span>
+                ) : (
+                  <span className="text-xs text-stone-500">Empty</span>
+                )}
+              </Button>
+            )}
           </div>
           <div className="flex justify-end">
             <Button variant="ghost" onClick={() => setEquipPickerOpen(false)}>
