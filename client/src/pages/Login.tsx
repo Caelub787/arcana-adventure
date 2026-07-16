@@ -76,7 +76,7 @@ export default function Login() {
         <Card className="bg-stone-950/80 border-stone-800 backdrop-blur-md shadow-2xl">
           <CardHeader className="text-center space-y-2">
             <CardTitle className="font-display text-4xl text-transparent bg-clip-text bg-gradient-to-b from-amber-100 to-amber-600">
-              Arcana Adventure
+              ArcanaVTT
             </CardTitle>
             <p className="text-stone-500 font-medieval">Enter the realm</p>
           </CardHeader>
