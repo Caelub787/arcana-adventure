@@ -12,6 +12,7 @@ export interface User {
   email: string;
   username: string;
   name: string;
+  theme?: string | null;
   isAdmin?: boolean;
 }
 
@@ -555,6 +556,7 @@ export interface UserProfile {
   name: string;
   avatarUrl?: string;
   bio?: string;
+  theme?: string | null;
 }
 
 export interface FriendRequest {
@@ -763,6 +765,13 @@ class ApiClient {
 
   async getMe(): Promise<{ user: User }> {
     return this.request('/me');
+  }
+
+  async updateTheme(theme: string): Promise<UserProfile> {
+    return this.request('/profile/theme', {
+      method: 'PUT',
+      body: JSON.stringify({ theme }),
+    });
   }
 
   // Campaigns

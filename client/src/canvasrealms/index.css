@@ -56,6 +56,31 @@
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
+  --color-stone-50: var(--t-stone-50);
+  --color-stone-100: var(--t-stone-100);
+  --color-stone-200: var(--t-stone-200);
+  --color-stone-300: var(--t-stone-300);
+  --color-stone-400: var(--t-stone-400);
+  --color-stone-500: var(--t-stone-500);
+  --color-stone-600: var(--t-stone-600);
+  --color-stone-700: var(--t-stone-700);
+  --color-stone-800: var(--t-stone-800);
+  --color-stone-900: var(--t-stone-900);
+  --color-stone-950: var(--t-stone-950);
+  --color-amber-50: var(--t-amber-50);
+  --color-amber-100: var(--t-amber-100);
+  --color-amber-200: var(--t-amber-200);
+  --color-amber-300: var(--t-amber-300);
+  --color-amber-400: var(--t-amber-400);
+  --color-amber-500: var(--t-amber-500);
+  --color-amber-600: var(--t-amber-600);
+  --color-amber-700: var(--t-amber-700);
+  --color-amber-800: var(--t-amber-800);
+  --color-amber-900: var(--t-amber-900);
+  --color-amber-950: var(--t-amber-950);
+  --color-section: var(--section-accent);
+  --color-section-hover: var(--section-accent-hover);
+
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
@@ -162,6 +187,72 @@
   --chart-3: 260 60% 60%; /* Purple */
   --chart-4: 0 60% 55%;   /* Red */
   --chart-5: 150 45% 55%; /* Green */
+}
+
+
+/* App theme overrides (host theme system; .dark included to outrank the .dark block) */
+:root[data-theme="arcane-library"], :root[data-theme="arcane-library"] .dark {
+  --background: 235 19% 11%;
+  --foreground: 220 27% 96%;
+  --card: 234 20% 19%;
+  --card-foreground: 220 27% 96%;
+  --popover: 234 20% 19%;
+  --popover-foreground: 220 27% 96%;
+  --primary: 247 86% 69%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 246 33% 18%;
+  --secondary-foreground: 246 100% 87%;
+  --muted: 234 20% 19%;
+  --muted-foreground: 226 9% 50%;
+  --accent: 246 35% 35%;
+  --accent-foreground: 247 100% 91%;
+  --destructive: 352 44% 56%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 231 17% 33%;
+  --input: 231 19% 14%;
+  --ring: 247 100% 77%;
+  --card-border: 231 17% 33%;
+  --popover-border: 231 17% 33%;
+  --sidebar: 234 24% 8%;
+  --sidebar-foreground: 220 27% 96%;
+  --sidebar-border: 231 17% 33%;
+  --sidebar-primary: 247 86% 69%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 234 20% 19%;
+  --sidebar-accent-foreground: 220 27% 96%;
+  --sidebar-ring: 247 100% 77%;
+}
+
+:root[data-theme="sagebound-workshop"], :root[data-theme="sagebound-workshop"] .dark {
+  --background: 0 0% 15%;
+  --foreground: 37 36% 90%;
+  --card: 20 6% 19%;
+  --card-foreground: 37 36% 90%;
+  --popover: 20 6% 19%;
+  --popover-foreground: 37 36% 90%;
+  --primary: 88 15% 49%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 90 17% 16%;
+  --secondary-foreground: 86 22% 75%;
+  --muted: 17 7% 21%;
+  --muted-foreground: 28 6% 46%;
+  --accent: 90 16% 27%;
+  --accent-foreground: 86 24% 83%;
+  --destructive: 0 32% 49%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 20 8% 31%;
+  --input: 15 5% 17%;
+  --ring: 87 19% 59%;
+  --card-border: 20 8% 31%;
+  --popover-border: 20 8% 31%;
+  --sidebar: 0 2% 10%;
+  --sidebar-foreground: 37 36% 90%;
+  --sidebar-border: 20 8% 31%;
+  --sidebar-primary: 88 15% 49%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 17 7% 21%;
+  --sidebar-accent-foreground: 37 36% 90%;
+  --sidebar-ring: 87 19% 59%;
 }
 
 @layer base {

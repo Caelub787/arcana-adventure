@@ -9946,7 +9946,7 @@ export default function Campaign() {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black text-white select-none flex flex-col">
+    <div data-section="campaign" className="relative h-screen w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
       {/* Roll Notification Container */}
       <RollNotificationContainer />

@@ -2561,7 +2561,7 @@ export default function Notes() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-black font-sans text-stone-100">
+    <div data-section="notes" className="relative min-h-screen w-full overflow-hidden bg-stone-950 font-sans text-stone-100">
       <div className="absolute inset-0 z-0">
         <img
           src={bgImage}

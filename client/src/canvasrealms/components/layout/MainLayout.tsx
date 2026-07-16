@@ -515,7 +515,7 @@ export function MainLayout({ embeddedRealmId }: { embeddedRealmId?: string } = {
     <MaybeRealmDocProvider
       realmId={realmNotFound || nodeNotFound ? null : activeRealmId}
     >
-      <div className={`flex ${embedded ? "h-full isolate" : "h-[100dvh]"} w-full overflow-hidden bg-background text-foreground safe-pl safe-pr`}>
+      <div data-section="canvas-realms" className={`flex ${embedded ? "h-full isolate" : "h-[100dvh]"} w-full overflow-hidden bg-background text-foreground safe-pl safe-pr`}>
         <LibrarySidebar embedded={embedded} />
         <main className="flex-1 flex flex-col relative min-w-0">
           <TopBar />

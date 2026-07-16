@@ -3196,6 +3196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email, 
         username: user.username, 
         name: user.name,
+        theme: user.theme,
         isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())
       } 
     });
@@ -15201,6 +15202,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     name: user.name,
     avatarUrl: user.avatarUrl,
     bio: user.bio,
+    theme: user.theme,
+  });
+
+  // Update app theme preference
+  const VALID_APP_THEMES = ["cartographers-study", "arcane-library", "sagebound-workshop"];
+  app.put("/api/profile/theme", requireAuth, async (req, res) => {
+    try {
+      const { theme } = req.body;
+      if (typeof theme !== "string" || !VALID_APP_THEMES.includes(theme)) {
+        return res.status(400).json({ error: "Invalid theme" });
+      }
+      const updated = await storage.updateUserProfile(req.session.userId!, { theme });
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(sanitizeUser(updated));
+    } catch (e) {
+      console.error("Failed to update theme:", e);
+      res.status(500).json({ error: "Failed to update theme" });
+    }
   });
 
   // Get current user's profile

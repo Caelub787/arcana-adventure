@@ -36,6 +36,31 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  --color-stone-50: var(--t-stone-50);
+  --color-stone-100: var(--t-stone-100);
+  --color-stone-200: var(--t-stone-200);
+  --color-stone-300: var(--t-stone-300);
+  --color-stone-400: var(--t-stone-400);
+  --color-stone-500: var(--t-stone-500);
+  --color-stone-600: var(--t-stone-600);
+  --color-stone-700: var(--t-stone-700);
+  --color-stone-800: var(--t-stone-800);
+  --color-stone-900: var(--t-stone-900);
+  --color-stone-950: var(--t-stone-950);
+  --color-amber-50: var(--t-amber-50);
+  --color-amber-100: var(--t-amber-100);
+  --color-amber-200: var(--t-amber-200);
+  --color-amber-300: var(--t-amber-300);
+  --color-amber-400: var(--t-amber-400);
+  --color-amber-500: var(--t-amber-500);
+  --color-amber-600: var(--t-amber-600);
+  --color-amber-700: var(--t-amber-700);
+  --color-amber-800: var(--t-amber-800);
+  --color-amber-900: var(--t-amber-900);
+  --color-amber-950: var(--t-amber-950);
+  --color-section: var(--section-accent);
+  --color-section-hover: var(--section-accent-hover);
+
   --radius-sm: 0.2rem;
   --radius-md: 0.4rem;
   --radius-lg: 0.6rem;
@@ -72,6 +97,285 @@
   --ring: 38 92% 50%; /* amber-500 */
   
   --radius: 0.5rem;
+
+  /* Theme palette ramps — Cartographer's Study (default) */
+  --t-stone-50: #F9F7F3;
+  --t-stone-100: #F3F0E9;
+  --t-stone-200: #ECE7DE;
+  --t-stone-300: #CFC9BF;
+  --t-stone-400: #B5AEA4;
+  --t-stone-500: #76717A;
+  --t-stone-600: #5F5A66;
+  --t-stone-700: #4A4650;
+  --t-stone-800: #2A2830;
+  --t-stone-900: #1C1A1D;
+  --t-stone-950: #141216;
+  --t-amber-50: #FCF7EB;
+  --t-amber-100: #FAF0D8;
+  --t-amber-200: #F5E4B8;
+  --t-amber-300: #EFD695;
+  --t-amber-400: #E8C875;
+  --t-amber-500: #E0B85A;
+  --t-amber-600: #D4A94A;
+  --t-amber-700: #C99A3D;
+  --t-amber-800: #8A6D2F;
+  --t-amber-900: #5A4A28;
+  --t-amber-950: #3A2F1B;
+  --theme-background: #1C1A1D;
+  --theme-background-secondary: #2A2830;
+  --theme-surface: #35323B;
+  --theme-surface-raised: #3E3A45;
+  --theme-border: #4A4650;
+  --theme-primary: #C99A3D;
+  --theme-primary-hover: #E0B85A;
+  --theme-primary-muted: #5A4A28;
+  --theme-text-primary: #ECE7DE;
+  --theme-text-secondary: #B5AEA4;
+  --theme-text-disabled: #76717A;
+  --theme-success: #5C8F58;
+  --theme-warning: #D99233;
+  --theme-danger: #B54848;
+  --theme-info: #8EB3D9;
+}
+
+
+/* ============ App themes ============ */
+
+:root[data-theme="arcane-library"] {
+  --t-stone-50: #FAFBFD;
+  --t-stone-100: #F6F7FA;
+  --t-stone-200: #F1F3F7;
+  --t-stone-300: #C6CAD6;
+  --t-stone-400: #AEB3C2;
+  --t-stone-500: #74798A;
+  --t-stone-600: #5A5E78;
+  --t-stone-700: #454961;
+  --t-stone-800: #27293A;
+  --t-stone-900: #171822;
+  --t-stone-950: #10111A;
+  --t-amber-50: #F5F3FF;
+  --t-amber-100: #EAE7FF;
+  --t-amber-200: #D8D3FF;
+  --t-amber-300: #C2BBFF;
+  --t-amber-400: #ACA2FF;
+  --t-amber-500: #9588FF;
+  --t-amber-600: #877AF7;
+  --t-amber-700: #7C6CF4;
+  --t-amber-800: #4F4898;
+  --t-amber-900: #403A78;
+  --t-amber-950: #221F3D;
+  --theme-background: #171822;
+  --theme-background-secondary: #1D1F2B;
+  --theme-surface: #27293A;
+  --theme-surface-raised: #303348;
+  --theme-border: #454961;
+  --theme-primary: #7C6CF4;
+  --theme-primary-hover: #9588FF;
+  --theme-primary-muted: #403A78;
+  --theme-text-primary: #F1F3F7;
+  --theme-text-secondary: #AEB3C2;
+  --theme-text-disabled: #74798A;
+  --theme-success: #61A77A;
+  --theme-warning: #D6A04C;
+  --theme-danger: #C05C69;
+  --theme-info: #5EC3FF;
+
+  --background: 235 19% 11%;
+  --foreground: 220 27% 96%;
+  --card: 234 20% 19%;
+  --card-foreground: 220 27% 96%;
+  --popover: 234 20% 19%;
+  --popover-foreground: 220 27% 96%;
+  --primary: 247 86% 69%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 246 33% 18%;
+  --secondary-foreground: 246 100% 87%;
+  --muted: 234 20% 19%;
+  --muted-foreground: 226 9% 50%;
+  --accent: 246 35% 35%;
+  --accent-foreground: 247 100% 91%;
+  --destructive: 352 44% 56%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 231 17% 33%;
+  --input: 231 19% 14%;
+  --ring: 247 100% 77%;
+}
+
+:root[data-theme="sagebound-workshop"] {
+  --t-stone-50: #FAF7F2;
+  --t-stone-100: #F5F0E8;
+  --t-stone-200: #EFE8DD;
+  --t-stone-300: #CFC6BA;
+  --t-stone-400: #B6ACA0;
+  --t-stone-500: #7D756E;
+  --t-stone-600: #6B625C;
+  --t-stone-700: #554D49;
+  --t-stone-800: #332F2D;
+  --t-stone-900: #252525;
+  --t-stone-950: #191818;
+  --t-amber-50: #F3F6EF;
+  --t-amber-100: #E8EDE1;
+  --t-amber-200: #D5DEC9;
+  --t-amber-300: #C0CCB0;
+  --t-amber-400: #ABBA98;
+  --t-amber-500: #98AA82;
+  --t-amber-600: #8A9C75;
+  --t-amber-700: #7D8F69;
+  --t-amber-800: #57644A;
+  --t-amber-900: #46513B;
+  --t-amber-950: #2A3123;
+  --theme-background: #252525;
+  --theme-background-secondary: #2D2A29;
+  --theme-surface: #393432;
+  --theme-surface-raised: #433D3A;
+  --theme-border: #554D49;
+  --theme-primary: #7D8F69;
+  --theme-primary-hover: #98AA82;
+  --theme-primary-muted: #46513B;
+  --theme-text-primary: #EFE8DD;
+  --theme-text-secondary: #B6ACA0;
+  --theme-text-disabled: #7D756E;
+  --theme-success: #708F68;
+  --theme-warning: #C4924F;
+  --theme-danger: #A65656;
+  --theme-info: #7898A2;
+
+  --background: 0 0% 15%;
+  --foreground: 37 36% 90%;
+  --card: 20 6% 19%;
+  --card-foreground: 37 36% 90%;
+  --popover: 20 6% 19%;
+  --popover-foreground: 37 36% 90%;
+  --primary: 88 15% 49%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 90 17% 16%;
+  --secondary-foreground: 86 22% 75%;
+  --muted: 17 7% 21%;
+  --muted-foreground: 28 6% 46%;
+  --accent: 90 16% 27%;
+  --accent-foreground: 86 24% 83%;
+  --destructive: 0 32% 49%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 20 8% 31%;
+  --input: 15 5% 17%;
+  --ring: 87 19% 59%;
+}
+
+/* ============ Section identities (restrained accents on top of the global theme) ============ */
+
+[data-section="campaign"] {
+  --section-accent: #A9534F;
+  --section-accent-hover: #C76862;
+  --section-accent-muted: rgba(169, 83, 79, 0.17);
+  --section-glow: rgba(169, 83, 79, 0.25);
+}
+
+[data-section="notes"] {
+  --section-accent: #C19A5B;
+  --section-accent-hover: #D7B36F;
+  --section-accent-muted: rgba(193, 154, 91, 0.17);
+  --section-glow: rgba(193, 154, 91, 0.25);
+}
+
+[data-section="canvas-realms"] {
+  --section-accent: #4F8C87;
+  --section-accent-hover: #65A6A0;
+  --section-accent-muted: rgba(79, 140, 135, 0.17);
+  --section-glow: rgba(79, 140, 135, 0.25);
+}
+
+[data-section="admin"] {
+  --section-accent: #647D9B;
+  --section-accent-hover: #7E98B7;
+  --section-accent-muted: rgba(100, 125, 155, 0.17);
+  --section-glow: rgba(100, 125, 155, 0.25);
+}
+
+:root[data-theme="arcane-library"] [data-section="campaign"] {
+  --section-accent: #B75D78;
+  --section-accent-hover: #CC7790;
+  --section-accent-muted: rgba(183, 93, 120, 0.17);
+  --section-glow: rgba(183, 93, 120, 0.25);
+}
+
+:root[data-theme="arcane-library"] [data-section="notes"] {
+  --section-accent: #C8A95F;
+  --section-accent-hover: #D8BC76;
+  --section-accent-muted: rgba(200, 169, 95, 0.17);
+  --section-glow: rgba(200, 169, 95, 0.25);
+}
+
+:root[data-theme="arcane-library"] [data-section="canvas-realms"] {
+  --section-accent: #5E9FC7;
+  --section-accent-hover: #77B2D4;
+  --section-accent-muted: rgba(94, 159, 199, 0.17);
+  --section-glow: rgba(94, 159, 199, 0.25);
+}
+
+:root[data-theme="arcane-library"] [data-section="admin"] {
+  --section-accent: #8176C7;
+  --section-accent-hover: #968CD6;
+  --section-accent-muted: rgba(129, 118, 199, 0.17);
+  --section-glow: rgba(129, 118, 199, 0.25);
+}
+
+:root[data-theme="sagebound-workshop"] [data-section="campaign"] {
+  --section-accent: #A65656;
+  --section-accent-hover: #BA6E6E;
+  --section-accent-muted: rgba(166, 86, 86, 0.17);
+  --section-glow: rgba(166, 86, 86, 0.25);
+}
+
+:root[data-theme="sagebound-workshop"] [data-section="notes"] {
+  --section-accent: #B9965E;
+  --section-accent-hover: #CBAB74;
+  --section-accent-muted: rgba(185, 150, 94, 0.17);
+  --section-glow: rgba(185, 150, 94, 0.25);
+}
+
+:root[data-theme="sagebound-workshop"] [data-section="canvas-realms"] {
+  --section-accent: #708F78;
+  --section-accent-hover: #87A58E;
+  --section-accent-muted: rgba(112, 143, 120, 0.17);
+  --section-glow: rgba(112, 143, 120, 0.25);
+}
+
+:root[data-theme="sagebound-workshop"] [data-section="admin"] {
+  --section-accent: #71838C;
+  --section-accent-hover: #8899A2;
+  --section-accent-muted: rgba(113, 131, 140, 0.17);
+  --section-glow: rgba(113, 131, 140, 0.25);
+}
+
+/* Generic, restrained section accent touches: a hairline accent at the very top
+   of each section container and an accent underline on active tabs within it. */
+[data-section] {
+  box-shadow: inset 0 2px 0 var(--section-glow);
+}
+[data-section] [role="tablist"] [data-state="active"] {
+  box-shadow: inset 0 -2px 0 var(--section-accent);
+}
+
+/* Theme-switch transition: enabled only briefly while switching (html gets
+   .theme-transition for ~400ms) so there is no steady-state perf cost. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @layer base {

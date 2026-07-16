@@ -526,7 +526,7 @@ export interface IStorage {
   deleteSceneFolder(id: string): Promise<void>;
 
   // Profile operations
-  updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string; username?: string }): Promise<User | undefined>;
+  updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string; username?: string; theme?: string }): Promise<User | undefined>;
 
   // Friend Request operations
   createFriendRequest(senderId: string, recipientId: string, message?: string): Promise<FriendRequest>;
@@ -4101,12 +4101,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Profile operations
-  async updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string; username?: string }): Promise<User | undefined> {
+  async updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string; username?: string; theme?: string }): Promise<User | undefined> {
     const updateData: Partial<User> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl;
     if (data.bio !== undefined) updateData.bio = data.bio;
     if (data.username !== undefined) updateData.username = data.username;
+    if (data.theme !== undefined) updateData.theme = data.theme;
     
     if (Object.keys(updateData).length === 0) {
       return this.getUser(userId);

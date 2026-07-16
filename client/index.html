@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      // Apply the saved app theme before the bundle loads to avoid a flash of
+      // the wrong theme. Invalid/missing values fall back to the default.
+      (function () {
+        var themes = ["cartographers-study", "arcane-library", "sagebound-workshop"];
+        var t = "cartographers-study";
+        try {
+          var saved = localStorage.getItem("aa-theme");
+          if (saved && themes.indexOf(saved) !== -1) t = saved;
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 

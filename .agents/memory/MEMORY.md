@@ -17,3 +17,4 @@
 - [V3 rune baked-column conflicts](v3-rune-baked-columns.md) — runes bake into shared item columns; dcBonusValue doubles as a manual field, so save-normalization must preserve the rune contribution; copy paths must explicitly carry socketedRunes.
 - [Detached floating panels](detached-floating-panels.md) — panels opened from CharacterSheet must be hosted by Campaign (not as sheet children) so closing the sheet doesn't unmount them.
 - [CR doc editor stale refetch](cr-doc-editor-stale-refetch.md) — never re-sync blocks from a refetch while a save is in flight or a block is focused; stale snapshot teleports the caret.
+- [App theme system](theme-system.md) — themes remap stone/amber vars under data-theme; the remap must exist in BOTH tailwind entry css files or static utilities win.
