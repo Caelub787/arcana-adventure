@@ -225,7 +225,7 @@ export default function Home() {
             </Link>
 
             {/* My Library — everyone, including admins */}
-            <Link href="/admin?personal=1">
+            <Link href="/library">
               <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-my-library">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">

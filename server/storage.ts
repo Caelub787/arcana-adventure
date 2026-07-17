@@ -178,7 +178,7 @@ export interface IStorage {
   deleteCharacterWithTokens(id: string): Promise<void>;
   
   // Character Template operations (admin-created character sheets)
-  getCharacterTemplates(ownerScope?: string[], worldId?: string): Promise<Character[]>;
+  getCharacterTemplates(ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Character[]>;
   getCharacterTemplate(id: string): Promise<Character | undefined>;
   createCharacterTemplate(data: Partial<InsertCharacter>): Promise<Character>;
   updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character | undefined>;
@@ -235,7 +235,7 @@ export interface IStorage {
 
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
-  getSystemItems(system?: string, ownerScope?: string[], worldId?: string): Promise<Item[]>;
+  getSystemItems(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
   getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
@@ -286,7 +286,7 @@ export interface IStorage {
   getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>>;
 
   // Crafter Recipe Templates
-  listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null }): Promise<CrafterRecipeTemplate[]>;
+  listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null; personal?: boolean }): Promise<CrafterRecipeTemplate[]>;
   getCrafterRecipeTemplate(id: string): Promise<CrafterRecipeTemplate | undefined>;
   createCrafterRecipeTemplate(data: InsertCrafterRecipeTemplate): Promise<CrafterRecipeTemplate>;
   updateCrafterRecipeTemplate(id: string, patch: Partial<InsertCrafterRecipeTemplate>): Promise<CrafterRecipeTemplate | undefined>;
@@ -417,7 +417,7 @@ export interface IStorage {
   hasCharacterFeat(characterId: string, featId: string): Promise<boolean>;
 
   // System Spell operations (global spell definitions)
-  getSystemSpells(system?: string, ownerScope?: string[], worldId?: string): Promise<SystemSpell[]>;
+  getSystemSpells(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<SystemSpell[]>;
   getSystemSpellSummaries(system?: string): Promise<any[]>;
   getSystemSpell(id: string): Promise<SystemSpell | undefined>;
   createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
@@ -1456,7 +1456,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Character Template operations (admin-created character sheets)
-  async getCharacterTemplates(ownerScope?: string[], worldId?: string): Promise<Character[]> {
+  async getCharacterTemplates(ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Character[]> {
     const conditions: any[] = [eq(characters.isTemplate, true)];
     // World-scoping (Task #120): see getSystemItems for the worldId semantics.
     if (worldId) {
@@ -1466,7 +1466,7 @@ export class DatabaseStorage implements IStorage {
       if (ownerScope) {
         conditions.push(
           ownerScope.length > 0
-            ? or(sql`${characters.ownerUserId} IS NULL`, inArray(characters.ownerUserId, ownerScope))!
+            ? (personal ? inArray(characters.ownerUserId, ownerScope) : or(sql`${characters.ownerUserId} IS NULL`, inArray(characters.ownerUserId, ownerScope))!)
             : sql`${characters.ownerUserId} IS NULL`
         );
       }
@@ -2376,7 +2376,7 @@ export class DatabaseStorage implements IStorage {
     return item ? this.convertLegacyItemPrice(item) : undefined;
   }
 
-  async getSystemItems(system?: string, ownerScope?: string[], worldId?: string): Promise<Item[]> {
+  async getSystemItems(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Item[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -2396,7 +2396,7 @@ export class DatabaseStorage implements IStorage {
       if (ownerScope) {
         conditions.push(
           ownerScope.length > 0
-            ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+            ? (personal ? inArray(items.createdByUserId, ownerScope) : or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!)
             : sql`${items.createdByUserId} IS NULL`
         );
       }
@@ -2407,7 +2407,7 @@ export class DatabaseStorage implements IStorage {
     return result.map(item => this.convertLegacyItemPrice(item));
   }
 
-  async getSystemItemTemplates(system?: string, ownerScope?: string[]): Promise<Item[]> {
+  async getSystemItemTemplates(system?: string, ownerScope?: string[], personal?: boolean): Promise<Item[]> {
     const conditions = [
       eq(items.isLiveTemplate, true),
       eq(items.isArchived, false),
@@ -2418,7 +2418,7 @@ export class DatabaseStorage implements IStorage {
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+          ? (personal ? inArray(items.createdByUserId, ownerScope) : or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!)
           : sql`${items.createdByUserId} IS NULL`
       );
     }
@@ -2446,7 +2446,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lightweight summaries for faster item picker loading (no images to avoid Neon 507 response size limit)
-  async getSystemItemSummaries(system?: string, ownerScope?: string[]): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
+  async getSystemItemSummaries(system?: string, ownerScope?: string[], personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -2458,7 +2458,7 @@ export class DatabaseStorage implements IStorage {
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!
+          ? (personal ? inArray(items.createdByUserId, ownerScope) : or(sql`${items.createdByUserId} IS NULL`, inArray(items.createdByUserId, ownerScope))!)
           : sql`${items.createdByUserId} IS NULL`
       );
     }
@@ -3157,13 +3157,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Species operations
-  async getSystemSpecies(systemName?: string, ownerScope?: string[]): Promise<SystemSpecies[]> {
+  async getSystemSpecies(systemName?: string, ownerScope?: string[], personal?: boolean): Promise<SystemSpecies[]> {
     const conditions: any[] = [];
     if (systemName) conditions.push(eq(systemSpecies.systemName, systemName));
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${systemSpecies.ownerUserId} IS NULL`, inArray(systemSpecies.ownerUserId, ownerScope))!
+          ? (personal ? inArray(systemSpecies.ownerUserId, ownerScope) : or(sql`${systemSpecies.ownerUserId} IS NULL`, inArray(systemSpecies.ownerUserId, ownerScope))!)
           : sql`${systemSpecies.ownerUserId} IS NULL`
       );
     }
@@ -3279,13 +3279,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Feat Tree operations
-  async getFeatTrees(system?: string, ownerScope?: string[]): Promise<FeatTree[]> {
+  async getFeatTrees(system?: string, ownerScope?: string[], personal?: boolean): Promise<FeatTree[]> {
     const conditions: any[] = [];
     if (system) conditions.push(eq(featTrees.system, system));
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${featTrees.ownerUserId} IS NULL`, inArray(featTrees.ownerUserId, ownerScope))!
+          ? (personal ? inArray(featTrees.ownerUserId, ownerScope) : or(sql`${featTrees.ownerUserId} IS NULL`, inArray(featTrees.ownerUserId, ownerScope))!)
           : sql`${featTrees.ownerUserId} IS NULL`
       );
     }
@@ -3416,7 +3416,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // System Spell operations
-  async getSystemSpells(system?: string, ownerScope?: string[], worldId?: string): Promise<SystemSpell[]> {
+  async getSystemSpells(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<SystemSpell[]> {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
     // World-scoping (Task #120): see getSystemItems for the worldId semantics.
@@ -3427,7 +3427,7 @@ export class DatabaseStorage implements IStorage {
       if (ownerScope) {
         conditions.push(
           ownerScope.length > 0
-            ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
+            ? (personal ? inArray(systemSpells.ownerUserId, ownerScope) : or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!)
             : sql`${systemSpells.ownerUserId} IS NULL`
         );
       }
@@ -3439,13 +3439,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lightweight summaries for fast spell list/picker loading (no icon base64, no effects jsonb)
-  async getSystemSpellSummaries(system?: string, ownerScope?: string[]): Promise<any[]> {
+  async getSystemSpellSummaries(system?: string, ownerScope?: string[], personal?: boolean): Promise<any[]> {
     const conditions = [eq(systemSpells.isArchived, false)];
     if (system) conditions.push(eq(systemSpells.system, system));
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!
+          ? (personal ? inArray(systemSpells.ownerUserId, ownerScope) : or(sql`${systemSpells.ownerUserId} IS NULL`, inArray(systemSpells.ownerUserId, ownerScope))!)
           : sql`${systemSpells.ownerUserId} IS NULL`
       );
     }
@@ -5616,12 +5616,12 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(shopHaggleRolls.pinId, pinId), eq(shopHaggleRolls.characterId, characterId)));
   }
 
-  async getClasses(systemName: string, ownerScope?: string[]): Promise<GameClass[]> {
+  async getClasses(systemName: string, ownerScope?: string[], personal?: boolean): Promise<GameClass[]> {
     const conditions: any[] = [eq(classes.system, systemName)];
     if (ownerScope) {
       conditions.push(
         ownerScope.length > 0
-          ? or(sql`${classes.ownerUserId} IS NULL`, inArray(classes.ownerUserId, ownerScope))!
+          ? (personal ? inArray(classes.ownerUserId, ownerScope) : or(sql`${classes.ownerUserId} IS NULL`, inArray(classes.ownerUserId, ownerScope))!)
           : sql`${classes.ownerUserId} IS NULL`
       );
     }
@@ -5899,13 +5899,17 @@ export class DatabaseStorage implements IStorage {
   // ============================================
   // CRAFTER RECIPE TEMPLATES
   // ============================================
-  async listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null }): Promise<CrafterRecipeTemplate[]> {
+  async listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null; personal?: boolean }): Promise<CrafterRecipeTemplate[]> {
     const conds: any[] = [];
     if (opts.system) conds.push(eq(crafterRecipeTemplates.system, opts.system));
     if (opts.ownerScope === null) {
       conds.push(isNull(crafterRecipeTemplates.ownerUserId));
     } else if (Array.isArray(opts.ownerScope) && opts.ownerScope.length > 0) {
-      conds.push(or(isNull(crafterRecipeTemplates.ownerUserId), inArray(crafterRecipeTemplates.ownerUserId, opts.ownerScope)));
+      conds.push(
+        opts.personal
+          ? inArray(crafterRecipeTemplates.ownerUserId, opts.ownerScope)
+          : or(isNull(crafterRecipeTemplates.ownerUserId), inArray(crafterRecipeTemplates.ownerUserId, opts.ownerScope))
+      );
     }
     const q = db.select().from(crafterRecipeTemplates);
     return (conds.length ? await q.where(and(...conds)) : await q).sort((a, b) => (a.sortOrder - b.sortOrder) || (a.name.localeCompare(b.name)));

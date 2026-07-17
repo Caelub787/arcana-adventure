@@ -18,3 +18,4 @@
 - [Detached floating panels](detached-floating-panels.md) — panels opened from CharacterSheet must be hosted by Campaign (not as sheet children) so closing the sheet doesn't unmount them.
 - [CR doc editor stale refetch](cr-doc-editor-stale-refetch.md) — never re-sync blocks from a refetch while a save is in flight or a block is focused; stale snapshot teleports the caret.
 - [App theme system](theme-system.md) — themes remap stone/amber vars under data-theme; the remap must exist in BOTH tailwind entry css files or static utilities win.
+- [Library scoping semantics](library-scoping.md) — My Library (personal) lists are strictly owner-only; global admin rows appear only in campaign/non-personal views; /library route forces personal mode.

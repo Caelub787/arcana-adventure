@@ -8434,7 +8434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, campaignId, personal);
-      const summaries = await storage.getSystemItemSummaries(system, scope);
+      const summaries = await storage.getSystemItemSummaries(system, scope, personal);
       console.log('[Summary] System items:', summaries.length);
       res.json(summaries);
     } catch (err) {
@@ -8493,7 +8493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(worldItems);
       }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const items = await storage.getSystemItems(system, scope);
+      const items = await storage.getSystemItems(system, scope, undefined, personal);
       res.json(items);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system items" });
@@ -8980,7 +8980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === '1';
       const ownerScope = (isA && !personal) ? undefined : [req.session.userId!];
-      const list = await storage.listCrafterRecipeTemplates({ system, ownerScope });
+      const list = await storage.listCrafterRecipeTemplates({ system, ownerScope, personal });
       res.json(list);
     } catch (err: any) {
       console.error('[CrafterTemplates] list error:', err);
@@ -9895,7 +9895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const system = req.query.system as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const templates = await storage.getSystemItemTemplates(system, scope);
+      const templates = await storage.getSystemItemTemplates(system, scope, personal);
       res.json(templates);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch item templates" });
@@ -10576,7 +10576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const systemName = req.query.system as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const species = await storage.getSystemSpecies(systemName, scope);
+      const species = await storage.getSystemSpecies(systemName, scope, personal);
       res.json(species);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system species" });
@@ -10717,7 +10717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const system = (req.query.system as string) || 'aa-v2';
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const result = await storage.getClasses(system, scope);
+      const result = await storage.getClasses(system, scope, personal);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch classes" });
@@ -10882,7 +10882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, campaignId, personal);
-      const result = await storage.getClasses(system, scope);
+      const result = await storage.getClasses(system, scope, personal);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch classes" });
@@ -11365,7 +11365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, campaignId, personal);
-      const trees = await storage.getFeatTrees(system, scope);
+      const trees = await storage.getFeatTrees(system, scope, personal);
       res.json(trees);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feat trees" });
@@ -11930,7 +11930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(worldSpells);
       }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const spellList = await storage.getSystemSpells(system, scope);
+      const spellList = await storage.getSystemSpells(system, scope, undefined, personal);
       res.json(spellList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spells" });
@@ -11944,7 +11944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, campaignId, personal);
-      const summaries = await storage.getSystemSpellSummaries(system, scope);
+      const summaries = await storage.getSystemSpellSummaries(system, scope, personal);
       res.json(summaries);
     } catch (err) {
       console.error('[Summary] Error fetching system spells:', err);
@@ -12178,7 +12178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(worldTemplates);
       }
       const scope = await getLibraryScope(req.session.userId, undefined, personal);
-      const templates = await storage.getCharacterTemplates(scope);
+      const templates = await storage.getCharacterTemplates(scope, undefined, personal);
       res.json(templates);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch character templates" });
@@ -12888,7 +12888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       const personal = req.query.personal === '1';
       const scope = await getLibraryScope(req.session.userId, campaignId, personal);
-      const itemList = await storage.getSystemItems(system, scope);
+      const itemList = await storage.getSystemItems(system, scope, undefined, personal);
       res.json(itemList);
     } catch (err) {
       console.error('[system-items] Error fetching system items:', err);

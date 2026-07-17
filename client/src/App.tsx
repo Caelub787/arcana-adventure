@@ -15,6 +15,12 @@ import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import AdminSettings from "@/pages/AdminSettings";
+
+// Dedicated "My Library" surface: same page as Admin Settings but always in
+// personal (owner-scoped) mode, independent of URL query params or admin status.
+function MyLibraryPage() {
+  return <AdminSettings forcePersonal />;
+}
 import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
@@ -184,6 +190,9 @@ function Router() {
       </Route>
       <Route path="/admin">
         {() => <ProtectedRoute component={AdminSettings} />}
+      </Route>
+      <Route path="/library">
+        {() => <ProtectedRoute component={MyLibraryPage} />}
       </Route>
       <Route path="/admin/security">
         {() => <ProtectedRoute component={SiteSecurity} />}
