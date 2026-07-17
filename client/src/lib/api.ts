@@ -1467,8 +1467,11 @@ class ApiClient {
     });
   }
 
-  async getArchivedItems(system?: string): Promise<any[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+  async getArchivedItems(system?: string, personal?: boolean): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (personal) qs.set('personal', 'true');
+    const params = qs.toString() ? `?${qs.toString()}` : '';
     return this.request(`/admin/archived-items${params}`);
   }
 
@@ -1508,8 +1511,11 @@ class ApiClient {
     await fetch('/api/admin/system-spells/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
   }
 
-  async getArchivedSpells(system?: string): Promise<any[]> {
-    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+  async getArchivedSpells(system?: string, personal?: boolean): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (system) qs.set('system', system);
+    if (personal) qs.set('personal', 'true');
+    const params = qs.toString() ? `?${qs.toString()}` : '';
     return this.request(`/admin/archived-spells${params}`);
   }
 
@@ -2699,12 +2705,15 @@ class ApiClient {
     return this.request(`/v3/characters/${characterId}/spells`);
   }
 
-  async getCanonicalV3Spell(hash: string): Promise<V3Spell | null> {
-    return this.request(`/v3/spells/canonical/${hash}`);
+  async getCanonicalV3Spell(hash: string, campaignId?: string): Promise<V3Spell | null> {
+    return this.request(`/v3/spells/canonical/${hash}${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : ''}`);
   }
 
-  async getAdminV3Spells(status?: string): Promise<V3Spell[]> {
-    return this.request(`/admin/v3-spells${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  async getAdminV3Spells(status?: string, personal?: boolean): Promise<V3Spell[]> {
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (personal) qs.set('personal', 'true');
+    return this.request(`/admin/v3-spells${qs.toString() ? `?${qs.toString()}` : ''}`);
   }
 
   async approveV3Spell(spellId: string, resolution?: 'keep_this' | 'keep_other'): Promise<V3SpellApproveResult> {
@@ -2718,7 +2727,7 @@ class ApiClient {
     return this.request(`/admin/v3-spells/${spellId}/reject`, { method: 'POST' });
   }
 
-  async createAdminV3Spell(data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null }): Promise<V3SpellCreateResult> {
+  async createAdminV3Spell(data: { composition: V3SpellComposition; name: string; description?: string; image?: string | null; personal?: boolean }): Promise<V3SpellCreateResult> {
     return this.request(`/admin/v3-spells`, { method: 'POST', body: JSON.stringify(data) });
   }
 
@@ -2731,12 +2740,12 @@ class ApiClient {
   }
 
   // AA V3 element craft requirements
-  async getV3ElementRequirements(): Promise<V3ElementRequirement[]> {
-    return this.request(`/v3/element-requirements`);
+  async getV3ElementRequirements(campaignId?: string): Promise<V3ElementRequirement[]> {
+    return this.request(`/v3/element-requirements${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : ''}`);
   }
 
-  async getAdminV3ElementRequirements(): Promise<V3ElementRequirement[]> {
-    return this.request(`/admin/v3-element-requirements`);
+  async getAdminV3ElementRequirements(personal?: boolean): Promise<V3ElementRequirement[]> {
+    return this.request(`/admin/v3-element-requirements${personal ? '?personal=true' : ''}`);
   }
 
   async createV3ElementRequirement(data: {
@@ -2746,6 +2755,7 @@ class ApiClient {
     itemId?: string | null;
     itemName?: string | null;
     consumed?: boolean;
+    personal?: boolean;
   }): Promise<V3ElementRequirement> {
     return this.request(`/admin/v3-element-requirements`, { method: 'POST', body: JSON.stringify(data) });
   }

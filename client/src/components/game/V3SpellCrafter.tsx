@@ -438,9 +438,11 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
   // Element craft requirements (AA V3) — gate which elements this character may
   // use, based on admin-configured OR'd conditions vs. the character's Knowledge
   // (custom skills) and inventory.
+  // Scoped to the character's campaign so the campaign GM's personal element
+  // gates apply alongside the global admin ones.
   const { data: elementRequirements } = useQuery({
-    queryKey: ["v3-element-requirements"],
-    queryFn: () => api.getV3ElementRequirements(),
+    queryKey: ["v3-element-requirements", (character as any).campaignId ?? null],
+    queryFn: () => api.getV3ElementRequirements((character as any).campaignId ?? undefined),
   });
   const { data: customSkills } = useQuery({
     queryKey: ["character-custom-skills", character.id],

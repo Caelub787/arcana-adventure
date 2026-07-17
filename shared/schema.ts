@@ -2360,6 +2360,8 @@ export const v3Spells = pgTable("v3_spells", {
   createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdByCharacterId: varchar("created_by_character_id").references(() => characters.id, { onDelete: "set null" }),
   authoredByUserId: varchar("authored_by_user_id").references(() => users.id, { onDelete: "set null" }), // GM who authored flavor
+  // Personal-library owner for canonical/template rows (NULL = global/admin row).
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   status: text("status").notNull().default("awaiting_gm"), // awaiting_gm|ready|approved|rejected
   isCanonical: boolean("is_canonical").notNull().default(false),
   flagged: boolean("flagged").notNull().default(false), // name contains profanity; censored in non-18+ campaigns
@@ -2392,6 +2394,8 @@ export const v3ElementRequirements = pgTable("v3_element_requirements", {
   itemId: varchar("item_id").references((): any => items.id, { onDelete: "cascade" }), // admin system item id (item conditions)
   itemName: text("item_name"), // denormalized item name for display + name fallback match
   consumed: boolean("consumed").notNull().default(false), // item consumed on successful craft (item conditions only)
+  // Personal-library owner (NULL = global/admin row).
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({
   elementIdx: index("v3_element_requirements_element_idx").on(t.element),

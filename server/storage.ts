@@ -247,8 +247,8 @@ export interface IStorage {
   getItem(id: string): Promise<Item | undefined>;
   moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined>;
   getContainerItems(containerId: string): Promise<Item[]>;
-  getArchivedSystemItems(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string }[]>;
-  getArchivedSystemSpells(system?: string): Promise<SystemSpell[]>;
+  getArchivedSystemItems(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<{ id: string; name: string; itemType: string; rarity: string }[]>;
+  getArchivedSystemSpells(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemSpell[]>;
   archiveAllSystemItems(system?: string): Promise<void>;
   archiveAllSystemSpells(system?: string): Promise<void>;
 
@@ -427,8 +427,8 @@ export interface IStorage {
   // AA V3 crafted spell operations
   createV3Spell(spell: InsertV3Spell): Promise<V3Spell>;
   getV3Spell(id: string): Promise<V3Spell | undefined>;
-  listV3Spells(status?: string): Promise<V3Spell[]>;
-  getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined>;
+  listV3Spells(status?: string, opts?: { ownerUserId?: string | null }): Promise<V3Spell[]>;
+  getCanonicalV3SpellByHash(hash: string, ownerUserId?: string | null): Promise<V3Spell | undefined>;
   getV3SpellUsageByHash(hash: string): Promise<{ campaignCount: number; characterCount: number }>;
   getCampaignAuthoredV3SpellByHash(campaignId: string, hash: string): Promise<V3Spell | undefined>;
   getV3SpellRequestsForCampaign(campaignId: string): Promise<V3Spell[]>;
@@ -439,7 +439,7 @@ export interface IStorage {
   deleteV3Spell(id: string): Promise<void>;
 
   // AA V3 element craft requirement operations
-  getV3ElementRequirements(): Promise<V3ElementRequirement[]>;
+  getV3ElementRequirements(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3ElementRequirement[]>;
   getV3ElementRequirement(id: string): Promise<V3ElementRequirement | undefined>;
   createV3ElementRequirement(data: InsertV3ElementRequirement): Promise<V3ElementRequirement>;
   updateV3ElementRequirement(id: string, data: Partial<InsertV3ElementRequirement>): Promise<V3ElementRequirement | undefined>;
@@ -3526,26 +3526,41 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async listV3Spells(status?: string): Promise<V3Spell[]> {
-    if (status) {
+  async listV3Spells(status?: string, opts?: { ownerUserId?: string | null }): Promise<V3Spell[]> {
+    // ownerUserId scoping (Task #328 personal libraries):
+    // - undefined  → all rows (legacy admin behavior; campaign rows have null owner)
+    // - null       → global rows only (owner IS NULL — admin governance queue)
+    // - string     → that user's personal library rows only
+    const conditions: any[] = [];
+    if (status) conditions.push(eq(v3Spells.status, status));
+    if (opts && opts.ownerUserId !== undefined) {
+      conditions.push(
+        opts.ownerUserId === null
+          ? isNull(v3Spells.ownerUserId)
+          : eq(v3Spells.ownerUserId, opts.ownerUserId)
+      );
+    }
+    if (conditions.length > 0) {
       return await db.select().from(v3Spells)
-        .where(eq(v3Spells.status, status))
+        .where(and(...conditions))
         .orderBy(desc(v3Spells.createdAt));
     }
     return await db.select().from(v3Spells).orderBy(desc(v3Spells.createdAt));
   }
 
-  async getCanonicalV3SpellByHash(hash: string): Promise<V3Spell | undefined> {
-    // Official/canonical spells are GLOBAL admin templates only: campaignId and
+  async getCanonicalV3SpellByHash(hash: string, ownerUserId: string | null = null): Promise<V3Spell | undefined> {
+    // Official/canonical spells are library templates only: campaignId and
     // spellbookItemId are both null. Campaign-attached rows (used in active play)
     // must never be returned here, so duplicate-conflict resolution can only ever
-    // demote a global template, never a spell a campaign is currently using.
+    // demote a library template, never a spell a campaign is currently using.
+    // ownerUserId=null → global admin canonical; string → that GM's personal canonical.
     const [row] = await db.select().from(v3Spells)
       .where(and(
         eq(v3Spells.compositionHash, hash),
         eq(v3Spells.isCanonical, true),
         isNull(v3Spells.campaignId),
         isNull(v3Spells.spellbookItemId),
+        ownerUserId === null ? isNull(v3Spells.ownerUserId) : eq(v3Spells.ownerUserId, ownerUserId),
       ))
       .limit(1);
     return row;
@@ -3623,7 +3638,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(v3Spells).where(eq(v3Spells.id, id));
   }
 
-  async getArchivedSystemItems(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string }[]> {
+  async getArchivedSystemItems(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<{ id: string; name: string; itemType: string; rarity: string }[]> {
     const conditions: any[] = [
       eq(items.isTemplate, true),
       eq(items.isArchived, true),
@@ -3631,6 +3646,9 @@ export class DatabaseStorage implements IStorage {
       sql`${items.campaignId} IS NULL`
     ];
     if (system) conditions.push(eq(items.system, system));
+    // Library items are owner-scoped by createdByUserId (same as getSystemItems).
+    const ownerCond = buildOwnerScopeCondition(items.createdByUserId, opts);
+    if (ownerCond) conditions.push(ownerCond);
     return await db.select({
       id: items.id,
       name: items.name,
@@ -3641,9 +3659,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions));
   }
 
-  async getArchivedSystemSpells(system?: string): Promise<SystemSpell[]> {
+  async getArchivedSystemSpells(system?: string, opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SystemSpell[]> {
     const conditions: any[] = [eq(systemSpells.isArchived, true)];
     if (system) conditions.push(eq(systemSpells.system, system));
+    const ownerCond = buildOwnerScopeCondition(systemSpells.ownerUserId, opts);
+    if (ownerCond) conditions.push(ownerCond);
     return await db.select()
       .from(systemSpells)
       .where(and(...conditions))
@@ -3672,10 +3692,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // AA V3 element craft requirement operations
-  async getV3ElementRequirements(): Promise<V3ElementRequirement[]> {
-    return await db.select()
-      .from(v3ElementRequirements)
-      .orderBy(v3ElementRequirements.element, v3ElementRequirements.createdAt);
+  async getV3ElementRequirements(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<V3ElementRequirement[]> {
+    const ownerCond = buildOwnerScopeCondition(v3ElementRequirements.ownerUserId, opts);
+    const q = db.select().from(v3ElementRequirements);
+    const rows = ownerCond
+      ? await q.where(ownerCond).orderBy(v3ElementRequirements.element, v3ElementRequirements.createdAt)
+      : await q.orderBy(v3ElementRequirements.element, v3ElementRequirements.createdAt);
+    return rows;
   }
 
   async getV3ElementRequirement(id: string): Promise<V3ElementRequirement | undefined> {

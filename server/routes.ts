@@ -6650,7 +6650,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         composition.core,
         ...(composition.secondaries || []).map((s: any) => s.element),
       ].filter(Boolean)));
-      const elementConditions = await storage.getV3ElementRequirements();
+      // Element gates: global admin rows + the campaign GM's personal rows only.
+      const elementConditions = await storage.getV3ElementRequirements(
+        { ownerScope: campaign?.gmUserId ? [campaign.gmUserId] : [] }
+      );
       const conditionsByElement: Record<string, any[]> = {};
       for (const r of elementConditions) (conditionsByElement[r.element] ||= []).push(r);
       const charKnowledge = await storage.getCharacterCustomSkills(character.id);
@@ -6740,7 +6743,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // otherwise a name/description authored for this composition earlier in the
       // SAME campaign is reused so players share the GM's flavor without another
       // authoring prompt. If neither exists, the GM is asked to author it.
-      const canonical = await storage.getCanonicalV3SpellByHash(compositionHash);
+      // The campaign GM's personal canonical wins over the global admin one, so
+      // a GM's library flavor applies inside their own campaigns only.
+      const gmCanonical = campaign?.gmUserId
+        ? await storage.getCanonicalV3SpellByHash(compositionHash, campaign.gmUserId)
+        : undefined;
+      const canonical = gmCanonical || await storage.getCanonicalV3SpellByHash(compositionHash);
       const source = canonical
         || (campaign?.id ? await storage.getCampaignAuthoredV3SpellByHash(campaign.id, compositionHash) : undefined);
 
@@ -7254,9 +7262,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Resolve the canonical (admin-approved) version of a composition, if any.
-  app.get("/api/v3/spells/canonical/:hash", requireAdmin, async (req, res) => {
+  app.get("/api/v3/spells/canonical/:hash", requireAuth, async (req, res) => {
     try {
-      const canonical = await storage.getCanonicalV3SpellByHash(req.params.hash);
+      // Optional campaignId: prefer that campaign GM's personal canonical.
+      const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
+      let gmCanonical;
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (campaign?.gmUserId) {
+          gmCanonical = await storage.getCanonicalV3SpellByHash(req.params.hash, campaign.gmUserId);
+        }
+      }
+      const canonical = gmCanonical || await storage.getCanonicalV3SpellByHash(req.params.hash);
       res.json(canonical || null);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load canonical spell" });
@@ -7379,10 +7396,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: list crafted spells (optionally by status) for the approval queue.
-  app.get("/api/admin/v3-spells", requireAdmin, async (req, res) => {
+  app.get("/api/admin/v3-spells", requireAuth, async (req, res) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
-      const spells = await storage.listV3Spells(status);
+      const personal = req.query.personal === "true" || req.query.personal === "1";
+      const isA = await isAdminUser(req.session.userId);
+      // Personal mode (My Library) = only the caller's own library rows.
+      // Admin non-personal keeps the full governance queue (all rows).
+      // Non-admins are always forced into personal mode.
+      const spells = (isA && !personal)
+        ? await storage.listV3Spells(status)
+        : await storage.listV3Spells(status, { ownerUserId: req.session.userId! });
       res.json(spells);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to load spells" });
@@ -7401,15 +7425,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //                     in the approval queue (isCanonical=false, ready).
   // Campaign-used spell rows (campaignId set) are never touched — only the
   // canonical (campaignId null) rows participate.
-  app.post("/api/admin/v3-spells/:id/approve", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-spells/:id/approve", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getV3Spell(req.params.id);
       if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (spell as any).ownerUserId)) return;
       if (!spell.name || !spell.name.trim()) {
         return res.status(400).json({ error: "Spell must be authored before approval" });
       }
       const resolution = req.body?.resolution as "keep_this" | "keep_other" | undefined;
-      const prev = await storage.getCanonicalV3SpellByHash(spell.compositionHash);
+      // Conflicts are resolved within the same library (global vs global,
+      // or the same owner's personal rows) — never across libraries.
+      const prev = await storage.getCanonicalV3SpellByHash(spell.compositionHash, (spell as any).ownerUserId ?? null);
       const conflict = !!prev && prev.id !== spell.id;
 
       if (conflict && !resolution) {
@@ -7435,10 +7463,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: reject a spell.
-  app.post("/api/admin/v3-spells/:id/reject", requireAdmin, async (req, res) => {
+  app.post("/api/admin/v3-spells/:id/reject", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getV3Spell(req.params.id);
       if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (spell as any).ownerUserId)) return;
       const updated = await storage.updateV3Spell(spell.id, { isCanonical: false, status: "rejected" });
       res.json(updated);
     } catch (err: any) {
@@ -7446,10 +7476,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin: create a brand-new recognized (canonical/approved) spell from scratch.
-  app.post("/api/admin/v3-spells", requireAdmin, async (req, res) => {
+  // Create a brand-new recognized (canonical/approved) spell from scratch.
+  // Admins create global rows; personal mode creates owner-scoped library rows.
+  app.post("/api/admin/v3-spells", requireAuth, async (req, res) => {
     try {
       const { composition, name, description, image } = req.body || {};
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.body?.personal === true || req.body?.personal === "true";
+      if (!isA && !personal) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const ownerUserId = (isA && !personal) ? null : req.session.userId!;
       if (!composition || !v3spells.isValidV3Composition(composition)) {
         return res.status(400).json({ error: "Invalid spell composition" });
       }
@@ -7461,7 +7498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // silently supersede it. Create the new spell parked in the approval queue
       // (isCanonical=false, ready) and return a conflict envelope so the admin
       // can decide which one stays official.
-      const prev = await storage.getCanonicalV3SpellByHash(compositionHash);
+      const prev = await storage.getCanonicalV3SpellByHash(compositionHash, ownerUserId);
       const conflict = !!prev;
 
       const spell = await storage.createV3Spell({
@@ -7477,6 +7514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdByUserId: req.session.userId!,
         createdByCharacterId: null,
         authoredByUserId: req.session.userId!,
+        ownerUserId,
         status: conflict ? "ready" : "approved",
         isCanonical: conflict ? false : true,
         flagged: containsProfanity(trimmedName),
@@ -7495,10 +7533,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Admin: edit any crafted/player-made spell's name, description, and image
   // (admins may edit canonical/approved rows; the GM author route may not).
-  app.patch("/api/admin/v3-spells/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/v3-spells/:id", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getV3Spell(req.params.id);
       if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (spell as any).ownerUserId)) return;
       const { name, description, image } = req.body || {};
       const trimmedName = String(name ?? spell.name).trim();
       if (!trimmedName) return res.status(400).json({ error: "A spell name is required" });
@@ -7516,10 +7556,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: delete any crafted/player-made spell.
-  app.delete("/api/admin/v3-spells/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/v3-spells/:id", requireAuth, async (req, res) => {
     try {
       const spell = await storage.getV3Spell(req.params.id);
       if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (spell as any).ownerUserId)) return;
       await storage.deleteV3Spell(spell.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7531,10 +7573,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ---------------------------------------------------------------------------
   // AA V3 element craft requirements (admin-configurable element unlock gating)
   // ---------------------------------------------------------------------------
-  // Admin: list all element conditions.
-  app.get("/api/admin/v3-element-requirements", requireAdmin, async (_req, res) => {
+  // List element conditions (admin: all; personal mode: own + global).
+  app.get("/api/admin/v3-element-requirements", requireAuth, async (req, res) => {
     try {
-      const rows = await storage.getV3ElementRequirements();
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.query.personal === "true" || req.query.personal === "1";
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const rows = await storage.getV3ElementRequirements(opts);
       res.json(rows);
     } catch (err: any) {
       console.error("[V3 Element Reqs List] Error:", err?.message);
@@ -7542,10 +7589,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin: create a condition for an element.
-  app.post("/api/admin/v3-element-requirements", requireAdmin, async (req, res) => {
+  // Create a condition for an element (admin: global; personal mode: owner-scoped).
+  app.post("/api/admin/v3-element-requirements", requireAuth, async (req, res) => {
     try {
       const { element, conditionType, knowledgeName, itemId, itemName, consumed } = req.body || {};
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.body?.personal === true || req.body?.personal === "true";
+      if (!isA && !personal) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const reqOwnerUserId = (isA && !personal) ? null : req.session.userId!;
       if (!element || !v3spells.V3_ELEMENT_MAP[element]) {
         return res.status(400).json({ error: "A valid element is required" });
       }
@@ -7565,6 +7618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         itemId: conditionType === "item" ? itemId : null,
         itemName: conditionType === "item" ? (itemName || null) : null,
         consumed: conditionType === "item" ? !!consumed : false,
+        ownerUserId: reqOwnerUserId,
       } as any);
       res.json(created);
     } catch (err: any) {
@@ -7573,9 +7627,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin: update a condition (e.g. toggle the consumed flag).
-  app.patch("/api/admin/v3-element-requirements/:id", requireAdmin, async (req, res) => {
+  // Update a condition (e.g. toggle the consumed flag).
+  app.patch("/api/admin/v3-element-requirements/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getV3ElementRequirement(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Requirement not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       const { consumed, knowledgeName, itemName } = req.body || {};
       const patch: any = {};
       if (consumed !== undefined) patch.consumed = !!consumed;
@@ -7590,9 +7648,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin: delete a condition.
-  app.delete("/api/admin/v3-element-requirements/:id", requireAdmin, async (req, res) => {
+  // Delete a condition.
+  app.delete("/api/admin/v3-element-requirements/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getV3ElementRequirement(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Requirement not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, (existing as any).ownerUserId)) return;
       await storage.deleteV3ElementRequirement(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7601,10 +7663,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Player-facing read: the crafter needs the global config to render locks.
-  app.get("/api/v3/element-requirements", requireAuth, async (_req, res) => {
+  // Player-facing read: the crafter needs the element-lock config. With a
+  // campaignId, personal rows owned by that campaign's GM are included so the
+  // GM's private gates apply inside their own campaigns.
+  app.get("/api/v3/element-requirements", requireAuth, async (req, res) => {
     try {
-      const rows = await storage.getV3ElementRequirements();
+      let ownerScope: string[] = [];
+      const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (campaign?.gmUserId) ownerScope = [campaign.gmUserId];
+      }
+      const rows = await storage.getV3ElementRequirements({ ownerScope });
       res.json(rows);
     } catch (err: any) {
       console.error("[V3 Element Reqs Read] Error:", err?.message);
@@ -9787,10 +9857,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/archived-items", requireAdmin, async (req, res) => {
+  app.get("/api/admin/archived-items", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const archivedItems = await storage.getArchivedSystemItems(system);
+      const personal = req.query.personal === 'true' || req.query.personal === '1';
+      const isA = await isAdminUser(req.session.userId);
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const archivedItems = await storage.getArchivedSystemItems(system, opts);
       res.json(archivedItems);
     } catch (err: any) {
       console.error("Failed to fetch archived items:", err?.message || err);
@@ -10379,10 +10454,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/archived-spells", requireAdmin, async (req, res) => {
+  app.get("/api/admin/archived-spells", requireAuth, async (req, res) => {
     try {
       const system = req.query.system as string | undefined;
-      const archivedSpells = await storage.getArchivedSystemSpells(system);
+      const personal = req.query.personal === 'true' || req.query.personal === '1';
+      const isA = await isAdminUser(req.session.userId);
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const archivedSpells = await storage.getArchivedSystemSpells(system, opts);
       res.json(archivedSpells);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch archived spells" });

@@ -240,7 +240,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their private library
-  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types'];
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
   useEffect(() => {
     if (!embedded && !isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
   }, [isAdmin, selectedSystem, embedded]);
@@ -1075,11 +1075,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         )}
 
         {currentView === 'v3-spells' && (
-          <V3SpellsApprovalView />
+          <V3SpellsApprovalView personal={personalMode} />
         )}
 
         {currentView === 'element-requirements' && (
-          <V3ElementRequirementsView systemSlug={systemSlug} />
+          <V3ElementRequirementsView systemSlug={systemSlug} personal={personalMode} />
         )}
 
         {currentView === 'techniques' && (
@@ -1316,6 +1316,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               setEditingItem(fullItem);
             }}
             systemSlug={systemSlug}
+            personal={personalMode}
           />
         )}
 
@@ -1324,6 +1325,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             onNavigateBack={() => setCurrentView('spells')} 
             onEditSpell={setEditingSpell}
             systemSlug={systemSlug}
+            personal={personalMode}
           />
         )}
 
@@ -1589,12 +1591,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   );
 }
 
-function ArchivedItemsView({ onNavigateBack, onEditItem, systemSlug }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void; systemSlug: string }) {
+function ArchivedItemsView({ onNavigateBack, onEditItem, systemSlug, personal }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void; systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedItems = [], isLoading } = useQuery({
-    queryKey: ['admin-archived-items', systemSlug],
-    queryFn: () => api.getArchivedItems(systemSlug),
+    queryKey: ['admin-archived-items', systemSlug, !!personal],
+    queryFn: () => api.getArchivedItems(systemSlug, personal),
   });
   
   const restoreMutation = useMutation({
@@ -1719,12 +1721,12 @@ function ArchivedItemsView({ onNavigateBack, onEditItem, systemSlug }: { onNavig
   );
 }
 
-function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void; systemSlug: string }) {
+function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug, personal }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void; systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedSpells = [], isLoading } = useQuery({
-    queryKey: ['admin-archived-spells', systemSlug],
-    queryFn: () => api.getArchivedSpells(systemSlug),
+    queryKey: ['admin-archived-spells', systemSlug, !!personal],
+    queryFn: () => api.getArchivedSpells(systemSlug, personal),
   });
   
   const restoreMutation = useMutation({
@@ -1949,7 +1951,7 @@ function V3CompositionBuilder({ value, onChange }: { value: V3SpellComposition; 
 
 type V3SpellFilter = 'official' | 'needs_approval' | 'all';
 
-function V3SpellsApprovalView() {
+function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<V3Spell | null>(null);
   const [creating, setCreating] = useState(false);
@@ -1974,8 +1976,8 @@ function V3SpellsApprovalView() {
   };
 
   const { data: spells = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-spells'],
-    queryFn: () => api.getAdminV3Spells(),
+    queryKey: ['admin-v3-spells', !!personal],
+    queryFn: () => api.getAdminV3Spells(undefined, personal),
   });
 
   const filteredSpells = spells.filter((s) => {
@@ -2030,7 +2032,7 @@ function V3SpellsApprovalView() {
 
   const createMutation = useMutation({
     mutationFn: (vars: { composition: V3SpellComposition; name: string; description: string; image: string | null }) =>
-      api.createAdminV3Spell(vars),
+      api.createAdminV3Spell({ ...vars, personal }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-v3-spells'] });
       setCreating(false);
@@ -2504,7 +2506,7 @@ function AdminSearchMultiPicker({
   );
 }
 
-function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
+function V3ElementRequirementsView({ systemSlug, personal }: { systemSlug: string; personal?: boolean }) {
   const queryClient = useQueryClient();
   const [element, setElement] = useState<string>(V3_ELEMENTS[0]?.key ?? '');
   const [conditionType, setConditionType] = useState<'knowledge' | 'item'>('knowledge');
@@ -2513,20 +2515,20 @@ function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
   const [consumed, setConsumed] = useState(false);
 
   const { data: requirements = [], isLoading } = useQuery({
-    queryKey: ['admin-v3-element-requirements'],
-    queryFn: () => api.getAdminV3ElementRequirements(),
+    queryKey: ['admin-v3-element-requirements', !!personal],
+    queryFn: () => api.getAdminV3ElementRequirements(personal),
   });
 
   // Knowledge picker = the V3 system custom skills ("Knowledge").
   const { data: knowledgeOptions = [] } = useQuery({
-    queryKey: ['system-skills', 'aa-v3'],
-    queryFn: () => api.getSystemSkills('aa-v3'),
+    queryKey: ['system-skills', 'aa-v3', !!personal],
+    queryFn: () => api.getSystemSkills('aa-v3', personal),
   });
 
-  // Item picker = admin V3 system items.
+  // Item picker = V3 system items (personal mode = own library + global).
   const { data: itemOptions = [] } = useQuery({
-    queryKey: ['admin-system-items', 'aa-v3'],
-    queryFn: () => api.getSystemItems('aa-v3'),
+    queryKey: ['admin-system-items', 'aa-v3', !!personal],
+    queryFn: () => api.getSystemItems('aa-v3', undefined, personal),
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-v3-element-requirements'] });
@@ -2534,10 +2536,10 @@ function V3ElementRequirementsView({ systemSlug }: { systemSlug: string }) {
   const createMutation = useMutation({
     mutationFn: () => {
       if (conditionType === 'knowledge') {
-        return api.createV3ElementRequirement({ element, conditionType: 'knowledge', knowledgeName });
+        return api.createV3ElementRequirement({ element, conditionType: 'knowledge', knowledgeName, personal });
       }
       const it = (itemOptions as any[]).find((i) => i.id === itemId);
-      return api.createV3ElementRequirement({ element, conditionType: 'item', itemId, itemName: it?.name ?? null, consumed });
+      return api.createV3ElementRequirement({ element, conditionType: 'item', itemId, itemName: it?.name ?? null, consumed, personal });
     },
     onSuccess: () => {
       toast({ title: 'Requirement added' });
@@ -3633,8 +3635,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
           />
         </DashSection>
 
-        {isAdmin && (
-          <DashSection title="Spells & Magic" icon={Wand2} color="text-violet-400">
+        <DashSection title="Spells & Magic" icon={Wand2} color="text-violet-400">
             <DashCard
               onClick={() => onNavigate('v3-spells')}
               testId="card-v3-spells"
@@ -3658,7 +3659,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               titleColor="text-violet-500"
             />
           </DashSection>
-        )}
 
         <DashSection title="Weapons & Techniques" icon={Sword} color="text-rose-400">
             <DashCard
@@ -3735,19 +3735,17 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             iconColor="text-emerald-500"
             titleColor="text-emerald-500"
           />
-          {isAdmin && (
-            <DashCard
-              onClick={() => onNavigate('feat-trees')}
-              testId="card-feat-trees"
-              icon={GitBranch}
-              title="Skill Trees"
-              description="Create and manage skill trees for species and classes"
-              hoverBorder="hover:border-emerald-600"
-              iconBg="bg-emerald-700/20"
-              iconColor="text-emerald-500"
-              titleColor="text-emerald-500"
-            />
-          )}
+          <DashCard
+            onClick={() => onNavigate('feat-trees')}
+            testId="card-feat-trees"
+            icon={GitBranch}
+            title="Skill Trees"
+            description="Create and manage skill trees for species and classes"
+            hoverBorder="hover:border-emerald-600"
+            iconBg="bg-emerald-700/20"
+            iconColor="text-emerald-500"
+            titleColor="text-emerald-500"
+          />
           {isAdmin && (
             <DashCard
               onClick={() => onNavigate('classes')}
@@ -3810,8 +3808,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             />
           </DashSection>
 
-        {isAdmin && (
-          <DashSection title="Archives" icon={Archive} color="text-stone-400">
+        <DashSection title="Archives" icon={Archive} color="text-stone-400">
             <DashCard
               onClick={() => onNavigate('archived-items')}
               testId="card-archived-items"
@@ -3837,7 +3834,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               descColor="text-stone-500"
             />
           </DashSection>
-        )}
       </div>
     );
   }
