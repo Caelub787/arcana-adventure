@@ -721,16 +721,46 @@ describe("POST /api/v3/spells/craft — resource accounting", () => {
   });
 });
 
-describe("GET /api/v3/spells/canonical/:hash — admin only", () => {
+describe("GET /api/v3/spells/canonical/:hash — any authenticated user", () => {
   it("rejects an unauthenticated request with 401", async () => {
     const res = await api("/api/v3/spells/canonical/somehash");
     expect(res.status).toBe(401);
   });
 
-  it("rejects a non-admin with 403", async () => {
+  it("allows a non-admin and returns the global canonical", async () => {
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
+      id: "canon1",
+      name: "Fireball",
+      isCanonical: true,
+    });
     const res = await api("/api/v3/spells/canonical/somehash", { user: "player9" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("Fireball");
+    expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith("somehash");
+  });
+
+  it("rejects a non-member probing another GM's campaignId with 403", async () => {
+    h.storage.getCampaign.mockResolvedValue({ id: "campX", gmUserId: "gmOwner", system: "aa-v3" });
+    h.storage.getCampaignMembership.mockResolvedValue(null);
+    const res = await api("/api/v3/spells/canonical/somehash?campaignId=campX", { user: "stranger" });
     expect(res.status).toBe(403);
     expect(h.storage.getCanonicalV3SpellByHash).not.toHaveBeenCalled();
+  });
+
+  it("allows a campaign member and prefers the GM's personal canonical", async () => {
+    h.storage.getCampaign.mockResolvedValue({ id: "campX", gmUserId: "gmOwner", system: "aa-v3" });
+    h.storage.getCampaignMembership.mockResolvedValue({ userId: "member1", role: "player" });
+    h.storage.getCanonicalV3SpellByHash.mockResolvedValue({
+      id: "gmCanon",
+      name: "GM Fireball",
+      isCanonical: true,
+    });
+    const res = await api("/api/v3/spells/canonical/somehash?campaignId=campX", { user: "member1" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("GM Fireball");
+    expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith("somehash", "gmOwner");
   });
 
   it("allows an admin and returns the canonical spell", async () => {

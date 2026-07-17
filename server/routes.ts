@@ -7265,11 +7265,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/v3/spells/canonical/:hash", requireAuth, async (req, res) => {
     try {
       // Optional campaignId: prefer that campaign GM's personal canonical.
+      // The caller must actually belong to that campaign, otherwise any
+      // authenticated user could probe a GM's private library by hash.
       const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
       let gmCanonical;
       if (campaignId) {
+        const userId = req.session.userId!;
         const campaign = await storage.getCampaign(campaignId);
-        if (campaign?.gmUserId) {
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const isMember = campaign.gmUserId === userId
+          || !!(await storage.getCampaignMembership(userId, campaignId))
+          || await isAdminUser(userId);
+        if (!isMember) return res.status(403).json({ error: "Not a member of this campaign" });
+        if (campaign.gmUserId) {
           gmCanonical = await storage.getCanonicalV3SpellByHash(req.params.hash, campaign.gmUserId);
         }
       }
@@ -7671,8 +7679,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let ownerScope: string[] = [];
       const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
       if (campaignId) {
+        // The caller must belong to the campaign before we blend in that
+        // campaign GM's personal element gates.
+        const userId = req.session.userId!;
         const campaign = await storage.getCampaign(campaignId);
-        if (campaign?.gmUserId) ownerScope = [campaign.gmUserId];
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const isMember = campaign.gmUserId === userId
+          || !!(await storage.getCampaignMembership(userId, campaignId))
+          || await isAdminUser(userId);
+        if (!isMember) return res.status(403).json({ error: "Not a member of this campaign" });
+        if (campaign.gmUserId) ownerScope = [campaign.gmUserId];
       }
       const rows = await storage.getV3ElementRequirements({ ownerScope });
       res.json(rows);

@@ -83,7 +83,14 @@ vi.mock("../lib/library-acl", () => ({
   isAdminUser: async (userId: string | undefined) =>
     !!userId && h.adminUserIds.has(userId),
   getLibraryScope: async () => undefined,
-  enforceLibraryWrite: async () => true,
+  // Mirror the real ACL: admins may write anything; others only their own rows.
+  enforceLibraryWrite: async (req: any, res: any, ownerUserId: string | null | undefined) => {
+    const userId = req.session?.userId;
+    if (userId && h.adminUserIds.has(userId)) return true;
+    if (ownerUserId && ownerUserId === userId) return true;
+    res.status(403).json({ error: "You can only modify your own library entries" });
+    return false;
+  },
   enforceLibraryRead: async () => true,
   canReadLibraryRow: () => true,
   canWriteLibraryRow: () => true,
@@ -462,7 +469,13 @@ describe("POST /api/admin/v3-spells/:id/approve — canonical governance", () =>
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-admin with 403", async () => {
+  it("rejects a non-admin with 403 on a global (owner-null) spell", async () => {
+    h.storage.getV3Spell.mockResolvedValue({
+      id: "x",
+      name: "Fireball",
+      compositionHash: "hashX",
+      ownerUserId: null,
+    });
     const res = await api("/api/admin/v3-spells/x/approve", { method: "POST", user: "player1" });
     expect(res.status).toBe(403);
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
@@ -668,7 +681,13 @@ describe("POST /api/admin/v3-spells/:id/reject — clears canonical", () => {
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-admin with 403", async () => {
+  it("rejects a non-admin with 403 on a global (owner-null) spell", async () => {
+    h.storage.getV3Spell.mockResolvedValue({
+      id: "x",
+      name: "Fireball",
+      compositionHash: "hashX",
+      ownerUserId: null,
+    });
     const res = await api("/api/admin/v3-spells/x/reject", { method: "POST", user: "player1" });
     expect(res.status).toBe(403);
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
@@ -813,7 +832,7 @@ describe("POST /api/admin/v3-spells — from-scratch canonical creation", () => 
     expect(res.status).toBe(200);
 
     // The prior canonical is detected but NOT demoted — the admin decides via the conflict popup.
-    expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith(expectedHash);
+    expect(h.storage.getCanonicalV3SpellByHash).toHaveBeenCalledWith(expectedHash, null);
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
 
     // New row is created parked in the approval queue (not canonical/approved) with correct math.
@@ -885,7 +904,13 @@ describe("PATCH /api/admin/v3-spells/:id — admin edit governance", () => {
     expect(h.storage.updateV3Spell).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-admin with 403", async () => {
+  it("rejects a non-admin with 403 on a global (owner-null) spell", async () => {
+    h.storage.getV3Spell.mockResolvedValue({
+      id: spellId,
+      name: "Fireball",
+      compositionHash: "hashP",
+      ownerUserId: null,
+    });
     const res = await api(`/api/admin/v3-spells/${spellId}`, {
       method: "PATCH",
       user: "player1",
