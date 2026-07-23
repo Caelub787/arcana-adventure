@@ -16679,13 +16679,23 @@ function V3AttrsAndSkillsTab({
     queryKey: ['species', 'A.A. V3'],
     queryFn: () => api.getSpecies('A.A. V3'),
   });
-  const speciesAttrBonuses = React.useMemo<Record<string, number>>(() => {
+  const resolvedSpecies = React.useMemo<any>(() => {
     const race = liveCharacter.race;
-    if (!race) return {};
+    if (!race) return null;
     let sp: any = (campaignSpeciesList as any[]).find(s => s.name === race);
     if (!sp) sp = (v3SystemSpeciesList as any[]).find(s => s.name === race);
-    return (sp?.attributeBonuses || {}) as Record<string, number>;
+    return sp || null;
   }, [liveCharacter.race, campaignSpeciesList, v3SystemSpeciesList]);
+  const speciesAttrBonuses = React.useMemo<Record<string, number>>(
+    () => (resolvedSpecies?.attributeBonuses || {}) as Record<string, number>,
+    [resolvedSpecies],
+  );
+  // Species skill bonuses share the v3SkillBoosts map with scroll boosts; the
+  // species portion is permanent, so GM -1/Clear only applies to the excess.
+  const speciesSkillBonuses = React.useMemo<Record<string, number>>(
+    () => (resolvedSpecies?.skillBonuses || {}) as Record<string, number>,
+    [resolvedSpecies],
+  );
 
   const level = liveCharacter.level || 1;
 
@@ -16917,6 +16927,10 @@ function V3AttrsAndSkillsTab({
               // Scroll boost (Task #198): a permanent free per-skill bonus that
               // raises the modifier AND the allocation cap by X (can exceed +5).
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
+              // The species-granted portion of the boost is permanent — GM
+              // -1/Clear buttons only apply to the excess above it.
+              const skillSpeciesFloor = Math.min(skillScrollBoost, Math.max(0, Number(speciesSkillBonuses[skill.key]) || 0));
+              const skillRemovableBoost = skillScrollBoost - skillSpeciesFloor;
               const skillMax = 5 + skillScrollBoost;
               const skillVal = rawSkillVal + skillArmorBoost + (editing ? 0 : skillScrollBoost);
               return (
@@ -16959,7 +16973,7 @@ function V3AttrsAndSkillsTab({
                         {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
                         {skillScrollBoost > 0 && <span className="text-sky-400/80 ml-0.5">(+{skillScrollBoost})</span>}
                       </span>
-                      {isGM && skillScrollBoost > 0 && (
+                      {isGM && skillRemovableBoost > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <button
                             type="button"

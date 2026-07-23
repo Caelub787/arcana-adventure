@@ -13775,10 +13775,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const boosts: Record<string, number> = { ...((access.character as any)?.v3SkillBoosts || {}) };
       if (!(skillKey in boosts)) return res.status(404).json({ error: "No skill boost to adjust" });
 
+      // The character's species skill bonus lives in the same v3SkillBoosts map
+      // as scroll boosts. That portion is permanent — GM adjustments can only
+      // remove the excess above it, never the species-granted floor.
+      let speciesFloor = 0;
+      const race = (access.character as any)?.race;
+      if (race && access.campaign?.id) {
+        const campaignList = await storage.getCampaignSpecies(access.campaign.id);
+        let sp: any = campaignList.find((s: any) => s.name === race);
+        if (!sp) sp = await storage.getSpeciesByName(race, 'A.A. V3');
+        speciesFloor = Math.max(0, Number((sp?.skillBonuses || {})[skillKey]) || 0);
+      }
+
       if (action === 'clear') {
-        delete boosts[skillKey];
+        if (speciesFloor > 0) boosts[skillKey] = speciesFloor;
+        else delete boosts[skillKey];
       } else {
-        const next = (Number(boosts[skillKey]) || 0) - amount;
+        const next = Math.max(speciesFloor, (Number(boosts[skillKey]) || 0) - amount);
         if (next > 0) boosts[skillKey] = next;
         else delete boosts[skillKey];
       }
