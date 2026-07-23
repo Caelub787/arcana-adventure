@@ -37,26 +37,30 @@ export interface V3SkillDef {
 // per-character `v3Skills` JSON map and as a stable identifier.
 export const V3_SKILLS: V3SkillDef[] = [
   // Might
-  { key: "athletics",     name: "Athletics",     parent: "might",        description: "Climbing, jumping, swimming, and pure physical exertion." },
+  { key: "athletics",     name: "Athletics",     parent: "might",        description: "Climbing, jumping, swimming, lifting, and physical exertion." },
+  { key: "intimidation",  name: "Intimidation",  parent: "might",        description: "Threatening, dominating, and forcing compliance." },
   // Finesse
-  { key: "acrobatics",    name: "Acrobatics",    parent: "finesse",      description: "Balance, tumbling, and graceful body control." },
-  { key: "stealth",       name: "Stealth",       parent: "finesse",      description: "Moving unseen and unheard." },
-  { key: "sleightOfHand", name: "Sleight of Hand", parent: "finesse",    description: "Picking pockets, palming items, and fine manual trickery." },
+  { key: "acrobatics",    name: "Acrobatics",    parent: "finesse",      description: "Balance, tumbling, climbing, and agile movement." },
+  { key: "stealth",       name: "Stealth",       parent: "finesse",      description: "Moving unseen, unheard, and unnoticed." },
+  { key: "sleightOfHand", name: "Sleight of Hand", parent: "finesse",    description: "Picking pockets, palming items, and delicate manipulation." },
   // Constitution
-  { key: "endurance",     name: "Endurance",     parent: "constitution", description: "Resisting fatigue, holding your breath, marching for hours." },
+  { key: "endurance",     name: "Endurance",     parent: "constitution", description: "Resisting fatigue, harsh conditions, and exhaustion." },
   { key: "fortitude",     name: "Fortitude",     parent: "constitution", description: "Resisting poison, disease, and bodily afflictions." },
-  { key: "perception",    name: "Perception",    parent: "constitution", description: "Noticing details with your physical senses." },
+  { key: "perception",    name: "Perception",    parent: "constitution", description: "Noticing sights, sounds, and other physical details." },
   // Will
-  { key: "resolve",       name: "Resolve",       parent: "will",         description: "Resisting fear, charm, and mental coercion." },
   { key: "focus",         name: "Focus",         parent: "will",         description: "Maintaining concentration under pressure." },
-  { key: "insight",       name: "Insight",       parent: "will",         description: "Reading intentions, lies, and subtle social cues." },
+  { key: "influence",     name: "Influence",     parent: "will",         description: "Persuading, deceiving, negotiating, and inspiring others." },
+  { key: "insight",       name: "Insight",       parent: "will",         description: "Reading intentions, lies, and emotional cues." },
   // Anemos
-  { key: "sense",         name: "Sense",         parent: "anemos",       description: "Sensing magic, spirits, and currents of the Anemos." },
+  { key: "arcana",        name: "Arcana",        parent: "anemos",       description: "Understanding spells, enchantments, and magical theory." },
+  { key: "sense",         name: "Sense",         parent: "anemos",       description: "Detecting magic, spirits, and Anemos currents." },
   // Intelligence
   { key: "animalHandling", name: "Animal Handling", parent: "intelligence", description: "Taming, calming, and handling animals and beasts." },
-  { key: "investigation", name: "Investigation", parent: "intelligence", description: "Deductive reasoning, sifting clues, recognizing patterns." },
-  { key: "naturecraft",   name: "Nature",        parent: "intelligence", description: "Knowledge of plants, weather, terrain, and the wild." },
-  { key: "survival",      name: "Survival",      parent: "intelligence", description: "Tracking, foraging, and surviving in hostile terrain." },
+  { key: "investigation", name: "Investigation", parent: "intelligence", description: "Finding clues, solving problems, and recognizing patterns." },
+  { key: "knowledge",     name: "Knowledge",     parent: "intelligence", description: "Recalling history, cultures, religions, and academic lore." },
+  { key: "medicine",      name: "Medicine",      parent: "intelligence", description: "Treating injuries, diagnosing illnesses, and providing care." },
+  { key: "naturecraft",   name: "Nature",        parent: "intelligence", description: "Understanding plants, wildlife, weather, and terrain." },
+  { key: "survival",      name: "Survival",      parent: "intelligence", description: "Tracking, foraging, navigating, and living off the land." },
 ];
 
 export const V3_SKILL_KEYS: string[] = V3_SKILLS.map(s => s.key);
