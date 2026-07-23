@@ -16896,10 +16896,20 @@ function V3AttrsAndSkillsTab({
                     </>
                   ) : (
                     <div className="mt-1" data-testid={`text-v3-attr-${attr.key}`}>
-                      <span className={`text-2xl font-bold ${armorBoost > 0 ? 'text-emerald-400' : 'text-amber-500'}`}>{effectiveAttrVal >= 0 ? `+${effectiveAttrVal}` : effectiveAttrVal}</span>
+                      <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
-                      {armorBoost > 0 && (
-                        <span className="text-[10px] text-emerald-400 ml-1" data-testid={`text-v3-attr-boost-${attr.key}`}>(+{armorBoost})</span>
+                      {armorBoost !== 0 && (
+                        <span
+                          className={`text-[10px] ml-1 cursor-help ${armorBoost > 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                          title={`${armorBoost > 0 ? '+' : ''}${armorBoost} from equipped armor`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toast({ title: `${attr.name} bonus`, description: `${armorBoost > 0 ? '+' : ''}${armorBoost} from equipped armor` });
+                          }}
+                          data-testid={`text-v3-attr-boost-${attr.key}`}
+                        >
+                          ({armorBoost > 0 ? `+${armorBoost}` : armorBoost})
+                        </span>
                       )}
                     </div>
                   )}
@@ -16933,6 +16943,14 @@ function V3AttrsAndSkillsTab({
               const skillRemovableBoost = skillScrollBoost - skillSpeciesFloor;
               const skillMax = 5 + skillScrollBoost;
               const skillVal = rawSkillVal + skillArmorBoost + (editing ? 0 : skillScrollBoost);
+              // Display split: base = player points + species bonus (permanent);
+              // temp = equipped-armor boosts + scroll boosts, shown as "(+N)".
+              const skillBaseVal = rawSkillVal + (editing ? 0 : skillSpeciesFloor);
+              const skillTempBoost = editing ? 0 : skillArmorBoost + skillRemovableBoost;
+              const skillTempSources = [
+                skillArmorBoost !== 0 ? `${skillArmorBoost > 0 ? '+' : ''}${skillArmorBoost} from equipped armor` : null,
+                skillRemovableBoost !== 0 ? `${skillRemovableBoost > 0 ? '+' : ''}${skillRemovableBoost} from scrolls` : null,
+              ].filter(Boolean).join(', ');
               return (
                 <div
                   key={skill.key}
@@ -16968,10 +16986,21 @@ function V3AttrsAndSkillsTab({
                     </div>
                   ) : (
                     <div className="flex flex-col items-end shrink-0">
-                      <span className={`text-xs font-semibold text-right ${skillArmorBoost > 0 ? 'text-emerald-400' : 'text-amber-400'}`} data-testid={`text-v3-skill-${skill.key}`}>
-                        {skillVal >= 0 ? `+${skillVal}` : skillVal}
-                        {skillArmorBoost > 0 && <span className="text-emerald-400/80 ml-0.5">(+{skillArmorBoost})</span>}
-                        {skillScrollBoost > 0 && <span className="text-sky-400/80 ml-0.5">(+{skillScrollBoost})</span>}
+                      <span className="text-xs font-semibold text-right text-amber-400" data-testid={`text-v3-skill-${skill.key}`}>
+                        {skillBaseVal >= 0 ? `+${skillBaseVal}` : skillBaseVal}
+                        {skillTempBoost !== 0 && (
+                          <span
+                            className={`ml-0.5 cursor-help ${skillTempBoost > 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                            title={skillTempSources}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toast({ title: `${skill.name} bonus`, description: skillTempSources });
+                            }}
+                            data-testid={`text-v3-skill-temp-${skill.key}`}
+                          >
+                            ({skillTempBoost > 0 ? `+${skillTempBoost}` : skillTempBoost})
+                          </span>
+                        )}
                       </span>
                       {isGM && skillRemovableBoost > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">
