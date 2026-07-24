@@ -142,26 +142,26 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 pointer-events-auto" data-testid="v3-free-hotbar">
-      <div className="flex items-center gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-2 shadow-xl backdrop-blur-sm">
+    <div className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-30 pointer-events-auto" data-testid="v3-free-hotbar">
+      <div className="flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
         {/* Loadout switcher */}
-        <div className="flex flex-col items-center mr-1 select-none">
+        <div className="flex flex-col items-center mr-0.5 sm:mr-1 select-none">
           <button
             onClick={() => setLoadout((l) => (l + 1) % NUM_LOADOUTS)}
             className="text-stone-400 hover:text-amber-400 p-0.5"
             data-testid="button-loadout-up"
             aria-label="Next loadout"
           >
-            <ChevronUp className="h-4 w-4" />
+            <ChevronUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </button>
-          <span className="text-amber-400 font-bold text-sm w-5 text-center" data-testid="text-loadout-index">{loadout}</span>
+          <span className="text-amber-400 font-bold text-xs sm:text-sm w-4 sm:w-5 text-center" data-testid="text-loadout-index">{loadout}</span>
           <button
             onClick={() => setLoadout((l) => (l + NUM_LOADOUTS - 1) % NUM_LOADOUTS)}
             className="text-stone-400 hover:text-amber-400 p-0.5"
             data-testid="button-loadout-down"
             aria-label="Previous loadout"
           >
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </button>
         </div>
 
@@ -179,7 +179,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 onPointerLeave={cancelHold}
                 onPointerCancel={cancelHold}
                 onContextMenu={(e) => { if (entry) { e.preventDefault(); setRemoveTarget(entry); } }}
-                className={`w-14 h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none ${
+                className={`w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none ${
                   entry ? 'border-amber-600 bg-stone-800 hover:border-amber-500' : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
                 }`}
                 data-testid={`free-hotbar-slot-${slotIndex}`}
@@ -189,7 +189,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     entry.character.portrait ? (
                       <img src={entry.character.portrait} alt={entry.character.name} className="w-full h-full object-cover pointer-events-none" />
                     ) : (
-                      <User className="h-6 w-6 text-amber-500" />
+                      <User className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500" />
                     )
                   ) : entry.item ? (
                     entry.item.image ? (
@@ -199,7 +199,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )
                   ) : null
                 ) : (
-                  <Plus className="h-6 w-6 text-stone-500" />
+                  <Plus className="h-5 w-5 sm:h-6 sm:w-6 text-stone-500" />
                 )}
               </button>
               {/* Source-character badge on items from a character's inventory */}
@@ -208,7 +208,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border border-amber-600 bg-stone-900 overflow-hidden flex items-center justify-center"
+                        className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 w-4 h-4 sm:w-5 sm:h-5 rounded-full border border-amber-600 bg-stone-900 overflow-hidden flex items-center justify-center"
                         data-testid={`free-hotbar-slot-${slotIndex}-source-badge`}
                       >
                         {entry.sourceCharacter.portrait ? (
