@@ -377,7 +377,7 @@ describe("PUT /api/campaigns/:campaignId/free-hotbar — write-path guards", () 
   });
 
   it("rejects out-of-range slotIndex (400)", async () => {
-    for (const slotIndex of [-1, 5, 2.5, "abc"]) {
+    for (const slotIndex of [-1, 10, 2.5, "abc"]) {
       const res = await putHotbar(player, { ...validBody, slotIndex });
       expect(res.status).toBe(400);
     }

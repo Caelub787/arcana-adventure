@@ -1,5 +1,5 @@
 // AA V3 free hotbar — per-user, per-campaign quick-access loadouts.
-// 9 loadouts (0-8) of 5 slots each. A slot holds a character (opens their
+// 9 loadouts (0-8) of 10 slots each. A slot holds a character (opens their
 // sheet) or a direct link to an item row (character inventory item, or a
 // GM-assigned admin/My Library item). Replaces the V2-style battle hotbars,
 // character-sheet hotbars, and GM character hotbar in V3 campaigns only.
@@ -16,7 +16,7 @@ import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Fil
 import { LazyItemImage } from "./GameComponents";
 
 const NUM_LOADOUTS = 9;
-const NUM_SLOTS = 5;
+const NUM_SLOTS = 10;
 
 export interface FreeHotbarCharView {
   id: string;
@@ -88,18 +88,25 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     localStorage.setItem(`aa-free-hotbar-loadout-${campaignId}`, String(loadout));
   }, [loadout, campaignId]);
 
-  // H + digit keyboard shortcut for loadout switching.
+  // Keyboard shortcuts: H + digit switches loadouts; a plain digit (1-9, 0)
+  // opens the assigned slot (1 = first slot, 0 = tenth). Both are ignored
+  // while typing in any text/value field.
+  const openSlotByKeyRef = useRef<(slotIndex: number) => void>(() => {});
   useEffect(() => {
     const isTyping = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     };
     const down = (e: KeyboardEvent) => {
       if (isTyping(e)) return;
       if (e.key === 'h' || e.key === 'H') hHeld.current = true;
-      else if (hHeld.current && /^[0-8]$/.test(e.key)) {
+      else if (hHeld.current && /^[0-9]$/.test(e.key)) {
         e.preventDefault();
-        setLoadout(Number(e.key));
+        if (/^[0-8]$/.test(e.key)) setLoadout(Number(e.key));
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9]$/.test(e.key)) {
+        // 1..9 -> slots 0..8, 0 -> slot 9
+        const slotIndex = e.key === '0' ? 9 : Number(e.key) - 1;
+        openSlotByKeyRef.current(slotIndex);
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -208,6 +215,12 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     }
   };
 
+  // Digit shortcut: only opens assigned slots; an empty slot does nothing
+  // (unlike a click, which opens the picker).
+  openSlotByKeyRef.current = (slotIndex: number) => {
+    if (currentEntries.get(slotIndex)) handleSlotClick(slotIndex);
+  };
+
   return (
     <div className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-30 pointer-events-auto" data-testid="v3-free-hotbar">
       <div className="flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
@@ -232,7 +245,8 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           </button>
         </div>
 
-        {/* Slots */}
+        {/* Slots — 10 per loadout; wraps to 2 rows of 5 when a single row can't fit */}
+        <div className="grid grid-cols-5 xl:grid-cols-10 gap-1 sm:gap-2">
         {Array.from({ length: NUM_SLOTS }).map((_, slotIndex) => {
           const entry = currentEntries.get(slotIndex);
           return (
@@ -301,6 +315,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Slot picker */}

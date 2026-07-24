@@ -1057,7 +1057,7 @@ export type InsertHotbar = z.infer<typeof insertHotbarSchema>;
 export type Hotbar = typeof hotbars.$inferSelect;
 
 // AA V3 free hotbar (per-user, per-campaign quick-access loadouts).
-// Each user has 9 loadouts (0-8) of 5 slots (0-4) per campaign. A slot holds
+// Each user has 9 loadouts (0-8) of 10 slots (0-9) per campaign. A slot holds
 // either a character (open sheet shortcut) or a direct link to an item row —
 // a character-owned inventory item, or an admin/My Library item (characterId
 // null on the item). Exactly one of characterId/itemId is set per row.
@@ -1066,7 +1066,7 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   loadoutIndex: integer("loadout_index").notNull(), // 0-8
-  slotIndex: integer("slot_index").notNull(), // 0-4
+  slotIndex: integer("slot_index").notNull(), // 0-9
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   itemId: varchar("item_id").references(() => items.id, { onDelete: "cascade" }),
 }, (table) => ({

@@ -4765,6 +4765,9 @@ interface BattleMapHotbarsProps {
   // Render only the bottom-left DC/HP/Energy/Mana bars (used in AA V3, where
   // the V2 hotbar strip is replaced by the free hotbar but the bars remain).
   statsOnly?: boolean;
+  // Optional node rendered at the top of the bottom-left stat-bar stack (same
+  // width and gap as the bars). Used in AA V3 for the character overview button.
+  overviewButton?: React.ReactNode;
   onRequestSaveRoll?: (params: {
     targetCharacterId: string;
     targetUserId: string;
@@ -8840,7 +8843,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, overviewButton, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -8936,6 +8939,8 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         data-collision-id="hp-dc-display"
       >
         <div className="flex flex-col gap-1">
+          {/* Character overview button (AA V3) — sits above the bars, same width/gap */}
+          {overviewButton}
           {/* DC Display - hidden in AA V3 */}
           {campaignSystem !== 'aa-v3' && (
             <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">

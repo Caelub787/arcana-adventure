@@ -5018,8 +5018,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
         return res.status(400).json({ error: "loadoutIndex must be 0-8" });
       }
-      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 4) {
-        return res.status(400).json({ error: "slotIndex must be 0-4" });
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
+        return res.status(400).json({ error: "slotIndex must be 0-9" });
       }
       if ((characterId && itemId) || (!characterId && !itemId)) {
         return res.status(400).json({ error: "Provide exactly one of characterId or itemId" });
