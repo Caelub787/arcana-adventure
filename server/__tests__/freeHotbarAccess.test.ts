@@ -156,6 +156,12 @@ const foreignChar = {
   userId: otherOwner,
   campaignId,
   isTemplate: false,
+  hp: 17,
+  maxHp: 25,
+  energy: 3,
+  maxEnergy: 6,
+  mana: 9,
+  maxMana: 12,
 };
 
 const charEntry = {
@@ -300,6 +306,112 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — revoked access is hidde
     const res = await getHotbar(player);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+  });
+});
+
+describe("GET /api/campaigns/:campaignId/free-hotbar — enriched stat fields + canEdit", () => {
+  const statFields = {
+    hp: foreignChar.hp,
+    maxHp: foreignChar.maxHp,
+    energy: foreignChar.energy,
+    maxEnergy: foreignChar.maxEnergy,
+    mana: foreignChar.mana,
+    maxMana: foreignChar.maxMana,
+  };
+
+  it("includes the six stat fields and canEdit=false for a view-only permission", async () => {
+    h.storage.getFreeHotbarEntries.mockResolvedValue([charEntry]);
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "view",
+    });
+
+    const res = await getHotbar(player);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].character).toMatchObject({
+      id: foreignChar.id,
+      name: foreignChar.name,
+      ...statFields,
+      canEdit: false,
+    });
+  });
+
+  it("includes canEdit=true for an edit permission", async () => {
+    h.storage.getFreeHotbarEntries.mockResolvedValue([charEntry]);
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "edit",
+    });
+
+    const res = await getHotbar(player);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].character).toMatchObject({ ...statFields, canEdit: true });
+  });
+
+  it("includes canEdit=true for the GM regardless of permission rows", async () => {
+    h.storage.getFreeHotbarEntries.mockResolvedValue([
+      { ...charEntry, userId: gm },
+    ]);
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue(null);
+
+    const res = await getHotbar(gm);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].character).toMatchObject({ ...statFields, canEdit: true });
+  });
+
+  it("includes canEdit=true for the character's owner", async () => {
+    const ownChar = { ...foreignChar, id: "char-own", userId: player };
+    h.storage.getFreeHotbarEntries.mockResolvedValue([
+      { ...charEntry, characterId: ownChar.id },
+    ]);
+    h.storage.getCharacter.mockResolvedValue(ownChar);
+    h.storage.getCharacterPermission.mockResolvedValue(null);
+
+    const res = await getHotbar(player);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].character).toMatchObject({ ...statFields, canEdit: true });
+  });
+
+  it("downgrading edit -> view flips canEdit to false on the next read (stats still visible)", async () => {
+    h.storage.getFreeHotbarEntries.mockResolvedValue([charEntry]);
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+
+    // First read: player has edit access.
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "edit",
+    });
+    let body = await (await getHotbar(player)).json();
+    expect(body[0].character.canEdit).toBe(true);
+
+    // Permission downgraded to view: same entry, canEdit must flip.
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "view",
+    });
+    body = await (await getHotbar(player)).json();
+    expect(body).toHaveLength(1);
+    expect(body[0].character).toMatchObject({ ...statFields, canEdit: false });
+
+    // Fully revoked: the entry (and its stats) disappears entirely.
+    h.storage.getCharacterPermission.mockResolvedValue(null);
+    body = await (await getHotbar(player)).json();
+    expect(body).toEqual([]);
   });
 });
 
