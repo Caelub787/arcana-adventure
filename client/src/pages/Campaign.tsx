@@ -9880,7 +9880,7 @@ export default function Campaign() {
   // Show loading state
   if (campaignLoading || tokensLoading || charactersLoading || membersLoading || sceneLoading || createCampaignMutation.isPending) {
     return (
-      <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
+      <div className="relative h-dvh w-screen overflow-hidden bg-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 shimmer p-8 rounded-lg">
           <LoadingLogo className="h-12 w-12 sm:h-8 sm:w-8 text-amber-500 glow-amber" aria-label="Loading" />
           <p className="text-stone-400 text-responsive-lg">Loading campaign...</p>
@@ -9892,7 +9892,7 @@ export default function Campaign() {
   // Show campaign creation dialog
   if (showCampaignDialog) {
     return (
-      <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
+      <div className="relative h-dvh w-screen overflow-hidden bg-black text-white flex items-center justify-center">
         <Dialog open={showCampaignDialog} onOpenChange={(open) => !open && setLocation('/')}>
           <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
             <DialogHeader>
@@ -9955,7 +9955,7 @@ export default function Campaign() {
   }
 
   return (
-    <div data-section="campaign" className="relative h-screen w-screen overflow-hidden bg-black text-white select-none flex flex-col">
+    <div data-section="campaign" className="relative h-dvh w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
       {/* Roll Notification Container */}
       <RollNotificationContainer />
