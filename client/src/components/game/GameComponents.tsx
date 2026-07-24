@@ -4841,6 +4841,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const [showModifiers, setShowModifiers] = useState(false);
 
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [syncingHotbarItem, setSyncingHotbarItem] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
@@ -8347,7 +8348,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                         ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); }
                         : undefined
               }
-              onContextMenu={(e) => e.preventDefault()}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!hotbar) return;
+                const isOwnerOrGm = character?.userId === currentUserId
+                  || !!campaignMembers?.some((m: any) => m.userId === currentUserId && (m.role === 'gm' || m.role === 'assistant_gm'));
+                if (isOwnerOrGm) setShowRemoveConfirm(true);
+              }}
               onPointerDown={handlePointerDown}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerCancel}
@@ -8837,6 +8844,35 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           } : undefined}
         />
       )}
+
+      <AlertDialog open={showRemoveConfirm} onOpenChange={setShowRemoveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from hotbar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove it from this hotbar slot. You can add it back later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-remove-bm-hotbar">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-remove-bm-hotbar"
+              onClick={async () => {
+                if (!hotbar) return;
+                try {
+                  await api.deleteHotbar(hotbar.id);
+                  queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+                } catch (err) {
+                  console.error('Failed to remove hotbar slot:', err);
+                }
+                setShowRemoveConfirm(false);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </>
   );
@@ -14930,6 +14966,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onContextMenu={(e) => {
+          if (canEdit && hotbar && !isBlocked) {
+            e.preventDefault();
+            setShowRemoveDialog(true);
+          }
+        }}
         data-testid={`hotbar-slot-${type}-${slotNumber}`}
         aria-label={`${type} slot ${slotNumber}${isBlocked ? ' (blocked)' : ''}`}
         role={canEdit && !isBlocked ? "button" : "presentation"}

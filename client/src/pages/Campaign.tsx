@@ -13492,10 +13492,18 @@ export default function Campaign() {
               return (
                 <div key={index} className="relative group flex flex-col items-center">
                   <button
-                    onPointerDown={() => handleHotbarPointerDown(index)}
-                    onPointerUp={() => handleHotbarPointerUp(index)}
+                    onPointerDown={(e) => { if (e.button === 0) handleHotbarPointerDown(index); }}
+                    onPointerUp={(e) => { if (e.button === 0) handleHotbarPointerUp(index); }}
                     onPointerLeave={handleHotbarPointerLeave}
                     onPointerCancel={handleHotbarPointerLeave}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (hotbarLongPressRef.current.timer) {
+                        clearTimeout(hotbarLongPressRef.current.timer);
+                        hotbarLongPressRef.current.timer = null;
+                      }
+                      if (gmCharacterHotbar[index]) setHotbarLongPressSlot(index);
+                    }}
                     className={`
                       w-14 h-14 rounded-lg border-2 flex items-center justify-center
                       transition-all duration-200 hover:scale-105 select-none
