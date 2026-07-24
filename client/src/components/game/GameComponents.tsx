@@ -16817,6 +16817,20 @@ function V3AttrsAndSkillsTab({
           skillPressTimerRef.current = null;
         }
       },
+      // Cancel the long-press when the finger moves (scrolling), so starting a
+      // scroll on a skill row never opens the roll panel.
+      onTouchMove: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onTouchCancel: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
     };
   };
 
@@ -19764,8 +19778,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const tabConfig = [
     { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
     { value: 'attributes', icon: BarChart3, color: 'blue', label: isAAV3 ? 'Attrs & Skills' : 'Attributes' },
-    { value: 'skills', icon: Zap, color: 'green', label: isAAV3 ? 'Traits' : 'Skills' },
-    { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+    // V3: Inventory comes before Traits; V2 keeps Skills before Inventory.
+    ...(isAAV3
+      ? [
+          { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+          { value: 'skills', icon: Zap, color: 'green', label: 'Traits' },
+        ]
+      : [
+          { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+          { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+        ]),
     // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
     ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
     // V3 drops the character-sheet Hotbars tab (replaced by the free hotbar + equip system).
@@ -21063,6 +21085,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         onPointerLeave={!editingAttributes ? () => {
                           clearTimeout(longPressTimerRef.current);
                         } : undefined}
+                        onPointerCancel={!editingAttributes ? () => {
+                          clearTimeout(longPressTimerRef.current);
+                        } : undefined}
+                        onTouchMove={!editingAttributes ? () => {
+                          clearTimeout(longPressTimerRef.current);
+                        } : undefined}
                         onClick={!editingAttributes ? () => {
                           const cardKey = `attr-${attr.key}`;
                           const now = Date.now();
@@ -21367,6 +21395,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             onPointerLeave={() => {
                               clearTimeout(longPressTimerRef.current);
                             }}
+                            onPointerCancel={() => {
+                              clearTimeout(longPressTimerRef.current);
+                            }}
+                            onTouchMove={() => {
+                              clearTimeout(longPressTimerRef.current);
+                            }}
                             onClick={() => {
                               const cardKey = `skill-${skill.key}`;
                               const now = Date.now();
@@ -21583,6 +21617,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           onPointerLeave={() => {
                             clearTimeout(longPressTimerRef.current);
                           }}
+                          onPointerCancel={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onTouchMove={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
                           onClick={() => {
                             const cardKey = `custom-skill-${customSkill.id}`;
                             const now = Date.now();
@@ -21794,6 +21834,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             clearTimeout(longPressTimerRef.current);
                           }}
                           onPointerLeave={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onPointerCancel={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onTouchMove={() => {
                             clearTimeout(longPressTimerRef.current);
                           }}
                           onClick={() => {
