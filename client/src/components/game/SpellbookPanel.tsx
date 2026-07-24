@@ -149,7 +149,7 @@ export function V3SpellDetailDialog({
         )}
         {spell.description && <p className="text-stone-300">{spell.description}</p>}
         <div className="flex gap-3 text-xs text-stone-400">
-          <span>Mana: <span className="text-blue-300">{spell.manaCost}</span></span>
+          <span>Mana: <span className="text-fuchsia-300">{spell.manaCost}</span></span>
           <span>Craft DC: <span className="text-amber-300">{spell.craftDc}</span></span>
         </div>
         {comp && (
@@ -233,7 +233,7 @@ export function V3SpellDetailDialog({
               </Button>
             </div>
             <p className="text-xs text-stone-400" data-testid="text-v3-total-mana">
-              Total mana: <span className="text-blue-300">{totalMana}</span>
+              Total mana: <span className="text-fuchsia-300">{totalMana}</span>
               <span className="text-stone-500"> (base {baseMana}{extraMana > 0 ? ` + ${extraMana} for level` : ""}{reachExtra !== 0 ? ` ${reachExtra > 0 ? "+" : "−"} ${Math.abs(reachExtra)} for range` : ""})</span>
             </p>
             {manaMult > 1 && (

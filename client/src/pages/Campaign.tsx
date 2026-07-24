@@ -797,7 +797,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
               {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                 <>
                   <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
-                    <Label className="text-sm font-semibold text-violet-400">Mana</Label>
+                    <Label className="text-sm font-semibold text-fuchsia-400">Mana</Label>
                   </div>
                   {campaignSystem !== 'aa-v3' && (
                   <div>

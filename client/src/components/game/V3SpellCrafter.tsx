@@ -536,7 +536,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
       {/* Cost summary + craft */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3 text-sm">
-          <span className={`flex items-center gap-1 ${notEnoughMana ? "text-red-400" : "text-violet-300"}`} data-testid="text-craft-mana-cost">
+          <span className={`flex items-center gap-1 ${notEnoughMana ? "text-red-400" : "text-fuchsia-300"}`} data-testid="text-craft-mana-cost">
             <Droplet className="h-4 w-4" /> {manaCost} mana
           </span>
           <span className="text-stone-500">·</span>

@@ -58,7 +58,7 @@ function CharStatBars({ char, thin }: { char: FreeHotbarCharView; thin?: boolean
     <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
       <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color="bg-red-500" thin={thin} />
       <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
-      <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-blue-500" thin={thin} />
+      <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-fuchsia-400" thin={thin} />
     </div>
   );
 }
@@ -383,7 +383,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         <span>Mana</span>
                         <span data-testid="text-peek-mana">{c.mana ?? 0} / {c.maxMana ?? 0}</span>
                       </div>
-                      <StatBar value={c.mana ?? 0} max={c.maxMana ?? 0} color="bg-blue-500" />
+                      <StatBar value={c.mana ?? 0} max={c.maxMana ?? 0} color="bg-fuchsia-400" />
                     </div>
                   </div>
                 </div>

@@ -9021,14 +9021,14 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
 
           {/* Mana Bar - AA V2 / AA V3 only, when character has a mana pool */}
           {showManaBar && (
-            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-violet-600 relative overflow-hidden w-32 md:w-44">
-              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-violet-200">
+            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-fuchsia-500 relative overflow-hidden w-32 md:w-44">
+              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-fuchsia-200">
                 <span>Mana</span>
                 <span>{Math.min(character.mana ?? 0, effectiveMaxMana)}/{effectiveMaxMana}</span>
               </div>
               <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                 <motion.div 
-                  className="h-full bg-gradient-to-r from-violet-700 to-violet-500"
+                  className="h-full bg-gradient-to-r from-fuchsia-700 to-fuchsia-400"
                   initial={false}
                   animate={{ width: `${Math.min(100, ((character.mana ?? 0) / effectiveMaxMana) * 100)}%` }}
                   transition={{ duration: 0.8, ease: "easeInOut" }}
@@ -13731,7 +13731,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-medium text-purple-400 truncate">{spell.name}</span>
-                        {spell.manaCost > 0 && <span className="text-violet-400 text-[10px]">{spell.manaCost}M</span>}
+                        {spell.manaCost > 0 && <span className="text-fuchsia-400 text-[10px]">{spell.manaCost}M</span>}
                       </div>
                     </div>
                   ))}
@@ -18055,7 +18055,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     const labels = {
       hp: { title: 'HP', color: 'text-red-400', border: 'border-red-700/60' },
       energy: { title: 'Energy', color: 'text-blue-400', border: 'border-blue-700/60' },
-      mana: { title: 'Mana', color: 'text-violet-400', border: 'border-violet-700/60' },
+      mana: { title: 'Mana', color: 'text-fuchsia-400', border: 'border-fuchsia-700/60' },
     }[bar];
     return (
       <div
@@ -20432,7 +20432,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       {quickEditPanel('mana')}
                       {!editingOverview && (
                         <div className="relative">
-                          <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />
+                          <Progress value={Math.min(100, effectiveMaxMana > 0 ? Math.round(((liveCharacter.mana ?? 0) / effectiveMaxMana) * 100) : 0)} className="h-2 [&>div]:bg-fuchsia-400" data-testid="progress-mana" />
                           {(liveCharacter.tempMana ?? 0) > 0 && effectiveMaxMana > 0 && (
                             <div
                               className="absolute top-0 h-2 bg-fuchsia-300/80 rounded-r-full border-l border-stone-900/40"
@@ -22957,7 +22957,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           {isAAV2 && (
                           <div>
                             <div className="flex items-center gap-2">
-                              <Label className="text-violet-300">Mana Cost</Label>
+                              <Label className="text-fuchsia-300">Mana Cost</Label>
                               {!canEditAsGM && (
                                 <TooltipProvider>
                                   <Tooltip>
