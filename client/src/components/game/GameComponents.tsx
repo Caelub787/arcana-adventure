@@ -18083,6 +18083,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
+  // V3: inventory delete buttons hidden by default, revealed via a toggle
+  const [showInventoryDelete, setShowInventoryDelete] = useState(false);
   
   useQuery({
     queryKey: campaignId ? ['template-items-summary', campaignId] : ['system-items-summary', campaignSystem],
@@ -19815,7 +19817,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-5' : 'grid-cols-7'}`}>
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-4' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -21908,6 +21910,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 )}
                 <div className="flex justify-end gap-2">
+                  {isAAV3 && canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowInventoryDelete((v) => !v)}
+                      data-testid="button-toggle-inventory-delete"
+                      className={showInventoryDelete
+                        ? 'bg-red-900/40 border-red-700 text-red-300 hover:bg-red-900/60'
+                        : 'bg-stone-700 border-stone-600 hover:bg-stone-600'}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" /> {showInventoryDelete ? 'Done' : 'Remove'}
+                    </Button>
+                  )}
                   {isGM && (
                     <Button size="sm" variant="outline" onClick={() => setShowManageTemplates(true)} data-testid="button-manage-templates" className="bg-stone-700 border-stone-600 hover:bg-stone-600">
                       <Layers className="h-4 w-4 mr-1" /> Templates
@@ -22046,7 +22061,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
                           onEquip={isAAV3 ? (it, equipped) => equipItemMutation.mutate({ id: it.id, equipped }) : undefined}
-                          onDeleteItem={(id) => deleteItemMutation.mutate(id)}
+                          onDeleteItem={isAAV3 && !showInventoryDelete ? undefined : (id) => deleteItemMutation.mutate(id)}
                           onUpdateQuantity={(itemId, quantityChange) => {
                             if (!stack.items || stack.items.length === 0) return;
                             
