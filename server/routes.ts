@@ -4942,7 +4942,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enriched = await Promise.all(entries.map(async (entry) => {
         if (entry.characterId) {
           const access = await checkCharacterAccess(entry.characterId, userId, 'view');
-          if (!access.character || !access.allowed) return null; // dangling or revoked — hide
+          if (!access.character) {
+            // Dangling — character was deleted; remove the stale entry
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to clean up dangling free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
+          if (!access.allowed) return null; // revoked — hide but keep
           const character = access.character;
           return {
             ...entry,
@@ -4953,7 +4962,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         if (entry.itemId) {
           const item = await storage.getItem(entry.itemId);
-          if (!item) return null;
+          if (!item) {
+            // Dangling — item was deleted; remove the stale entry
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to clean up dangling free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
           let sourceCharacter = null;
           if (item.characterId) {
             const access = await checkCharacterAccess(item.characterId, userId, 'view');

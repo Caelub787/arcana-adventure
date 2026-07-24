@@ -239,6 +239,8 @@ export interface IStorage {
   getFreeHotbarEntries(userId: string, campaignId: string): Promise<FreeHotbarEntry[]>;
   upsertFreeHotbarEntry(entry: InsertFreeHotbarEntry): Promise<FreeHotbarEntry>;
   deleteFreeHotbarEntry(id: string): Promise<void>;
+  deleteFreeHotbarEntriesByCharacter(characterId: string): Promise<void>;
+  deleteFreeHotbarEntriesByItem(itemId: string): Promise<void>;
 
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
@@ -1454,6 +1456,11 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCharacterWithTokens(id: string): Promise<void> {
     await db.delete(tokens).where(eq(tokens.characterId, id));
+    // Clean up free hotbar slots pointing at this character or its items
+    await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.characterId, id));
+    await db.delete(freeHotbarEntries).where(
+      inArray(freeHotbarEntries.itemId, db.select({ id: items.id }).from(items).where(eq(items.characterId, id)))
+    );
     await db.delete(items).where(eq(items.characterId, id));
     await db.delete(hotbars).where(eq(hotbars.characterId, id));
     await db.delete(spells).where(eq(spells.characterId, id));
@@ -2378,6 +2385,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.id, id));
   }
 
+  async deleteFreeHotbarEntriesByCharacter(characterId: string): Promise<void> {
+    await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.characterId, characterId));
+  }
+
+  async deleteFreeHotbarEntriesByItem(itemId: string): Promise<void> {
+    await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.itemId, itemId));
+  }
+
   // Item operations
   async getItemsByCharacter(characterId: string): Promise<Item[]> {
     const result = await db.select()
@@ -2403,6 +2418,7 @@ export class DatabaseStorage implements IStorage {
   async deleteItem(id: string): Promise<void> {
     // Clean up any hotbar entries that reference this item
     await db.delete(hotbars).where(eq(hotbars.itemId, id));
+    await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.itemId, id));
     // Then delete the item
     await db.delete(items).where(eq(items.id, id));
   }
