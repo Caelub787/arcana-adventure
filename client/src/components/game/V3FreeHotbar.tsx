@@ -193,7 +193,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const endHold = (entry: FreeHotbarEntryView) => {
     if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
     if (holdArmed.current) {
-      holdArmed.current = false;
+      // Leave holdArmed set: on desktop the click event still fires after
+      // pointerup, and the click handler consumes+resets the flag so the
+      // hold doesn't also open the sheet/item over the remove dialog.
       setRemoveTarget(entry);
       return true; // consumed as a hold
     }
@@ -259,7 +261,10 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           return (
             <div key={slotIndex} className="relative">
               <button
-                onClick={() => { if (!holdArmed.current) handleSlotClick(slotIndex); }}
+                onClick={() => {
+                  if (holdArmed.current) { holdArmed.current = false; return; }
+                  handleSlotClick(slotIndex);
+                }}
                 onPointerDown={() => { if (entry) startHold(entry); }}
                 onPointerUp={(e) => {
                   if (entry && endHold(entry)) { e.preventDefault(); e.stopPropagation(); }
@@ -267,7 +272,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 onPointerLeave={cancelHold}
                 onPointerCancel={cancelHold}
                 onContextMenu={(e) => { if (entry) { e.preventDefault(); setRemoveTarget(entry); } }}
-                className={`w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none ${
+                className={`w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
                   entry ? 'border-amber-600 bg-stone-800 hover:border-amber-500' : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
                 }`}
                 data-testid={`free-hotbar-slot-${slotIndex}`}
