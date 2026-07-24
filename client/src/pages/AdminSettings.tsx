@@ -12825,11 +12825,22 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                         <SelectValue placeholder="Select slot" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="helm">Helm</SelectItem>
-                        <SelectItem value="chest">Chest</SelectItem>
-                        <SelectItem value="arm">Arm</SelectItem>
-                        <SelectItem value="legs">Legs</SelectItem>
-                        <SelectItem value="boots">Boots</SelectItem>
+                        {systemSlug === 'aa-v3' ? (
+                          <>
+                            <SelectItem value="helm">Helm</SelectItem>
+                            <SelectItem value="torso">Torso</SelectItem>
+                            <SelectItem value="leggings">Leggings</SelectItem>
+                            <SelectItem value="boots">Boots</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="helm">Helm</SelectItem>
+                            <SelectItem value="chest">Chest</SelectItem>
+                            <SelectItem value="arm">Arm</SelectItem>
+                            <SelectItem value="legs">Legs</SelectItem>
+                            <SelectItem value="boots">Boots</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

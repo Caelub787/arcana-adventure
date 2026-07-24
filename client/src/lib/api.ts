@@ -1086,6 +1086,33 @@ class ApiClient {
     return this.request(`/hotbars/${id}`, { method: 'DELETE' });
   }
 
+  // AA V3 free hotbar (per-user, per-campaign loadouts)
+  async getFreeHotbar(campaignId: string): Promise<any[]> {
+    return this.request(`/campaigns/${campaignId}/free-hotbar`);
+  }
+
+  async setFreeHotbarSlot(campaignId: string, data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null }): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/free-hotbar`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFreeHotbarEntry(campaignId: string, entryId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/free-hotbar/${entryId}`, { method: 'DELETE' });
+  }
+
+  async getFreeHotbarCharacters(campaignId: string): Promise<{ id: string; name: string; portrait: string | null; userId: string | null }[]> {
+    return this.request(`/campaigns/${campaignId}/free-hotbar/characters`);
+  }
+
+  async equipItem(id: string, equipped: boolean): Promise<{ item: Item; unequippedIds: string[] }> {
+    return this.request(`/items/${id}/equip`, {
+      method: 'POST',
+      body: JSON.stringify({ equipped }),
+    });
+  }
+
   // Items
   async getItems(characterId: string): Promise<Item[]> {
     return this.request(`/characters/${characterId}/items`);

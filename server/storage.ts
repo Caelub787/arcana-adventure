@@ -9,6 +9,7 @@ import {
   type PasswordResetToken, type InsertPasswordResetToken,
   type Scene, type InsertScene,
   type Hotbar, type InsertHotbar,
+  type FreeHotbarEntry, type InsertFreeHotbarEntry,
   type Item, type InsertItem,
   type Spell, type InsertSpell,
   type CharacterPermission, type InsertCharacterPermission,
@@ -89,7 +90,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
@@ -232,6 +233,12 @@ export interface IStorage {
   getHotbarsByCharacter(characterId: string): Promise<Hotbar[]>;
   upsertHotbar(hotbar: InsertHotbar): Promise<Hotbar>;
   deleteHotbar(id: string): Promise<void>;
+
+  // Free hotbar operations (AA V3 per-user, per-campaign loadouts)
+  getFreeHotbarEntry(id: string): Promise<FreeHotbarEntry | undefined>;
+  getFreeHotbarEntries(userId: string, campaignId: string): Promise<FreeHotbarEntry[]>;
+  upsertFreeHotbarEntry(entry: InsertFreeHotbarEntry): Promise<FreeHotbarEntry>;
+  deleteFreeHotbarEntry(id: string): Promise<void>;
 
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
@@ -2327,6 +2334,48 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHotbar(id: string): Promise<void> {
     await db.delete(hotbars).where(eq(hotbars.id, id));
+  }
+
+  // Free hotbar operations (AA V3 per-user, per-campaign loadouts)
+  async getFreeHotbarEntry(id: string): Promise<FreeHotbarEntry | undefined> {
+    const [entry] = await db.select()
+      .from(freeHotbarEntries)
+      .where(eq(freeHotbarEntries.id, id))
+      .limit(1);
+    return entry;
+  }
+
+  async getFreeHotbarEntries(userId: string, campaignId: string): Promise<FreeHotbarEntry[]> {
+    return await db.select()
+      .from(freeHotbarEntries)
+      .where(and(
+        eq(freeHotbarEntries.userId, userId),
+        eq(freeHotbarEntries.campaignId, campaignId),
+      ));
+  }
+
+  async upsertFreeHotbarEntry(entry: InsertFreeHotbarEntry): Promise<FreeHotbarEntry> {
+    const [result] = await db
+      .insert(freeHotbarEntries)
+      .values(entry)
+      .onConflictDoUpdate({
+        target: [
+          freeHotbarEntries.userId,
+          freeHotbarEntries.campaignId,
+          freeHotbarEntries.loadoutIndex,
+          freeHotbarEntries.slotIndex,
+        ],
+        set: {
+          characterId: entry.characterId ?? null,
+          itemId: entry.itemId ?? null,
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async deleteFreeHotbarEntry(id: string): Promise<void> {
+    await db.delete(freeHotbarEntries).where(eq(freeHotbarEntries.id, id));
   }
 
   // Item operations

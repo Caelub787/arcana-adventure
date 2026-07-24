@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { V3_ATTRIBUTES, v3DurabilityAdjustedValue } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
 import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
+import { V3FreeHotbar } from "@/components/game/V3FreeHotbar";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -12676,7 +12677,7 @@ export default function Campaign() {
              </div>
            )}
 
-           {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
+           {!spectatorMode && !isSandbox && !isAAV3 && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
                character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
@@ -13388,8 +13389,26 @@ export default function Campaign() {
         </div>
       )}
       
+      {/* AA V3 free hotbar — replaces the V2-style battle/GM hotbars in V3 campaigns */}
+      {!spectatorMode && !isSandbox && isAAV3 && (
+        <V3FreeHotbar
+          campaignId={campaignId!}
+          isGM={role === 'gm'}
+          onOpenCharacterSheet={(characterId) => {
+            const char = (characters as any[] | undefined)?.find((c: any) => c.id === characterId);
+            if (char) openCharacterSheet(char);
+          }}
+          onOpenItem={(item, sourceCharacterId) => {
+            const owner = sourceCharacterId
+              ? (characters as any[] | undefined)?.find((c: any) => c.id === sourceCharacterId)
+              : null;
+            openDetachedItemDetail(owner || { id: '', name: 'Library' }, item);
+          }}
+        />
+      )}
+
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!spectatorMode && !isSandbox && role === 'gm' && !isMobile && (
+      {!spectatorMode && !isSandbox && !isAAV3 && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}

@@ -15247,9 +15247,10 @@ interface InventoryItemRowProps {
   onOpenSpellbook?: (item: any) => void;
   isAAV3?: boolean;
   canEditQuantity?: boolean;
+  onEquip?: (item: any, equipped: boolean) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity, onEquip }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const qtyPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -15494,6 +15495,9 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 {item.containerId && depth === 0 && (
                   <Badge className="bg-stone-600 text-xs">In Container</Badge>
                 )}
+                {isAAV3 && item.isEquipped && (
+                  <Badge className="bg-emerald-700 text-xs" data-testid={`badge-equipped-${item.id}`}>Equipped</Badge>
+                )}
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-stone-400">
                 <span>{item.itemWeight}lbs</span>
@@ -15550,6 +15554,24 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             </div>
           </div>
           
+          {/* AA V3 equip/unequip toggle */}
+          {isAAV3 && canEdit && onEquip && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEquip(item, !item.isEquipped);
+              }}
+              className={`shrink-0 px-2 py-1 rounded text-xs font-medium border transition-colors ${
+                item.isEquipped
+                  ? 'border-emerald-600 text-emerald-400 hover:bg-emerald-900/30'
+                  : 'border-stone-600 text-stone-400 hover:border-amber-600 hover:text-amber-400'
+              }`}
+              data-testid={`button-equip-${item.id}`}
+            >
+              {item.isEquipped ? 'Unequip' : 'Equip'}
+            </button>
+          )}
+
           {/* Remove from container button */}
           {item.containerId && canEdit && (
             <button
@@ -15701,6 +15723,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               onOpenSpellbook={onOpenSpellbook}
               isAAV3={isAAV3}
               canEditQuantity={canEditQuantity}
+              onEquip={onEquip}
             />
           ))}
         </div>
@@ -18775,14 +18798,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // AA V3: fold the boosts from all equipped armor into a map keyed by
   // attribute/skill target. Applied to the V3 Attrs & Skills tab.
   const equippedV3ArmorBoosts = useMemo(() => {
-    const armorItemIds = hotbars
-      .filter((h: any) => h.hotbarType === 'armor' && h.itemId)
-      .map((h: any) => h.itemId);
-    const armorItems = armorItemIds
-      .map((id: string) => items.find((it: any) => it.id === id))
-      .filter(Boolean);
+    // V3 equip system: boosts come from items flagged isEquipped (the hotbar
+    // system no longer exists in V3 — equipping happens from the inventory).
+    const armorItems = items.filter((it: any) => it.itemType === 'armor' && it.isEquipped);
     return computeV3ArmorBoosts(armorItems as any);
-  }, [hotbars, items]);
+  }, [items]);
 
   // Custom skill mutations
   const addCustomSkillMutation = useMutation({
@@ -19057,6 +19077,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
       if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
     }
+  });
+
+  // AA V3 equip/unequip — server enforces one-per-armor-slot and returns any
+  // auto-unequipped sibling ids; the query invalidation picks everything up.
+  const equipItemMutation = useMutation({
+    mutationFn: ({ id, equipped }: { id: string; equipped: boolean }) => api.equipItem(id, equipped),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't equip item", description: err?.message || 'Failed', variant: 'destructive' });
+    },
   });
 
   const deleteItemMutation = useMutation({
@@ -19437,11 +19470,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // Total weight = sum of all items weight (including items in containers)
   const totalWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
   
-  // Container bonus only applies when container is equipped in utility hotbar
+  // Container bonus: V2 requires the container in the utility hotbar; V3 uses
+  // the equip flag (hotbars no longer exist in V3).
   const utilityHotbars = hotbars.filter((h: any) => h.hotbarType === 'utility' && h.itemId);
   const equippedContainerIds = new Set(utilityHotbars.map((h: any) => h.itemId));
   const equippedContainerBonus = items
-    .filter((item: any) => item.isContainer && equippedContainerIds.has(item.id))
+    .filter((item: any) => item.isContainer && (isAAV3 ? item.isEquipped : equippedContainerIds.has(item.id)))
     .reduce((sum: number, item: any) => sum + (item.carryCapacity || 0), 0);
   
   const baseCarryWeight = currentSpecies?.carryWeight || 50; // Get from species or default to 50
@@ -19473,7 +19507,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       item.name.toLowerCase().includes(itemSearch.toLowerCase())
     );
   }
-  if (itemTypeFilter !== "all") {
+  if (itemTypeFilter === "equipped") {
+    filteredItems = filteredItems.filter((item: any) => item.isEquipped);
+  } else if (itemTypeFilter !== "all") {
     filteredItems = filteredItems.filter((item: any) => item.itemType === itemTypeFilter);
   }
 
@@ -19662,7 +19698,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
     // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
     ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
-    { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
+    // V3 drops the character-sheet Hotbars tab (replaced by the free hotbar + equip system).
+    ...(isAAV3 ? [] : [{ value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' }]),
     // V3 drops the Background tab: portrait + name/nickname editing moved to
     // long-press interactions on the Overview tab.
     ...(isAAV3 ? [] : [{ value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' }]),
@@ -21926,6 +21963,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
+                      {isAAV3 && <SelectItem value="equipped">Equipped</SelectItem>}
                       <SelectItem value="weapon">Weapons</SelectItem>
                       <SelectItem value="ammunition">Ammunition</SelectItem>
                       <SelectItem value="armor">Armor</SelectItem>
@@ -22002,6 +22040,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           isAAV3={isAAV3}
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
+                          onEquip={isAAV3 ? (it, equipped) => equipItemMutation.mutate({ id: it.id, equipped }) : undefined}
                           onDeleteItem={(id) => deleteItemMutation.mutate(id)}
                           onUpdateQuantity={(itemId, quantityChange) => {
                             if (!stack.items || stack.items.length === 0) return;
@@ -26828,11 +26867,22 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                         <SelectValue placeholder="Select body part..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="helm">Helm</SelectItem>
-                        <SelectItem value="chest">Chest</SelectItem>
-                        <SelectItem value="arm">Arm</SelectItem>
-                        <SelectItem value="legs">Legs</SelectItem>
-                        <SelectItem value="boots">Boots</SelectItem>
+                        {isAAV3 ? (
+                          <>
+                            <SelectItem value="helm">Helm</SelectItem>
+                            <SelectItem value="torso">Torso</SelectItem>
+                            <SelectItem value="leggings">Leggings</SelectItem>
+                            <SelectItem value="boots">Boots</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="helm">Helm</SelectItem>
+                            <SelectItem value="chest">Chest</SelectItem>
+                            <SelectItem value="arm">Arm</SelectItem>
+                            <SelectItem value="legs">Legs</SelectItem>
+                            <SelectItem value="boots">Boots</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -29353,11 +29403,22 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                           <Select value={currentData.armorSlot || ''} onValueChange={(v) => setEditData({ ...editData, armorSlot: v })}>
                             <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-armor-slot"><SelectValue placeholder="Select slot..." /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="helm">Helm</SelectItem>
-                              <SelectItem value="chest">Chest</SelectItem>
-                              <SelectItem value="arm">Arm</SelectItem>
-                              <SelectItem value="legs">Legs</SelectItem>
-                              <SelectItem value="boots">Boots</SelectItem>
+                              {isAAV3 ? (
+                                <>
+                                  <SelectItem value="helm">Helm</SelectItem>
+                                  <SelectItem value="torso">Torso</SelectItem>
+                                  <SelectItem value="leggings">Leggings</SelectItem>
+                                  <SelectItem value="boots">Boots</SelectItem>
+                                </>
+                              ) : (
+                                <>
+                                  <SelectItem value="helm">Helm</SelectItem>
+                                  <SelectItem value="chest">Chest</SelectItem>
+                                  <SelectItem value="arm">Arm</SelectItem>
+                                  <SelectItem value="legs">Legs</SelectItem>
+                                  <SelectItem value="boots">Boots</SelectItem>
+                                </>
+                              )}
                             </SelectContent>
                           </Select>
                         ) : (
@@ -29646,11 +29707,22 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                           <SelectValue placeholder="Select slot..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="helm">Helm</SelectItem>
-                          <SelectItem value="chest">Chest</SelectItem>
-                          <SelectItem value="arm">Arm</SelectItem>
-                          <SelectItem value="legs">Legs</SelectItem>
-                          <SelectItem value="boots">Boots</SelectItem>
+                          {isAAV3 ? (
+                            <>
+                              <SelectItem value="helm">Helm</SelectItem>
+                              <SelectItem value="torso">Torso</SelectItem>
+                              <SelectItem value="leggings">Leggings</SelectItem>
+                              <SelectItem value="boots">Boots</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="helm">Helm</SelectItem>
+                              <SelectItem value="chest">Chest</SelectItem>
+                              <SelectItem value="arm">Arm</SelectItem>
+                              <SelectItem value="legs">Legs</SelectItem>
+                              <SelectItem value="boots">Boots</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     ) : (

@@ -4884,6 +4884,223 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // --- AA V3 free hotbar (per-user, per-campaign loadouts) ---
+  const { normalizeV3ArmorSlot } = await import("@shared/v3");
+
+  // Access check for putting an item/character on the caller's free hotbar.
+  // Characters require edit access. Character-owned items require edit access
+  // on the owning character. Library items (characterId null) are GM-only.
+  const checkFreeHotbarTargetAccess = async (
+    userId: string,
+    campaignId: string,
+    body: { characterId?: string | null; itemId?: string | null },
+  ): Promise<{ ok: boolean; error?: string; status?: number }> => {
+    if (body.characterId) {
+      const access = await checkCharacterAccess(body.characterId, userId, 'edit');
+      if (!access.character) return { ok: false, status: 404, error: "Character not found" };
+      if (access.character.campaignId !== campaignId) {
+        return { ok: false, status: 400, error: "Character is not in this campaign" };
+      }
+      if (!access.allowed) return { ok: false, status: 403, error: "You don't have edit access to this character" };
+      return { ok: true };
+    }
+    if (body.itemId) {
+      const item = await storage.getItem(body.itemId);
+      if (!item) return { ok: false, status: 404, error: "Item not found" };
+      if (item.characterId) {
+        const access = await checkCharacterAccess(item.characterId, userId, 'edit');
+        if (!access.character || access.character.campaignId !== campaignId) {
+          return { ok: false, status: 400, error: "Item's character is not in this campaign" };
+        }
+        if (!access.allowed) return { ok: false, status: 403, error: "You don't have edit access to this item's character" };
+        return { ok: true };
+      }
+      // Library/admin item — GM only
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return { ok: false, status: 404, error: "Campaign not found" };
+      const isGM = await hasGmAccess(userId, campaignId, campaign.gmUserId);
+      if (!isGM) return { ok: false, status: 403, error: "Only GMs can assign library items" };
+      return { ok: true };
+    }
+    return { ok: false, status: 400, error: "Entry must reference a character or an item" };
+  };
+
+  app.get("/api/campaigns/:campaignId/free-hotbar", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const campaignId = req.params.campaignId;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(userId, campaignId, campaign.gmUserId);
+      if (!isGM && !(await storage.isCampaignMember(campaignId, userId))) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+
+      const entries = await storage.getFreeHotbarEntries(userId, campaignId);
+      // Re-validate access per entry on every read: permissions may have been
+      // revoked since assignment, so stale entries must not leak data.
+      const enriched = await Promise.all(entries.map(async (entry) => {
+        if (entry.characterId) {
+          const access = await checkCharacterAccess(entry.characterId, userId, 'view');
+          if (!access.character || !access.allowed) return null; // dangling or revoked — hide
+          const character = access.character;
+          return {
+            ...entry,
+            character: { id: character.id, name: character.name, portrait: character.portrait },
+            item: null,
+            sourceCharacter: null,
+          };
+        }
+        if (entry.itemId) {
+          const item = await storage.getItem(entry.itemId);
+          if (!item) return null;
+          let sourceCharacter = null;
+          if (item.characterId) {
+            const access = await checkCharacterAccess(item.characterId, userId, 'view');
+            if (!access.character || !access.allowed) return null; // revoked — hide
+            sourceCharacter = { id: access.character.id, name: access.character.name, portrait: access.character.portrait };
+          } else if (!isGM) {
+            return null; // library items are GM-only
+          }
+          return { ...entry, character: null, item, sourceCharacter };
+        }
+        return null;
+      }));
+      res.json(enriched.filter(Boolean));
+    } catch (err) {
+      console.error("Failed to fetch free hotbar:", err);
+      res.status(500).json({ error: "Failed to fetch free hotbar" });
+    }
+  });
+
+  app.put("/api/campaigns/:campaignId/free-hotbar", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const campaignId = req.params.campaignId;
+      const loadoutIndex = Number(req.body.loadoutIndex);
+      const slotIndex = Number(req.body.slotIndex);
+      const characterId = req.body.characterId || null;
+      const itemId = req.body.itemId || null;
+
+      if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
+        return res.status(400).json({ error: "loadoutIndex must be 0-8" });
+      }
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 4) {
+        return res.status(400).json({ error: "slotIndex must be 0-4" });
+      }
+      if ((characterId && itemId) || (!characterId && !itemId)) {
+        return res.status(400).json({ error: "Provide exactly one of characterId or itemId" });
+      }
+
+      const access = await checkFreeHotbarTargetAccess(userId, campaignId, { characterId, itemId });
+      if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
+
+      const entry = await storage.upsertFreeHotbarEntry({
+        userId, campaignId, loadoutIndex, slotIndex,
+        characterId, itemId,
+      });
+      res.json(entry);
+    } catch (err) {
+      console.error("Failed to update free hotbar:", err);
+      res.status(500).json({ error: "Failed to update free hotbar" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/free-hotbar/:entryId", requireAuth, async (req, res) => {
+    try {
+      const entry = await storage.getFreeHotbarEntry(req.params.entryId);
+      if (!entry) return res.json({ success: true });
+      if (entry.userId !== req.session.userId!) {
+        return res.status(403).json({ error: "Not your hotbar entry" });
+      }
+      await storage.deleteFreeHotbarEntry(entry.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete free hotbar entry" });
+    }
+  });
+
+  // Characters the caller can put on their free hotbar (edit access; GM: all).
+  app.get("/api/campaigns/:campaignId/free-hotbar/characters", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const campaignId = req.params.campaignId;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(userId, campaignId, campaign.gmUserId);
+      if (!isGM && !(await storage.isCampaignMember(campaignId, userId))) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+
+      const allChars = await storage.getCampaignCharacters(campaignId);
+      let editable = allChars;
+      if (!isGM) {
+        const results = await Promise.all(allChars.map(async (c) => {
+          const access = await checkCharacterAccess(c.id, userId, 'edit');
+          return access.allowed ? c : null;
+        }));
+        editable = results.filter(Boolean) as typeof allChars;
+      }
+      res.json(editable.map(c => ({ id: c.id, name: c.name, portrait: c.portrait, userId: c.userId })));
+    } catch (err) {
+      console.error("Failed to fetch free hotbar characters:", err);
+      res.status(500).json({ error: "Failed to fetch characters" });
+    }
+  });
+
+  // AA V3 equip/unequip. Enforces one equipped armor item per normalized armor
+  // slot (helm/torso/leggings/boots) per character in V3 campaigns.
+  app.post("/api/items/:id/equip", requireAuth, async (req, res) => {
+    try {
+      const equipped = !!req.body.equipped;
+      const item = await storage.getItem(req.params.id);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      if (!item.characterId) return res.status(400).json({ error: "Only character-owned items can be equipped" });
+
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      if (!access.allowed) return res.status(403).json({ error: "You don't have edit access to this character" });
+
+      const character = access.character!;
+      const campaign = character.campaignId ? await storage.getCampaign(character.campaignId) : null;
+      const isV3 = campaign?.system === 'aa-v3';
+
+      // Equip the target first, then swap out same-slot siblings. No interactive
+      // transactions on the Neon HTTP driver, so ordering matters: a mid-way
+      // failure leaves the slot temporarily double-equipped (self-healing on the
+      // next equip) rather than fully unequipped.
+      const updated = await storage.updateItem(item.id, { isEquipped: equipped });
+
+      const unequippedIds: string[] = [];
+      if (equipped && isV3 && item.itemType === 'armor') {
+        const slot = normalizeV3ArmorSlot(item.armorSlot);
+        if (slot) {
+          const siblings = await storage.getItemsByCharacter(item.characterId);
+          for (const other of siblings) {
+            if (other.id === item.id) continue;
+            if (other.itemType === 'armor' && other.isEquipped && normalizeV3ArmorSlot(other.armorSlot) === slot) {
+              try {
+                await storage.updateItem(other.id, { isEquipped: false });
+                unequippedIds.push(other.id);
+              } catch (swapErr) {
+                console.error(`Failed to auto-unequip sibling armor ${other.id}:`, swapErr);
+              }
+            }
+          }
+        }
+      }
+      if (character.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "items_updated",
+          characterId: item.characterId,
+        });
+      }
+      res.json({ item: updated, unequippedIds });
+    } catch (err) {
+      console.error("Failed to equip item:", err);
+      res.status(500).json({ error: "Failed to equip item" });
+    }
+  });
+
   // Spell routes
   app.get("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
     try {

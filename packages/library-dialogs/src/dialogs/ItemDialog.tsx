@@ -59,6 +59,9 @@ const V3_RUNE_STAT_TARGET_OPTIONS: { value: string; label: string }[] = [
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"] as const;
+// AA V3 uses a fixed 4-slot armor model (mirrors V3_ARMOR_SLOTS in shared/v3.ts —
+// inlined because this package has no shared imports).
+const V3_ARMOR_SLOTS = ["helm", "torso", "leggings", "boots"] as const;
 
 // AA V3 rune-slot count by rarity (mirrors v3RuneSlotCount in shared/v3.ts).
 // Inlined because this package has no shared imports.
@@ -764,7 +767,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 <div><Label>Armor Slot</Label>
                   <Select value={draft.armorSlot ?? ""} onValueChange={v => set({ armorSlot: v || null })}>
                     <SelectItem value="">—</SelectItem>
-                    {ARMOR_SLOTS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    {(aav3 ? V3_ARMOR_SLOTS : ARMOR_SLOTS).map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </Select>
                 </div>
                 {!aav3 && <div><Label>Armor Bonus</Label>

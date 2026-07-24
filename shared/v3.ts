@@ -183,6 +183,37 @@ export function v3BoostTargetLabel(key: string): string {
   return V3_BOOST_TARGETS.find(t => t.value === key)?.label ?? key;
 }
 
+// AA V3 armor slots ----------------------------------------------------------
+//
+// V3 armor uses exactly 4 slots: helm, torso, leggings, boots. Legacy values
+// from the shared 5-slot list (helm/chest/arm/legs/boots) are normalized:
+// chest→torso, arm→torso, legs→leggings. Only one item per normalized slot may
+// be equipped on a character at a time.
+export const V3_ARMOR_SLOTS = ["helm", "torso", "leggings", "boots"] as const;
+export type V3ArmorSlot = (typeof V3_ARMOR_SLOTS)[number];
+
+export const V3_ARMOR_SLOT_LABELS: Record<V3ArmorSlot, string> = {
+  helm: "Helm",
+  torso: "Torso",
+  leggings: "Leggings",
+  boots: "Boots",
+};
+
+export function normalizeV3ArmorSlot(slot: string | null | undefined): V3ArmorSlot | null {
+  if (!slot) return null;
+  const s = slot.toLowerCase();
+  if (s === "chest" || s === "arm" || s === "torso") return "torso";
+  if (s === "legs" || s === "leggings") return "leggings";
+  if (s === "helm") return "helm";
+  if (s === "boots") return "boots";
+  return null;
+}
+
+export function v3ArmorSlotLabel(slot: string | null | undefined): string {
+  const normalized = normalizeV3ArmorSlot(slot);
+  return normalized ? V3_ARMOR_SLOT_LABELS[normalized] : "Not specified";
+}
+
 // Fold the boosts from a set of equipped armor items into a single map keyed by
 // the boost target (attribute key or skill key). Used by the character sheet to
 // apply boosts to die tiers / skill modifiers.
