@@ -8812,6 +8812,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           item={itemData}
           character={character}
           canEdit={false}
+          runesSection={itemData.itemType !== 'rune' ? (
+            <V3RuneSocketPanel item={itemData} character={character} items={[]} canEdit={false} />
+          ) : undefined}
           onSpellCast={itemData.itemType === 'scroll' ? async () => {
             try {
               const currentQty = itemData.quantity || 1;
@@ -17434,6 +17437,9 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
       item={liveItem}
       character={character}
       canEdit={isOwner || isGM}
+      runesSection={liveItem?.itemType !== 'rune' ? (
+        <V3RuneSocketPanel item={liveItem} character={character} items={items} canEdit={isOwner || isGM} />
+      ) : undefined}
       bringToFront={bringToFront}
       floatingZIndices={floatingZIndices}
       charPanelSuffix={charPanelSuffix}
@@ -23920,6 +23926,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           item={selectedSpellbook}
           character={character}
           canEdit={isOwner || isGM}
+          runesSection={selectedSpellbook.itemType !== 'rune' ? (
+            <V3RuneSocketPanel item={selectedSpellbook} character={character} items={items} canEdit={isOwner || isGM} />
+          ) : undefined}
           bringToFront={bringToFront}
           floatingZIndices={floatingZIndices}
           charPanelSuffix={charPanelSuffix}

@@ -22,7 +22,7 @@ import {
   v3LevelExtraMana,
 } from "@shared/v3spells";
 import { v3ExhaustionCostMultiplier } from "@shared/v3";
-import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices, Info } from "lucide-react";
+import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices, Info, Package } from "lucide-react";
 
 interface SpellbookCharacter {
   id: string;
@@ -43,6 +43,7 @@ interface SpellbookPanelProps {
   charPanelSuffix?: string;
   onSpellCast?: () => void;
   defaultPosition?: { x: number; y: number };
+  runesSection?: React.ReactNode;
 }
 
 // One-line description of a crafted spell's composition (core + intent + delivery).
@@ -266,6 +267,7 @@ export function SpellbookPanel({
   charPanelSuffix = "",
   onSpellCast,
   defaultPosition,
+  runesSection,
 }: SpellbookPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -411,34 +413,58 @@ export function SpellbookPanel({
         </TabsContent>
 
         <TabsContent value="info" className="flex-1 min-h-0 overflow-y-auto p-4 mt-0 space-y-4" data-testid="content-spellbook-info">
-          {item.image && (
-            <img src={item.image} alt={item.name} className="w-full max-h-48 object-contain rounded-lg border border-stone-700 bg-stone-950" />
-          )}
-          <div>
-            <h3 className="text-lg font-semibold text-amber-400" data-testid="text-spellbook-item-name">{item.name}</h3>
-            {item.rarity && <span className="text-xs text-stone-400 capitalize">{item.rarity}</span>}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0">
+              {item.image ? (
+                <img src={item.image} alt={item.name} className="h-24 w-24 rounded object-cover border border-stone-600" />
+              ) : (
+                <div className="h-24 w-24 rounded bg-stone-700 flex items-center justify-center border border-stone-600">
+                  <Package className="h-10 w-10 text-stone-500" />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 content-start">
+              <div>
+                <span className="text-xs text-stone-400 block">Type</span>
+                <p className="text-stone-200 capitalize">{item.itemType || "—"}</p>
+              </div>
+              {item.rarity && (
+                <div>
+                  <span className="text-xs text-stone-400 block">Rarity</span>
+                  <p className={`capitalize font-medium ${
+                    item.rarity === 'legendary' ? 'text-amber-400' :
+                    item.rarity === 'epic' ? 'text-purple-400' :
+                    item.rarity === 'rare' ? 'text-blue-400' :
+                    item.rarity === 'uncommon' ? 'text-green-400' :
+                    'text-stone-300'
+                  }`}>{item.rarity}</p>
+                </div>
+              )}
+              <div>
+                <span className="text-xs text-stone-400 block">Quantity</span>
+                <p className="text-stone-200">{item.totalQuantity || item.quantity || 1}</p>
+              </div>
+              <div>
+                <span className="text-xs text-stone-400 block">Weight</span>
+                <p className="text-stone-200">{item.itemWeight != null ? `${item.itemWeight} lbs` : "—"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-stone-400 block">Price</span>
+                <p className="text-stone-200">{item.price != null && item.price !== 0 ? `${item.price} ${item.currency || "copper"}` : "—"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-stone-400 block">Spell Capacity</span>
+                <p className="text-stone-200">{(item.maxSpells ?? 0) > 0 ? item.maxSpells : "Unlimited"}</p>
+              </div>
+            </div>
           </div>
           {item.description && (
-            <p className="text-sm text-stone-300 whitespace-pre-wrap" data-testid="text-spellbook-item-description">{item.description}</p>
+            <div>
+              <span className="text-xs text-stone-400 block">Description</span>
+              <p className="text-sm text-stone-300 whitespace-pre-wrap" data-testid="text-spellbook-item-description">{item.description}</p>
+            </div>
           )}
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
-              <span className="text-xs text-stone-500 block">Type</span>
-              <span className="text-stone-200 capitalize">{item.itemType || "—"}</span>
-            </div>
-            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
-              <span className="text-xs text-stone-500 block">Weight</span>
-              <span className="text-stone-200">{item.weight != null ? `${item.weight} lbs` : "—"}</span>
-            </div>
-            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
-              <span className="text-xs text-stone-500 block">Price</span>
-              <span className="text-stone-200">{item.price != null && item.price !== 0 ? `${item.price} ${item.currency || "gold"}` : "—"}</span>
-            </div>
-            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
-              <span className="text-xs text-stone-500 block">Spell Capacity</span>
-              <span className="text-stone-200">{(item.maxSpells ?? 0) > 0 ? item.maxSpells : "Unlimited"}</span>
-            </div>
-          </div>
+          {runesSection}
         </TabsContent>
       </Tabs>
     </FloatingPanel>
