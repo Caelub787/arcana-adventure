@@ -12677,8 +12677,9 @@ export default function Campaign() {
              </div>
            )}
 
-           {!spectatorMode && !isSandbox && !isAAV3 && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
+           {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
+               statsOnly={isAAV3}
                character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
                targetedTokenId={targetedTokenId}

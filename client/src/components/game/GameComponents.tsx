@@ -4762,6 +4762,9 @@ interface BattleMapHotbarsProps {
   onClearDetonatableGridTarget?: () => void;
   notesPanelOpen?: boolean;
   notesPanelWidth?: number;
+  // Render only the bottom-left DC/HP/Energy/Mana bars (used in AA V3, where
+  // the V2 hotbar strip is replaced by the free hotbar but the bars remain).
+  statsOnly?: boolean;
   onRequestSaveRoll?: (params: {
     targetCharacterId: string;
     targetUserId: string;
@@ -8834,7 +8837,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -8993,6 +8996,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
       </div>
 
       {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
+      {!statsOnly && (
       <div 
         className="absolute bottom-2 md:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
         style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
@@ -9084,6 +9088,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           )}
         </div>
       </div>
+      )}
     </>
   );
 }

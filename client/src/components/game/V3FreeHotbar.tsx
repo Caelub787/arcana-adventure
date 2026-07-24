@@ -291,13 +291,19 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
     enabled: !!browsingChar,
   });
 
-  const { data: libraryItems = [], isLoading: libraryLoading } = useQuery({
-    queryKey: ['free-hotbar-library', campaignId, librarySection],
-    queryFn: () => librarySection === 'personal'
-      ? api.getSystemItems('aa-v3', undefined, true)
-      : api.getSystemItems('aa-v3', campaignId),
+  // Same source as every other in-campaign item browser: campaign library
+  // items (incl. the GM's cross-campaign personal items) + admin system items.
+  const { data: templateItems, isLoading: libraryLoading } = useQuery({
+    queryKey: ['template-items', campaignId],
+    queryFn: () => api.getTemplateItems(campaignId),
     enabled: isGM && !!librarySection,
   });
+  const libraryItems = useMemo(() => {
+    if (!templateItems) return [];
+    return librarySection === 'personal'
+      ? templateItems.campaignItems ?? []
+      : templateItems.systemItems ?? [];
+  }, [templateItems, librarySection]);
 
   const q = search.trim().toLowerCase();
   const filteredChars = characters.filter((c) => !q || c.name.toLowerCase().includes(q));
@@ -305,7 +311,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
     .filter((it: any) => !q || it.name?.toLowerCase().includes(q));
 
   const inItemBrowser = !!browsingChar || !!librarySection;
-  const browserTitle = browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'My Library' : 'Admin Library';
+  const browserTitle = browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'Campaign & My Library' : 'Admin Library';
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -363,7 +369,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                   </Button>
                   <Button variant="outline" className="w-full justify-start border-stone-600 text-stone-300 hover:bg-stone-700"
                     onClick={() => { setLibrarySection('personal'); setSearch(''); }} data-testid="button-library-personal">
-                    <Library className="h-4 w-4 mr-2" /> My Library
+                    <Library className="h-4 w-4 mr-2" /> Campaign & My Library
                   </Button>
                 </div>
               )}
