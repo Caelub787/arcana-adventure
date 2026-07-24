@@ -4896,12 +4896,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     body: { characterId?: string | null; itemId?: string | null },
   ): Promise<{ ok: boolean; error?: string; status?: number }> => {
     if (body.characterId) {
-      const access = await checkCharacterAccess(body.characterId, userId, 'edit');
+      // View access is enough to pin a character to your own hotbar (read-only
+      // teammate peek); editing still requires edit access at use time.
+      const access = await checkCharacterAccess(body.characterId, userId, 'view');
       if (!access.character) return { ok: false, status: 404, error: "Character not found" };
       if (access.character.campaignId !== campaignId) {
         return { ok: false, status: 400, error: "Character is not in this campaign" };
       }
-      if (!access.allowed) return { ok: false, status: 403, error: "You don't have edit access to this character" };
+      if (!access.allowed) return { ok: false, status: 403, error: "You don't have access to this character" };
       return { ok: true };
     }
     if (body.itemId) {
@@ -4953,9 +4955,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           if (!access.allowed) return null; // revoked — hide but keep
           const character = access.character;
+          const canEdit = isGM
+            ? true
+            : (await checkCharacterAccess(entry.characterId, userId, 'edit')).allowed;
           return {
             ...entry,
-            character: { id: character.id, name: character.name, portrait: character.portrait },
+            character: {
+              id: character.id,
+              name: character.name,
+              portrait: character.portrait,
+              hp: character.hp,
+              maxHp: character.maxHp,
+              energy: character.energy,
+              maxEnergy: character.maxEnergy,
+              mana: character.mana,
+              maxMana: character.maxMana,
+              canEdit,
+            },
             item: null,
             sourceCharacter: null,
           };
@@ -5050,15 +5066,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const allChars = await storage.getCampaignCharacters(campaignId);
-      let editable = allChars;
-      if (!isGM) {
+      let visible: { char: (typeof allChars)[number]; canEdit: boolean }[];
+      if (isGM) {
+        visible = allChars.map((c) => ({ char: c, canEdit: true }));
+      } else {
         const results = await Promise.all(allChars.map(async (c) => {
-          const access = await checkCharacterAccess(c.id, userId, 'edit');
-          return access.allowed ? c : null;
+          const view = await checkCharacterAccess(c.id, userId, 'view');
+          if (!view.allowed) return null;
+          const edit = await checkCharacterAccess(c.id, userId, 'edit');
+          return { char: c, canEdit: edit.allowed };
         }));
-        editable = results.filter(Boolean) as typeof allChars;
+        visible = results.filter(Boolean) as typeof visible;
       }
-      res.json(editable.map(c => ({ id: c.id, name: c.name, portrait: c.portrait, userId: c.userId })));
+      res.json(visible.map(({ char: c, canEdit }) => ({ id: c.id, name: c.name, portrait: c.portrait, userId: c.userId, canEdit })));
     } catch (err) {
       console.error("Failed to fetch free hotbar characters:", err);
       res.status(500).json({ error: "Failed to fetch characters" });

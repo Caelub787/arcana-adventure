@@ -12,11 +12,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 5;
+
+export interface FreeHotbarCharView {
+  id: string;
+  name: string;
+  portrait: string | null;
+  hp?: number;
+  maxHp?: number;
+  energy?: number;
+  maxEnergy?: number;
+  mana?: number;
+  maxMana?: number;
+  canEdit?: boolean;
+}
 
 export interface FreeHotbarEntryView {
   id: string;
@@ -24,9 +37,30 @@ export interface FreeHotbarEntryView {
   slotIndex: number;
   characterId: string | null;
   itemId: string | null;
-  character: { id: string; name: string; portrait: string | null } | null;
+  character: FreeHotbarCharView | null;
   item: any | null;
   sourceCharacter: { id: string; name: string; portrait: string | null } | null;
+}
+
+// Compact stacked HP/Energy/Mana bars for character slot tiles + peek panel.
+function StatBar({ value, max, color, thin }: { value: number; max: number; color: string; thin?: boolean }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return (
+    <div className={`w-full ${thin ? 'h-[3px]' : 'h-2'} bg-black/60 ${thin ? '' : 'rounded'} overflow-hidden`}>
+      <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function CharStatBars({ char, thin }: { char: FreeHotbarCharView; thin?: boolean }) {
+  if (char.maxHp == null) return null;
+  return (
+    <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
+      <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color="bg-red-500" thin={thin} />
+      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
+      <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-blue-500" thin={thin} />
+    </div>
+  );
 }
 
 interface V3FreeHotbarProps {
@@ -45,6 +79,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   });
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<FreeHotbarEntryView | null>(null);
+  const [peekCharId, setPeekCharId] = useState<string | null>(null);
   const hHeld = useRef(false);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdArmed = useRef(false);
@@ -85,6 +120,33 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     queryKey: ['free-hotbar', campaignId],
     queryFn: () => api.getFreeHotbar(campaignId),
   });
+
+  // Live stat overlay: the campaign characters query is invalidated by the
+  // character-update WebSocket flow, so merging its hp/energy/mana values on
+  // top of the hotbar snapshot keeps the slot bars current during play.
+  const { data: liveChars } = useQuery<any[]>({
+    queryKey: [`/api/campaigns/${campaignId}/characters`],
+  });
+  const liveCharMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const c of liveChars ?? []) map.set(c.id, c);
+    return map;
+  }, [liveChars]);
+  const mergeLive = (char: FreeHotbarCharView): FreeHotbarCharView => {
+    const live = liveCharMap.get(char.id);
+    if (!live) return char;
+    return {
+      ...char,
+      hp: live.hp ?? char.hp,
+      maxHp: live.maxHp ?? char.maxHp,
+      energy: live.energy ?? char.energy,
+      maxEnergy: live.maxEnergy ?? char.maxEnergy,
+      mana: live.mana ?? char.mana,
+      maxMana: live.maxMana ?? char.maxMana,
+      portrait: live.portrait ?? char.portrait,
+      name: live.name ?? char.name,
+    };
+  };
 
   const setSlotMutation = useMutation({
     mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null }) =>
@@ -136,7 +198,11 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     const entry = currentEntries.get(slotIndex);
     if (!entry) { setPickerSlot(slotIndex); return; }
     if (entry.characterId && entry.character) {
-      onOpenCharacterSheet(entry.characterId);
+      if (entry.character.canEdit === false) {
+        setPeekCharId(entry.characterId);
+      } else {
+        onOpenCharacterSheet(entry.characterId);
+      }
     } else if (entry.item) {
       onOpenItem(entry.item, entry.item.characterId || null);
     }
@@ -187,11 +253,18 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
               >
                 {entry ? (
                   entry.character ? (
-                    entry.character.portrait ? (
-                      <img src={entry.character.portrait} alt={entry.character.name} className="w-full h-full object-cover pointer-events-none" />
-                    ) : (
-                      <User className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500" />
-                    )
+                    <div className="relative w-full h-full pointer-events-none">
+                      {entry.character.portrait ? (
+                        <img src={entry.character.portrait} alt={entry.character.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <User className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0" data-testid={`free-hotbar-slot-${slotIndex}-bars`}>
+                        <CharStatBars char={mergeLive(entry.character)} thin />
+                      </div>
+                    </div>
                   ) : entry.item ? (
                     entry.item.image ? (
                       <img src={entry.item.image} alt={entry.item.name} className="w-full h-full object-cover pointer-events-none" />
@@ -244,6 +317,60 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           }
         />
       )}
+
+      {/* Read-only teammate peek panel */}
+      <Dialog open={!!peekCharId} onOpenChange={(open) => { if (!open) setPeekCharId(null); }}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-xs" data-testid="dialog-char-peek">
+          {(() => {
+            const raw = entries.find((e) => e.characterId === peekCharId)?.character;
+            if (!raw) return null;
+            const c = mergeLive(raw);
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-stone-200 flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-stone-400" />
+                    <span data-testid="text-peek-name">{c.name}</span>
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-stone-800 border border-stone-700 flex items-center justify-center shrink-0">
+                    {c.portrait ? (
+                      <img src={c.portrait} alt={c.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="h-7 w-7 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2 pt-0.5">
+                    <div>
+                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                        <span>HP</span>
+                        <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
+                      </div>
+                      <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color="bg-red-500" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                        <span>Energy</span>
+                        <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
+                      </div>
+                      <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                        <span>Mana</span>
+                        <span data-testid="text-peek-mana">{c.mana ?? 0} / {c.maxMana ?? 0}</span>
+                      </div>
+                      <StatBar value={c.mana ?? 0} max={c.maxMana ?? 0} color="bg-blue-500" />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500">View only — you can't open this character's sheet.</p>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Remove confirmation */}
       <Dialog open={!!removeTarget} onOpenChange={(open) => { if (!open) setRemoveTarget(null); }}>
@@ -410,14 +537,21 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                     {c.portrait ? <img src={c.portrait} alt={c.name} className="w-full h-full object-cover" /> : <User className="h-4 w-4 text-amber-500" />}
                   </div>
                   <span className="text-sm text-stone-200 flex-1 truncate">{c.name}</span>
+                  {c.canEdit === false && (
+                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-stone-500 shrink-0" data-testid={`badge-view-only-${c.id}`}>
+                      <Eye className="h-3 w-3" /> View only
+                    </span>
+                  )}
                   <Button size="sm" variant="outline" className="h-7 text-xs border-amber-700 text-amber-400 hover:bg-amber-900/30"
                     onClick={() => onAssignCharacter(c.id)} data-testid={`button-assign-char-${c.id}`}>
                     Assign
                   </Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
-                    onClick={() => { setBrowsingChar({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-items-${c.id}`}>
-                    <Package className="h-3 w-3 mr-1" /> Item
-                  </Button>
+                  {c.canEdit !== false && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingChar({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-items-${c.id}`}>
+                      <Package className="h-3 w-3 mr-1" /> Item
+                    </Button>
+                  )}
                 </div>
               ))}
               {filteredChars.length === 0 && (

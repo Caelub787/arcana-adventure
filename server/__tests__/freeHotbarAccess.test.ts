@@ -384,13 +384,22 @@ describe("PUT /api/campaigns/:campaignId/free-hotbar — write-path guards", () 
     expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
   });
 
-  it("rejects assigning a character the caller lacks edit access to (403)", async () => {
+  it("allows assigning a character with only view access (teammate peek)", async () => {
     h.storage.getCharacter.mockResolvedValue(foreignChar);
     h.storage.getCharacterPermission.mockResolvedValue({
       characterId: foreignChar.id,
       userId: player,
-      accessLevel: "view", // view is not enough for the write path
+      accessLevel: "view", // view is enough to pin a read-only teammate tile
     });
+
+    const res = await putHotbar(player, validBody);
+    expect(res.status).toBe(200);
+    expect(h.storage.upsertFreeHotbarEntry).toHaveBeenCalled();
+  });
+
+  it("rejects assigning a character the caller has no access to (403)", async () => {
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue(null);
 
     const res = await putHotbar(player, validBody);
     expect(res.status).toBe(403);

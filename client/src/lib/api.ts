@@ -1102,7 +1102,7 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/free-hotbar/${entryId}`, { method: 'DELETE' });
   }
 
-  async getFreeHotbarCharacters(campaignId: string): Promise<{ id: string; name: string; portrait: string | null; userId: string | null }[]> {
+  async getFreeHotbarCharacters(campaignId: string): Promise<{ id: string; name: string; portrait: string | null; userId: string | null; canEdit: boolean }[]> {
     return this.request(`/campaigns/${campaignId}/free-hotbar/characters`);
   }
 
