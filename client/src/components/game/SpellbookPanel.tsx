@@ -22,7 +22,7 @@ import {
   v3LevelExtraMana,
 } from "@shared/v3spells";
 import { v3ExhaustionCostMultiplier } from "@shared/v3";
-import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices } from "lucide-react";
+import { BookOpen, Sparkles, Trash2, Wand2, Clock, Minus, Plus, Dices, Info } from "lucide-react";
 
 interface SpellbookCharacter {
   id: string;
@@ -322,12 +322,15 @@ export function SpellbookPanel({
       onBringToFront={() => bringToFront?.(panelKey)}
     >
       <Tabs defaultValue="spells" className="flex flex-col h-full">
-        <TabsList className="grid grid-cols-2 bg-stone-950 border-b border-stone-700 shrink-0 rounded-none">
+        <TabsList className="grid grid-cols-3 bg-stone-950 border-b border-stone-700 shrink-0 rounded-none">
           <TabsTrigger value="spells" data-testid="tab-spellbook-spells" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
             <BookOpen className="h-4 w-4 mr-2" /> Spells
           </TabsTrigger>
           <TabsTrigger value="builder" data-testid="tab-spellbook-builder" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
             <Wand2 className="h-4 w-4 mr-2" /> Builder
+          </TabsTrigger>
+          <TabsTrigger value="info" data-testid="tab-spellbook-info" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
+            <Info className="h-4 w-4 mr-2" /> Item Info
           </TabsTrigger>
         </TabsList>
 
@@ -405,6 +408,37 @@ export function SpellbookPanel({
             atCapacity={(item.maxSpells ?? 0) > 0 && spells.length >= item.maxSpells}
             onCrafted={(spell, autoFilled) => { if (spell) invalidateSpells(); }}
           />
+        </TabsContent>
+
+        <TabsContent value="info" className="flex-1 min-h-0 overflow-y-auto p-4 mt-0 space-y-4" data-testid="content-spellbook-info">
+          {item.image && (
+            <img src={item.image} alt={item.name} className="w-full max-h-48 object-contain rounded-lg border border-stone-700 bg-stone-950" />
+          )}
+          <div>
+            <h3 className="text-lg font-semibold text-amber-400" data-testid="text-spellbook-item-name">{item.name}</h3>
+            {item.rarity && <span className="text-xs text-stone-400 capitalize">{item.rarity}</span>}
+          </div>
+          {item.description && (
+            <p className="text-sm text-stone-300 whitespace-pre-wrap" data-testid="text-spellbook-item-description">{item.description}</p>
+          )}
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
+              <span className="text-xs text-stone-500 block">Type</span>
+              <span className="text-stone-200 capitalize">{item.itemType || "—"}</span>
+            </div>
+            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
+              <span className="text-xs text-stone-500 block">Weight</span>
+              <span className="text-stone-200">{item.weight != null ? `${item.weight} lbs` : "—"}</span>
+            </div>
+            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
+              <span className="text-xs text-stone-500 block">Price</span>
+              <span className="text-stone-200">{item.price != null && item.price !== 0 ? `${item.price} ${item.currency || "gold"}` : "—"}</span>
+            </div>
+            <div className="bg-stone-950 border border-stone-700 rounded-lg p-2">
+              <span className="text-xs text-stone-500 block">Spell Capacity</span>
+              <span className="text-stone-200">{(item.maxSpells ?? 0) > 0 ? item.maxSpells : "Unlimited"}</span>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </FloatingPanel>

@@ -13403,6 +13403,12 @@ export default function Campaign() {
             const owner = sourceCharacterId
               ? (characters as any[] | undefined)?.find((c: any) => c.id === sourceCharacterId)
               : null;
+            // Mirror the inventory click behavior: spellbooks/scrolls open the
+            // full spellbook panel (spells + spell crafter), not the plain item card.
+            if (owner && (item.itemType === 'spellbook' || item.itemType === 'scroll')) {
+              openDetachedSpellbook(owner, item);
+              return;
+            }
             openDetachedItemDetail(owner || { id: '', name: 'Library' }, item);
           }}
         />
