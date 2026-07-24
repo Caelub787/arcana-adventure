@@ -12729,7 +12729,7 @@ export default function Campaign() {
         if (!sheetChar?.id) return null;
         return (
           <div 
-            className={`fixed z-[35] transition-all duration-300 ${isAAV3 ? 'bottom-[64px] md:bottom-[104px]' : 'bottom-[105px] md:bottom-[140px]'}`}
+            className={`fixed z-[35] transition-all duration-300 ${isAAV3 ? 'bottom-[84px] md:bottom-[110px]' : 'bottom-[105px] md:bottom-[140px]'}`}
             style={{ right: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 16}px` : '16px' }}
             data-testid="btn-character-overview"
           >
