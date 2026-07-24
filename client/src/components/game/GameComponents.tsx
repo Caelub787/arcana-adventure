@@ -15437,7 +15437,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Container Expand/Collapse Icon */}
           {item.isContainer && (
             <button
@@ -15562,6 +15562,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             </div>
           </div>
           
+          {/* Action buttons — grouped so they wrap together onto their own line on narrow screens */}
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
           {/* AA V3 equip/unequip toggle */}
           {isAAV3 && canEdit && onEquip && (
             <button
@@ -15630,6 +15632,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               {showStackedItems ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
           )}
+          </div>
         </div>
       </div>
 
