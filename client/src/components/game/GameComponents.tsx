@@ -19308,7 +19308,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       const { result: updatedChar, myCounter } = response;
       if (myCounter === mutationCounterRef.current) {
         pendingMutationRef.current = false;
-        if (updatedChar) {
+        // Don't overwrite local state while a debounced stepper update is still
+        // pending (user is mid-click-burst) — the queued PATCH will reconcile.
+        if (updatedChar && !debouncedCharTimerRef.current) {
           setLiveCharacter(updatedChar);
         }
       }
@@ -19330,6 +19332,33 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       });
     }
   });
+
+  // Rapid-click safe character updates (e.g. exhaustion +/- steppers).
+  // Each click computes from a synchronously-updated ref (so three fast clicks
+  // step 7→6→5→4 instead of all computing from the same stale render value),
+  // applies locally right away, and debounces a single PATCH with the final
+  // value so out-of-order server responses can't snap the UI back.
+  const liveCharRef = useRef<any>(liveCharacter);
+  useEffect(() => { liveCharRef.current = liveCharacter; }, [liveCharacter]);
+  const debouncedCharUpdatesRef = useRef<any>({});
+  const debouncedCharTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (debouncedCharTimerRef.current) clearTimeout(debouncedCharTimerRef.current);
+  }, []);
+  const queueCharacterUpdate = (compute: (cur: any) => Record<string, any> | null) => {
+    const updates = compute(liveCharRef.current);
+    if (!updates) return;
+    liveCharRef.current = { ...liveCharRef.current, ...updates };
+    setLiveCharacter((prev: any) => ({ ...prev, ...updates }));
+    debouncedCharUpdatesRef.current = { ...debouncedCharUpdatesRef.current, ...updates };
+    if (debouncedCharTimerRef.current) clearTimeout(debouncedCharTimerRef.current);
+    debouncedCharTimerRef.current = setTimeout(() => {
+      const payload = debouncedCharUpdatesRef.current;
+      debouncedCharUpdatesRef.current = {};
+      debouncedCharTimerRef.current = null;
+      updateCharacterMutation.mutate(payload);
+    }, 350);
+  };
 
   // Rest-without-food confirmation (triggered by long-press on rest buttons)
   const [restWithoutFoodType, setRestWithoutFoodType] = useState<'short' | 'long' | null>(null);
@@ -20649,11 +20678,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   variant="ghost"
                                   className="h-5 w-5 p-0"
                                   onClick={() => {
-                                    if (exhaustion > 0) {
-                                      const newVal = exhaustion - 1;
-                                      setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
-                                      updateCharacterMutation.mutate({ exhaustion: newVal });
-                                    }
+                                    queueCharacterUpdate((cur: any) => {
+                                      const curVal = cur.exhaustion || 0;
+                                      if (curVal <= 0) return null;
+                                      return { exhaustion: curVal - 1 };
+                                    });
                                   }}
                                   disabled={exhaustion === 0}
                                   data-testid="button-decrease-exhaustion"
@@ -20670,17 +20699,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   variant="ghost"
                                   className="h-5 w-5 p-0"
                                   onClick={() => {
-                                    if (exhaustion < exhaustionMax) {
-                                      const newVal = exhaustion + 1;
+                                    queueCharacterUpdate((cur: any) => {
+                                      const curVal = cur.exhaustion || 0;
+                                      if (curVal >= exhaustionMax) return null;
+                                      const newVal = curVal + 1;
                                       const updates: any = { exhaustion: newVal };
-                                      if (newVal === exhaustionMax) {
-                                        updates.hp = 0;
-                                        setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal, hp: 0 }));
-                                      } else {
-                                        setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
-                                      }
-                                      updateCharacterMutation.mutate(updates);
-                                    }
+                                      if (newVal === exhaustionMax) updates.hp = 0;
+                                      return updates;
+                                    });
                                   }}
                                   disabled={exhaustion === exhaustionMax}
                                   data-testid="button-increase-exhaustion"
