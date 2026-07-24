@@ -8912,6 +8912,10 @@ export default function Campaign() {
           // Characters list may change since visibility depends on permissions
           queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/my-permissions`] });
           queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
+          // V3 free hotbar re-validates access per entry on read; refetch so
+          // revoked characters/items disappear from slots immediately.
+          queryClientRef.current.refetchQueries({ queryKey: ['free-hotbar', effectiveCampaignIdRef.current] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['free-hotbar-chars', effectiveCampaignIdRef.current] });
           
           // Show toast only for the affected user (don't spam other users)
           if (data.targetUserId === user?.id) {
@@ -9137,6 +9141,10 @@ export default function Campaign() {
           }
           if (data.characterId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+          }
+          if (data.type === 'item_deleted') {
+            // A deleted item must vanish from V3 free-hotbar slots immediately.
+            queryClientRef.current.refetchQueries({ queryKey: ['free-hotbar', effectiveCampaignIdRef.current] });
           }
         }
         if (data.type === 'spell_created' || data.type === 'spell_updated' || data.type === 'spell_deleted') {

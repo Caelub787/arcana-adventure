@@ -219,7 +219,7 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — revoked access is hidde
     expect(body[0].character).toMatchObject({ id: foreignChar.id, name: foreignChar.name });
   });
 
-  it("hides the character entry after the permission is revoked (no row)", async () => {
+  it("hides AND deletes the character entry after the permission is revoked (no row)", async () => {
     h.storage.getFreeHotbarEntries.mockResolvedValue([charEntry]);
     h.storage.getCharacter.mockResolvedValue(foreignChar);
     h.storage.getCharacterPermission.mockResolvedValue(null);
@@ -227,6 +227,7 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — revoked access is hidde
     const res = await getHotbar(player);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+    expect(h.storage.deleteFreeHotbarEntry).toHaveBeenCalledWith(charEntry.id);
   });
 
   it("hides the character entry when the permission is downgraded below view", async () => {
@@ -270,7 +271,7 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — revoked access is hidde
     expect(await res.json()).toEqual([]);
   });
 
-  it("hides a character-owned item entry after access to the owning character is revoked", async () => {
+  it("hides AND deletes a character-owned item entry after access to the owning character is revoked", async () => {
     h.storage.getFreeHotbarEntries.mockResolvedValue([itemEntry]);
     h.storage.getItem.mockResolvedValue(foreignItem);
     h.storage.getCharacter.mockResolvedValue(foreignChar);
@@ -279,6 +280,7 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — revoked access is hidde
     const res = await getHotbar(player);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+    expect(h.storage.deleteFreeHotbarEntry).toHaveBeenCalledWith(itemEntry.id);
   });
 
   it("still returns the character-owned item entry while view access exists", async () => {

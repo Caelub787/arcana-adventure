@@ -4953,7 +4953,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             return null;
           }
-          if (!access.allowed) return null; // revoked — hide but keep
+          if (!access.allowed) {
+            // Access revoked — remove the entry entirely
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to remove revoked free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
           const character = access.character;
           const canEdit = isGM
             ? true
@@ -4990,10 +4998,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let sourceCharacter = null;
           if (item.characterId) {
             const access = await checkCharacterAccess(item.characterId, userId, 'view');
-            if (!access.character || !access.allowed) return null; // revoked — hide
+            if (!access.character || !access.allowed) {
+              // Access to the item's character revoked — remove the entry
+              try {
+                await storage.deleteFreeHotbarEntry(entry.id);
+              } catch (cleanupErr) {
+                console.warn(`Failed to remove revoked free hotbar entry ${entry.id}:`, cleanupErr);
+              }
+              return null;
+            }
             sourceCharacter = { id: access.character.id, name: access.character.name, portrait: access.character.portrait };
           } else if (!isGM) {
-            return null; // library items are GM-only
+            return null; // library items are GM-only (hidden, kept in case GM status is restored)
           }
           return { ...entry, character: null, item, sourceCharacter };
         }
