@@ -347,6 +347,149 @@ describe("GET /api/campaigns/:campaignId/free-hotbar — library items are GM-on
   });
 });
 
+describe("PUT /api/campaigns/:campaignId/free-hotbar — write-path guards", () => {
+  const putHotbar = (user: string, body: any) =>
+    api(`/api/campaigns/${campaignId}/free-hotbar`, { method: "PUT", user, body });
+
+  const validBody = { loadoutIndex: 0, slotIndex: 0, characterId: foreignChar.id };
+
+  it("rejects both characterId and itemId (400)", async () => {
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 0,
+      characterId: foreignChar.id, itemId: foreignItem.id,
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects neither characterId nor itemId (400)", async () => {
+    const res = await putHotbar(player, { loadoutIndex: 0, slotIndex: 0 });
+    expect(res.status).toBe(400);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects out-of-range loadoutIndex (400)", async () => {
+    for (const loadoutIndex of [-1, 9, 1.5, "abc"]) {
+      const res = await putHotbar(player, { ...validBody, loadoutIndex });
+      expect(res.status).toBe(400);
+    }
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects out-of-range slotIndex (400)", async () => {
+    for (const slotIndex of [-1, 5, 2.5, "abc"]) {
+      const res = await putHotbar(player, { ...validBody, slotIndex });
+      expect(res.status).toBe(400);
+    }
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects assigning a character the caller lacks edit access to (403)", async () => {
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "view", // view is not enough for the write path
+    });
+
+    const res = await putHotbar(player, validBody);
+    expect(res.status).toBe(403);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects assigning a character from another campaign (400)", async () => {
+    h.storage.getCharacter.mockResolvedValue({ ...foreignChar, campaignId: "other-camp" });
+    h.storage.getCharacterPermission.mockResolvedValue({
+      characterId: foreignChar.id,
+      userId: player,
+      accessLevel: "edit",
+    });
+
+    const res = await putHotbar(player, validBody);
+    expect(res.status).toBe(400);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing character (404)", async () => {
+    h.storage.getCharacter.mockResolvedValue(undefined);
+    const res = await putHotbar(player, validBody);
+    expect(res.status).toBe(404);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects an item owned by a character the caller can't edit (403)", async () => {
+    h.storage.getItem.mockResolvedValue(foreignItem);
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue(null);
+
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 1, itemId: foreignItem.id,
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects a library item assigned by a non-GM (403)", async () => {
+    h.storage.getItem.mockResolvedValue(libraryItem);
+
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 2, itemId: libraryItem.id,
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("allows a GM to assign a library item", async () => {
+    h.storage.getItem.mockResolvedValue(libraryItem);
+    const saved = { ...libraryEntry, userId: gm };
+    h.storage.upsertFreeHotbarEntry.mockResolvedValue(saved);
+
+    const res = await putHotbar(gm, {
+      loadoutIndex: 0, slotIndex: 2, itemId: libraryItem.id,
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.upsertFreeHotbarEntry).toHaveBeenCalledWith({
+      userId: gm,
+      campaignId,
+      loadoutIndex: 0,
+      slotIndex: 2,
+      characterId: null,
+      itemId: libraryItem.id,
+    });
+    expect(await res.json()).toMatchObject({ id: saved.id });
+  });
+
+  it("allows a player to assign their own character (happy path)", async () => {
+    const ownChar = { ...foreignChar, id: "char-own", userId: player };
+    h.storage.getCharacter.mockResolvedValue(ownChar);
+    const saved = { ...charEntry, id: "entry-own", characterId: ownChar.id };
+    h.storage.upsertFreeHotbarEntry.mockResolvedValue(saved);
+
+    const res = await putHotbar(player, {
+      loadoutIndex: 3, slotIndex: 4, characterId: ownChar.id,
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.upsertFreeHotbarEntry).toHaveBeenCalledWith({
+      userId: player,
+      campaignId,
+      loadoutIndex: 3,
+      slotIndex: 4,
+      characterId: ownChar.id,
+      itemId: null,
+    });
+    expect(await res.json()).toMatchObject({ id: saved.id });
+  });
+
+  it("rejects unauthenticated PUT requests (401)", async () => {
+    const res = await api(`/api/campaigns/${campaignId}/free-hotbar`, {
+      method: "PUT",
+      body: validBody,
+    });
+    expect(res.status).toBe(401);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /api/campaigns/:campaignId/free-hotbar — route-level guards", () => {
   it("rejects unauthenticated requests", async () => {
     const res = await api(`/api/campaigns/${campaignId}/free-hotbar`);
