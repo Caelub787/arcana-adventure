@@ -15299,6 +15299,20 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             qtyPressTimerRef.current = null;
           }
         },
+        // Cancel the long-press when the finger moves (i.e. the user is scrolling,
+        // not holding) so scrolling over an item never opens the quantity editor.
+        onTouchMove: () => {
+          if (qtyPressTimerRef.current) {
+            clearTimeout(qtyPressTimerRef.current);
+            qtyPressTimerRef.current = null;
+          }
+        },
+        onTouchCancel: () => {
+          if (qtyPressTimerRef.current) {
+            clearTimeout(qtyPressTimerRef.current);
+            qtyPressTimerRef.current = null;
+          }
+        },
       }
     : {};
 
@@ -19099,12 +19113,23 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // auto-unequipped sibling ids; the query invalidation picks everything up.
   const equipItemMutation = useMutation({
     mutationFn: ({ id, equipped }: { id: string; equipped: boolean }) => api.equipItem(id, equipped),
-    onSuccess: () => {
+    // Optimistically flip the equipped flag so the button responds instantly;
+    // the server reconciles armor auto-swaps on the follow-up invalidation.
+    onMutate: async ({ id, equipped }) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) =>
+        old.map((it: any) => (it.id === id ? { ...it, isEquipped: equipped } : it))
+      );
+      return { previousItems };
+    },
+    onError: (err: any, _v, context) => {
+      if (context?.previousItems) queryClient.setQueryData(['items', character.id], context.previousItems);
+      toast({ title: "Couldn't equip item", description: err?.message || 'Failed', variant: 'destructive' });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't equip item", description: err?.message || 'Failed', variant: 'destructive' });
     },
   });
 
