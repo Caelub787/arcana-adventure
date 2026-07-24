@@ -8970,7 +8970,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
     <>
       {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
       <div 
-        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
+        className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
         style={{ left: '8px' }}
         data-collision-id="hp-dc-display"
       >
@@ -9042,7 +9042,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
       {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
       {!statsOnly && (
       <div 
-        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
+        className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
         style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
         data-collision-id="character-hotbar"
       >
