@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
 
 const NUM_LOADOUTS = 9;
@@ -279,6 +280,9 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
   const [search, setSearch] = useState('');
   const [browsingChar, setBrowsingChar] = useState<{ id: string; name: string } | null>(null);
   const [librarySection, setLibrarySection] = useState<null | 'admin' | 'personal'>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [typeFilterOpen, setTypeFilterOpen] = useState(false);
+  const [typeSearch, setTypeSearch] = useState('');
 
   const { data: characters = [] } = useQuery({
     queryKey: ['free-hotbar-chars', campaignId],
@@ -307,8 +311,17 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
 
   const q = search.trim().toLowerCase();
   const filteredChars = characters.filter((c) => !q || c.name.toLowerCase().includes(q));
-  const filteredItems = (browsingChar ? charItems : librarySection ? libraryItems : [])
-    .filter((it: any) => !q || it.name?.toLowerCase().includes(q));
+  const browserItems = browsingChar ? charItems : librarySection ? libraryItems : [];
+  // Distinct item types present in the current list (for the filter picker).
+  const availableTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of browserItems as any[]) {
+      if (it?.itemType) set.add(it.itemType);
+    }
+    return Array.from(set).sort();
+  }, [browserItems]);
+  const filteredItems = (browserItems as any[])
+    .filter((it: any) => (!q || it.name?.toLowerCase().includes(q)) && (!typeFilter || it.itemType === typeFilter));
 
   const inItemBrowser = !!browsingChar || !!librarySection;
   const browserTitle = browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'Campaign & My Library' : 'Admin Library';
@@ -320,7 +333,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
           <DialogTitle className="text-stone-200 flex items-center gap-2">
             {inItemBrowser && (
               <button
-                onClick={() => { setBrowsingChar(null); setLibrarySection(null); setSearch(''); }}
+                onClick={() => { setBrowsingChar(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
                 className="text-stone-400 hover:text-stone-200"
                 data-testid="button-picker-back"
                 aria-label="Back"
@@ -331,13 +344,63 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
             {inItemBrowser ? browserTitle : 'Assign to Slot'}
           </DialogTitle>
         </DialogHeader>
-        <Input
-          placeholder={inItemBrowser ? 'Search items...' : 'Search characters...'}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="bg-stone-800 border-stone-700"
-          data-testid="input-picker-search"
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder={inItemBrowser ? 'Search items...' : 'Search characters...'}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-stone-800 border-stone-700 flex-1"
+            data-testid="input-picker-search"
+          />
+          {inItemBrowser && (
+            <Popover open={typeFilterOpen} onOpenChange={(open) => { setTypeFilterOpen(open); if (!open) setTypeSearch(''); }}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`h-9 shrink-0 border-stone-600 ${typeFilter ? 'text-amber-400 border-amber-700' : 'text-stone-300'} hover:bg-stone-700`}
+                  data-testid="button-picker-type-filter"
+                >
+                  <Filter className="h-3.5 w-3.5 mr-1" />
+                  <span className="text-xs capitalize">{typeFilter || 'All types'}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2 bg-stone-900 border-stone-700" align="end">
+                <Input
+                  placeholder="Search types..."
+                  value={typeSearch}
+                  onChange={(e) => setTypeSearch(e.target.value)}
+                  className="bg-stone-800 border-stone-700 h-8 mb-2"
+                  data-testid="input-type-filter-search"
+                />
+                <div className="max-h-52 overflow-y-auto space-y-0.5">
+                  <button
+                    onClick={() => { setTypeFilter(null); setTypeFilterOpen(false); setTypeSearch(''); }}
+                    className={`w-full text-left px-2 py-1.5 rounded text-sm hover:bg-stone-800 ${!typeFilter ? 'text-amber-400' : 'text-stone-300'}`}
+                    data-testid="button-type-filter-all"
+                  >
+                    All types
+                  </button>
+                  {availableTypes
+                    .filter((t) => !typeSearch.trim() || t.toLowerCase().includes(typeSearch.trim().toLowerCase()))
+                    .map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => { setTypeFilter(t); setTypeFilterOpen(false); setTypeSearch(''); }}
+                        className={`w-full text-left px-2 py-1.5 rounded text-sm capitalize hover:bg-stone-800 ${typeFilter === t ? 'text-amber-400' : 'text-stone-300'}`}
+                        data-testid={`button-type-filter-${t}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  {availableTypes.length === 0 && (
+                    <p className="text-xs text-stone-500 px-2 py-1.5">No types available</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
         <div className="flex-1 overflow-y-auto space-y-1 min-h-0" data-testid="picker-list">
           {!inItemBrowser && (
             <>
