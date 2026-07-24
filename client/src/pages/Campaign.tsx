@@ -13432,6 +13432,7 @@ export default function Campaign() {
         <V3FreeHotbar
           campaignId={campaignId!}
           isGM={role === 'gm'}
+          rightOffset={sidePanelOpen && !isMobile ? effectivePanelWidth : 0}
           onOpenCharacterSheet={(characterId) => {
             const char = (characters as any[] | undefined)?.find((c: any) => c.id === characterId);
             if (char) openCharacterSheet(char);
