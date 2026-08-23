@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: arcana-adventure
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run db:push -- --force && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: GCS_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: GCS_PROJECT_ID
+        sync: false
+      - key: PRIVATE_OBJECT_DIR
+        sync: false
+      - key: PUBLIC_OBJECT_SEARCH_PATHS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_DRIVE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false

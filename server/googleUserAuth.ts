@@ -19,11 +19,8 @@ function resolveOrigin(reqHost?: string): string {
     const host = reqHost.split(':')[0];
     return `https://${host}`;
   }
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
-  if (process.env.REPLIT_DOMAINS) {
-    return `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`;
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/+$/, '');
   }
   return 'http://localhost:5000';
 }

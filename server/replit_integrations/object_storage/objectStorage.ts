@@ -9,26 +9,38 @@ import {
   setObjectAclPolicy,
 } from "./objectAcl";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+// Builds the GCS client from a service account key (GCS_SERVICE_ACCOUNT_KEY,
+// either raw JSON or base64-encoded JSON). Falls back to Application Default
+// Credentials (e.g. GOOGLE_APPLICATION_CREDENTIALS pointing at a key file, or
+// ambient credentials when running on GCP) when the env var isn't set.
+function createStorageClient(): Storage {
+  const rawKey = process.env.GCS_SERVICE_ACCOUNT_KEY;
+  if (!rawKey) {
+    return new Storage({ projectId: process.env.GCS_PROJECT_ID });
+  }
+
+  let credentials: Record<string, unknown>;
+  try {
+    const decoded = rawKey.trim().startsWith("{")
+      ? rawKey
+      : Buffer.from(rawKey, "base64").toString("utf-8");
+    credentials = JSON.parse(decoded);
+  } catch {
+    throw new Error(
+      "GCS_SERVICE_ACCOUNT_KEY is not valid JSON or base64-encoded JSON. " +
+        "Paste the full service account key file contents, or its base64 encoding."
+    );
+  }
+
+  return new Storage({
+    credentials,
+    projectId:
+      process.env.GCS_PROJECT_ID || (credentials.project_id as string | undefined),
+  });
+}
 
 // The object storage client is used to interact with the object storage service.
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+export const objectStorageClient = createStorageClient();
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -55,8 +67,8 @@ export class ObjectStorageService {
     );
     if (paths.length === 0) {
       throw new Error(
-        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
+        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a GCS bucket and set " +
+          "PUBLIC_OBJECT_SEARCH_PATHS to a comma-separated list of /<bucket>/<path> prefixes."
       );
     }
     return paths;
@@ -67,8 +79,8 @@ export class ObjectStorageService {
     const dir = process.env.PRIVATE_OBJECT_DIR || "";
     if (!dir) {
       throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
+        "PRIVATE_OBJECT_DIR not set. Create a GCS bucket and set PRIVATE_OBJECT_DIR " +
+          "to a /<bucket>/<path> prefix."
       );
     }
     return dir;
@@ -271,30 +283,18 @@ async function signObjectURL({
   method: "GET" | "PUT" | "DELETE" | "HEAD";
   ttlSec: number;
 }): Promise<string> {
-  const request = {
-    bucket_name: bucketName,
-    object_name: objectName,
-    method,
-    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-  };
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
-    );
-  }
-
-  const { signed_url: signedURL } = await response.json();
+  const action =
+    method === "PUT"
+      ? "write"
+      : method === "DELETE"
+        ? "delete"
+        : "read";
+  const file = objectStorageClient.bucket(bucketName).file(objectName);
+  const [signedURL] = await file.getSignedUrl({
+    version: "v4",
+    action,
+    expires: Date.now() + ttlSec * 1000,
+  });
   return signedURL;
 }
 

@@ -11,40 +11,43 @@ function getPublicDriveClient() {
   return google.drive({ version: 'v3', auth: apiKey });
 }
 
-let connectionSettings: any;
+// Service-level Google Drive connection used for the authenticated fallback in
+// getImageBase64() (reading images the public API key can't see). Backed by a
+// long-lived refresh token for a Google account that has access to the shared
+// image library, obtained once via the standard OAuth consent flow and stored
+// in GOOGLE_DRIVE_REFRESH_TOKEN. Reuses the same OAuth client app as the
+// per-user Google Docs integration (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
+
+function getServiceOAuth2Client() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      'Google Drive not connected: missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_DRIVE_REFRESH_TOKEN'
+    );
+  }
+  const client = new google.auth.OAuth2(clientId, clientSecret);
+  client.setCredentials({ refresh_token: refreshToken });
+  return client;
+}
 
 async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-  
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now()) {
+    return cachedAccessToken.token;
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-drive',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
-
-  if (!connectionSettings || !accessToken) {
-    throw new Error('Google Drive not connected');
+  const client = getServiceOAuth2Client();
+  const { token, res } = await client.getAccessToken();
+  if (!token) {
+    throw new Error('Failed to obtain Google Drive access token');
   }
-  return accessToken;
+  const expiresAt = res?.data?.expiry_date
+    ? res.data.expiry_date - 60000
+    : Date.now() + 55 * 60 * 1000;
+  cachedAccessToken = { token, expiresAt };
+  return token;
 }
 
 // WARNING: Never cache this client.
@@ -58,14 +61,6 @@ async function getGoogleDriveClient() {
   });
 
   return google.drive({ version: 'v3', auth: oauth2Client });
-}
-
-// Get Google Docs API client for reading/writing documents
-export async function getGoogleDocsClient() {
-  const accessToken = await getAccessToken();
-  const oauth2Client = new google.auth.OAuth2();
-  oauth2Client.setCredentials({ access_token: accessToken });
-  return google.docs({ version: 'v1', auth: oauth2Client });
 }
 
 // Get Google Drive connection status. The image library uses an API key against
@@ -400,173 +395,3 @@ export async function searchImages(searchTerm: string, folderId?: string): Promi
   return uniqueResults.slice(0, 50);
 }
 
-// ========== GOOGLE DOCS SYNC FUNCTIONS ==========
-
-export interface GoogleDocInfo {
-  id: string;
-  name: string;
-  modifiedTime?: string;
-  webViewLink?: string;
-}
-
-// List Google Docs in the user's Drive
-export async function listGoogleDocs(pageSize: number = 50): Promise<GoogleDocInfo[]> {
-  const drive = await getGoogleDriveClient();
-  
-  const response = await drive.files.list({
-    q: "mimeType='application/vnd.google-apps.document' and trashed=false",
-    fields: 'files(id, name, modifiedTime, webViewLink)',
-    orderBy: 'modifiedTime desc',
-    pageSize,
-  });
-
-  return (response.data.files || []).map(file => ({
-    id: file.id!,
-    name: file.name!,
-    modifiedTime: file.modifiedTime || undefined,
-    webViewLink: file.webViewLink || undefined,
-  }));
-}
-
-// Export a note to a Google Doc
-export async function exportNoteToGoogleDoc(
-  title: string, 
-  content: string,
-  existingDocId?: string
-): Promise<{ docId: string; webViewLink: string }> {
-  const drive = await getGoogleDriveClient();
-  const docs = await getGoogleDocsClient();
-
-  if (existingDocId) {
-    // Update existing document
-    // First, get the document to find its structure
-    const existingDoc = await docs.documents.get({ documentId: existingDocId });
-    const docContent = existingDoc.data.body?.content || [];
-    
-    // Calculate the end index of the document content (excluding the final newline)
-    let endIndex = 1;
-    for (const element of docContent) {
-      if (element.endIndex && element.endIndex > endIndex) {
-        endIndex = element.endIndex;
-      }
-    }
-    
-    // Clear existing content and insert new content
-    const requests: any[] = [];
-    
-    // Delete all existing content (except the required first character)
-    if (endIndex > 2) {
-      requests.push({
-        deleteContentRange: {
-          range: {
-            startIndex: 1,
-            endIndex: endIndex - 1,
-          },
-        },
-      });
-    }
-    
-    // Insert the new content
-    requests.push({
-      insertText: {
-        location: { index: 1 },
-        text: content,
-      },
-    });
-    
-    if (requests.length > 0) {
-      await docs.documents.batchUpdate({
-        documentId: existingDocId,
-        requestBody: { requests },
-      });
-    }
-    
-    // Update the document title if needed
-    await drive.files.update({
-      fileId: existingDocId,
-      requestBody: { name: title },
-    });
-    
-    // Get the web view link
-    const updatedFile = await drive.files.get({
-      fileId: existingDocId,
-      fields: 'webViewLink',
-    });
-    
-    return {
-      docId: existingDocId,
-      webViewLink: updatedFile.data.webViewLink || `https://docs.google.com/document/d/${existingDocId}/edit`,
-    };
-  } else {
-    // Create a new Google Doc
-    const fileMetadata = {
-      name: title,
-      mimeType: 'application/vnd.google-apps.document',
-    };
-    
-    // Create the document
-    const file = await drive.files.create({
-      requestBody: fileMetadata,
-      fields: 'id, webViewLink',
-    });
-    
-    const docId = file.data.id!;
-    
-    // Insert content into the document
-    if (content) {
-      await docs.documents.batchUpdate({
-        documentId: docId,
-        requestBody: {
-          requests: [
-            {
-              insertText: {
-                location: { index: 1 },
-                text: content,
-              },
-            },
-          ],
-        },
-      });
-    }
-    
-    return {
-      docId,
-      webViewLink: file.data.webViewLink || `https://docs.google.com/document/d/${docId}/edit`,
-    };
-  }
-}
-
-// Import a Google Doc as note content
-export async function importGoogleDoc(docId: string): Promise<{ title: string; content: string }> {
-  const drive = await getGoogleDriveClient();
-  const docs = await getGoogleDocsClient();
-  
-  // Get the document title
-  const fileInfo = await drive.files.get({
-    fileId: docId,
-    fields: 'name',
-  });
-  
-  // Get the document content
-  const doc = await docs.documents.get({ documentId: docId });
-  
-  // Extract text content from the document
-  let content = '';
-  const body = doc.data.body?.content || [];
-  
-  for (const element of body) {
-    if (element.paragraph) {
-      const paragraph = element.paragraph;
-      for (const textElement of paragraph.elements || []) {
-        if (textElement.textRun?.content) {
-          content += textElement.textRun.content;
-        }
-      }
-    }
-  }
-  
-  return {
-    title: fileInfo.data.name || 'Imported Note',
-    content: content.trim(),
-  };
-}
