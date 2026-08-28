@@ -295,6 +295,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
       setShowAddItem(false);
       toast({ title: 'Item Created', description: 'System item created successfully' });
     },
@@ -313,6 +314,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
       queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
       queryClient.invalidateQueries({ queryKey: ['item-image', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['item-template-links', vars.id] });
@@ -447,6 +449,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     mutationFn: (id: string) => api.deleteSystemItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
       toast({ title: 'Item Deleted', description: 'System item deleted successfully' });
     },
     onError: (error: any) => {

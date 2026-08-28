@@ -66,6 +66,7 @@ function SiteUpdateBanner() {
           if (data.type === 'admin_data_changed') {
             const entityQueryMap: Record<string, string[][]> = {
               'system-items': [['system-items-summary'], ['system-items'], ['admin-archived-items']],
+              'classes': [['admin-classes'], ['classes']],
               'system-spells': [['system-spells'], ['system-spells-summary'], ['admin-archived-spells']],
               'system-species': [['system-species'], ['species']],
               'feat-templates': [['feat-templates']],
