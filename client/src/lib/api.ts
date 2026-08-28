@@ -511,6 +511,16 @@ export interface CampaignBan {
   username: string;
 }
 
+export interface CustomField {
+  id: string;
+  ownerType: string;
+  ownerId: string;
+  header: string;
+  body?: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface RollEntry {
   id: string;
   ownerType: string;
@@ -1331,6 +1341,33 @@ class ApiClient {
 
   async resetRollEntryToTemplate(id: string): Promise<RollEntry> {
     return this.request(`/roll-entries/${id}/reset-template`, { method: 'POST' });
+  }
+
+  // Custom Fields (C.A. only)
+  async getItemCustomFields(itemId: string): Promise<CustomField[]> {
+    return this.request(`/items/${itemId}/custom-fields`);
+  }
+
+  async getCharacterCustomFields(characterId: string): Promise<CustomField[]> {
+    return this.request(`/characters/${characterId}/custom-fields`);
+  }
+
+  async createCustomField(data: Partial<CustomField>): Promise<CustomField> {
+    return this.request('/custom-fields', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCustomField(id: string, data: Partial<CustomField>): Promise<CustomField> {
+    return this.request(`/custom-fields/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCustomField(id: string): Promise<void> {
+    return this.request(`/custom-fields/${id}`, { method: 'DELETE' });
   }
 
   // Public system item (single item for entity references)

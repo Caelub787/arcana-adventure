@@ -47,6 +47,7 @@ import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
+import { CustomFieldsEditor } from './CustomFieldsEditor';
 import { CraftRecipesEditor } from './CraftRecipesEditor';
 import { TemplateManager } from './TemplateManager';
 import { V3RuneAttachEditor } from './V3RuneAttachEditor';
@@ -31213,17 +31214,17 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 </div>
               </div>
             )}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && !isEditing && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && !isEditing && (
               <CraftSection item={currentData} character={character} canCraft={isOwner} isGM={isGM} />
             )}
             {/* Recipe editing only on library templates (no characterId).
                 Server admin endpoints reject edits on inventory copies, so
                 hide the editor there to avoid a misleading edit surface. */}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && isEditing && !currentData.characterId && isGM && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && isEditing && !currentData.characterId && isGM && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor
                   itemId={currentData.id}
-                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : 'aa-v2'}
+                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : campaignSystem === 'ca' ? 'ca' : 'aa-v2'}
                 />
               </div>
             )}
@@ -31265,6 +31266,13 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               characterMana={character?.mana ?? 0}
               characterItems={items as any[]}
             />
+            )}
+
+            {campaignSystem === 'ca' && (
+              <div className="pt-4 border-t border-stone-700">
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Custom Fields</h3>
+                <CustomFieldsEditor ownerType="item" ownerId={item.id} canEdit={isGM || isOwner} />
+              </div>
             )}
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (

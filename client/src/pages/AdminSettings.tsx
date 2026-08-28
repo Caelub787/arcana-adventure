@@ -237,6 +237,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : selectedSystem === 'C.A.' ? 'ca' : 'arcana-adventure';
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+  // C.A. also uses the new @arcana/library-dialogs ItemDialog (blank
+  // customizable sheet), but is NOT a "personal library" system — it keeps
+  // the Classes dashboard card hidden and the "Feat Trees" label, unlike
+  // aa-v2/aa-v3. Scoped narrowly to the ItemDialog routing decision below.
+  const useLibraryItemDialog = isPersonalLibSystem || systemSlug === 'ca';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their private library
@@ -1338,7 +1343,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             ItemFormDialog so the single-link picker (ItemTemplateLinkPicker)
             and its attendant flow stay intact and we never blindly write back
             an empty templateLinks array on legacy edits. */}
-        {isPersonalLibSystem ? (
+        {useLibraryItemDialog ? (
           <>
             <ItemDialog
               open={showAddItem}

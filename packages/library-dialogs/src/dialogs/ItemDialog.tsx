@@ -21,6 +21,7 @@ import {
 import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
+import { CustomFieldsEditor, type CustomFieldDraft } from "../components/CustomFieldsEditor";
 import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRecipesEditor";
 import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
@@ -261,6 +262,7 @@ export interface ItemDraft {
   socketedRunes?: SocketedRuneSnapshot[] | null;
   // Children
   rolls?: RollEntryDraft[];
+  customFields?: CustomFieldDraft[];
   craftRecipes?: CraftRecipeDraft[];
   buildRecipe?: BuildRecipeDraft | null;
   templateLinks?: string[];
@@ -280,6 +282,7 @@ const FRESH: ItemDraft = {
   durability: 10,
   isContainer: false,
   rolls: [],
+  customFields: [],
   craftRecipes: [],
   buildRecipe: { outputQuantity: 1, ingredients: [] },
   templateLinks: [],
@@ -304,6 +307,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [ammunitionTypes, setAmmunitionTypes] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
+  // C.A. items are blank customizable sheets — most fixed mechanical fields
+  // below are hidden for this system in favor of Custom Fields + Rolls.
+  const isCA = (campaignSystem ?? draft.system) === "ca";
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
   // Explicit `mode` prop wins; otherwise infer from initialValue.id.
   const editing = mode ? mode === "edit" : !!initialValue?.id;
@@ -316,7 +322,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       return;
     }
     setLoading(true);
-    host.transport.get<ItemDraft & { rolls?: any[]; craftRecipes?: any[]; templateLinks?: string[] }>("item", initialValue.id)
+    host.transport.get<ItemDraft & { rolls?: any[]; craftRecipes?: any[]; customFields?: any[]; templateLinks?: string[] }>("item", initialValue.id)
       .then(env => {
         const data: any = env.data ?? env;
         setDraft({
@@ -324,6 +330,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
           ...data,
           rolls: (data.rolls ?? []).map((r: any) => ({ ...r, _localId: r.id })),
           craftRecipes: (data.craftRecipes ?? []).map((r: any) => ({ ...r, _localId: r.id, ingredients: r.ingredients ?? [] })),
+          customFields: (data.customFields ?? []).map((f: any) => ({ ...f, _localId: f.id })),
           buildRecipe: data.buildRecipe
             ? { id: data.buildRecipe.id, outputQuantity: data.buildRecipe.outputQuantity ?? 1, ingredients: data.buildRecipe.ingredients ?? [] }
             : { outputQuantity: 1, ingredients: [] },
@@ -397,12 +404,13 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       // are recognized by the server's children-aware sync handler
       // (server/sync/children.ts) and stripped before the parent insert.
       const {
-        rolls: _rolls, craftRecipes: _cr, buildRecipe: _br, templateLinks: _tl,
+        rolls: _rolls, craftRecipes: _cr, customFields: _cf, buildRecipe: _br, templateLinks: _tl,
         ...parentFields
       } = draft;
       const payload: any = { ...parentFields };
       payload.rolls = (draft.rolls ?? []).map(({ _localId, templateName, templatePriority, templateUseOwnOrder, templateOwnerKey, ...r }) => r);
       payload.craftRecipes = (draft.craftRecipes ?? []).map(({ _localId, ...r }) => r);
+      payload.customFields = (draft.customFields ?? []).map(({ _localId, ...f }) => f);
       payload.buildRecipe = draft.buildRecipe ?? { outputQuantity: 1, ingredients: [] };
       payload.templateLinks = draft.templateLinks ?? [];
       const env = editing
@@ -455,39 +463,46 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 <div><Label>Item Type</Label>
                   <Select value={draft.itemType} onValueChange={v => set(v === "scroll" ? { itemType: v, maxSpells: 1 } : { itemType: v })} data-testid="select-item-type">
                     {ITEM_TYPES.filter(t => {
-                      if (t === "crafter") return aav2 || aav3;
+                      if (t === "crafter") return aav2 || aav3 || isCA;
                       if (t === "spellbook") return aav3;
                       if (t === "scroll") return aav3;
                       if (t === "rune") return aav3;
                       if (t === "miscellaneous") return aav3;
+                      if (t === "ammunition") return !isCA;
                       return true;
                     }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </Select>
                 </div>
-                {aav3 && it === "rune" ? <div /> : (
+                {isCA || (aav3 && it === "rune") ? <div /> : (
                 <div><Label>Rarity</Label>
                   <Select value={draft.rarity ?? "common"} onValueChange={v => set({ rarity: v })}>
                     {RARITIES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                   </Select>
                 </div>
                 )}
+                {!isCA && (
                 <div><Label>Size</Label>
                   <Select value={draft.size ?? ""} onValueChange={v => set({ size: v || null })}>
                     <SelectItem value="">—</SelectItem>
                     {SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </Select>
                 </div>
+                )}
               </Grid3>
               <div><Label>Description</Label>
                 <Textarea value={draft.description ?? ""} onChange={e => set({ description: e.target.value })} />
               </div>
-              <div><Label>Rules (GM-editable)</Label>
-                <Textarea value={draft.rules ?? ""} onChange={e => set({ rules: e.target.value })} />
-              </div>
-              <Row>
-                <Checkbox checked={!!draft.rulesVisible} onCheckedChange={v => set({ rulesVisible: v })} />
-                <Label>Rules visible to players</Label>
-              </Row>
+              {!isCA && (
+                <>
+                  <div><Label>Rules (GM-editable)</Label>
+                    <Textarea value={draft.rules ?? ""} onChange={e => set({ rules: e.target.value })} />
+                  </div>
+                  <Row>
+                    <Checkbox checked={!!draft.rulesVisible} onCheckedChange={v => set({ rulesVisible: v })} />
+                    <Label>Rules visible to players</Label>
+                  </Row>
+                </>
+              )}
             </Stack>
           </Section>
 
@@ -499,9 +514,11 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
               <div><Label>Weight (lb)</Label>
                 <NumberInput integer={false} value={draft.itemWeight ?? 0} onChange={(v) => set({ itemWeight: v ?? 0 })} />
               </div>
+              {!isCA && (
               <div><Label>Durability (0–10)</Label>
                 <NumberInput min={0} max={10} value={draft.durability ?? 10} fallback={10} onChange={(v) => set({ durability: v ?? 10 })} />
               </div>
+              )}
               <div><Label>Price</Label>
                 <NumberInput value={draft.price ?? 0} onChange={(v) => set({ price: v ?? 0 })} />
               </div>
@@ -648,7 +665,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {isWeaponLike && (
+          {isWeaponLike && !isCA && (
             <Section title="Combat / weapon">
               <Grid3>
                 {!aav3 && (<>
@@ -761,7 +778,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {it === "armor" && (
+          {it === "armor" && !isCA && (
             <Section title="Armor">
               <Grid3>
                 <div><Label>Armor Slot</Label>
@@ -818,7 +835,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {it === "consumable" && (
+          {it === "consumable" && !isCA && (
             <Section title="Consumable">
               <Grid3>
                 <div><Label>Ration servings</Label>
@@ -1243,7 +1260,16 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
             </Section>
           )}
 
-          {(aav2 || aav3) && it === "crafter" && (
+          {isCA && (
+            <Section title="Custom Fields">
+              <CustomFieldsEditor
+                value={draft.customFields ?? []}
+                onChange={(customFields) => set({ customFields })}
+              />
+            </Section>
+          )}
+
+          {(aav2 || aav3 || isCA) && it === "crafter" && (
             <Section title="Crafting recipes (crafter item)">
               {renderCrafterExtras
                 ? renderCrafterExtras({ itemId: draft.id })

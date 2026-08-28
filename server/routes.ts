@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -5717,6 +5717,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete roll entry" });
+    }
+  });
+
+  // Custom Fields (C.A. only): freeform header+body sections on items and
+  // characters. Reuses canModifyRollEntries's item/character access rules —
+  // that helper is ownerType-generic, not roll-specific.
+  app.get("/api/items/:id/custom-fields", requireAuth, async (req, res) => {
+    try {
+      const fields = await storage.getCustomFields("item", req.params.id);
+      res.json(fields);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item custom fields" });
+    }
+  });
+
+  app.get("/api/characters/:id/custom-fields", requireAuth, async (req, res) => {
+    try {
+      const fields = await storage.getCustomFields("character", req.params.id);
+      res.json(fields);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character custom fields" });
+    }
+  });
+
+  app.post("/api/custom-fields", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const canModify = await canModifyRollEntries(userId, req.body.ownerType, req.body.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify custom fields for this entity" });
+      }
+      const field = await storage.createCustomField(req.body);
+      res.json(field);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create custom field" });
+    }
+  });
+
+  app.patch("/api/custom-fields/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const existing = await db.select().from(customFields).where(eq(customFields.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Custom field not found" });
+      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to modify this custom field" });
+      }
+      const patchBody = { ...req.body };
+      delete patchBody.id;
+      delete patchBody.ownerId;
+      delete patchBody.ownerType;
+      const field = await storage.updateCustomField(req.params.id, patchBody);
+      if (!field) return res.status(404).json({ error: "Custom field not found" });
+      res.json(field);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update custom field" });
+    }
+  });
+
+  app.delete("/api/custom-fields/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId;
+      const existing = await db.select().from(customFields).where(eq(customFields.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Custom field not found" });
+      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
+      if (!canModify) {
+        return res.status(403).json({ error: "Not authorized to delete this custom field" });
+      }
+      await storage.deleteCustomField(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete custom field" });
     }
   });
 
