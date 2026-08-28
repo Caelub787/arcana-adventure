@@ -6674,13 +6674,13 @@ export default function Campaign() {
       if (prev.some(c => c.id === char.id)) return prev;
       return [...prev, char];
     });
-    // New sheet: seed 'attributes' so the floating panel measures and locks its
-    // size to the (taller) Attrs & Skills tab on the very first render;
-    // onFitLocked then switches the visible tab to the intended one before paint
-    // (panel shows the right tab but is sized to fit Attributes — no flash).
-    // Already-open sheet: the size is already locked, so just honor the
-    // requested tab directly.
-    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: alreadyOpen ? tab : 'attributes' }));
+    // New sheet: seed sheetSeedTab (the tallest tab for this system) so the
+    // floating panel measures and locks its size against it on the very first
+    // render; onFitLocked then switches the visible tab to the intended one
+    // before paint (panel shows the right tab but is sized to fit the seed
+    // tab — no flash). Already-open sheet: the size is already locked, so
+    // just honor the requested tab directly.
+    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: alreadyOpen ? tab : sheetSeedTab }));
     bringToFront(`char-${char.id}`);
   };
   
@@ -8010,7 +8010,7 @@ export default function Campaign() {
   // Use public /api/species endpoint that all authenticated users can access - filtered by campaign system
   // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
   const campaignSystemSlugForSpecies = (campaign as any)?.system || 'arcana-adventure';
-  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : campaignSystemSlugForSpecies === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure';
+  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : campaignSystemSlugForSpecies === 'aa-v3' ? 'A.A. V3' : campaignSystemSlugForSpecies === 'ca' ? 'C.A.' : 'Arcana Adventure';
   const { data: systemSpecies } = useQuery({
     queryKey: ['/api/species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -8043,17 +8043,22 @@ export default function Campaign() {
   // Load feat trees for species form (to assign racial feat trees)
   // Use public endpoint so GMs can access feat trees without admin requirement
   const campaignSystemSlug = (campaign as any)?.system || 'arcana-adventure';
+  // C.A. sheets have no 'attributes' tab, so the floating-panel fit-sizing
+  // trick (see openCharacterSheet) needs a different tab to seed against —
+  // 'inventory' is the tallest of C.A.'s 4 tabs.
+  const sheetSeedTab = campaignSystemSlug === 'ca' ? 'inventory' : 'attributes';
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
     queryKey: ['/api/feat-trees', campaignSystemSlug],
     queryFn: () => api.getPublicFeatTrees(campaignSystemSlug),
     enabled: role === 'gm' && speciesFormOpen,
   });
 
-  // Token effects queries — V3 campaigns only fetch V3-tagged effects
-  const isAAV3Campaign = campaignSystemSlug === 'aa-v3';
+  // Token effects queries — always pass the campaign's own system explicitly
+  // so each system stays isolated (the server only shares v1+v2 by default
+  // when no system is passed at all, which would otherwise leak into C.A.).
   const tokenEffectsQuery = useQuery({
-    queryKey: ['token-effects', isAAV3Campaign ? 'aa-v3' : undefined],
-    queryFn: () => api.getTokenEffects(false, isAAV3Campaign ? 'aa-v3' : undefined),
+    queryKey: ['token-effects', campaignSystemSlug],
+    queryFn: () => api.getTokenEffects(false, campaignSystemSlug),
   });
 
   const tokenActiveEffectsQuery = useQuery({
@@ -9925,6 +9930,18 @@ export default function Campaign() {
                     <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
                     <SelectItem value="aa-v2" className="text-stone-200">A.A. V2</SelectItem>
                     <SelectItem value="aa-v3" className="text-stone-200">A.A. V3</SelectItem>
+                    <SelectItem value="ca" className="text-stone-200">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>C.A.</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                            <p>Cultivator's Adventure</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -11052,7 +11069,7 @@ export default function Campaign() {
           <AdminSettings
             embedded
             forcePersonal
-            embeddedSystem={campaignSystemSlug === 'aa-v2' ? 'A.A. V2' : campaignSystemSlug === 'aa-v3' ? 'A.A. V3' : 'Arcana Adventure'}
+            embeddedSystem={campaignSystemSlug === 'aa-v2' ? 'A.A. V2' : campaignSystemSlug === 'aa-v3' ? 'A.A. V3' : campaignSystemSlug === 'ca' ? 'C.A.' : 'Arcana Adventure'}
           />
         </FloatingPanel>
       )}
@@ -12852,7 +12869,7 @@ export default function Campaign() {
             minHeight={400}
             fitContent
             onFitLocked={() => setCharSheetActiveTabs(prev => (
-              prev[sheet.id] === 'attributes'
+              prev[sheet.id] === sheetSeedTab
                 ? { ...prev, [sheet.id]: charSheetIntendedTabRef.current[sheet.id] ?? characterSheetDefaultTab }
                 : prev
             ))}
@@ -12875,7 +12892,7 @@ export default function Campaign() {
               onUpdate={(updates) => handleUpdateCharacterById(sheet.id, updates)}
               onClose={() => closeCharacterSheet(sheet.id)}
               defaultTab={characterSheetDefaultTab}
-              activeTab={charSheetActiveTabs[sheet.id] ?? 'attributes'}
+              activeTab={charSheetActiveTabs[sheet.id] ?? sheetSeedTab}
               onTabChange={(v) => setCharSheetActiveTabs(prev => ({ ...prev, [sheet.id]: v }))}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}

@@ -235,7 +235,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     if (!isAdmin) return 'A.A. V2';
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
-  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : 'arcana-adventure';
+  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : selectedSystem === 'C.A.' ? 'ca' : 'arcana-adventure';
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
@@ -1067,6 +1067,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                   <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
                   <SelectItem value="A.A. V2">A.A. V2</SelectItem>
                   <SelectItem value="A.A. V3">A.A. V3</SelectItem>
+                  <SelectItem value="C.A.">C.A.</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1133,11 +1134,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 archiveItemMutation.mutate(id);
               }
             }}
-            onCopyToSystem={(id) => {
+            onCopyToSystem={systemSlug === 'ca' ? undefined : (id) => {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copyItemToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
+            copyTargetLabel={systemSlug === 'ca' ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 
@@ -1205,11 +1206,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 archiveSpellMutation.mutate(id);
               }
             }}
-            onCopyToSystem={(id) => {
+            onCopyToSystem={systemSlug === 'ca' ? undefined : (id) => {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copySpellToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
+            copyTargetLabel={systemSlug === 'ca' ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 

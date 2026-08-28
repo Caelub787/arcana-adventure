@@ -9315,7 +9315,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
   const [selectedRace, setSelectedRace] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const systemNameForQuery = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+  const systemNameForQuery = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : campaignSystem === 'ca' ? 'C.A.' : 'Arcana Adventure';
   const { data: systemSpeciesList = [] } = useQuery({
     queryKey: ['species', systemNameForQuery],
     queryFn: () => api.getSpecies(systemNameForQuery),
@@ -17539,6 +17539,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
+  const isCA = (campaignSystem === 'ca');
   // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
   const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
   const canEditAsGM = isGM || isTrustedSelf;
@@ -17608,6 +17609,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [editingOverview, setEditingOverview] = useState(false);
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
+
+  // C.A.'s minimal Overview tab has its own tiny name-edit state, separate
+  // from the v1/v2/v3 overviewData flow (which carries a full stat payload).
+  const [caEditingName, setCaEditingName] = useState(false);
+  const [caNameDraft, setCaNameDraft] = useState('');
   
   // Point cancellation states (persisted in character data)
   const [cancelledAttrPoints, setCancelledAttrPoints] = useState(character?.cancelledAttrPoints || 0);
@@ -17730,7 +17736,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     skillWisdom: character?.skillWisdom || 0
   });
   
-  const speciesSystemName = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+  const speciesSystemName = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : campaignSystem === 'ca' ? 'C.A.' : 'Arcana Adventure';
   const { data: fetchedSpecies = [] } = useQuery({
     queryKey: ['species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -19822,27 +19828,35 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
 
   // Tab configuration matching battlemap sidebar icons and colors
-  const tabConfig = [
-    { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
-    { value: 'attributes', icon: BarChart3, color: 'blue', label: isAAV3 ? 'Attrs & Skills' : 'Attributes' },
-    // V3: Inventory comes before Traits; V2 keeps Skills before Inventory.
-    ...(isAAV3
-      ? [
-          { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
-          { value: 'skills', icon: Zap, color: 'green', label: 'Traits' },
-        ]
-      : [
-          { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
-          { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
-        ]),
-    // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
-    ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
-    // V3 drops the character-sheet Hotbars tab (replaced by the free hotbar + equip system).
-    ...(isAAV3 ? [] : [{ value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' }]),
-    // V3 drops the Background tab: portrait + name/nickname editing moved to
-    // long-press interactions on the Overview tab.
-    ...(isAAV3 ? [] : [{ value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' }]),
-  ];
+  // C.A. is a fresh, minimal system: exactly 4 tabs, none of the v1/v2/v3 extras.
+  const tabConfig = isCA
+    ? [
+        { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
+        { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+        { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+        { value: 'traits', icon: Star, color: 'fuchsia', label: 'Traits' },
+      ]
+    : [
+        { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
+        { value: 'attributes', icon: BarChart3, color: 'blue', label: isAAV3 ? 'Attrs & Skills' : 'Attributes' },
+        // V3: Inventory comes before Traits; V2 keeps Skills before Inventory.
+        ...(isAAV3
+          ? [
+              { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+              { value: 'skills', icon: Zap, color: 'green', label: 'Traits' },
+            ]
+          : [
+              { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+              { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+            ]),
+        // V3 replaces the Magic/Spells tab with the Spellbook item; V2 keeps it.
+        ...(isAAV3 ? [] : [{ value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' }]),
+        // V3 drops the character-sheet Hotbars tab (replaced by the free hotbar + equip system).
+        ...(isAAV3 ? [] : [{ value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' }]),
+        // V3 drops the Background tab: portrait + name/nickname editing moved to
+        // long-press interactions on the Overview tab.
+        ...(isAAV3 ? [] : [{ value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' }]),
+      ];
 
   const getTabColorClasses = (color: string) => {
     const colors: Record<string, { base: string; active: string }> = {
@@ -19949,7 +19963,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV3 ? 'grid-cols-4' : 'grid-cols-7'}`}>
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${(isAAV3 || isCA) ? 'grid-cols-4' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -19973,6 +19987,87 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 custom-scrollbar">
           {/* OVERVIEW TAB */}
           <TabsContent value="overview" className="space-y-4 mt-0" data-testid="content-overview">
+            {isCA ? (
+              <Card className="bg-stone-800 border-stone-700">
+                <CardHeader>
+                  <CardTitle className="text-amber-500 flex items-center justify-between">
+                    {caEditingName ? (
+                      <div className="flex-1 mr-4 flex items-center gap-2">
+                        <Input
+                          value={caNameDraft}
+                          onChange={(e) => setCaNameDraft(e.target.value)}
+                          className="bg-stone-900 border-stone-700 text-amber-500"
+                          data-testid="input-ca-edit-name"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            onUpdate?.({ name: caNameDraft.trim() || liveCharacter.name });
+                            setCaEditingName(false);
+                          }}
+                          data-testid="button-ca-save-name"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setCaEditingName(false)}
+                          data-testid="button-ca-cancel-name"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <span data-testid="text-character-name">{liveCharacter.name}</span>
+                    )}
+                    {!caEditingName && (isOwner || isGM) && onUpdate && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setCaNameDraft(liveCharacter.name || '');
+                          setCaEditingName(true);
+                        }}
+                        data-testid="button-ca-edit-name"
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-sm text-stone-300">Character Portrait</Label>
+                      {canEdit && onUpdate && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setShowImageBrowser(true)} data-testid="button-browse-library">
+                            <FolderOpen className="h-4 w-4 mr-1" />
+                            Library
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => portraitInputRef.current?.click()} data-testid="button-upload-portrait">
+                            <Camera className="h-4 w-4 mr-1" />
+                            Upload
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-center">
+                      {character.portrait ? (
+                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
+                          <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+                        </div>
+                      ) : (
+                        <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
+                          <User className="h-12 w-12 text-stone-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
                 <CardTitle className="text-amber-500 flex items-center justify-between">
@@ -20988,9 +21083,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 )}
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           {/* ATTRIBUTES TAB */}
+          {!isCA && (
           <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
             {isAAV3 && (
               <V3AttrsAndSkillsTab
@@ -21231,9 +21328,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             </Card>
             )}
           </TabsContent>
+          )}
 
           {/* SKILLS TAB */}
           <TabsContent value="skills" className={`${isAAV3 ? 'flex flex-col gap-4' : 'space-y-4'} mt-0`} data-testid="content-skills">
+            {isCA ? (
+              <Card className="bg-stone-800 border-stone-700">
+                <CardContent className="pt-8 pb-8 text-center">
+                  <p className="text-stone-400" data-testid="text-ca-skills-empty">Skills not yet configured for this system.</p>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <Card className={`bg-stone-800 border-stone-700${isAAV3 ? ' hidden' : ''}`}>
               <CardContent className="pt-4">
                 {(liveCharacter.exhaustion || 0) >= 1 && (
@@ -22043,6 +22149,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 </div>
               </FloatingPanel>
             )}
+            </>
+            )}
           </TabsContent>
 
           {/* INVENTORY TAB */}
@@ -22268,8 +22376,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             </Card>
           </TabsContent>
 
+          {/* TRAITS TAB — C.A. only */}
+          {isCA && (
+          <TabsContent value="traits" className="space-y-4 mt-0" data-testid="content-traits">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardContent className="pt-8 pb-8 text-center">
+                <p className="text-stone-400" data-testid="text-ca-traits-empty">Traits not yet configured for this system.</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          )}
+
           {/* MAGIC TAB — V2 only (V3 uses the Spellbook item) */}
-          {!isAAV3 && (
+          {!isAAV3 && !isCA && (
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
@@ -23518,6 +23637,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
 
           {/* HOTBARS TAB */}
+          {!isCA && (
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
             <HotbarsTabContent
               character={character}
@@ -23527,8 +23647,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               onOpenItemDetail={campaignSystem === 'aa-v3' ? (item) => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.(`item-detail${charPanelSuffix}`); } : undefined}
             />
           </TabsContent>
+          )}
 
           {/* BACKGROUND TAB */}
+          {!isCA && (
           <TabsContent value="background" className="space-y-4 mt-0" data-testid="content-background">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
@@ -23828,6 +23950,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               </AlertDialogContent>
             </AlertDialog>
           </TabsContent>
+          )}
         </div>
       </Tabs>
 
