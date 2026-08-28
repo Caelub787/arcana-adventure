@@ -20652,6 +20652,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 </CardContent>
               </Card>
 
+              <Card className="bg-stone-800 border-stone-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-amber-500 text-sm font-medium">Custom Sections</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <CustomFieldsEditor ownerType="character" ownerId={liveCharacter.id} canEdit={isOwner || isGM} />
+                </CardContent>
+              </Card>
+
               <FloatingPanel
                 open={!!caWoundTarget}
                 onClose={() => setCaWoundTarget(null)}
