@@ -8,6 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -2764,6 +2765,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
+          const woundPercent = (character && campaignSystem === 'ca') ? 100 - (caWoundCount((character as any).caWounds) / CA_WOUND_TOTAL_BOXES) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -3180,11 +3182,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               */}
               {(() => {
                 const isV3Bars = campaignSystem === 'aa-v3';
+                const isCABars = campaignSystem === 'ca';
                 const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
                 // In V3, showBars toggle controls all bars; in V1/V2, per-character flags apply
                 const showMana = character && manaPercent !== null && canSeeBars && (!isV3Bars ? (character.showManaBar ?? true) : showBars);
                 const showEnergy = character && energyPercent !== null && canSeeBars && (!isV3Bars ? (character.showEnergyBar ?? true) : showBars);
-                const showHp = character && hpPercent !== null && canSeeBars && (!isV3Bars ? (character.showHpBar ?? true) : showBars);
+                // C.A. replaces HP with Wounds entirely — never show the HP bar for it.
+                const showHp = character && hpPercent !== null && canSeeBars && !isCABars && (!isV3Bars ? (character.showHpBar ?? true) : showBars);
+                const showWound = character && isCABars && woundPercent !== null && canSeeBars && (character.showHpBar ?? true);
                 if (isV3Bars) {
                   const clamp = (v: number) => Math.max(0, Math.min(100, v));
                   const showCombined = (showEnergy || showMana) && (energyPercent !== null || manaPercent !== null);
@@ -3259,12 +3264,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 const barPositions = ['bottom-0.5', 'bottom-[10px]', 'bottom-[18px]'];
                 const manaPos = showMana ? barPositions[barIndex++] : '';
                 const energyPos = showEnergy ? barPositions[barIndex++] : '';
-                const hpPos = showHp ? barPositions[barIndex++] : '';
+                const hpPos = (showHp || showWound) ? barPositions[barIndex++] : '';
                 return (
                   <>
                     {showHp && (
                       <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`}>
-                        <div 
+                        <div
                           className={`h-full transition-all duration-700 ease-in-out ${
                             hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
                           }`}
@@ -3276,6 +3281,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                             style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, hpPercent!)), tempHpPercent))}%` }}
                           />
                         )}
+                      </div>
+                    )}
+                    {showWound && (
+                      <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`} data-testid={`bar-wound-${token.id}`}>
+                        <div
+                          className={`h-full transition-all duration-700 ease-in-out ${
+                            woundPercent! > 60 ? 'bg-green-500' : woundPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.max(0, Math.min(100, woundPercent!))}%` }}
+                        />
                       </div>
                     )}
                     {showEnergy && (
@@ -8991,14 +9006,15 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             </div>
           )}
 
-          {/* Health Bar */}
+          {/* Health Bar - hidden for C.A., which uses Wounds instead */}
+          {campaignSystem !== 'ca' && (
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
               <span>HP</span>
               <span>{Math.min(character.hp ?? 10, effectiveMaxHp)}/{effectiveMaxHp}</span>
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div 
+              <motion.div
                 className="h-full bg-gradient-to-r from-red-700 to-red-500"
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
@@ -9006,6 +9022,25 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               />
             </div>
           </div>
+          )}
+
+          {/* Wounds Bar - C.A. only, replaces HP entirely */}
+          {campaignSystem === 'ca' && (
+            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
+              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
+                <span>Wounds</span>
+                <span>{caWoundCount((character as any).caWounds)}/{CA_WOUND_TOTAL_BOXES}</span>
+              </div>
+              <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                  initial={false}
+                  animate={{ width: `${100 - (caWoundCount((character as any).caWounds) / CA_WOUND_TOTAL_BOXES) * 100}%` }}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Energy Bar */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-600 relative overflow-hidden w-32 md:w-44">
@@ -17618,7 +17653,47 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // from the v1/v2/v3 overviewData flow (which carries a full stat payload).
   const [caEditingName, setCaEditingName] = useState(false);
   const [caNameDraft, setCaNameDraft] = useState('');
-  
+
+  // C.A. wound dialog: which box was clicked, and its draft injury/effect text.
+  const [caWoundTarget, setCaWoundTarget] = useState<{ slotIndex: number; type: 'major' | 'minor'; minorIndex?: number } | null>(null);
+  const [caWoundDraftInjury, setCaWoundDraftInjury] = useState('');
+  const [caWoundDraftEffect, setCaWoundDraftEffect] = useState('');
+
+  const openCAWoundBox = (slotIndex: number, type: 'major' | 'minor', minorIndex?: number) => {
+    const wounds = normalizeCAWounds((liveCharacter as any)?.caWounds);
+    const entry = type === 'major' ? wounds[slotIndex].major : wounds[slotIndex].minor[minorIndex!];
+    setCaWoundDraftInjury(entry.injury);
+    setCaWoundDraftEffect(entry.effect);
+    setCaWoundTarget({ slotIndex, type, minorIndex });
+  };
+
+  const updateCAWoundBox = (updater: (slot: CAWoundSlot) => CAWoundSlot) => {
+    if (!caWoundTarget) return;
+    const wounds = normalizeCAWounds((liveCharacter as any)?.caWounds);
+    const updated = wounds.map((slot, i) => (i === caWoundTarget.slotIndex ? updater(slot) : slot));
+    onUpdate?.({ caWounds: updated });
+    setCaWoundTarget(null);
+  };
+
+  const saveCAWoundBox = () => {
+    updateCAWoundBox((slot) => {
+      const entry = { checked: true, injury: caWoundDraftInjury, effect: caWoundDraftEffect };
+      if (caWoundTarget!.type === 'major') return { ...slot, major: entry };
+      const minor = slot.minor.map((m, j) => (j === caWoundTarget!.minorIndex ? entry : m));
+      return { ...slot, minor };
+    });
+  };
+
+  const clearCAWoundBox = () => {
+    updateCAWoundBox((slot) => {
+      const entry = { checked: false, injury: '', effect: '' };
+      if (caWoundTarget!.type === 'major') return { ...slot, major: entry };
+      const minor = slot.minor.map((m, j) => (j === caWoundTarget!.minorIndex ? entry : m));
+      return { ...slot, minor };
+    });
+  };
+
+
   // Point cancellation states (persisted in character data)
   const [cancelledAttrPoints, setCancelledAttrPoints] = useState(character?.cancelledAttrPoints || 0);
   const [cancelledSkillPoints, setCancelledSkillPoints] = useState(character?.cancelledSkillPoints || 0);
@@ -19992,6 +20067,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {/* OVERVIEW TAB */}
           <TabsContent value="overview" className="space-y-4 mt-0" data-testid="content-overview">
             {isCA ? (
+              <>
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader>
                   <CardTitle className="text-amber-500 flex items-center justify-between">
@@ -20069,8 +20145,129 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                     </div>
                   </div>
+
+                  {/* Energy Bar — C.A. has no HP, no mana; Energy only */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs text-stone-300 flex items-center gap-1">
+                        <Zap className="h-3 w-3 text-blue-500" />
+                        Energy
+                      </Label>
+                      <span
+                        className="text-xs font-bold"
+                        data-testid="text-ca-energy"
+                        {...quickPressHandlers('energy')}
+                      >
+                        {liveCharacter.energy} / {effectiveMaxEnergy}
+                        {bonusMaxEnergy > 0 && (
+                          <span className="ml-1 text-emerald-300" data-testid="text-ca-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
+                        )}
+                        {(liveCharacter.tempEnergy ?? 0) > 0 && (
+                          <span className="ml-1 text-violet-300" data-testid="text-ca-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
+                        )}
+                      </span>
+                    </div>
+                    {quickEditPanel('energy')}
+                    <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-ca-energy" />
+                  </div>
+
+                  {/* Wounds — replaces HP entirely for C.A. */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-stone-300">Wounds</Label>
+                      <span className="text-xs text-stone-500" data-testid="text-ca-wound-count">
+                        {caWoundCount((liveCharacter as any).caWounds)} / {CA_WOUND_TOTAL_BOXES}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {normalizeCAWounds((liveCharacter as any).caWounds).map((slot, slotIndex) => (
+                        <div key={slotIndex} className="rounded border border-stone-700 bg-stone-900/50 p-2 space-y-1.5">
+                          <div className="text-xs text-stone-400 font-medium">{slot.label}</div>
+                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={slot.major.checked}
+                              disabled={!canEdit || !onUpdate}
+                              onChange={() => openCAWoundBox(slotIndex, 'major')}
+                              data-testid={`checkbox-ca-wound-${slotIndex}-major`}
+                            />
+                            <span className="text-amber-400">Major</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            {slot.minor.map((m, minorIndex) => (
+                              <label key={minorIndex} className="flex items-center gap-1 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={m.checked}
+                                  disabled={!canEdit || !onUpdate}
+                                  onChange={() => openCAWoundBox(slotIndex, 'minor', minorIndex)}
+                                  data-testid={`checkbox-ca-wound-${slotIndex}-minor-${minorIndex}`}
+                                />
+                              </label>
+                            ))}
+                            <span className="text-stone-500 text-[10px]">Minor</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
+
+              <FloatingPanel
+                open={!!caWoundTarget}
+                onClose={() => setCaWoundTarget(null)}
+                title={<span className="text-red-400">Wound</span>}
+                panelKey={`ca-wound${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`ca-wound${charPanelSuffix}`] || 10200}
+                onBringToFront={() => bringToFront?.(`ca-wound${charPanelSuffix}`)}
+                defaultSize={{ width: 420, height: 420 }}
+                minWidth={320}
+                minHeight={320}
+              >
+                <div className="p-4 space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-stone-300">Injury</Label>
+                    <Textarea
+                      value={caWoundDraftInjury}
+                      onChange={(e) => setCaWoundDraftInjury(e.target.value)}
+                      className="bg-stone-900 border-stone-700 text-stone-200 min-h-[80px]"
+                      placeholder="What happened?"
+                      data-testid="textarea-ca-wound-injury"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-stone-300">Effect</Label>
+                    <Textarea
+                      value={caWoundDraftEffect}
+                      onChange={(e) => setCaWoundDraftEffect(e.target.value)}
+                      className="bg-stone-900 border-stone-700 text-stone-200 min-h-[80px]"
+                      placeholder="What does it do?"
+                      data-testid="textarea-ca-wound-effect"
+                    />
+                  </div>
+                  <div className="flex justify-between gap-2 pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-800 text-red-400 hover:bg-red-950/30"
+                      onClick={clearCAWoundBox}
+                      data-testid="button-ca-wound-clear"
+                    >
+                      Clear (uncheck)
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setCaWoundTarget(null)} data-testid="button-ca-wound-cancel">
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={saveCAWoundBox} data-testid="button-ca-wound-save">
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </FloatingPanel>
+              </>
             ) : (
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>

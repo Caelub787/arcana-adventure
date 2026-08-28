@@ -3,6 +3,7 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
+import type { CAWoundSlot } from "./ca";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -283,6 +284,10 @@ export const characters = pgTable("characters", {
   // they raise both the displayed/rolled modifier and the editor cap (5+boost),
   // so a boosted skill can exceed the normal +5 limit.
   v3SkillBoosts: jsonb("v3_skill_boosts").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
+  // C.A. only: 6 wound slots x (1 major + 3 minor) narrative wound tracker,
+  // replacing HP entirely for this system. Purely descriptive/GM-discretion —
+  // no mechanical HP derivation. See shared/ca.ts for the CAWoundSlot shape.
+  caWounds: jsonb("ca_wounds").$type<CAWoundSlot[]>().notNull().default(sql`'[]'::jsonb`),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
   spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
   // AA V3 weapon techniques: technique ids this character has unlocked by
