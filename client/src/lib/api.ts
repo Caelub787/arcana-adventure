@@ -748,7 +748,7 @@ class ApiClient {
         }
       }
       
-      throw new Error(error.error || 'Request failed');
+      throw new Error(error.details || error.error || 'Request failed');
     }
 
     return response.json();
