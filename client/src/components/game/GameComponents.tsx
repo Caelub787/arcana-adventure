@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot } from "@shared/ca";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -17193,6 +17193,353 @@ function V3AttrsAndSkillsTab({
 }
 
 // =============================================================
+// C.A. Attributes + Skills tab — forked from V3AttrsAndSkillsTab. Same
+// point-budget/roll/skill-boost machinery (reusing the same v3Skills/
+// v3SkillBoosts columns and adjustV3SkillBoost endpoint), reading from
+// shared/ca.ts's independent CA_ATTRIBUTES/CA_SKILLS instead of V3's.
+// No species-attribute-bonus or armor-boost machinery — out of scope for
+// C.A. for now.
+// =============================================================
+function CAAttrsAndSkillsTab({
+  liveCharacter,
+  canEditSheet,
+  isGM = false,
+  updateCharacterMutation,
+  handleRoll,
+  openRollPanel,
+}: {
+  liveCharacter: any;
+  canEditSheet: boolean;
+  isGM?: boolean;
+  updateCharacterMutation: any;
+  handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
+  openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
+}) {
+  const skillBoostQueryClient = useQueryClient();
+  const skillBoostMutation = useMutation({
+    mutationFn: ({ skillKey, action }: { skillKey: string; action: 'decrement' | 'clear' }) =>
+      api.adjustV3SkillBoost(liveCharacter.id, skillKey, action),
+    onSuccess: () => {
+      skillBoostQueryClient.invalidateQueries({ queryKey: ['character', liveCharacter.id] });
+      if (liveCharacter.campaignId) {
+        skillBoostQueryClient.invalidateQueries({ queryKey: ['characters', liveCharacter.campaignId] });
+      }
+    },
+  });
+  const [editing, setEditing] = React.useState(false);
+  const [attrData, setAttrData] = React.useState<Record<string, number>>({});
+  const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+
+  const level = liveCharacter.level || 1;
+
+  const attrPointBudget = caAttrPointBudget(level);
+  const attrPointsUsed = CA_ATTRIBUTES.reduce((sum, at) => {
+    const stored = editing ? (attrData[at.key] ?? 0) : ((liveCharacter[at.key] as number) || 0);
+    return sum + Math.max(0, stored);
+  }, 0);
+
+  const skillBaseBudget = caSkillPointBudget(level);
+  const skillValues = CA_SKILLS.map(s =>
+    editing ? (skillData[s.key] ?? 0) : ((liveCharacter.v3Skills?.[s.key] as number) ?? 0)
+  );
+  const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((a, v) => a + v, 0);
+  const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((a, v) => a + v, 0));
+  const skillReclaimed = Math.min(negativeSkillUsed, CA_MAX_NEGATIVE_SKILL_POINTS);
+  const skillPointBudget = skillBaseBudget + skillReclaimed;
+
+  const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skillPressFiredRef = React.useRef(false);
+
+  const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
+    if (editing) return {};
+    return {
+      onClick: () => {
+        if (skillPressFiredRef.current) {
+          skillPressFiredRef.current = false;
+          return;
+        }
+        if (skillClickTimerRef.current) clearTimeout(skillClickTimerRef.current);
+        skillClickTimerRef.current = setTimeout(() => {
+          skillClickTimerRef.current = null;
+          handleRoll(name, mod, 0, 'none', true, dieOverride);
+        }, 250);
+      },
+      onDoubleClick: (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (skillClickTimerRef.current) {
+          clearTimeout(skillClickTimerRef.current);
+          skillClickTimerRef.current = null;
+        }
+        openRollPanel(name, mod, 'skill', dieOverride);
+      },
+      onTouchStart: () => {
+        skillPressFiredRef.current = false;
+        if (skillPressTimerRef.current) clearTimeout(skillPressTimerRef.current);
+        skillPressTimerRef.current = setTimeout(() => {
+          skillPressFiredRef.current = true;
+          if (skillClickTimerRef.current) {
+            clearTimeout(skillClickTimerRef.current);
+            skillClickTimerRef.current = null;
+          }
+          openRollPanel(name, mod, 'skill', dieOverride);
+        }, 500);
+      },
+      onTouchEnd: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onTouchMove: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onTouchCancel: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+    };
+  };
+
+  const startEdit = () => {
+    const a: Record<string, number> = {};
+    for (const at of CA_ATTRIBUTES) {
+      a[at.key] = (liveCharacter[at.key] as number) || 0;
+    }
+    const s: Record<string, number> = { ...makeEmptyCASkills(), ...(liveCharacter.v3Skills || {}) };
+    setAttrData(a);
+    setSkillData(s);
+    setEditing(true);
+  };
+
+  const save = () => {
+    updateCharacterMutation.mutate({
+      ...attrData,
+      v3Skills: skillData,
+    });
+    setEditing(false);
+  };
+
+  return (
+    <Card className="bg-stone-800 border-stone-700" data-testid="card-ca-attrs-skills">
+      <CardContent className="pt-4 space-y-3">
+        {canEditSheet && !editing && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={startEdit} data-testid="button-edit-ca-attrs">
+              Edit
+            </Button>
+          </div>
+        )}
+        <p className="text-xs text-stone-500">
+          Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+        </p>
+
+        {editing && (
+          <div className="grid grid-cols-2 gap-2" data-testid="ca-point-budgets">
+            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-stone-400">Attribute Points</span>
+                <span
+                  className={
+                    attrPointsUsed === attrPointBudget
+                      ? 'text-green-400 font-semibold'
+                      : attrPointsUsed > attrPointBudget
+                        ? 'text-red-400 font-semibold'
+                        : 'text-amber-400 font-semibold'
+                  }
+                  data-testid="text-ca-attr-points"
+                >
+                  {attrPointsUsed} / {attrPointBudget}
+                  {attrPointsUsed > attrPointBudget && ' (too many)'}
+                </span>
+              </div>
+              <p className="text-[10px] text-stone-500 mt-1">Attributes can't go below 0.</p>
+            </div>
+            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-stone-400">Skill Points</span>
+                <span
+                  className={
+                    positiveSkillUsed === skillPointBudget
+                      ? 'text-green-400 font-semibold'
+                      : positiveSkillUsed > skillPointBudget
+                        ? 'text-red-400 font-semibold'
+                        : 'text-amber-400 font-semibold'
+                  }
+                  data-testid="text-ca-skill-points"
+                >
+                  {positiveSkillUsed} / {skillPointBudget}
+                  {positiveSkillUsed > skillPointBudget && ' (too many)'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-stone-500 text-[10px]">Reclaimed from negatives</span>
+                <span
+                  className={negativeSkillUsed > CA_MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
+                  data-testid="text-ca-skill-neg-points"
+                >
+                  {negativeSkillUsed} / {CA_MAX_NEGATIVE_SKILL_POINTS}
+                  {negativeSkillUsed > CA_MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Attributes grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {CA_ATTRIBUTES.map(attr => {
+            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+            const dieType = `d${caAttrValueToDieSides(attrVal)}`;
+            return (
+              <Card
+                key={attr.key}
+                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600'}`}
+                data-testid={`card-ca-attr-${attr.key}`}
+              >
+                <CardContent className="p-3 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <Label className="text-xs text-stone-400">{attr.name}</Label>
+                    <span className="text-[10px] text-stone-500">({attr.abbr})</span>
+                  </div>
+                  {editing ? (
+                    <NumberInput
+                      min={0} max={5} value={attrData[attr.key] ?? 0} fallback={0}
+                      onChange={v => setAttrData({ ...attrData, [attr.key]: v ?? 0 })}
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                      className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
+                      data-testid={`input-ca-attr-${attr.key}`}
+                    />
+                  ) : (
+                    <div className="mt-1" data-testid={`text-ca-attr-${attr.key}`}>
+                      <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
+                      <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Skills — single alphabetical list across all attributes */}
+        <Card className="bg-stone-900 border-stone-600" data-testid="card-ca-skills">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-green-400 text-sm font-medium flex items-center gap-2">
+              <Zap className="h-4 w-4" /> Skills
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-2 space-y-1">
+            {[...CA_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
+              const parent = CA_ATTRIBUTES.find(a => a.key === skill.parent);
+              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
+              const dieType = `d${caAttrValueToDieSides(attrVal)}`;
+              const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+              const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
+              const skillMax = 5 + skillScrollBoost;
+              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost);
+              const skillBaseVal = rawSkillVal;
+              const skillTempBoost = editing ? 0 : skillScrollBoost;
+              return (
+                <div
+                  key={skill.key}
+                  className="flex items-start justify-between gap-2 py-1 px-2 rounded hover:bg-stone-800"
+                  data-testid={`row-ca-skill-${skill.key}`}
+                >
+                  <button
+                    type="button"
+                    className="flex-1 text-left disabled:cursor-default group"
+                    disabled={editing}
+                    title={skill.description}
+                    {...skillPressHandlers(skill.name, skillVal, dieType)}
+                    data-testid={`button-roll-ca-skill-${skill.key}`}
+                  >
+                    <div className="text-xs">
+                      <span className="text-stone-200 group-hover:text-amber-300 font-medium">{skill.name}</span>
+                      <span className="text-stone-500 ml-1">({parent?.abbr})</span>
+                      <span className="ml-1.5 text-amber-400/70">{dieType}</span>
+                    </div>
+                    <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
+                  </button>
+                  {editing ? (
+                    <div className="flex flex-col items-end shrink-0">
+                      <NumberInput
+                        min={-2} max={skillMax} value={skillData[skill.key] ?? 0} fallback={0}
+                        onChange={v => setSkillData({ ...skillData, [skill.key]: v ?? 0 })}
+                        className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
+                        data-testid={`input-ca-skill-${skill.key}`}
+                      />
+                      {skillScrollBoost > 0 && (
+                        <span className="text-[10px] text-sky-400/80 mt-0.5" data-testid={`text-ca-skill-scroll-${skill.key}`}>+{skillScrollBoost} bonus</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className="text-xs font-semibold text-right text-amber-400" data-testid={`text-ca-skill-${skill.key}`}>
+                        {skillBaseVal >= 0 ? `+${skillBaseVal}` : skillBaseVal}
+                        {skillTempBoost !== 0 && (
+                          <span
+                            className={`ml-0.5 cursor-help ${skillTempBoost > 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                            title={`${skillTempBoost > 0 ? '+' : ''}${skillTempBoost} bonus`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toast({ title: `${skill.name} bonus`, description: `${skillTempBoost > 0 ? '+' : ''}${skillTempBoost} bonus` });
+                            }}
+                            data-testid={`text-ca-skill-temp-${skill.key}`}
+                          >
+                            ({skillTempBoost > 0 ? `+${skillTempBoost}` : skillTempBoost})
+                          </span>
+                        )}
+                      </span>
+                      {isGM && skillScrollBoost > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <button
+                            type="button"
+                            disabled={skillBoostMutation.isPending}
+                            onClick={() => skillBoostMutation.mutate({ skillKey: skill.key, action: 'decrement' })}
+                            className="h-4 px-1 rounded bg-stone-800 hover:bg-stone-700 text-sky-400/80 text-[10px] leading-none flex items-center justify-center disabled:opacity-50"
+                            title="Lower this bonus by 1 (GM)"
+                            data-testid={`button-ca-skill-boost-decrement-${skill.key}`}
+                          >
+                            −1
+                          </button>
+                          <button
+                            type="button"
+                            disabled={skillBoostMutation.isPending}
+                            onClick={() => skillBoostMutation.mutate({ skillKey: skill.key, action: 'clear' })}
+                            className="h-4 px-1 rounded bg-stone-800 hover:bg-red-900/40 text-red-400/80 text-[10px] leading-none flex items-center justify-center disabled:opacity-50"
+                            title="Clear this bonus (GM)"
+                            data-testid={`button-ca-skill-boost-clear-${skill.key}`}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+        {editing && (
+          <div className="flex gap-2 pt-2 border-t border-stone-700">
+            <Button size="sm" onClick={save} data-testid="button-save-ca-attrs">Save Changes</Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)} data-testid="button-cancel-ca-attrs">Cancel</Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// =============================================================
 // V3 Action Tokens Section — shown in Overview tab for V3 chars
 // =============================================================
 interface V3ActionTokensSectionProps {
@@ -21534,11 +21881,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {/* SKILLS TAB */}
           <TabsContent value="skills" className={`${isAAV3 ? 'flex flex-col gap-4' : 'space-y-4'} mt-0`} data-testid="content-skills">
             {isCA ? (
-              <Card className="bg-stone-800 border-stone-700">
-                <CardContent className="pt-8 pb-8 text-center">
-                  <p className="text-stone-400" data-testid="text-ca-skills-empty">Skills not yet configured for this system.</p>
-                </CardContent>
-              </Card>
+              <CAAttrsAndSkillsTab
+                liveCharacter={liveCharacter}
+                canEditSheet={canEditSheet}
+                isGM={isGM}
+                updateCharacterMutation={updateCharacterMutation}
+                handleRoll={handleRoll}
+                openRollPanel={openRollPanel}
+              />
             ) : (
             <>
             <Card className={`bg-stone-800 border-stone-700${isAAV3 ? ' hidden' : ''}`}>
