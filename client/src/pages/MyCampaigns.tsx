@@ -14,6 +14,7 @@ import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
+import { getSystemLabel, formatCreatedDate, formatLastOpened } from "@/lib/campaignDisplay";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function MyCampaigns() {
@@ -38,6 +39,7 @@ export default function MyCampaigns() {
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
     queryKey: ['/api/campaigns'],
     enabled: !!user,
+    refetchInterval: 15000, // keep the online-count stat reasonably fresh
   });
 
   const campaigns = campaignsData ?? { created: [], joined: [] };
@@ -201,12 +203,18 @@ export default function MyCampaigns() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-stone-500 mb-4 space-y-1">
-            <div className="flex justify-between">
-              <span>{isCreated ? `${campaign.players || 0} Players` : `GM: ${campaign.gmUserId || 'Unknown'}`}</span>
-              <span>{campaign.lastPlayed}</span>
+          <div className="text-sm text-stone-500 mb-4 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-stone-400" data-testid={`text-campaign-system-${campaign.id}`}>{getSystemLabel(campaign.system)}</span>
+              <span className="flex items-center gap-1.5" data-testid={`text-campaign-online-${campaign.id}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${campaign.onlineCount > 0 ? 'bg-green-500' : 'bg-stone-700'}`} />
+                {campaign.onlineCount || 0} online
+              </span>
             </div>
-            {!isCreated && campaign.charName && <div className="text-blue-400">Playing as: {campaign.charName}</div>}
+            <div className="flex items-center justify-between text-xs text-stone-600">
+              <span>Created {formatCreatedDate(campaign.createdAt)}</span>
+              <span>Opened {formatLastOpened(campaign.lastPlayed)}</span>
+            </div>
           </div>
           {launchButton}
         </CardContent>

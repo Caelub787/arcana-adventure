@@ -3318,7 +3318,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/campaigns", requireAuth, async (req, res) => {
     try {
       const campaigns = await storage.getUserCampaigns(req.session.userId!);
-      res.json(campaigns);
+      const withOnlineCount = (list: any[]) =>
+        list.map((c) => ({ ...c, onlineCount: campaignRooms.get(c.id)?.size || 0 }));
+      res.json({
+        created: withOnlineCount(campaigns.created),
+        joined: withOnlineCount(campaigns.joined),
+      });
     } catch (err) {
       console.error('[GET /api/campaigns] Error:', err);
       res.status(500).json({ error: "Failed to fetch campaigns" });

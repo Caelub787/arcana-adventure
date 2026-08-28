@@ -10,6 +10,7 @@ import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
+import { getSystemLabel, formatCreatedDate, formatLastOpened } from "@/lib/campaignDisplay";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import NotificationsBell from "@/components/NotificationsBell";
@@ -41,6 +42,7 @@ export default function Home() {
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
     queryKey: ['/api/campaigns'],
     enabled: !!user,
+    refetchInterval: 15000, // keep the online-count stat reasonably fresh
   });
 
   // Query for terms and conditions
@@ -155,15 +157,24 @@ export default function Home() {
                     return (
                       <Link key={campaign.id} href={`/campaign/${campaign.id}`} data-testid={`link-campaign-${campaign.id}`}>
                         <Card className="group cursor-pointer border-stone-800 bg-stone-900/50 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-800/70">
-                          <CardContent className="p-4 flex items-center justify-between">
-                            <div>
-                              <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
-                              <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
-                                <span>{campaign.lastPlayed}</span>
-                                {isCreated && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                          <CardContent className="p-4 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors truncate" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
+                                {isCreated && <span className="shrink-0 text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                              </div>
+                              <div className="text-xs text-stone-500 mt-1 flex items-center gap-2 flex-wrap">
+                                <span>{getSystemLabel(campaign.system)}</span>
+                                <span>&middot;</span>
+                                <span className="flex items-center gap-1">
+                                  <Users className={`h-3 w-3 ${campaign.onlineCount > 0 ? 'text-green-500' : 'text-stone-600'}`} />
+                                  {campaign.onlineCount || 0}
+                                </span>
+                                <span>&middot;</span>
+                                <span title={`Created ${formatCreatedDate(campaign.createdAt)}`}>Opened {formatLastOpened(campaign.lastPlayed)}</span>
                               </div>
                             </div>
-                            <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
+                            <Play className="h-4 w-4 text-stone-600 group-hover:text-white shrink-0" />
                           </CardContent>
                         </Card>
                       </Link>
