@@ -1,6 +1,6 @@
 {
-  "name": "Arcana Adventure",
-  "short_name": "Arcana",
+  "name": "ArcanaVTT",
+  "short_name": "ArcanaVTT",
   "description": "Mobile RPG Manager & Tabletop Hub for real-time tabletop RPG gameplay",
   "start_url": "/",
   "scope": "/",
