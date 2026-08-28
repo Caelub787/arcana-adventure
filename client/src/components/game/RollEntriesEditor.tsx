@@ -10,6 +10,7 @@ import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, 
 import { useToast } from "@/hooks/use-toast";
 import { sortRollsForDisplay, collectFolderNames, type RollDisplayNode } from "@/lib/rollSort";
 import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
+import { CA_SKILLS } from "@shared/ca";
 
 interface RollEntry {
   id: string;
@@ -22,6 +23,8 @@ interface RollEntry {
   mod?: number;
   damageType?: string;
   attribute?: string;
+  // C.A. only: links this roll's mod to a shared/ca.ts CA_SKILLS key.
+  linkedSkillKey?: string | null;
   applyToStat?: string;
   sortOrder: number;
   range?: number;
@@ -72,7 +75,7 @@ interface RollEntry {
 }
 
 interface RollEntriesEditorProps {
-  ownerType: "item" | "spell";
+  ownerType: "item" | "spell" | "trait";
   ownerId?: string;
   canEdit: boolean;
   onExecuteRoll?: (roll: any) => void;
@@ -142,6 +145,7 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     mod: 0,
     damageType: "",
     attribute: "",
+    linkedSkillKey: null,
     applyToStat: "none",
     sortOrder: 0,
     folder: null,
@@ -211,6 +215,10 @@ function getRollSummary(roll: RollEntry): string {
 
 function getRollDetails(roll: RollEntry): string[] {
   const details: string[] = [];
+  if (roll.linkedSkillKey) {
+    const skill = CA_SKILLS.find((s) => s.key === roll.linkedSkillKey);
+    details.push(`Linked Skill: ${skill?.name || roll.linkedSkillKey}`);
+  }
   if (roll.range) details.push(`Range: ${roll.range}ft`);
   if (roll.isAoe && roll.aoeRange && roll.aoeShape) details.push(`AOE: ${roll.aoeRange}ft ${roll.aoeShape}`);
   if (roll.requiresSave && roll.saveAttribute) {
@@ -721,6 +729,22 @@ function RollForm({
             </SelectContent>
           </Select>
         </div>
+        {campaignSystem === 'ca' && (
+          <div>
+            <Label className="text-xs text-stone-400">Linked Skill</Label>
+            <Select value={form.linkedSkillKey || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, linkedSkillKey: v === "_none" ? null : v }))}>
+              <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-linkedSkillKey`}>
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">None</SelectItem>
+                {CA_SKILLS.map((s) => (
+                  <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div>
           <Label className="text-xs text-stone-400">Apply to Stat</Label>
           <Select value={form.applyToStat || "none"} onValueChange={(v) => setForm((f) => ({ ...f, applyToStat: v }))}>
@@ -1288,11 +1312,15 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
   const isDraftMode = !ownerId;
   const draftRollsData = draftRolls || [];
 
-  const queryKey = ownerType === "item" ? ["rollEntries", "item", ownerId] : ["rollEntries", "spell", ownerId];
+  const queryKey = ["rollEntries", ownerType, ownerId];
 
   const { data: apiRolls = [], isLoading: apiLoading } = useQuery({
     queryKey,
-    queryFn: () => (ownerType === "item" ? api.getItemRolls(ownerId!) : api.getSpellRolls(ownerId!)),
+    queryFn: () => (
+      ownerType === "item" ? api.getItemRolls(ownerId!) :
+      ownerType === "spell" ? api.getSpellRolls(ownerId!) :
+      api.getTraitRolls(ownerId!)
+    ),
     enabled: !isDraftMode && !!ownerId,
     staleTime: 5 * 60 * 1000,
   });

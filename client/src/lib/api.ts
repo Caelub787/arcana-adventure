@@ -1307,6 +1307,10 @@ class ApiClient {
     return this.request(`/spells/${spellId}/rolls`);
   }
 
+  async getTraitRolls(traitId: string): Promise<RollEntry[]> {
+    return this.request(`/character-traits/${traitId}/rolls`);
+  }
+
   async createRollEntry(data: Partial<RollEntry>): Promise<RollEntry> {
     return this.request('/roll-entries', {
       method: 'POST',

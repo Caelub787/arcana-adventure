@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills } from "@shared/ca";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -118,6 +118,30 @@ function resolveDcCheck(
   }
 
   return { dc, checkValue, success: checkValue >= dc, checkLabel };
+}
+
+// Resolves a roll entry's fixed-attribute mod plus (C.A. only) its
+// linkedSkillKey mod, and a human-readable breakdown line for each
+// contribution present. Shared between item/spell roll execution and C.A.
+// trait roll execution so the two never drift apart.
+function resolveRollAttrAndSkillMod(
+  rollEntry: any,
+  character: any,
+): { mod: number; breakdownParts: string[] } {
+  let mod = 0;
+  const breakdownParts: string[] = [];
+  if (rollEntry?.attribute && character) {
+    const attrMod = character[rollEntry.attribute] || 0;
+    mod += attrMod;
+    breakdownParts.push(`${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}`);
+  }
+  if (rollEntry?.linkedSkillKey && character) {
+    const skillMod = caEffectiveSkillMod(character, rollEntry.linkedSkillKey);
+    mod += skillMod;
+    const skillDef = CA_SKILLS.find(s => s.key === rollEntry.linkedSkillKey);
+    breakdownParts.push(`${skillDef?.name || rollEntry.linkedSkillKey}: ${skillMod >= 0 ? '+' : ''}${skillMod}`);
+  }
+  return { mod, breakdownParts };
 }
 
 function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
@@ -18006,6 +18030,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [caWoundDraftInjury, setCaWoundDraftInjury] = useState('');
   const [caWoundDraftEffect, setCaWoundDraftEffect] = useState('');
 
+  // C.A. Traits tab: which trait's roll-builder is expanded.
+  const [caExpandedTraitId, setCaExpandedTraitId] = useState<string | null>(null);
+
   const openCAWoundBox = (slotIndex: number, type: 'major' | 'minor', minorIndex?: number) => {
     const wounds = normalizeCAWounds((liveCharacter as any)?.caWounds);
     const entry = type === 'major' ? wounds[slotIndex].major : wounds[slotIndex].minor[minorIndex!];
@@ -19501,6 +19528,69 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       });
     }
   });
+
+  // C.A. only: executes a per-character trait's roll-builder entries — same
+  // dice-formula + flat mod + (optionally) linked-skill mod shape as item
+  // rolls, via the shared resolveRollAttrAndSkillMod helper, but without the
+  // item-specific energy/mana/item-cost gating (not requested for traits).
+  const executeTraitRoll = useCallback((rollEntry: any, trait: CharacterTrait) => {
+    if (rollEntry.noRoll) {
+      const flatValue = rollEntry.mod || 0;
+      triggerRollNotification({
+        type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+        dieType: 'd20',
+        label: `${trait.name} - ${rollEntry.name}`,
+        result: flatValue,
+        modifier: 0,
+        total: flatValue,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Effect applied (no roll)${flatValue ? ` | Value: ${flatValue}` : ''}`,
+        isHealing: rollEntry.rollType === 'heal',
+      });
+      if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
+      }
+      return;
+    }
+    if (!rollEntry.diceFormula) return;
+
+    const formulaParts: string[] = [rollEntry.diceFormula];
+    if (rollEntry.mod && rollEntry.mod !== 0) {
+      formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
+    }
+    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character);
+    if (attrMod !== 0) {
+      formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
+    }
+
+    const fullFormula = formulaParts.join('');
+    const result = rollDice(fullFormula);
+
+    const breakdown = [
+      rollEntry.diceFormula,
+      rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
+      ...attrSkillBreakdown,
+      rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+    ].filter(Boolean).join(' | ');
+
+    triggerRollNotification({
+      type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+      dieType: 'd20',
+      label: `${trait.name} - ${rollEntry.name}`,
+      result: result.total,
+      modifier: (rollEntry.mod || 0) + attrMod,
+      total: result.total,
+      username: character?.name || 'Unknown',
+      characterName: character?.name,
+      calculationBreakdown: breakdown,
+      isHealing: rollEntry.rollType === 'heal',
+    });
+
+    if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
+    }
+  }, [character]);
 
   // Save to admin library mutation (admin only)
   const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
@@ -22931,10 +23021,142 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {isCA && (
           <TabsContent value="traits" className="space-y-4 mt-0" data-testid="content-traits">
             <Card className="bg-stone-800 border-stone-700">
-              <CardContent className="pt-8 pb-8 text-center">
-                <p className="text-stone-400" data-testid="text-ca-traits-empty">Traits not yet configured for this system.</p>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-rose-500 text-sm font-medium flex items-center gap-2">
+                    <Star className="h-4 w-4" />
+                    Traits
+                  </CardTitle>
+                  {isGM && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAddTrait(true)}
+                      className="h-7 text-xs"
+                      data-testid="button-add-ca-trait"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Trait
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2 space-y-2">
+                {characterTraits.length === 0 ? (
+                  <p className="text-stone-400 text-sm text-center py-4" data-testid="text-ca-traits-empty">No traits added yet.</p>
+                ) : (
+                  characterTraits.map((trait: CharacterTrait) => {
+                    const traitMaxUses = trait.usesPerLongRest + (trait.usesPerShortRest || 0);
+                    const usesRemaining = Math.max(0, traitMaxUses - trait.currentUses);
+                    const canUse = trait.currentUses < traitMaxUses;
+                    const expanded = caExpandedTraitId === trait.id;
+                    return (
+                      <div key={trait.id} className="rounded border border-rose-800/40 bg-stone-900/50" data-testid={`row-ca-trait-${trait.id}`}>
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between gap-2 p-2 text-left"
+                          onClick={() => setCaExpandedTraitId(expanded ? null : trait.id)}
+                          data-testid={`button-toggle-ca-trait-${trait.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {expanded ? <ChevronDown className="h-3.5 w-3.5 text-stone-500" /> : <ChevronRight className="h-3.5 w-3.5 text-stone-500" />}
+                            <span className="text-sm text-rose-300 font-medium">{trait.name}</span>
+                            <span className={`text-[10px] ${canUse ? 'text-green-400' : 'text-red-400'}`}>{usesRemaining}/{traitMaxUses} uses</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {(isOwner || isGM) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                disabled={!canUse || useTraitMutation.isPending}
+                                onClick={(e) => { e.stopPropagation(); useTraitMutation.mutate(trait.id); }}
+                                data-testid={`button-use-ca-trait-${trait.id}`}
+                              >
+                                <Zap className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {isGM && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => { e.stopPropagation(); setEditingTrait(trait); }}
+                                data-testid={`button-edit-ca-trait-${trait.id}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </button>
+                        {expanded && (
+                          <div className="p-2 pt-0 space-y-2 border-t border-rose-800/40">
+                            {trait.description && (
+                              <p className="text-xs text-stone-400">{trait.description}</p>
+                            )}
+                            <RollEntriesEditor
+                              ownerType="trait"
+                              ownerId={trait.id}
+                              canEdit={isGM}
+                              campaignSystem={campaignSystem}
+                              onExecuteRoll={(roll: any) => executeTraitRoll(roll, trait)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </CardContent>
             </Card>
+
+            {/* Add Trait Dialog */}
+            <FloatingPanel
+              open={showAddTrait}
+              onClose={() => setShowAddTrait(false)}
+              title={<span className="text-rose-500">Add Trait</span>}
+              panelKey={`ca-trait-add${charPanelSuffix}`}
+              zIndex={floatingZIndices?.[`ca-trait-add${charPanelSuffix}`] || 10200}
+              onBringToFront={() => bringToFront?.(`ca-trait-add${charPanelSuffix}`)}
+              defaultSize={{ width: 500, height: 500 }}
+              minWidth={350}
+              minHeight={300}
+            >
+              <div className="p-4">
+                <TraitForm
+                  systemTraits={systemTraits}
+                  existingTraitIds={existingTraitIds}
+                  onSave={handleAddTraitSave}
+                  isLoading={addTraitMutation.isPending}
+                  isAAV3={true}
+                />
+              </div>
+            </FloatingPanel>
+
+            {/* Edit Trait Dialog */}
+            {editingTrait && (
+              <FloatingPanel
+                open={!!editingTrait}
+                onClose={() => setEditingTrait(null)}
+                title={<span className="text-rose-500">Edit Trait</span>}
+                panelKey={`ca-trait-edit${charPanelSuffix}`}
+                zIndex={floatingZIndices?.[`ca-trait-edit${charPanelSuffix}`] || 10200}
+                onBringToFront={() => bringToFront?.(`ca-trait-edit${charPanelSuffix}`)}
+                defaultSize={{ width: 500, height: 500 }}
+                minWidth={350}
+                minHeight={300}
+              >
+                <div className="p-4">
+                  <TraitEditForm
+                    trait={editingTrait}
+                    isAAV3={true}
+                    onSave={handleEditTraitSave}
+                    onDelete={handleEditTraitDelete}
+                    isLoading={updateTraitMutation.isPending}
+                  />
+                </div>
+              </FloatingPanel>
+            )}
           </TabsContent>
           )}
 
@@ -29922,26 +30144,23 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
     }
     
-    let attrMod = 0;
-    if (rollEntry.attribute && character) {
-      attrMod = character[rollEntry.attribute] || 0;
-      if (attrMod !== 0) {
-        formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
-      }
+    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character);
+    if (attrMod !== 0) {
+      formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
     }
-    
+
     const fullFormula = formulaParts.join('');
     const result = rollDice(fullFormula);
-    
+
     const dcCheckEnabled = !!rollEntry.hasDcCheck;
     const dcInfo = dcCheckEnabled ? resolveDcCheck(rollEntry, result.total, character) : null;
     const dcCheck = !!dcInfo;
     const dcSuccess = dcInfo ? dcInfo.success : null;
-    
+
     const breakdown = [
       rollEntry.diceFormula,
       rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
-      rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
+      ...attrSkillBreakdown,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
       energyCost > 0 ? `Energy: -${energyCost}` : null,
       dcInfo ? `${dcInfo.checkLabel} vs DC ${dcInfo.dc}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,

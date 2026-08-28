@@ -5435,6 +5435,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // C.A. only today: per-character trait rolls (the roll-builder replacing
+  // V3's flat 1d20 trait roll).
+  app.get("/api/character-traits/:id/rolls", requireAuth, async (req, res) => {
+    try {
+      const rolls = await storage.getRollEntries("trait", req.params.id);
+      const enriched = await enrichWithTemplateNames(rolls);
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch trait roll entries" });
+    }
+  });
+
   // Helper: check if user can modify roll entries for a given owner
   const canModifyRollEntries = async (userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
     const user = await storage.getUser(userId);
@@ -5486,6 +5498,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return false;
     } else if (ownerType === 'character') {
       const access = await checkCharacterAccess(ownerId, userId, 'edit');
+      return access.isOwner || access.isGM;
+    } else if (ownerType === 'trait') {
+      const trait = await storage.getCharacterTrait(ownerId);
+      if (!trait) return false;
+      const access = await checkCharacterAccess(trait.characterId, userId, 'edit');
       return access.isOwner || access.isGM;
     }
     return false;

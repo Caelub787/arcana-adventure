@@ -35,6 +35,8 @@ export type RollEntryDraft = {
   mod?: number | null;
   damageType?: string | null;
   attribute?: string | null;
+  // C.A. only: links this roll's mod to a CA_SKILL_OPTIONS key.
+  linkedSkillKey?: string | null;
   applyToStat?: "none" | "hp" | "energy" | "mana" | string;
   sortOrder?: number;
   folder?: string | null;
@@ -84,6 +86,30 @@ export type RollEntryDraft = {
 };
 
 const ATTRIBUTES = ["might", "finesse", "wit", "presence", "will", "craft"] as const;
+// C.A. only — a locally-inlined copy of shared/ca.ts's CA_SKILLS keys/names.
+// This package never imports shared/*, so the list is duplicated here on
+// purpose; keep it in sync with shared/ca.ts if that list ever changes.
+const CA_SKILL_OPTIONS = [
+  { key: "athletics", name: "Athletics" },
+  { key: "intimidation", name: "Intimidation" },
+  { key: "acrobatics", name: "Acrobatics" },
+  { key: "stealth", name: "Stealth" },
+  { key: "sleightOfHand", name: "Sleight of Hand" },
+  { key: "endurance", name: "Endurance" },
+  { key: "fortitude", name: "Fortitude" },
+  { key: "perception", name: "Perception" },
+  { key: "focus", name: "Focus" },
+  { key: "influence", name: "Influence" },
+  { key: "insight", name: "Insight" },
+  { key: "arcana", name: "Arcana" },
+  { key: "sense", name: "Sense" },
+  { key: "animalHandling", name: "Animal Handling" },
+  { key: "investigation", name: "Investigation" },
+  { key: "knowledge", name: "Knowledge" },
+  { key: "medicine", name: "Medicine" },
+  { key: "naturecraft", name: "Nature" },
+  { key: "survival", name: "Survival" },
+] as const;
 const ROLL_TYPES = ["attack", "damage", "heal", "effect"] as const;
 const AOE_SHAPES = ["", "cone", "sphere", "line", "cube", "cylinder"] as const;
 
@@ -201,6 +227,7 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
         roll={roll}
         damageTypes={damageTypes}
         aav2={aav2}
+        isCA={campaignSystem === 'ca'}
         adminItems={adminItems}
         ensureAdminItems={ensureAdminItems}
         knownFolders={folders}
@@ -278,12 +305,13 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
  * editing one roll only re-renders that roll's row (siblings keep the same
  * `roll` object reference and skip). */
 const RollRow = React.memo(function RollRow({
-  rollKey, roll, damageTypes, aav2, adminItems, ensureAdminItems, knownFolders, onPatch, onRemoveRow,
+  rollKey, roll, damageTypes, aav2, isCA, adminItems, ensureAdminItems, knownFolders, onPatch, onRemoveRow,
 }: {
   rollKey: string;
   roll: RollEntryDraft;
   damageTypes: string[];
   aav2: boolean;
+  isCA: boolean;
   adminItems: Array<{ id: string; name: string }>;
   ensureAdminItems: () => Promise<void>;
   knownFolders: string[];
@@ -366,6 +394,18 @@ const RollRow = React.memo(function RollRow({
               </Select>
             </div>
           </Grid3>
+
+          {isCA && (
+            <Grid3>
+              <div>
+                <Label>Linked Skill</Label>
+                <Select value={roll.linkedSkillKey ?? ""} onValueChange={v => onChange({ linkedSkillKey: v || null })}>
+                  <SelectItem value="">None</SelectItem>
+                  {CA_SKILL_OPTIONS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                </Select>
+              </div>
+            </Grid3>
+          )}
 
           <Grid3>
             <div>

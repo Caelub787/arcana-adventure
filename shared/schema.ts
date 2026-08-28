@@ -1700,6 +1700,9 @@ export const rollEntries = pgTable("roll_entries", {
   // the user's customisation is preserved. Reset clears the flag and re-syncs
   // the row from the source template roll.
   isOverridden: boolean("is_overridden").default(false),
+  // C.A. only: links this roll's mod to a shared/ca.ts CA_SKILLS key instead
+  // of (or alongside) a flat `mod`/`attribute`. Null for all other systems.
+  linkedSkillKey: text("linked_skill_key"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
