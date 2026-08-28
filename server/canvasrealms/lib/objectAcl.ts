@@ -1,4 +1,4 @@
-import { File } from "@google-cloud/storage";
+import type { StorageFileLike as File } from "../../replit_integrations/object_storage/types";
 
 const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 

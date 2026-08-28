@@ -10,7 +10,7 @@
 // stream) and the same `/objects/uploads/<uuid>` object paths, so neither the
 // routes nor the client upload code need to change.
 
-import { type File } from "@google-cloud/storage";
+import type { StorageFileLike as File } from "../../replit_integrations/object_storage/types";
 import { randomUUID } from "crypto";
 import { objectStorageClient } from "../../replit_integrations/object_storage";
 
@@ -29,7 +29,7 @@ function getPrivateObjectDir(): string {
   const dir = process.env.PRIVATE_OBJECT_DIR || "";
   if (!dir) {
     throw new Error(
-      "PRIVATE_OBJECT_DIR not set. Create a GCS bucket and set PRIVATE_OBJECT_DIR " +
+      "PRIVATE_OBJECT_DIR not set. Create an R2 bucket and set PRIVATE_OBJECT_DIR " +
         "to a /<bucket>/<path> prefix.",
     );
   }

@@ -1,6 +1,15 @@
-import { Storage, File } from "@google-cloud/storage";
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  HeadObjectCommand,
+  CopyObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { PassThrough, type Readable } from "node:stream";
 import { Response } from "express";
 import { randomUUID } from "crypto";
+import type { StorageFileLike } from "./types";
 import {
   ObjectAclPolicy,
   ObjectPermission,
@@ -9,38 +18,136 @@ import {
   setObjectAclPolicy,
 } from "./objectAcl";
 
-// Builds the GCS client from a service account key (GCS_SERVICE_ACCOUNT_KEY,
-// either raw JSON or base64-encoded JSON). Falls back to Application Default
-// Credentials (e.g. GOOGLE_APPLICATION_CREDENTIALS pointing at a key file, or
-// ambient credentials when running on GCP) when the env var isn't set.
-function createStorageClient(): Storage {
-  const rawKey = process.env.GCS_SERVICE_ACCOUNT_KEY;
-  if (!rawKey) {
-    return new Storage({ projectId: process.env.GCS_PROJECT_ID });
-  }
-
-  let credentials: Record<string, unknown>;
-  try {
-    const decoded = rawKey.trim().startsWith("{")
-      ? rawKey
-      : Buffer.from(rawKey, "base64").toString("utf-8");
-    credentials = JSON.parse(decoded);
-  } catch {
+// Cloudflare R2 is S3-compatible, so it's accessed through the AWS S3 SDK
+// pointed at R2's endpoint, with path-style addressing (matches the
+// GCS-style "/<bucket>/<object>" URLs this module already parses).
+function createR2Client(): S3Client {
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  if (!accountId || !accessKeyId || !secretAccessKey) {
     throw new Error(
-      "GCS_SERVICE_ACCOUNT_KEY is not valid JSON or base64-encoded JSON. " +
-        "Paste the full service account key file contents, or its base64 encoding."
+      "R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY not set. " +
+        "Create an R2 bucket and API token in the Cloudflare dashboard."
     );
   }
-
-  return new Storage({
-    credentials,
-    projectId:
-      process.env.GCS_PROJECT_ID || (credentials.project_id as string | undefined),
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    forcePathStyle: true,
+    credentials: { accessKeyId, secretAccessKey },
   });
 }
 
+const s3 = createR2Client();
+const R2_ENDPOINT_PREFIX = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/`;
+
+// One object in the bucket. Implements the same handful of methods the rest
+// of this file (and its Canvas Realms duplicate) used from GCS's File class.
+class R2File implements StorageFileLike {
+  constructor(
+    private readonly bucketName: string,
+    public readonly name: string
+  ) {}
+
+  async exists(): Promise<[boolean]> {
+    try {
+      await s3.send(new HeadObjectCommand({ Bucket: this.bucketName, Key: this.name }));
+      return [true];
+    } catch (err: any) {
+      if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
+        return [false];
+      }
+      throw err;
+    }
+  }
+
+  async getMetadata(): Promise<
+    [{ contentType?: string; size?: number; metadata?: Record<string, string> }]
+  > {
+    const head = await s3.send(
+      new HeadObjectCommand({ Bucket: this.bucketName, Key: this.name })
+    );
+    return [
+      {
+        contentType: head.ContentType,
+        size: head.ContentLength,
+        metadata: head.Metadata,
+      },
+    ];
+  }
+
+  async setMetadata(opts: { metadata: Record<string, string> }): Promise<void> {
+    // S3-compatible storage has no in-place metadata patch — copy the object
+    // onto itself with the merged metadata and MetadataDirective: REPLACE.
+    const [current] = await this.getMetadata();
+    await s3.send(
+      new CopyObjectCommand({
+        Bucket: this.bucketName,
+        Key: this.name,
+        CopySource: `${this.bucketName}/${encodeURIComponent(this.name)}`,
+        ContentType: current.contentType,
+        Metadata: { ...current.metadata, ...opts.metadata },
+        MetadataDirective: "REPLACE",
+      })
+    );
+  }
+
+  createReadStream(): NodeJS.ReadableStream {
+    const pass = new PassThrough();
+    s3.send(new GetObjectCommand({ Bucket: this.bucketName, Key: this.name }))
+      .then((res) => {
+        const body = res.Body as Readable;
+        body.on("error", (err) => pass.emit("error", err));
+        body.pipe(pass);
+      })
+      .catch((err) => pass.emit("error", err));
+    return pass;
+  }
+
+  async save(
+    data: Buffer,
+    opts?: { contentType?: string; metadata?: Record<string, string>; resumable?: boolean }
+  ): Promise<void> {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: this.name,
+        Body: data,
+        ContentType: opts?.contentType,
+        Metadata: opts?.metadata,
+      })
+    );
+  }
+
+  async getSignedUrl(opts: {
+    version?: string;
+    action: "read" | "write" | "delete";
+    expires: number;
+  }): Promise<[string]> {
+    const command =
+      opts.action === "write"
+        ? new PutObjectCommand({ Bucket: this.bucketName, Key: this.name })
+        : new GetObjectCommand({ Bucket: this.bucketName, Key: this.name });
+    const ttlSec = Math.max(1, Math.round((opts.expires - Date.now()) / 1000));
+    const url = await getSignedUrl(s3, command, { expiresIn: ttlSec });
+    return [url];
+  }
+}
+
+class R2Bucket {
+  constructor(private readonly bucketName: string) {}
+  file(objectName: string): R2File {
+    return new R2File(this.bucketName, objectName);
+  }
+}
+
 // The object storage client is used to interact with the object storage service.
-export const objectStorageClient = createStorageClient();
+export const objectStorageClient = {
+  bucket(bucketName: string): R2Bucket {
+    return new R2Bucket(bucketName);
+  },
+};
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -67,7 +174,7 @@ export class ObjectStorageService {
     );
     if (paths.length === 0) {
       throw new Error(
-        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a GCS bucket and set " +
+        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create an R2 bucket and set " +
           "PUBLIC_OBJECT_SEARCH_PATHS to a comma-separated list of /<bucket>/<path> prefixes."
       );
     }
@@ -79,7 +186,7 @@ export class ObjectStorageService {
     const dir = process.env.PRIVATE_OBJECT_DIR || "";
     if (!dir) {
       throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a GCS bucket and set PRIVATE_OBJECT_DIR " +
+        "PRIVATE_OBJECT_DIR not set. Create an R2 bucket and set PRIVATE_OBJECT_DIR " +
           "to a /<bucket>/<path> prefix."
       );
     }
@@ -87,7 +194,7 @@ export class ObjectStorageService {
   }
 
   // Search for a public object from the search paths.
-  async searchPublicObject(filePath: string): Promise<File | null> {
+  async searchPublicObject(filePath: string): Promise<StorageFileLike | null> {
     for (const searchPath of this.getPublicObjectSearchPaths()) {
       const fullPath = `${searchPath}/${filePath}`;
 
@@ -107,7 +214,7 @@ export class ObjectStorageService {
   }
 
   // Downloads an object to the response.
-  async downloadObject(file: File, res: Response, cacheTtlSec: number = 3600) {
+  async downloadObject(file: StorageFileLike, res: Response, cacheTtlSec: number = 3600) {
     try {
       // Get file metadata
       const [metadata] = await file.getMetadata();
@@ -147,8 +254,7 @@ export class ObjectStorageService {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
+        "PRIVATE_OBJECT_DIR not set. Create an R2 bucket and set PRIVATE_OBJECT_DIR env var."
       );
     }
 
@@ -167,7 +273,7 @@ export class ObjectStorageService {
   }
 
   // Gets the object entity file from the object path.
-  async getObjectEntityFile(objectPath: string): Promise<File> {
+  async getObjectEntityFile(objectPath: string): Promise<StorageFileLike> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
     }
@@ -196,23 +302,23 @@ export class ObjectStorageService {
   normalizeObjectEntityPath(
     rawPath: string,
   ): string {
-    if (!rawPath.startsWith("https://storage.googleapis.com/")) {
+    if (!rawPath.startsWith(R2_ENDPOINT_PREFIX)) {
       return rawPath;
     }
-  
+
     // Extract the path from the URL by removing query parameters and domain
     const url = new URL(rawPath);
     const rawObjectPath = url.pathname;
-  
+
     let objectEntityDir = this.getPrivateObjectDir();
     if (!objectEntityDir.endsWith("/")) {
       objectEntityDir = `${objectEntityDir}/`;
     }
-  
+
     if (!rawObjectPath.startsWith(objectEntityDir)) {
       return rawObjectPath;
     }
-  
+
     // Extract the entity ID from the path
     const entityId = rawObjectPath.slice(objectEntityDir.length);
     return `/objects/${entityId}`;
@@ -240,7 +346,7 @@ export class ObjectStorageService {
     requestedPermission,
   }: {
     userId?: string;
-    objectFile: File;
+    objectFile: StorageFileLike;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
     return canAccessObject({
@@ -297,4 +403,3 @@ async function signObjectURL({
   });
   return signedURL;
 }
-

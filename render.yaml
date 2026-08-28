@@ -14,9 +14,11 @@ services:
         generateValue: true
       - key: APP_URL
         sync: false
-      - key: GCS_SERVICE_ACCOUNT_KEY
+      - key: R2_ACCOUNT_ID
         sync: false
-      - key: GCS_PROJECT_ID
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
       - key: PRIVATE_OBJECT_DIR
         sync: false
