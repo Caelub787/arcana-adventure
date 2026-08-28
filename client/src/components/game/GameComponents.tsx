@@ -2150,8 +2150,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const screenY = e.clientY - rect.top;
           const currentZoom = zoomRef.current;
           const currentPan = panRef.current;
-          const worldX = (screenX - currentPan.x) / currentZoom;
-          const worldY = (screenY - currentPan.y) / currentZoom;
+          // Account for the 9000px world offset — same formula used by every
+          // other screen->world conversion in this file (pins, rulers,
+          // click-to-place, zoom-to-cursor). Without it this only happened to
+          // be correct at exactly 100% zoom.
+          const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
+          const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
           const effectiveGridSize = gridSize;
           const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
           const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
