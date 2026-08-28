@@ -517,6 +517,12 @@ export interface CustomField {
   ownerId: string;
   header: string;
   body?: string;
+  // When true, this whole field is hidden from non-GM viewers — the server
+  // omits it from the response entirely for them, it's never just CSS-hidden.
+  gmOnly?: boolean;
+  // GM-only companion note. The server strips this out of every response
+  // sent to a non-GM viewer, so it's simply absent (undefined) for players.
+  gmNotes?: string;
   sortOrder: number;
   createdAt: string;
 }

@@ -9,7 +9,7 @@
  * C.A. only: freeform header+body sections on a blank-sheet item.
  */
 import * as React from "react";
-import { Button, Input, Textarea, Label, Stack, Row } from "../ui/primitives";
+import { Button, Input, Textarea, Label, Checkbox, Stack, Row } from "../ui/primitives";
 import { uid } from "../lib/utils";
 
 export type CustomFieldDraft = {
@@ -19,6 +19,12 @@ export type CustomFieldDraft = {
   ownerId?: string;
   header: string;
   body?: string | null;
+  // Hides the whole field from players in-game. Round-tripped here (this
+  // screen is always an admin/GM authoring context) but only actually
+  // enforced by the live server, which strips gmOnly fields and gmNotes
+  // entirely out of responses to non-GM viewers.
+  gmOnly?: boolean;
+  gmNotes?: string | null;
   sortOrder?: number;
 };
 
@@ -58,6 +64,14 @@ export const CustomFieldsEditor: React.FC<CustomFieldsEditorProps> = ({ value, o
               <div>
                 <Label>Body</Label>
                 <Textarea value={field.body ?? ""} onChange={e => updateField(key, { body: e.target.value })} data-testid={`textarea-custom-field-body-${key}`} />
+              </div>
+              <Row>
+                <Checkbox checked={!!field.gmOnly} onCheckedChange={v => updateField(key, { gmOnly: v })} data-testid={`checkbox-custom-field-gmonly-${key}`} />
+                <Label>GM Only (hide entire section from players)</Label>
+              </Row>
+              <div>
+                <Label>GM Notes (never visible to players)</Label>
+                <Textarea value={field.gmNotes ?? ""} onChange={e => updateField(key, { gmNotes: e.target.value })} data-testid={`textarea-custom-field-gmnotes-${key}`} />
               </div>
               <Row>
                 <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => moveField(i, -1)} data-testid={`button-move-up-custom-field-${key}`}>Up</Button>

@@ -26,13 +26,19 @@ export const CA_WOUND_SLOT_COUNT = 6;
 export const CA_WOUND_MINOR_PER_SLOT = 3;
 export const CA_WOUND_TOTAL_BOXES = CA_WOUND_SLOT_COUNT * (1 + CA_WOUND_MINOR_PER_SLOT);
 
+// Each of the 6 slots is a fixed body region, in display order. The label is
+// always derived from this array by index — never trusted from stored data —
+// so ordering/naming is guaranteed consistent across every character.
+export const CA_BODY_PARTS = ["Head", "Torso", "R Arm", "L Arm", "R Leg", "L Leg"] as const;
+export type CABodyPart = typeof CA_BODY_PARTS[number];
+
 function emptyWoundEntry(): CAWoundEntry {
   return { checked: false, injury: "", effect: "" };
 }
 
 export function makeEmptyCAWounds(): CAWoundSlot[] {
-  return Array.from({ length: CA_WOUND_SLOT_COUNT }, (_, i) => ({
-    label: `Wound ${i + 1}`,
+  return CA_BODY_PARTS.map((label) => ({
+    label,
     major: emptyWoundEntry(),
     minor: Array.from({ length: CA_WOUND_MINOR_PER_SLOT }, () => emptyWoundEntry()),
   }));
@@ -40,13 +46,15 @@ export function makeEmptyCAWounds(): CAWoundSlot[] {
 
 // Tolerates missing/malformed data (e.g. a character predating this column,
 // or a slot count that doesn't match if this ever changes) by falling back
-// to a fresh empty set rather than throwing.
+// to a fresh empty set rather than throwing. Labels are always the canonical
+// CA_BODY_PARTS name for that index, regardless of what (if anything) was
+// stored, so a stale/legacy label can never surface in the UI.
 export function normalizeCAWounds(raw: unknown): CAWoundSlot[] {
   if (!Array.isArray(raw) || raw.length !== CA_WOUND_SLOT_COUNT) {
     return makeEmptyCAWounds();
   }
   return raw.map((slot: any, i: number) => ({
-    label: typeof slot?.label === "string" ? slot.label : `Wound ${i + 1}`,
+    label: CA_BODY_PARTS[i],
     major: normalizeWoundEntry(slot?.major),
     minor: Array.from({ length: CA_WOUND_MINOR_PER_SLOT }, (_, j) =>
       normalizeWoundEntry(slot?.minor?.[j])

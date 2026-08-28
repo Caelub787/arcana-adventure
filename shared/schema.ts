@@ -1721,6 +1721,16 @@ export const customFields = pgTable("custom_fields", {
   ownerId: varchar("owner_id").notNull(),
   header: text("header").notNull(),
   body: text("body").default(""),
+  // When true, this entire field (header + body + gmNotes) is invisible to
+  // non-GM viewers — the server omits it from the response entirely rather
+  // than just hiding it client-side.
+  gmOnly: boolean("gm_only").notNull().default(false),
+  // A companion note visible ONLY to the GM/assistant-GM, independent of
+  // `body`. Kept as a separate column (not embedded markers inside `body`)
+  // specifically so a player editing the visible `body` text can never
+  // collide with or overwrite GM notes — they're different storage
+  // entirely, not different layers of the same string.
+  gmNotes: text("gm_notes").default(""),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
