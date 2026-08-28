@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Copy } from "lucide-react";
+import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Copy, Pencil } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/AuthContext";
@@ -34,6 +34,12 @@ export default function MyCampaigns() {
   // Delete Confirmation State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<{ id: string, name: string } | null>(null);
+
+  // Rename Dialog State
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [campaignToRename, setCampaignToRename] = useState<{ id: string, name: string } | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameError, setRenameError] = useState("");
 
   // Load campaigns from API with React Query
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
@@ -104,6 +110,42 @@ export default function MyCampaigns() {
       toast({ title: "Error", description: error.message || "Failed to duplicate campaign", variant: "destructive" });
     },
   });
+
+  const renameCampaignMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateCampaign(id, { name } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      setRenameDialogOpen(false);
+      setCampaignToRename(null);
+      toast({ title: "Campaign renamed" });
+    },
+    onError: (error: any) => {
+      setRenameError(error.message || "Failed to rename campaign");
+    },
+  });
+
+  const handleRename = (id: string, name: string) => {
+    setCampaignToRename({ id, name });
+    setRenameDraft(name);
+    setRenameError("");
+    setRenameDialogOpen(true);
+  };
+
+  const confirmRename = () => {
+    setRenameError("");
+    const name = renameDraft.trim();
+    if (!name) {
+      setRenameError("Campaign name can't be empty.");
+      return;
+    }
+    if (name.length > 100) {
+      setRenameError("Campaign name must be 100 characters or fewer.");
+      return;
+    }
+    if (campaignToRename) {
+      renameCampaignMutation.mutate({ id: campaignToRename.id, name });
+    }
+  };
 
   const handleDelete = (id: string, name: string) => {
     setCampaignToDelete({ id, name });
@@ -178,9 +220,20 @@ export default function MyCampaigns() {
                 <Heart className={`h-4 w-4 ${campaign.favorite ? 'fill-current' : ''}`} />
               </Button>
               {isCreated && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-stone-600 hover:text-amber-400 hover:bg-stone-800"
+                  onClick={() => handleRename(campaign.id, campaign.name)}
+                  data-testid={`button-rename-${campaign.id}`}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
+              {isCreated && (
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="h-8 w-8 text-stone-600 hover:text-blue-400 hover:bg-blue-950/30"
                   onClick={() => duplicateCampaignMutation.mutate(campaign.id)}
                   data-testid={`button-duplicate-${campaign.id}`}
@@ -375,6 +428,41 @@ export default function MyCampaigns() {
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Rename Campaign Dialog */}
+        <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+          <DialogContent className="bg-stone-950 border-stone-800 text-stone-100">
+            <DialogHeader>
+              <DialogTitle>Rename Campaign</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 py-2">
+              <Label htmlFor="rename-campaign" className="text-stone-400">Campaign Name</Label>
+              <Input
+                id="rename-campaign"
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmRename(); }}
+                className="bg-stone-900 border-stone-700 text-stone-100"
+                maxLength={100}
+                autoFocus
+                data-testid="input-rename-campaign"
+              />
+              {renameError && <p className="text-xs text-red-500" data-testid="text-rename-error">{renameError}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setRenameDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={confirmRename}
+                className="bg-amber-700 hover:bg-amber-600"
+                disabled={renameCampaignMutation.isPending}
+                data-testid="button-confirm-rename"
+              >
+                {renameCampaignMutation.isPending ? <LoadingLogo className="h-4 w-4 mr-2" /> : null}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
