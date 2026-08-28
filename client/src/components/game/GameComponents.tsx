@@ -145,80 +145,87 @@ function resolveRollAttrAndSkillMod(
   return { mod, breakdownParts };
 }
 
-// C.A. wound severity, used to color both the per-limb card border and the
-// body diagram below.
+// C.A. wound severity, used to color the per-limb card border and the
+// status map below.
 function caWoundSeverity(slot: CAWoundSlot): 'none' | 'minor' | 'major' {
   if (slot.major.checked) return 'major';
   if (slot.minor.some(m => m.checked)) return 'minor';
   return 'none';
 }
 
-const CA_WOUND_SEVERITY_COLOR: Record<'none' | 'minor' | 'major', string> = {
-  none: '#44403c',   // stone-700
-  minor: '#d97706',  // amber-600
-  major: '#dc2626',  // red-600
-};
+function caWoundNodeRingColor(severity: 'none' | 'minor' | 'major'): string {
+  if (severity === 'major') return '#ef4444';
+  if (severity === 'minor') return '#f59e0b';
+  return '#57534e';
+}
 
-// The interactive front-facing humanoid silhouette. This IS the wound
-// interface — each limb is a clickable region that expands/collapses that
-// limb's Major/Minor controls below, so only one limb's details show at a
-// time instead of a permanent 6-card list. `wounds` must be a normalized
-// 6-entry array in CA_BODY_PARTS order: Head, Torso, R Arm, L Arm, R Leg, L Leg.
-const CA_BODY_SHAPES: { cx: number; cy: number; badgeX: number; badgeY: number }[] = [
-  { cx: 100, cy: 30, badgeX: 118, badgeY: 12 },   // Head
-  { cx: 100, cy: 96, badgeX: 126, badgeY: 62 },   // Torso
-  { cx: 150, cy: 101, badgeX: 160, badgeY: 66 },  // R Arm
-  { cx: 50, cy: 101, badgeX: 40, badgeY: 66 },    // L Arm
-  { cx: 114, cy: 180, badgeX: 124, badgeY: 142 }, // R Leg
-  { cx: 86, cy: 180, badgeX: 76, badgeY: 142 },   // L Leg
+// Regular hexagon point list around (cx, cy), pointy-top, for the wire-frame
+// node nodes in CAWoundStatusMap.
+function caHexPoints(cx: number, cy: number, r: number): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 2;
+    pts.push(`${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`);
+  }
+  return pts.join(' ');
+}
+
+// Node positions, indices matching CA_BODY_PARTS order (Head, Torso, R Arm,
+// L Arm, R Leg, L Leg). Torso is the hub every other node wires into.
+const CA_WOUND_NODES: { label: string; cx: number; cy: number }[] = [
+  { label: 'Head', cx: 140, cy: 34 },
+  { label: 'Torso', cx: 140, cy: 104 },
+  { label: 'R Arm', cx: 210, cy: 78 },
+  { label: 'L Arm', cx: 70, cy: 78 },
+  { label: 'R Leg', cx: 182, cy: 168 },
+  { label: 'L Leg', cx: 98, cy: 168 },
 ];
+const CA_WOUND_HUB_INDEX = 1;
 
-function CABodyDiagram({
-  wounds,
-  selectedIndex,
-  onSelect,
-}: {
-  wounds: CAWoundSlot[];
-  selectedIndex: number | null;
-  onSelect: (index: number) => void;
-}) {
-  const colors = wounds.map(s => CA_WOUND_SEVERITY_COLOR[caWoundSeverity(s)]);
+// A purely informational status glance — a small wire-frame node map (not a
+// literal body silhouette), one hexagon per limb wired to a central Torso
+// hub. This is never a required interaction; it's read-only, so it can never
+// gate visibility of anything (the wound list below is always fully shown).
+function CAWoundStatusMap({ wounds }: { wounds: CAWoundSlot[] }) {
+  const severities = wounds.map(caWoundSeverity);
   const counts = wounds.map(s => (s.major.checked ? 1 : 0) + s.minor.filter(m => m.checked).length);
-
-  const shapeProps = (i: number) => ({
-    fill: colors[i],
-    stroke: selectedIndex === i ? '#fbbf24' : '#78716c',
-    strokeWidth: selectedIndex === i ? 3 : 2,
-    className: 'cursor-pointer transition-colors',
-    onClick: () => onSelect(i),
-    'data-testid': `button-ca-body-part-${i}`,
-  });
+  const hub = CA_WOUND_NODES[CA_WOUND_HUB_INDEX];
+  const nodeR = 18;
 
   return (
-    <svg viewBox="0 0 200 260" className="w-40 h-auto mx-auto" data-testid="svg-ca-body-diagram">
-      <title>Click a body part to view/edit its wounds</title>
-      {/* Head */}
-      <circle cx="100" cy="30" r="24" {...shapeProps(0)} />
-      {/* Torso */}
-      <rect x="70" y="58" width="60" height="76" rx="14" {...shapeProps(1)} />
-      {/* R Arm (screen-right) */}
-      <rect x="138" y="62" width="24" height="78" rx="11" {...shapeProps(2)} />
-      {/* L Arm (screen-left) */}
-      <rect x="38" y="62" width="24" height="78" rx="11" {...shapeProps(3)} />
-      {/* R Leg (screen-right) */}
-      <rect x="102" y="138" width="24" height="84" rx="9" {...shapeProps(4)} />
-      {/* L Leg (screen-left) */}
-      <rect x="74" y="138" width="24" height="84" rx="9" {...shapeProps(5)} />
-
-      {/* Wound-count badges, only where there's something to show */}
-      {CA_BODY_SHAPES.map((pos, i) => counts[i] > 0 && (
-        <g key={i} className="pointer-events-none">
-          <circle cx={pos.badgeX} cy={pos.badgeY} r="9" fill="#0c0a09" stroke={colors[i]} strokeWidth="2" />
-          <text x={pos.badgeX} y={pos.badgeY + 3.5} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#f5f5f4">
-            {counts[i]}
-          </text>
-        </g>
+    <svg viewBox="0 0 280 200" className="w-full max-w-[260px] h-auto mx-auto" data-testid="svg-ca-wound-map">
+      {CA_WOUND_NODES.map((n, i) => i !== CA_WOUND_HUB_INDEX && (
+        <line key={`wire-${i}`} x1={hub.cx} y1={hub.cy} x2={n.cx} y2={n.cy} stroke="#3f3c39" strokeWidth="1.25" />
       ))}
+      {CA_WOUND_NODES.map((n, i) => {
+        const ring = caWoundNodeRingColor(severities[i]);
+        const active = severities[i] !== 'none';
+        return (
+          <g key={n.label}>
+            <polygon
+              points={caHexPoints(n.cx, n.cy, nodeR)}
+              fill="#1c1917"
+              stroke={ring}
+              strokeWidth={active ? 2 : 1.25}
+            />
+            {counts[i] > 0 && (
+              <text x={n.cx} y={n.cy + 4.5} textAnchor="middle" fontSize="12" fontWeight="600" fill={ring}>
+                {counts[i]}
+              </text>
+            )}
+            <text
+              x={n.cx}
+              y={n.cy + nodeR + 13}
+              textAnchor="middle"
+              fontSize="9"
+              letterSpacing="0.4"
+              fill="#a8a29e"
+            >
+              {n.label}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -18107,13 +18114,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // C.A. Traits tab: which trait's roll-builder is expanded.
   const [caExpandedTraitId, setCaExpandedTraitId] = useState<string | null>(null);
 
-  // C.A. wounds: the body diagram IS the interface — clicking a limb
-  // expands/collapses its detail panel below (only one shown at a time, to
-  // keep the sheet uncluttered). No dialog; checking a box just flips it
-  // (text is preserved either way), the Clear button on a checked box wipes
-  // it fully, and the injury/effect text is always visible inline once checked.
-  const [caSelectedWoundSlot, setCaSelectedWoundSlot] = useState<number | null>(null);
-
+  // C.A. wounds: every limb's controls are always on screen, and any
+  // checked box's injury/effect text is always visible right there — never
+  // gated behind a click. No dialog; checking a box just flips it (text is
+  // preserved either way), and the Clear link on a checked box wipes it.
   // Routed through queueCharacterUpdate (defined below) rather than the
   // onUpdate prop directly: queueCharacterUpdate reads/writes a ref that's
   // updated synchronously on every call, so rapidly toggling several
@@ -20694,12 +20698,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-ca-energy" />
                   </div>
 
-                  {/* Wounds — replaces HP entirely for C.A. The body diagram
-                      IS the interface: click a limb to expand/collapse its
-                      controls below, so only one limb's details show at a
-                      time instead of a permanent 6-card list. No dialog —
-                      checking a box just flips it (text preserved either
-                      way); the Clear link on a checked box wipes it. */}
+                  {/* Wounds — replaces HP entirely for C.A. Every limb's
+                      controls are always shown, and any checked box's
+                      injury/effect text is always visible right there —
+                      never gated behind a click. Checking a box just flips
+                      it (text preserved either way); the Clear link on a
+                      checked box wipes it. */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm text-stone-300">Wounds</Label>
@@ -20707,134 +20711,123 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         {caWoundCount((liveCharacter as any).caWounds)} / {CA_WOUND_TOTAL_BOXES}
                       </span>
                     </div>
-                    {(() => {
-                      const allWounds = normalizeCAWounds((liveCharacter as any).caWounds);
-                      const canEditWounds = !!canEdit && !!onUpdate;
-                      const slotIndex = caSelectedWoundSlot;
-                      const slot = slotIndex !== null ? allWounds[slotIndex] : null;
-                      return (
-                        <>
-                          <CABodyDiagram
-                            wounds={allWounds}
-                            selectedIndex={caSelectedWoundSlot}
-                            onSelect={(i) => setCaSelectedWoundSlot((cur) => (cur === i ? null : i))}
-                          />
-                          {slot && slotIndex !== null && (
-                            <div
-                              className={`rounded border p-2 space-y-2 bg-stone-900/50 ${
-                                caWoundSeverity(slot) === 'major' ? 'border-red-700' : caWoundSeverity(slot) === 'minor' ? 'border-amber-700/70' : 'border-stone-700'
-                              }`}
-                              data-testid={`card-ca-wound-${slotIndex}`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-stone-200 font-semibold">{slot.label}</span>
-                                <button
-                                  type="button"
-                                  className="text-stone-500 hover:text-stone-300"
-                                  onClick={() => setCaSelectedWoundSlot(null)}
-                                  data-testid="button-close-ca-wound-panel"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-
-                              <div className="space-y-1">
-                                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={slot.major.checked}
-                                    disabled={!canEditWounds}
-                                    onChange={() => toggleCAWoundBox(slotIndex, 'major')}
-                                    data-testid={`checkbox-ca-wound-${slotIndex}-major`}
-                                  />
-                                  <span className="text-amber-400">Major</span>
-                                </label>
-                                {slot.major.checked && (
-                                  <div className="pl-4 space-y-1 border-l-2 border-red-800/50">
-                                    <Textarea
-                                      key={`major-injury-${slotIndex}`}
-                                      defaultValue={slot.major.injury}
-                                      onBlur={(e) => updateCAWoundText(slotIndex, 'major', 'injury', e.target.value)}
-                                      disabled={!canEditWounds}
-                                      placeholder="Injury..."
-                                      className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                      data-testid={`textarea-ca-wound-${slotIndex}-major-injury`}
-                                    />
-                                    <Textarea
-                                      key={`major-effect-${slotIndex}`}
-                                      defaultValue={slot.major.effect}
-                                      onBlur={(e) => updateCAWoundText(slotIndex, 'major', 'effect', e.target.value)}
-                                      disabled={!canEditWounds}
-                                      placeholder="Effect..."
-                                      className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                      data-testid={`textarea-ca-wound-${slotIndex}-major-effect`}
-                                    />
-                                    {canEditWounds && (
-                                      <button
-                                        type="button"
-                                        className="text-[10px] text-red-400 hover:text-red-300"
-                                        onClick={() => clearCAWoundBox(slotIndex, 'major')}
-                                        data-testid={`button-clear-ca-wound-${slotIndex}-major`}
-                                      >
-                                        Clear
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  {slot.minor.map((m, minorIndex) => (
-                                    <input
-                                      key={minorIndex}
-                                      type="checkbox"
-                                      checked={m.checked}
-                                      disabled={!canEditWounds}
-                                      onChange={() => toggleCAWoundBox(slotIndex, 'minor', minorIndex)}
-                                      data-testid={`checkbox-ca-wound-${slotIndex}-minor-${minorIndex}`}
-                                    />
-                                  ))}
-                                  <span className="text-stone-500 text-[10px]">Minor</span>
-                                </div>
-                                {slot.minor.map((m, minorIndex) => m.checked && (
-                                  <div key={minorIndex} className="pl-4 space-y-1 border-l-2 border-amber-800/50">
-                                    <Textarea
-                                      key={`minor-${minorIndex}-injury-${slotIndex}`}
-                                      defaultValue={m.injury}
-                                      onBlur={(e) => updateCAWoundText(slotIndex, 'minor', 'injury', e.target.value, minorIndex)}
-                                      disabled={!canEditWounds}
-                                      placeholder="Injury..."
-                                      className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                      data-testid={`textarea-ca-wound-${slotIndex}-minor-${minorIndex}-injury`}
-                                    />
-                                    <Textarea
-                                      key={`minor-${minorIndex}-effect-${slotIndex}`}
-                                      defaultValue={m.effect}
-                                      onBlur={(e) => updateCAWoundText(slotIndex, 'minor', 'effect', e.target.value, minorIndex)}
-                                      disabled={!canEditWounds}
-                                      placeholder="Effect..."
-                                      className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                      data-testid={`textarea-ca-wound-${slotIndex}-minor-${minorIndex}-effect`}
-                                    />
-                                    {canEditWounds && (
-                                      <button
-                                        type="button"
-                                        className="text-[10px] text-amber-400 hover:text-amber-300"
-                                        onClick={() => clearCAWoundBox(slotIndex, 'minor', minorIndex)}
-                                        data-testid={`button-clear-ca-wound-${slotIndex}-minor-${minorIndex}`}
-                                      >
-                                        Clear
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
+                    <CAWoundStatusMap wounds={normalizeCAWounds((liveCharacter as any).caWounds)} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {normalizeCAWounds((liveCharacter as any).caWounds).map((slot, slotIndex) => {
+                        const severity = caWoundSeverity(slot);
+                        const canEditWounds = !!canEdit && !!onUpdate;
+                        return (
+                          <div
+                            key={slotIndex}
+                            className={`rounded border p-2 space-y-2 bg-stone-900/50 ${
+                              severity === 'major' ? 'border-red-700' : severity === 'minor' ? 'border-amber-700/70' : 'border-stone-700'
+                            }`}
+                            data-testid={`card-ca-wound-${slotIndex}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-stone-200 font-semibold">{slot.label}</span>
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: caWoundNodeRingColor(severity) }}
+                              />
                             </div>
-                          )}
-                        </>
-                      );
-                    })()}
+
+                            <div className="space-y-1">
+                              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={slot.major.checked}
+                                  disabled={!canEditWounds}
+                                  onChange={() => toggleCAWoundBox(slotIndex, 'major')}
+                                  data-testid={`checkbox-ca-wound-${slotIndex}-major`}
+                                />
+                                <span className="text-amber-400">Major</span>
+                              </label>
+                              {slot.major.checked && (
+                                <div className="pl-4 space-y-1 border-l-2 border-red-800/50">
+                                  <Textarea
+                                    key={`major-injury-${slotIndex}`}
+                                    defaultValue={slot.major.injury}
+                                    onBlur={(e) => updateCAWoundText(slotIndex, 'major', 'injury', e.target.value)}
+                                    disabled={!canEditWounds}
+                                    placeholder="Injury..."
+                                    className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                    data-testid={`textarea-ca-wound-${slotIndex}-major-injury`}
+                                  />
+                                  <Textarea
+                                    key={`major-effect-${slotIndex}`}
+                                    defaultValue={slot.major.effect}
+                                    onBlur={(e) => updateCAWoundText(slotIndex, 'major', 'effect', e.target.value)}
+                                    disabled={!canEditWounds}
+                                    placeholder="Effect..."
+                                    className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                    data-testid={`textarea-ca-wound-${slotIndex}-major-effect`}
+                                  />
+                                  {canEditWounds && (
+                                    <button
+                                      type="button"
+                                      className="text-[10px] text-red-400 hover:text-red-300"
+                                      onClick={() => clearCAWoundBox(slotIndex, 'major')}
+                                      data-testid={`button-clear-ca-wound-${slotIndex}-major`}
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                {slot.minor.map((m, minorIndex) => (
+                                  <input
+                                    key={minorIndex}
+                                    type="checkbox"
+                                    checked={m.checked}
+                                    disabled={!canEditWounds}
+                                    onChange={() => toggleCAWoundBox(slotIndex, 'minor', minorIndex)}
+                                    data-testid={`checkbox-ca-wound-${slotIndex}-minor-${minorIndex}`}
+                                  />
+                                ))}
+                                <span className="text-stone-500 text-[10px]">Minor</span>
+                              </div>
+                              {slot.minor.map((m, minorIndex) => m.checked && (
+                                <div key={minorIndex} className="pl-4 space-y-1 border-l-2 border-amber-800/50">
+                                  <Textarea
+                                    key={`minor-${minorIndex}-injury-${slotIndex}`}
+                                    defaultValue={m.injury}
+                                    onBlur={(e) => updateCAWoundText(slotIndex, 'minor', 'injury', e.target.value, minorIndex)}
+                                    disabled={!canEditWounds}
+                                    placeholder="Injury..."
+                                    className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                    data-testid={`textarea-ca-wound-${slotIndex}-minor-${minorIndex}-injury`}
+                                  />
+                                  <Textarea
+                                    key={`minor-${minorIndex}-effect-${slotIndex}`}
+                                    defaultValue={m.effect}
+                                    onBlur={(e) => updateCAWoundText(slotIndex, 'minor', 'effect', e.target.value, minorIndex)}
+                                    disabled={!canEditWounds}
+                                    placeholder="Effect..."
+                                    className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                    data-testid={`textarea-ca-wound-${slotIndex}-minor-${minorIndex}-effect`}
+                                  />
+                                  {canEditWounds && (
+                                    <button
+                                      type="button"
+                                      className="text-[10px] text-amber-400 hover:text-amber-300"
+                                      onClick={() => clearCAWoundBox(slotIndex, 'minor', minorIndex)}
+                                      data-testid={`button-clear-ca-wound-${slotIndex}-minor-${minorIndex}`}
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
