@@ -7,6 +7,7 @@ import ConnectPgSimple from "connect-pg-simple";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import { registerRoutes } from "./routes";
+import { pool as dbPool } from "./db";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -111,9 +112,26 @@ app.use((req, res, next) => {
   next();
 });
 
+// Self-healing guard for the mapObjects.layer column: the build-time
+// `drizzle-kit push --force` step (render.yaml) has not been reliably
+// picking up this specific addition in production even though it applies
+// cleanly in isolation, so this runs the same idempotent ALTER directly
+// against the app's own DB connection on every boot. A no-op once the
+// column exists; safe to leave in permanently.
+async function ensureMapObjectsLayerColumn() {
+  try {
+    await dbPool.query(
+      `ALTER TABLE IF EXISTS map_objects ADD COLUMN IF NOT EXISTS layer text NOT NULL DEFAULT 'structures'`
+    );
+  } catch (err) {
+    console.error("Failed to ensure map_objects.layer column exists:", err);
+  }
+}
+
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
+  await ensureMapObjectsLayerColumn();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
