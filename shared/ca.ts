@@ -80,6 +80,24 @@ export function caWoundCount(wounds: unknown): number {
   return count;
 }
 
+// A limb's Major wound is "in effect" either because it was checked
+// directly, or because all 3 of its Minor wounds are checked — three minors
+// add up to as dangerous as a major injury. This is purely computed, never
+// stored: checking/unchecking a single minor immediately changes the
+// answer, and the player's own major.checked flag (if they set it
+// themselves) is preserved independently underneath it either way.
+export function caEffectiveMajorActive(slot: CAWoundSlot): boolean {
+  return slot.major.checked || slot.minor.every(m => m.checked);
+}
+
+// HP for C.A. is driven by Major wounds only (direct or minor-covered) —
+// Minor wounds short of covering a whole limb don't affect it. Returns how
+// many of the 6 limbs currently have an effective Major wound, 0-6.
+export function caMajorWoundCount(wounds: unknown): number {
+  const normalized = normalizeCAWounds(wounds);
+  return normalized.filter(caEffectiveMajorActive).length;
+}
+
 // ---------------------------------------------------------------------------
 // Attributes + skills — starts as an editable copy of V3's 6 attributes and
 // 19 attribute-linked skills (same names, same die-tier scaling), but is its

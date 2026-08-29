@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, caEffectiveMajorActive, caMajorWoundCount, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -326,7 +326,11 @@ function CAWoundMapPips({
   return (
     <div className="space-y-2" data-testid="ca-wound-map-pips">
       {wounds.map((slot, i) => {
-        const majorOn = slot.major.checked;
+        const majorChecked = slot.major.checked;
+        // Three checked Minors auto-cover the Major (see caEffectiveMajorActive)
+        // — shown as a dimmed/dashed version of the same fill so it reads as
+        // "covered" rather than "you explicitly marked this."
+        const majorAutoCovered = !majorChecked && caEffectiveMajorActive(slot);
         const majorTier = CA_WOUND_TIER_CLASSES.major;
         return (
           <div key={i} className="flex items-center gap-2">
@@ -353,9 +357,13 @@ function CAWoundMapPips({
               type="button"
               disabled={disabled}
               onClick={() => onToggleMajor(i)}
-              title={`${slot.label} — Major`}
+              title={`${slot.label} — Major${majorAutoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`}
               className={`h-9 flex-1 rounded-md border transition-colors ${
-                majorOn ? majorTier.pipOn : 'bg-transparent border-stone-600 hover:border-stone-500'
+                majorChecked
+                  ? majorTier.pipOn
+                  : majorAutoCovered
+                    ? `${majorTier.pipOn} opacity-60 border-dashed`
+                    : 'bg-transparent border-stone-600 hover:border-stone-500'
               } ${disabled ? '' : 'cursor-pointer'}`}
               data-testid={`toggle-ca-wound-${i}-major`}
             />
@@ -3011,7 +3019,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
-          const woundPercent = (character && campaignSystem === 'ca') ? 100 - (caWoundCount((character as any).caWounds) / CA_WOUND_TOTAL_BOXES) * 100 : null;
+          // HP for C.A. tracks Major wounds only (direct or covered by all
+          // 3 Minors on a limb) — Minor wounds short of that don't move it.
+          const woundPercent = (character && campaignSystem === 'ca') ? 100 - (caMajorWoundCount((character as any).caWounds) / CA_WOUND_SLOT_COUNT) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -9270,18 +9280,19 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           </div>
           )}
 
-          {/* Wounds Bar - C.A. only, replaces HP entirely */}
+          {/* Wounds Bar - C.A. only, replaces HP entirely. Tracks Major
+              wounds only (direct or covered by all 3 Minors on a limb). */}
           {campaignSystem === 'ca' && (
             <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
               <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
                 <span>Wounds</span>
-                <span>{caWoundCount((character as any).caWounds)}/{CA_WOUND_TOTAL_BOXES}</span>
+                <span>{caMajorWoundCount((character as any).caWounds)}/{CA_WOUND_SLOT_COUNT}</span>
               </div>
               <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                 <motion.div
                   className="h-full bg-gradient-to-r from-red-700 to-red-500"
                   initial={false}
-                  animate={{ width: `${100 - (caWoundCount((character as any).caWounds) / CA_WOUND_TOTAL_BOXES) * 100}%` }}
+                  animate={{ width: `${100 - (caMajorWoundCount((character as any).caWounds) / CA_WOUND_SLOT_COUNT) * 100}%` }}
                   transition={{ duration: 0.8, ease: "easeInOut" }}
                 />
               </div>
