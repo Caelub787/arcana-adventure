@@ -261,7 +261,14 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
   const [editBody, setEditBody] = useState("");
   const [editGmOnly, setEditGmOnly] = useState(false);
 
-  const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+  // The quote a new note will attach to. Editable rather than a fixed
+  // read-only echo of a text selection: native selection detection (mouseup/
+  // touchend) is a nice-to-have shortcut that pre-fills this, but the "+ Add
+  // Note" button always works even when nothing is selected — the GM can
+  // just type or paste the exact phrase instead. That also sidesteps mobile
+  // browsers whose native selection-handle drags don't reliably dispatch
+  // events this component can listen for.
+  const [pendingQuote, setPendingQuote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const bodyContainerRef = useRef<HTMLDivElement>(null);
@@ -286,9 +293,12 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
   // mouseup/touchend: a real drag-select routinely ends with the pointer
   // released outside the exact bounds of the text container (past the last
   // line, over the row's padding, etc.), and a handler attached only to the
-  // container would silently never fire for those — which is exactly what
-  // made this feel broken. Selection state itself is still checked against
-  // this row's own container, so other rows' selections are ignored.
+  // container would silently never fire for those. Selection state itself is
+  // checked against this row's own container, so other rows' selections are
+  // ignored. This is a convenience pre-fill only — the "+ Add Note" button
+  // below always works even without it, since some browsers' native
+  // selection-handle drags (mobile in particular) don't reliably dispatch
+  // events a page can listen for.
   useEffect(() => {
     if (!isGM) return;
     const handler = () => {
@@ -300,7 +310,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
       if (!container.contains(range.commonAncestorContainer)) return;
       const text = sel.toString();
       if (!text.trim()) return;
-      setPendingSelection(text);
+      setPendingQuote(text);
       setNoteDraft("");
     };
     document.addEventListener("mouseup", handler);
@@ -311,12 +321,19 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
     };
   }, [isGM]);
 
+  const openAnnotationForm = () => {
+    const sel = window.getSelection();
+    const selected = sel && !sel.isCollapsed ? sel.toString().trim() : "";
+    setPendingQuote(selected);
+    setNoteDraft("");
+  };
+
   const handleSaveAnnotation = () => {
-    if (!pendingSelection || !noteDraft.trim()) return;
+    if (!pendingQuote?.trim() || !noteDraft.trim()) return;
     const annotations = parseAnnotations(field.gmNotes);
-    annotations.push({ id: crypto.randomUUID(), quote: pendingSelection, note: noteDraft.trim() });
+    annotations.push({ id: crypto.randomUUID(), quote: pendingQuote.trim(), note: noteDraft.trim() });
     onSave({ gmNotes: serializeAnnotations(annotations) });
-    setPendingSelection(null);
+    setPendingQuote(null);
     setNoteDraft("");
     window.getSelection()?.removeAllRanges();
   };
@@ -423,16 +440,32 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
               )
             )}
 
-            {isGM && body && !pendingSelection && (
-              <div className="text-[9px] text-stone-600 italic mt-0.5 flex items-center gap-1">
-                <Highlighter className="h-2.5 w-2.5" /> Select text above to pin a private note to it
-              </div>
+            {isGM && body && pendingQuote === null && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1 mt-0.5 text-[10px] text-violet-400 hover:text-violet-300"
+                onClick={openAnnotationForm}
+                data-testid={`button-add-annotation-${field.id}`}
+              >
+                <Highlighter className="h-2.5 w-2.5 mr-1" /> Add private note
+              </Button>
             )}
 
-            {isGM && pendingSelection && (
+            {isGM && pendingQuote !== null && (
               <div className="mt-1.5 rounded border border-violet-800/50 bg-violet-950/20 p-2 space-y-1.5">
-                <div className="text-[10px] text-violet-400 flex items-center gap-1">
-                  <Highlighter className="h-2.5 w-2.5" /> Note on: "{truncate(pendingSelection, 80)}"
+                <div>
+                  <Label className="text-[10px] text-violet-400">Attached to this text (select it above, or type/paste it here)</Label>
+                  <Input
+                    value={pendingQuote}
+                    onChange={(e) => setPendingQuote(e.target.value)}
+                    placeholder="Exact phrase from the text above..."
+                    className="bg-stone-900 border-violet-800/60 text-xs h-7"
+                    data-testid={`input-annotation-quote-${field.id}`}
+                  />
+                  {pendingQuote.trim() && !body.includes(pendingQuote.trim()) && (
+                    <div className="text-[9px] text-amber-500 mt-0.5">Doesn't match the text above exactly — it'll still save, just won't highlight anything until it does.</div>
+                  )}
                 </div>
                 <Textarea
                   value={noteDraft}
@@ -442,13 +475,13 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                   data-testid={`textarea-new-annotation-${field.id}`}
                 />
                 <div className="flex gap-1.5">
-                  <Button size="sm" disabled={!noteDraft.trim()} onClick={handleSaveAnnotation} data-testid={`button-save-annotation-${field.id}`}>
+                  <Button size="sm" disabled={!pendingQuote.trim() || !noteDraft.trim()} onClick={handleSaveAnnotation} data-testid={`button-save-annotation-${field.id}`}>
                     Save Note
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => { setPendingSelection(null); window.getSelection()?.removeAllRanges(); }}
+                    onClick={() => { setPendingQuote(null); window.getSelection()?.removeAllRanges(); }}
                     data-testid={`button-cancel-annotation-${field.id}`}
                   >
                     Cancel

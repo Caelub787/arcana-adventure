@@ -6658,35 +6658,26 @@ export default function Campaign() {
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
   const [openCharacterSheets, setOpenCharacterSheets] = useState<any[]>([]);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
-  // Tracks the active tab per open character sheet so the floating panel can
-  // size itself once to the "Attrs & Skills" (attributes) tab and lock there.
+  // Tracks the active tab per open character sheet. The floating panel's
+  // one-time fit-to-content measurement runs against whichever tab is active
+  // on first render, so opening straight to the requested tab (instead of a
+  // hardcoded "tallest tab" guess used only to seed sizing) means the panel
+  // is sized for what the user actually sees, not a stand-in that has to be
+  // kept manually in sync as tabs grow — switching tabs later just scrolls.
   const [charSheetActiveTabs, setCharSheetActiveTabs] = useState<Record<string, string>>({});
-  // The tab each sheet should END UP showing once its panel has sized itself.
-  // Kept in a ref so onFitLocked can read it without re-render churn or relying
-  // on the shared characterSheetDefaultTab (which would couple concurrent opens).
-  const charSheetIntendedTabRef = useRef<Record<string, string>>({});
-  
+
   // Helper functions for managing multiple open character sheets
   const openCharacterSheet = (char: any, tab: string = "overview") => {
-    const alreadyOpen = openCharacterSheets.some(c => c.id === char.id);
-    charSheetIntendedTabRef.current[char.id] = tab;
     setOpenCharacterSheets(prev => {
       if (prev.some(c => c.id === char.id)) return prev;
       return [...prev, char];
     });
-    // New sheet: seed sheetSeedTab (the tallest tab for this system) so the
-    // floating panel measures and locks its size against it on the very first
-    // render; onFitLocked then switches the visible tab to the intended one
-    // before paint (panel shows the right tab but is sized to fit the seed
-    // tab — no flash). Already-open sheet: the size is already locked, so
-    // just honor the requested tab directly.
-    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: alreadyOpen ? tab : sheetSeedTab }));
+    setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: tab }));
     bringToFront(`char-${char.id}`);
   };
   
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
-    delete charSheetIntendedTabRef.current[charId];
     setCharSheetActiveTabs(prev => {
       if (!(charId in prev)) return prev;
       const next = { ...prev };
@@ -8043,10 +8034,6 @@ export default function Campaign() {
   // Load feat trees for species form (to assign racial feat trees)
   // Use public endpoint so GMs can access feat trees without admin requirement
   const campaignSystemSlug = (campaign as any)?.system || 'arcana-adventure';
-  // C.A. sheets have no 'attributes' tab, so the floating-panel fit-sizing
-  // trick (see openCharacterSheet) needs a different tab to seed against —
-  // 'inventory' is the tallest of C.A.'s 4 tabs.
-  const sheetSeedTab = campaignSystemSlug === 'ca' ? 'inventory' : 'attributes';
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
     queryKey: ['/api/feat-trees', campaignSystemSlug],
     queryFn: () => api.getPublicFeatTrees(campaignSystemSlug),
@@ -12868,11 +12855,6 @@ export default function Campaign() {
             minWidth={400}
             minHeight={400}
             fitContent
-            onFitLocked={() => setCharSheetActiveTabs(prev => (
-              prev[sheet.id] === sheetSeedTab
-                ? { ...prev, [sheet.id]: charSheetIntendedTabRef.current[sheet.id] ?? characterSheetDefaultTab }
-                : prev
-            ))}
             panelKey={`char-${sheet.id}`}
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
@@ -12892,7 +12874,7 @@ export default function Campaign() {
               onUpdate={(updates) => handleUpdateCharacterById(sheet.id, updates)}
               onClose={() => closeCharacterSheet(sheet.id)}
               defaultTab={characterSheetDefaultTab}
-              activeTab={charSheetActiveTabs[sheet.id] ?? sheetSeedTab}
+              activeTab={charSheetActiveTabs[sheet.id] ?? characterSheetDefaultTab}
               onTabChange={(v) => setCharSheetActiveTabs(prev => ({ ...prev, [sheet.id]: v }))}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}
