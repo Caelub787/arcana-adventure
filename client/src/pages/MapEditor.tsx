@@ -1,14 +1,16 @@
 // Map Maker editor — Inkarnate-inspired: a bounded map "sheet" you paint
 // textured terrain onto and scatter/place asset stamps over, organized
-// into layers, navigated with cursor-anchored pan/zoom. Fundamentals for
-// this pass:
-//   - Terrain is one flattened raster painted with tileable placeholder
-//     textures (see terrainTextures.ts) rather than flat color, or filled
-//     in one shot by the noise-based "Generate Terrain" biome pass.
-//   - A single "Assets" tool places stamp instances: a quick click drops
-//     one, a drag scatters several with jittered position/rotation/scale
-//     along the stroke — the same mechanic Inkarnate uses for both single
-//     buildings and tree/mountain clusters.
+// into layers, navigated with cursor/touch-anchored pan/zoom. Fundamentals:
+//   - Terrain has two modes: a freehand textured brush, and a vector Land
+//     Shape tool (tap points around a landmass, close it, and it's smoothed
+//     into a soft ink-outlined coastline and filled with the chosen
+//     texture) — the actual mechanic Inkarnate maps are recognizable by,
+//     not a raster blob. Both bake onto one flattened terrain raster, which
+//     "Generate Terrain" can also fill in one shot from a noise heightmap.
+//   - A single "Assets" tool places stamp instances: a quick tap drops one,
+//     a drag scatters several with jittered position/rotation/scale along
+//     the stroke — Inkarnate's mechanic for both single buildings and
+//     tree/mountain clusters.
 //   - Every placed stamp belongs to one of four layers (Terrain Features,
 //     Vegetation, Structures, Decor); the Layers panel toggles a layer's
 //     visibility and picks which layer new placements land in.
@@ -17,6 +19,10 @@
 //     cycles that one number so a whole map's placed stamps can flip
 //     state together (e.g. "village" -> "village on fire") without
 //     touching position, rotation, or size.
+//   - Touch: one finger drives the active tool (paint/place/select); two
+//     fingers pan and pinch-zoom, mirroring how Procreate/Photoshop split
+//     drawing from navigation on a touchscreen. Desktop keeps
+//     shift/middle/right-drag to pan and scroll-to-zoom (cursor-anchored).
 //   - "Import to Campaign" flattens terrain + all visible-layer stamps
 //     into one PNG and creates a brand new Scene — a one-way export, the
 //     source Map stays independently editable after.
@@ -30,13 +36,17 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, MousePointer2, Image as ImageIcon, Wand2, Save,
   Upload, ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff, Maximize, Mountain, Trees,
+  Undo2, Grid3x3, Layers as LayersIcon,
 } from "lucide-react";
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern } from "@/components/mapmaker/terrainTextures";
+import { traceSmoothClosedPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
+type TerrainMode = 'brush' | 'shape';
+type MobileSheet = null | 'terrain' | 'assets' | 'select' | 'layers';
 
 const LAYERS: { key: string; label: string }[] = [
   { key: 'terrain-features', label: 'Terrain Features' },
@@ -84,6 +94,12 @@ function biomeTerrainFor(n: number): TerrainKind {
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
+const UNDO_LIMIT = 8;
+const COASTLINE_STROKE = 'rgba(40,28,15,0.35)';
+
+function pillClass(active: boolean) {
+  return `px-2.5 py-1 rounded text-xs border ${active ? 'bg-amber-900/30 text-amber-200 border-amber-700' : 'bg-stone-800 text-stone-300 border-stone-700 hover:bg-stone-700'}`;
+}
 
 export default function MapEditor() {
   const { id } = useParams<{ id: string }>();
@@ -115,8 +131,15 @@ export default function MapEditor() {
   const map = mapQuery.data;
 
   const [tool, setTool] = useState<Tool>('terrain');
+  const [terrainMode, setTerrainMode] = useState<TerrainMode>('brush');
   const [terrainKind, setTerrainKind] = useState<TerrainKind>('grass');
   const [brushSize, setBrushSize] = useState(50);
+  const [shapePoints, setShapePointsState] = useState<Point[]>([]);
+  const shapePointsRef = useRef<Point[]>([]);
+  const setShapePoints = useCallback((next: Point[]) => {
+    shapePointsRef.current = next;
+    setShapePointsState(next);
+  }, []);
   const [selectedStampAssetId, setSelectedStampAssetId] = useState<string | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [activeLayer, setActiveLayer] = useState('structures');
@@ -128,6 +151,9 @@ export default function MapEditor() {
   const [hasFitOnce, setHasFitOnce] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [undoCount, setUndoCount] = useState(0);
+  const [mobileSheet, setMobileSheet] = useState<MobileSheet>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -137,6 +163,10 @@ export default function MapEditor() {
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const scatterRef = useRef<{ lastX: number; lastY: number; lastTime: number; placedAny: boolean } | null>(null);
   const dragRef = useRef<null | { mode: 'move' | 'rotate' | 'resize'; id: string; startX: number; startY: number; orig: MapObject }>(null);
+  const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<null | { startDist: number; startMid: { x: number; y: number }; startZoom: number; startPan: { x: number; y: number } }>(null);
+  const undoStackRef = useRef<ImageData[]>([]);
 
   const stampAssetsById = useMemo(() => {
     const m = new Map<string, StampAsset>();
@@ -224,6 +254,26 @@ export default function MapEditor() {
     });
   };
 
+  const pushUndoSnapshot = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    try {
+      const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      undoStackRef.current.push(snap);
+      if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift();
+      setUndoCount(undoStackRef.current.length);
+    } catch { /* ignore */ }
+  };
+
+  const handleUndo = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const snap = undoStackRef.current.pop();
+    setUndoCount(undoStackRef.current.length);
+    if (canvas && ctx && snap) ctx.putImageData(snap, 0, 0);
+  };
+
   const paintAt = (x: number, y: number) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -231,6 +281,21 @@ export default function MapEditor() {
     ctx.beginPath();
     ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
     ctx.fill();
+  };
+
+  const finishLandShape = () => {
+    const points = shapePointsRef.current;
+    const canvas = canvasRef.current;
+    if (points.length < 3 || !canvas) { setShapePoints([]); return; }
+    pushUndoSnapshot();
+    const ctx = canvas.getContext('2d')!;
+    traceSmoothClosedPath(ctx, points);
+    ctx.fillStyle = getTerrainPattern(ctx, terrainKind);
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = COASTLINE_STROKE;
+    ctx.stroke();
+    setShapePoints([]);
   };
 
   const createObjectMutation = useMutation({
@@ -275,14 +340,37 @@ export default function MapEditor() {
 
   // --- pointer interaction on the world container ---
   const handleContainerPointerDown = (e: React.PointerEvent) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointersRef.current.size === 2) {
+      // Second finger down: switch to two-finger pan/zoom, abort whatever
+      // the first finger was doing.
+      isPaintingRef.current = false;
+      scatterRef.current = null;
+      dragRef.current = null;
+      tapStartRef.current = null;
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      pinchRef.current = { startDist: dist, startMid: mid, startZoom: zoom, startPan: pan };
+      return;
+    }
+    if (activePointersRef.current.size > 2) return;
+
     if (e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey)) {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
     }
     if (e.button !== 0) return;
+
+    if (tool === 'terrain' && terrainMode === 'shape') {
+      tapStartRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
     const { x, y } = toWorld(e.clientX, e.clientY);
     if (tool === 'terrain') {
+      pushUndoSnapshot();
       isPaintingRef.current = true;
       paintAt(x, y);
     } else if (tool === 'assets' && selectedStampAssetId) {
@@ -294,11 +382,33 @@ export default function MapEditor() {
   };
 
   const handleContainerPointerMove = (e: React.PointerEvent) => {
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (activePointersRef.current.size === 2 && pinchRef.current) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const scaleFactor = dist / Math.max(1, pinchRef.current.startDist);
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchRef.current.startZoom * scaleFactor));
+      const rect = viewportRef.current!.getBoundingClientRect();
+      const startMidLocal = { x: pinchRef.current.startMid.x - rect.left, y: pinchRef.current.startMid.y - rect.top };
+      const worldAtStart = {
+        x: (startMidLocal.x - pinchRef.current.startPan.x) / pinchRef.current.startZoom,
+        y: (startMidLocal.y - pinchRef.current.startPan.y) / pinchRef.current.startZoom,
+      };
+      const midLocal = { x: mid.x - rect.left, y: mid.y - rect.top };
+      setZoom(newZoom);
+      setPan({ x: midLocal.x - worldAtStart.x * newZoom, y: midLocal.y - worldAtStart.y * newZoom });
+      return;
+    }
+    if (activePointersRef.current.size >= 2) return;
+
     if (isPanningRef.current) {
       setPan({ x: panStartRef.current.panX + (e.clientX - panStartRef.current.x), y: panStartRef.current.panY + (e.clientY - panStartRef.current.y) });
       return;
     }
-    if (isPaintingRef.current && tool === 'terrain') {
+    if (isPaintingRef.current && tool === 'terrain' && terrainMode === 'brush') {
       const { x, y } = toWorld(e.clientX, e.clientY);
       paintAt(x, y);
       return;
@@ -331,7 +441,22 @@ export default function MapEditor() {
     }
   };
 
-  const handleContainerPointerUp = () => {
+  const handleContainerPointerUp = (e: React.PointerEvent) => {
+    const wasTap = !!tapStartRef.current && Math.hypot(e.clientX - tapStartRef.current.x, e.clientY - tapStartRef.current.y) < 10;
+    activePointersRef.current.delete(e.pointerId);
+    if (activePointersRef.current.size < 2) pinchRef.current = null;
+
+    if (wasTap && tool === 'terrain' && terrainMode === 'shape') {
+      const { x, y } = toWorld(e.clientX, e.clientY);
+      const prev = shapePointsRef.current;
+      if (prev.length >= 3 && Math.hypot(x - prev[0].x, y - prev[0].y) < 20 / zoom) {
+        finishLandShape();
+      } else {
+        setShapePoints([...prev, { x, y }]);
+      }
+    }
+    tapStartRef.current = null;
+
     isPanningRef.current = false;
     isPaintingRef.current = false;
     scatterRef.current = null;
@@ -352,7 +477,8 @@ export default function MapEditor() {
   };
 
   // Keyboard: Delete removes the selected stamp, V cycles the map's
-  // variant state, ignored while typing in a field.
+  // variant state, Ctrl/Cmd+Z undoes the last terrain edit, Escape cancels
+  // an in-progress land shape — all ignored while typing in a field.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -367,6 +493,11 @@ export default function MapEditor() {
           updateMapMutation.mutate({ activeVariantIndex: next });
           return next;
         });
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if (e.key === 'Escape' && shapePointsRef.current.length > 0) {
+        setShapePoints([]);
       }
     };
     window.addEventListener('keydown', handler);
@@ -375,7 +506,8 @@ export default function MapEditor() {
 
   const handleGenerate = () => {
     if (!map || !canvasRef.current) return;
-    if (!confirm("Replace the entire terrain layer with a generated one? This can't be undone.")) return;
+    if (!confirm("Replace the entire terrain layer with a generated one? This can't be undone with Undo history alone if you keep editing after — but one Ctrl/Cmd+Z will restore what's there now.")) return;
+    pushUndoSnapshot();
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
     const noise = makeNoise2D(Math.random() * 1000);
@@ -453,50 +585,161 @@ export default function MapEditor() {
 
   const visibleObjects = [...objects].filter((o) => layerVisibility[o.layer] !== false).sort((a, b) => a.zIndex - b.zIndex);
 
+  const terrainFlyoutContent = (
+    <>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Terrain</p>
+      <div className="flex gap-1.5 mb-3">
+        <button className={pillClass(terrainMode === 'brush')} onClick={() => setTerrainMode('brush')} data-testid="button-terrain-mode-brush">Brush</button>
+        <button className={pillClass(terrainMode === 'shape')} onClick={() => { setTerrainMode('shape'); setShapePoints([]); }} data-testid="button-terrain-mode-shape">Land Shape</button>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
+        {TERRAIN_KINDS.map(({ kind, label }) => (
+          <button
+            key={kind}
+            title={label}
+            className={`aspect-square rounded border-2 overflow-hidden ${terrainKind === kind ? 'border-amber-500' : 'border-stone-700'}`}
+            onClick={() => setTerrainKind(kind)}
+            data-testid={`button-terrain-${kind}`}
+          >
+            <TextureSwatch kind={kind} />
+          </button>
+        ))}
+      </div>
+      {terrainMode === 'brush' ? (
+        <>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
+          <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
+          <p className="text-xs text-stone-500 mt-1">{brushSize}px</p>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-stone-500 mb-2">Tap to place points around a landmass. Tap near your first point (or press Finish) to close it into a smooth coastline.</p>
+          {shapePoints.length > 0 && (
+            <div className="flex gap-1.5">
+              <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishLandShape} disabled={shapePoints.length < 3} data-testid="button-finish-land-shape">
+                Finish ({shapePoints.length})
+              </Button>
+              <Button size="sm" variant="outline" className="border-stone-700" onClick={() => setShapePoints([])} data-testid="button-cancel-land-shape">
+                Cancel
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  const assetsFlyoutContent = (
+    <>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Assets</p>
+      <div className="grid grid-cols-4 md:grid-cols-3 gap-1.5 mb-3">
+        {(stampAssetsQuery.data ?? []).map((asset) => {
+          const v = asset.variants[0];
+          return (
+            <button
+              key={asset.id}
+              title={asset.name}
+              className={`aspect-square rounded border-2 bg-stone-900 flex items-center justify-center overflow-hidden ${selectedStampAssetId === asset.id ? 'border-amber-500' : 'border-stone-700'}`}
+              onClick={() => setSelectedStampAssetId(asset.id)}
+              data-testid={`button-select-stamp-${asset.id}`}
+            >
+              {v ? <img src={v.image} alt={asset.name} className="max-w-full max-h-full object-contain" /> : <ImageIcon className="h-4 w-4 text-stone-600" />}
+            </button>
+          );
+        })}
+      </div>
+      {(stampAssetsQuery.data ?? []).length === 0 && (
+        <p className="text-xs text-stone-600 mb-2">No stamp assets yet. An admin can add some from the Maps list page.</p>
+      )}
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
+      <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
+      <p className="text-xs text-stone-500 mt-1 mb-2">Tap to place one, drag to scatter a cluster.</p>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Placing into</p>
+      <p className="text-xs text-amber-400">{LAYERS.find((l) => l.key === activeLayer)?.label}</p>
+    </>
+  );
+
+  const selectInfoContent = (
+    <p className="text-xs text-stone-500">Tap a stamp to select it. Drag its body to move, the top handle to rotate, the corner handle to resize. Delete/Backspace removes it. Press V anytime to cycle the map's variant state.</p>
+  );
+
+  const layersContent = (
+    <>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Layers</p>
+      <div className="space-y-1">
+        {LAYERS.map((l) => (
+          <div
+            key={l.key}
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm ${activeLayer === l.key ? 'bg-amber-900/30 text-amber-300 border border-amber-700/60' : 'text-stone-300 border border-transparent hover:bg-stone-800'}`}
+            onClick={() => setActiveLayer(l.key)}
+            data-testid={`layer-row-${l.key}`}
+          >
+            <button
+              className="text-stone-400 hover:text-white shrink-0"
+              onClick={(e) => { e.stopPropagation(); setLayerVisibility((prev) => ({ ...prev, [l.key]: prev[l.key] === false ? true : false })); }}
+              data-testid={`button-toggle-layer-${l.key}`}
+            >
+              {layerVisibility[l.key] === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+            <span className="flex-1 truncate">{l.label}</span>
+            <span className="text-[10px] text-stone-500">{objectCountByLayer[l.key] ?? 0}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-stone-600 mt-3">Tap a layer to place new assets into it. The eye toggles visibility on the canvas and in exports.</p>
+    </>
+  );
+
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black text-stone-100 flex flex-col select-none">
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-black text-stone-100 flex flex-col select-none">
       {/* Top bar */}
-      <div className="flex items-center gap-2 px-2 py-1.5 bg-stone-950 border-b border-stone-800 flex-wrap z-20">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/maps')} className="text-stone-400 hover:text-white">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-stone-950 border-b border-stone-800 overflow-x-auto flex-nowrap shrink-0 z-20">
+        <Button variant="ghost" size="icon" onClick={() => setLocation('/maps')} className="text-stone-400 hover:text-white shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <Input
           key={map.id}
           defaultValue={map.name}
           onBlur={(e) => { if (e.target.value.trim() && e.target.value !== map.name) updateMapMutation.mutate({ name: e.target.value.trim() }); }}
-          className="h-8 w-48 bg-stone-900 border-stone-700 text-sm"
+          className="h-8 w-28 sm:w-48 bg-stone-900 border-stone-700 text-sm shrink-0"
           data-testid="input-map-name"
         />
-        <div className="w-px h-6 bg-stone-800 mx-1" />
-        <Button size="sm" variant="outline" className="border-stone-700" onClick={handleGenerate} data-testid="button-generate-terrain">
-          <Wand2 className="h-3.5 w-3.5 mr-1" /> Generate Terrain
+        <div className="w-px h-6 bg-stone-800 mx-1 shrink-0" />
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleUndo} disabled={undoCount === 0} title="Undo (Ctrl/Cmd+Z)" data-testid="button-undo">
+          <Undo2 className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="outline" className={`border-stone-700 shrink-0 ${showGrid ? 'text-amber-400 border-amber-700' : ''}`} onClick={() => setShowGrid((v) => !v)} title="Toggle battle-map grid" data-testid="button-toggle-grid">
+          <Grid3x3 className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleGenerate} data-testid="button-generate-terrain">
+          <Wand2 className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Generate</span>
         </Button>
         <Button
-          size="sm" variant="outline" className="border-stone-700"
+          size="sm" variant="outline" className="border-stone-700 shrink-0"
           onClick={() => { const next = (activeVariantIndex + 1) % Math.max(1, maxVariantCount); setActiveVariantIndex(next); updateMapMutation.mutate({ activeVariantIndex: next }); }}
           title="Cycle variant state (hotkey: V)"
           data-testid="button-cycle-variant"
         >
-          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Variant {activeVariantIndex + 1}/{maxVariantCount}
+          <RefreshCw className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Variant {activeVariantIndex + 1}/{maxVariantCount}</span>
         </Button>
-        <div className="flex-1" />
-        <Button size="sm" variant="outline" className="border-stone-700" onClick={fitToScreen} title="Fit to screen" data-testid="button-fit-screen">
+        <div className="flex-1 min-w-2" />
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={fitToScreen} title="Fit to screen" data-testid="button-fit-screen">
           <Maximize className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="outline" className="border-stone-700" onClick={() => zoomAt(window.innerWidth / 2, window.innerHeight / 2, 0.85)}><ZoomOut className="h-3.5 w-3.5" /></Button>
-        <span className="text-xs text-stone-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
-        <Button size="sm" variant="outline" className="border-stone-700" onClick={() => zoomAt(window.innerWidth / 2, window.innerHeight / 2, 1.15)}><ZoomIn className="h-3.5 w-3.5" /></Button>
-        <Button size="sm" variant="outline" className="border-stone-700" onClick={() => setImportOpen(true)} data-testid="button-import-scene">
-          <Upload className="h-3.5 w-3.5 mr-1" /> Import to Campaign
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={() => zoomAt(window.innerWidth / 2, window.innerHeight / 2, 0.85)}><ZoomOut className="h-3.5 w-3.5" /></Button>
+        <span className="text-xs text-stone-500 w-10 text-center shrink-0">{Math.round(zoom * 100)}%</span>
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={() => zoomAt(window.innerWidth / 2, window.innerHeight / 2, 1.15)}><ZoomIn className="h-3.5 w-3.5" /></Button>
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={() => setImportOpen(true)} data-testid="button-import-scene">
+          <Upload className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Import</span>
         </Button>
-        <Button size="sm" className="bg-emerald-800 hover:bg-emerald-700" onClick={handleSave} disabled={saving} data-testid="button-save-map">
-          {saving ? <LoadingLogo className="h-3.5 w-3.5 mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />} Save
+        <Button size="sm" className="bg-emerald-800 hover:bg-emerald-700 shrink-0" onClick={handleSave} disabled={saving} data-testid="button-save-map">
+          {saving ? <LoadingLogo className="h-3.5 w-3.5 sm:mr-1" /> : <Save className="h-3.5 w-3.5 sm:mr-1" />} <span className="hidden sm:inline">Save</span>
         </Button>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        {/* Icon rail */}
-        <div className="w-12 bg-stone-950 border-r border-stone-800 flex flex-col items-center py-2 gap-1 shrink-0">
+      <div className="flex flex-1 min-h-0 relative">
+        {/* Desktop icon rail */}
+        <div className="hidden md:flex w-12 bg-stone-950 border-r border-stone-800 flex-col items-center py-2 gap-1 shrink-0">
           <button
             className={`w-9 h-9 rounded flex items-center justify-center ${tool === 'terrain' ? 'bg-amber-700 text-white' : 'text-stone-400 hover:bg-stone-800'}`}
             onClick={() => setTool('terrain')} title="Terrain" data-testid="button-tool-terrain"
@@ -517,71 +760,22 @@ export default function MapEditor() {
           </button>
         </div>
 
-        {/* Contextual flyout panel */}
-        <div className="w-48 bg-stone-950 border-r border-stone-800 p-2 overflow-y-auto shrink-0">
-          {tool === 'terrain' && (
-            <>
-              <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Terrain</p>
-              <div className="grid grid-cols-3 gap-1.5 mb-3">
-                {TERRAIN_KINDS.map(({ kind, label }) => (
-                  <button
-                    key={kind}
-                    title={label}
-                    className={`aspect-square rounded border-2 overflow-hidden ${terrainKind === kind ? 'border-amber-500' : 'border-stone-700'}`}
-                    onClick={() => setTerrainKind(kind)}
-                    data-testid={`button-terrain-${kind}`}
-                  >
-                    <TextureSwatch kind={kind} />
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
-              <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
-              <p className="text-xs text-stone-500 mt-1">{brushSize}px</p>
-            </>
-          )}
-          {tool === 'assets' && (
-            <>
-              <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Assets</p>
-              <div className="grid grid-cols-3 gap-1.5 mb-3">
-                {(stampAssetsQuery.data ?? []).map((asset) => {
-                  const v = asset.variants[0];
-                  return (
-                    <button
-                      key={asset.id}
-                      title={asset.name}
-                      className={`aspect-square rounded border-2 bg-stone-900 flex items-center justify-center overflow-hidden ${selectedStampAssetId === asset.id ? 'border-amber-500' : 'border-stone-700'}`}
-                      onClick={() => setSelectedStampAssetId(asset.id)}
-                      data-testid={`button-select-stamp-${asset.id}`}
-                    >
-                      {v ? <img src={v.image} alt={asset.name} className="max-w-full max-h-full object-contain" /> : <ImageIcon className="h-4 w-4 text-stone-600" />}
-                    </button>
-                  );
-                })}
-              </div>
-              {(stampAssetsQuery.data ?? []).length === 0 && (
-                <p className="text-xs text-stone-600 mb-2">No stamp assets yet. An admin can add some from the Maps list page.</p>
-              )}
-              <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
-              <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
-              <p className="text-xs text-stone-500 mt-1 mb-2">Click to place one, drag to scatter a cluster.</p>
-              <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Placing into</p>
-              <p className="text-xs text-amber-400">{LAYERS.find((l) => l.key === activeLayer)?.label}</p>
-            </>
-          )}
-          {tool === 'select' && (
-            <p className="text-xs text-stone-500">Click a stamp to select it. Drag its body to move, the top handle to rotate, the corner handle to resize. Delete/Backspace removes it. Press V anytime to cycle the map's variant state.</p>
-          )}
+        {/* Desktop contextual flyout panel */}
+        <div className="hidden md:block w-48 bg-stone-950 border-r border-stone-800 p-2 overflow-y-auto shrink-0">
+          {tool === 'terrain' && terrainFlyoutContent}
+          {tool === 'assets' && assetsFlyoutContent}
+          {tool === 'select' && selectInfoContent}
         </div>
 
         {/* Canvas viewport */}
         <div
           ref={viewportRef}
-          className="flex-1 relative overflow-hidden bg-[#141414] cursor-crosshair"
-          style={{ backgroundImage: 'radial-gradient(#2a2a2a 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+          className="flex-1 relative overflow-hidden bg-[#141414] cursor-crosshair touch-none"
+          style={{ backgroundImage: 'radial-gradient(#2a2a2a 1px, transparent 1px)', backgroundSize: '24px 24px', touchAction: 'none' }}
           onPointerDown={handleContainerPointerDown}
           onPointerMove={handleContainerPointerMove}
           onPointerUp={handleContainerPointerUp}
+          onPointerCancel={handleContainerPointerUp}
           onPointerLeave={handleContainerPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           onWheel={(e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.08 : 0.93); }}
@@ -590,6 +784,27 @@ export default function MapEditor() {
             style={{ position: 'absolute', left: 0, top: 0, width: map.width, height: map.height, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.6)' }}
           >
             <canvas ref={canvasRef} className="absolute left-0 top-0" />
+            {showGrid && (
+              <svg className="absolute left-0 top-0 pointer-events-none" width={map.width} height={map.height}>
+                {Array.from({ length: Math.ceil(map.width / map.gridSize) + 1 }).map((_, i) => (
+                  <line key={`v${i}`} x1={i * map.gridSize} y1={0} x2={i * map.gridSize} y2={map.height} stroke="rgba(255,255,255,0.25)" strokeWidth={1 / zoom} />
+                ))}
+                {Array.from({ length: Math.ceil(map.height / map.gridSize) + 1 }).map((_, i) => (
+                  <line key={`h${i}`} x1={0} y1={i * map.gridSize} x2={map.width} y2={i * map.gridSize} stroke="rgba(255,255,255,0.25)" strokeWidth={1 / zoom} />
+                ))}
+              </svg>
+            )}
+            {shapePoints.length > 0 && (
+              <svg className="absolute left-0 top-0 pointer-events-none" width={map.width} height={map.height}>
+                <polyline
+                  points={shapePoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none" stroke="#fbbf24" strokeWidth={3 / zoom} strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                />
+                {shapePoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={7 / zoom} fill={i === 0 ? '#f59e0b' : '#fde68a'} stroke="#78350f" strokeWidth={1.5 / zoom} />
+                ))}
+              </svg>
+            )}
             {visibleObjects.map((obj) => {
               const variant = variantForObject(obj);
               const isSelected = selectedObjectId === obj.id;
@@ -617,12 +832,12 @@ export default function MapEditor() {
                   {isSelected && tool === 'select' && (
                     <>
                       <div
-                        className="absolute -top-5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-400 cursor-alias"
+                        className="absolute -top-6 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-amber-400 cursor-alias touch-none"
                         onPointerDown={(e) => startObjectDrag(e, obj, 'rotate')}
                         data-testid={`handle-rotate-${obj.id}`}
                       />
                       <div
-                        className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-amber-400 cursor-nwse-resize"
+                        className="absolute -bottom-2 -right-2 w-4 h-4 bg-amber-400 cursor-nwse-resize touch-none"
                         onPointerDown={(e) => startObjectDrag(e, obj, 'resize')}
                         data-testid={`handle-resize-${obj.id}`}
                       />
@@ -634,30 +849,55 @@ export default function MapEditor() {
           </div>
         </div>
 
-        {/* Layers panel */}
-        <div className="w-48 bg-stone-950 border-l border-stone-800 p-2 overflow-y-auto shrink-0">
-          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Layers</p>
-          <div className="space-y-1">
-            {LAYERS.map((l) => (
-              <div
-                key={l.key}
-                className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm ${activeLayer === l.key ? 'bg-amber-900/30 text-amber-300 border border-amber-700/60' : 'text-stone-300 border border-transparent hover:bg-stone-800'}`}
-                onClick={() => setActiveLayer(l.key)}
-                data-testid={`layer-row-${l.key}`}
-              >
-                <button
-                  className="text-stone-400 hover:text-white shrink-0"
-                  onClick={(e) => { e.stopPropagation(); setLayerVisibility((prev) => ({ ...prev, [l.key]: prev[l.key] === false ? true : false })); }}
-                  data-testid={`button-toggle-layer-${l.key}`}
-                >
-                  {layerVisibility[l.key] === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-                <span className="flex-1 truncate">{l.label}</span>
-                <span className="text-[10px] text-stone-500">{objectCountByLayer[l.key] ?? 0}</span>
-              </div>
-            ))}
+        {/* Desktop layers panel */}
+        <div className="hidden md:block w-48 bg-stone-950 border-l border-stone-800 p-2 overflow-y-auto shrink-0">
+          {layersContent}
+        </div>
+      </div>
+
+      {/* Mobile bottom sheet + tab bar */}
+      <div className="md:hidden shrink-0">
+        {mobileSheet && (
+          <div className="max-h-[42vh] overflow-y-auto bg-stone-950 border-t border-stone-800 p-3" data-testid="mobile-sheet">
+            {mobileSheet === 'terrain' && terrainFlyoutContent}
+            {mobileSheet === 'assets' && assetsFlyoutContent}
+            {mobileSheet === 'select' && selectInfoContent}
+            {mobileSheet === 'layers' && layersContent}
           </div>
-          <p className="text-[10px] text-stone-600 mt-3">Click a layer to place new assets into it. The eye toggles visibility on the canvas and in exports.</p>
+        )}
+        <div className="h-14 bg-stone-950 border-t border-stone-800 flex items-stretch justify-around">
+          <button
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${tool === 'terrain' ? 'text-amber-400' : 'text-stone-400'}`}
+            onClick={() => { setTool('terrain'); setMobileSheet((s) => (s === 'terrain' ? null : 'terrain')); }}
+            data-testid="button-mobile-tool-terrain"
+          >
+            <Mountain className="h-5 w-5" />
+            <span className="text-[10px]">Terrain</span>
+          </button>
+          <button
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${tool === 'assets' ? 'text-amber-400' : 'text-stone-400'}`}
+            onClick={() => { setTool('assets'); setMobileSheet((s) => (s === 'assets' ? null : 'assets')); }}
+            data-testid="button-mobile-tool-assets"
+          >
+            <Trees className="h-5 w-5" />
+            <span className="text-[10px]">Assets</span>
+          </button>
+          <button
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${tool === 'select' ? 'text-amber-400' : 'text-stone-400'}`}
+            onClick={() => { setTool('select'); setMobileSheet((s) => (s === 'select' ? null : 'select')); }}
+            data-testid="button-mobile-tool-select"
+          >
+            <MousePointer2 className="h-5 w-5" />
+            <span className="text-[10px]">Select</span>
+          </button>
+          <button
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${mobileSheet === 'layers' ? 'text-amber-400' : 'text-stone-400'}`}
+            onClick={() => setMobileSheet((s) => (s === 'layers' ? null : 'layers'))}
+            data-testid="button-mobile-tool-layers"
+          >
+            <LayersIcon className="h-5 w-5" />
+            <span className="text-[10px]">Layers</span>
+          </button>
         </div>
       </div>
 
