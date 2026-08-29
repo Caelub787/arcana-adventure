@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -1205,11 +1205,17 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
     startPointerY: number;
   } | null>(null);
 
-  // Grid-cell waypoints recorded live as a token is dragged — the token
-  // always moves along this literal route (both the drag preview here and,
-  // via onMoveToken's path argument, what every other viewer sees) rather
-  // than a reconstructed shortest route between the start and end cell.
-  // Null outside an active drag.
+  // Movement preview mode, toggled from the battlemap toolbar (next to
+  // "hide token names"): 'average' (default) shows/sends the shortest
+  // diagonal-preferring route between start and end; 'path' shows/sends the
+  // literal grid cells the pointer passed through, recorded live below.
+  // Path waypoints are always recorded during a drag regardless of mode (the
+  // cost is negligible), but only actually used for the drag preview and
+  // handed to onMoveToken (so every other viewer sees the real route too)
+  // while 'path' mode is selected.
+  const [tokenMovementMode, setTokenMovementMode] = useState<'average' | 'path'>('average');
+  // Grid-cell waypoints recorded live as a token is dragged. Null outside an
+  // active drag.
   const [tokenDragPath, setTokenDragPath] = useState<{ x: number; y: number }[] | null>(null);
 
   // Diagonal-preferring grid walk from one cell to another, exclusive of
@@ -1959,9 +1965,11 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         tokensToMove.forEach(t => {
           // Only the primary dragged token has a recorded path (tokens
           // moving alongside it in a multi-select drag follow a fixed
-          // offset from it, not an independently-tracked route) — other
-          // viewers fall back to a reconstructed route for those.
-          onMoveToken(t.id, t.visualX, t.visualY, true, t.id === draggingToken.id ? (tokenDragPath ?? undefined) : undefined);
+          // offset from it, not an independently-tracked route), and only
+          // in 'path' mode — other viewers fall back to a reconstructed
+          // route otherwise.
+          const path = tokenMovementMode === 'path' && t.id === draggingToken.id ? (tokenDragPath ?? undefined) : undefined;
+          onMoveToken(t.id, t.visualX, t.visualY, true, path);
         });
       }
     } finally {
@@ -2606,7 +2614,17 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
-        {campaignSystem === 'aa-v3' && (
+        <Button
+           size="sm"
+           variant="secondary"
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${tokenMovementMode === 'path' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
+           data-testid="button-toggle-movement-mode"
+           title="Change Token Movement"
+        >
+          {tokenMovementMode === 'path' ? <Route className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+        </Button>
+        {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
           <Button
             size="sm"
             variant="secondary"
@@ -3507,12 +3525,13 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 const isV3Bars = campaignSystem === 'aa-v3';
                 const isCABars = campaignSystem === 'ca';
                 const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
-                // In V3, showBars toggle controls all bars; in V1/V2, per-character flags apply
-                const showMana = character && manaPercent !== null && canSeeBars && (!isV3Bars ? (character.showManaBar ?? true) : showBars);
-                const showEnergy = character && energyPercent !== null && canSeeBars && (!isV3Bars ? (character.showEnergyBar ?? true) : showBars);
+                // In V3 and C.A., the showBars toggle controls all bars; in V1/V2, per-character flags apply.
+                const barsToggleControlled = isV3Bars || isCABars;
+                const showMana = character && manaPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showManaBar ?? true) : showBars);
+                const showEnergy = character && energyPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showEnergyBar ?? true) : showBars);
                 // C.A. replaces HP with Wounds entirely — never show the HP bar for it.
-                const showHp = character && hpPercent !== null && canSeeBars && !isCABars && (!isV3Bars ? (character.showHpBar ?? true) : showBars);
-                const showWound = character && isCABars && woundPercent !== null && canSeeBars && (character.showHpBar ?? true);
+                const showHp = character && hpPercent !== null && canSeeBars && !isCABars && (!barsToggleControlled ? (character.showHpBar ?? true) : showBars);
+                const showWound = character && isCABars && woundPercent !== null && canSeeBars && showBars;
                 if (isV3Bars) {
                   const clamp = (v: number) => Math.max(0, Math.min(100, v));
                   const showCombined = (showEnergy || showMana) && (energyPercent !== null || manaPercent !== null);
@@ -4035,15 +4054,17 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           );
         })()}
 
-        {/* Token Movement Path Visualization - Shows the literal grid cells
-            the pointer has passed through so far, recorded live into
-            tokenDragPath by moveTokenDrag — not a reconstructed shortest
-            route from start to end. */}
+        {/* Token Movement Path Visualization - Shows path and distance while
+            dragging. 'average' mode (default): shortest diagonal-preferring
+            route from start to end, independent of how the token was
+            actually dragged. 'path' mode: the literal grid cells the
+            pointer passed through, recorded live into tokenDragPath by
+            moveTokenDrag. */}
         {draggingToken && (() => {
           const effectiveGridSize = gridSize;
 
           let pathPoints: { x: number; y: number }[];
-          if (tokenDragPath && tokenDragPath.length > 0) {
+          if (tokenMovementMode === 'path' && tokenDragPath && tokenDragPath.length > 0) {
             pathPoints = tokenDragPath;
           } else {
             // Calculate start and end grid positions

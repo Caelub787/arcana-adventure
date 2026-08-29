@@ -334,23 +334,38 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
     setNoteDraft("");
   };
 
-  // Right-click a text selection -> small "GM only comment" menu -> opens
-  // the same note composer as the "+ Add Note" button, pre-filled with the
-  // selection. Only offered when something within this field's body is
-  // actually selected (a right-click elsewhere falls through to the normal
-  // browser context menu).
+  // Tracks the most recent non-collapsed selection made inside this row's
+  // body, kept fresh via `selectionchange` (which fires on every selection
+  // change, unlike mouseup/touchend) rather than re-querying
+  // window.getSelection() at contextmenu time — right-clicking collapses or
+  // moves the live selection in some browsers before the contextmenu event
+  // even fires, which silently emptied it and made preventDefault never run,
+  // so the native menu showed instead of ours.
+  const lastSelectionRef = useRef<string>("");
+  useEffect(() => {
+    if (!isGM) return;
+    const handler = () => {
+      const sel = window.getSelection();
+      const container = bodyContainerRef.current;
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !container) return;
+      const range = sel.getRangeAt(0);
+      if (!container.contains(range.commonAncestorContainer)) return;
+      const text = sel.toString().trim();
+      if (text) lastSelectionRef.current = text;
+    };
+    document.addEventListener("selectionchange", handler);
+    return () => document.removeEventListener("selectionchange", handler);
+  }, [isGM]);
+
+  // Right-click inside this field's body -> small custom menu with "GM only
+  // comment" (pre-filled with the last selection made here) instead of the
+  // browser's own menu. Always suppresses the native menu for a GM viewing
+  // this body, even with nothing selected, so right-clicking here is
+  // predictable rather than sometimes falling through to the OS menu.
   const handleBodyContextMenu = (e: React.MouseEvent) => {
     if (!isGM) return;
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-    const container = bodyContainerRef.current;
-    if (!container) return;
-    const range = sel.getRangeAt(0);
-    if (!container.contains(range.commonAncestorContainer)) return;
-    const quote = sel.toString().trim();
-    if (!quote) return;
     e.preventDefault();
-    setContextMenuPos({ x: e.clientX, y: e.clientY, quote });
+    setContextMenuPos({ x: e.clientX, y: e.clientY, quote: lastSelectionRef.current });
   };
 
   const handleSaveAnnotation = () => {
@@ -575,19 +590,34 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
             data-testid={`contextmenu-annotation-${field.id}`}
           >
-            <button
-              type="button"
-              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
-              onClick={() => {
-                const quote = contextMenuPos.quote;
-                setContextMenuPos(null);
-                setPendingQuote(quote);
-                setNoteDraft("");
-              }}
-              data-testid={`button-contextmenu-gm-comment-${field.id}`}
-            >
-              <Highlighter className="h-3 w-3" /> GM only comment
-            </button>
+            {contextMenuPos.quote ? (
+              <button
+                type="button"
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
+                onClick={() => {
+                  const quote = contextMenuPos.quote;
+                  setContextMenuPos(null);
+                  setPendingQuote(quote);
+                  setNoteDraft("");
+                }}
+                data-testid={`button-contextmenu-gm-comment-${field.id}`}
+              >
+                <Highlighter className="h-3 w-3" /> GM only comment
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
+                onClick={() => {
+                  setContextMenuPos(null);
+                  setPendingQuote("");
+                  setNoteDraft("");
+                }}
+                data-testid={`button-contextmenu-gm-comment-${field.id}`}
+              >
+                <Highlighter className="h-3 w-3" /> GM only comment (type quote)
+              </button>
+            )}
           </div>
         </>,
         document.body
