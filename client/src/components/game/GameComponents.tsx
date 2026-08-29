@@ -2759,6 +2759,21 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
+        {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
+          <Button
+            size="sm"
+            variant="secondary"
+            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showBars ? 'border-white/10' : 'border-amber-500 text-amber-400'}`}
+            onClick={() => setShowBars(!showBars)}
+            data-testid="button-toggle-bars"
+            title={showBars ? "Hide resource bars" : "Show resource bars"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+              <rect x="2" y="7" width="20" height="4" rx="1" />
+              <rect x="2" y="13" width="14" height="4" rx="1" opacity={showBars ? "1" : "0.3"} />
+            </svg>
+          </Button>
+        )}
         <Button
            size="sm"
            variant="secondary"
@@ -2779,21 +2794,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
              title={showPlayerViewports ? "Hide player screens" : "Show player screens"}
           >
             <Monitor className="h-3 w-3" />
-          </Button>
-        )}
-        {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showBars ? 'border-white/10' : 'border-amber-500 text-amber-400'}`}
-            onClick={() => setShowBars(!showBars)}
-            data-testid="button-toggle-bars"
-            title={showBars ? "Hide resource bars" : "Show resource bars"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-              <rect x="2" y="7" width="20" height="4" rx="1" />
-              <rect x="2" y="13" width="14" height="4" rx="1" opacity={showBars ? "1" : "0.3"} />
-            </svg>
           </Button>
         )}
         {onNotesClick && (

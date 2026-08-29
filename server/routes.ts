@@ -4941,6 +4941,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const entries = await storage.getFreeHotbarEntries(userId, campaignId);
+
+      // Characters without a manually-set portrait fall back to their
+      // species' default image (same rule the character sheet already
+      // applies) so the hotbar never shows a bare placeholder icon for a
+      // character that does have an image, just not one of their own.
+      const hotbarSpeciesSystemName = campaign.system === 'aa-v2' ? 'A.A. V2' : campaign.system === 'aa-v3' ? 'A.A. V3' : campaign.system === 'ca' ? 'C.A.' : 'Arcana Adventure';
+      const [hotbarSystemSpecies, hotbarCampaignSpecies] = await Promise.all([
+        storage.getSystemSpecies(hotbarSpeciesSystemName),
+        storage.getCampaignSpecies(campaignId),
+      ]);
+      const hotbarAllSpecies = [...hotbarSystemSpecies, ...hotbarCampaignSpecies];
+      const resolvePortrait = (character: { portrait: string | null; race: string | null }) =>
+        character.portrait || (character.race ? hotbarAllSpecies.find(s => s.name === character.race)?.defaultImage : null) || null;
+
       // Re-validate access per entry on every read: permissions may have been
       // revoked since assignment, so stale entries must not leak data.
       const enriched = await Promise.all(entries.map(async (entry) => {
@@ -4973,7 +4987,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             character: {
               id: character.id,
               name: character.name,
-              portrait: character.portrait,
+              portrait: resolvePortrait(character),
               hp: character.hp,
               maxHp: character.maxHp,
               energy: character.energy,

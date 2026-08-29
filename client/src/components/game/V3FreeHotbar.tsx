@@ -45,10 +45,13 @@ export interface FreeHotbarEntryView {
 }
 
 // Compact stacked HP/Energy/Mana bars for character slot tiles + peek panel.
-function StatBar({ value, max, color, thin }: { value: number; max: number; color: string; thin?: boolean }) {
+// `medium` is a touch taller than `thin` — used for C.A.'s 2-bar tile display,
+// which has the vertical room to be a bit more noticeable than V3's 3-bar one.
+function StatBar({ value, max, color, thin, medium }: { value: number; max: number; color: string; thin?: boolean; medium?: boolean }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  const heightClass = medium ? 'h-[5px]' : thin ? 'h-[3px]' : 'h-2';
   return (
-    <div className={`w-full ${thin ? 'h-[3px]' : 'h-2'} bg-black/60 ${thin ? '' : 'rounded'} overflow-hidden`}>
+    <div className={`w-full ${heightClass} bg-black/60 ${medium || !thin ? 'rounded-sm' : ''} overflow-hidden`}>
       <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -59,9 +62,9 @@ function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: b
   if (isCA) {
     const healthy = CA_WOUND_SLOT_COUNT - caMajorWoundCount(char.caWounds);
     return (
-      <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
-        <StatBar value={healthy} max={CA_WOUND_SLOT_COUNT} color="bg-red-600" thin={thin} />
-        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
+      <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
+        <StatBar value={healthy} max={CA_WOUND_SLOT_COUNT} color="bg-red-600" thin={thin} medium={thin} />
+        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-blue-500" thin={thin} medium={thin} />
       </div>
     );
   }
@@ -170,7 +173,10 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       mana: live.mana ?? char.mana,
       maxMana: live.maxMana ?? char.maxMana,
       caWounds: live.caWounds ?? char.caWounds,
-      portrait: live.portrait ?? char.portrait,
+      // live.portrait can be a genuine null (no portrait set) while char.portrait
+      // already carries the species-default fallback resolved server-side —
+      // an empty live value must not clobber that fallback.
+      portrait: live.portrait || char.portrait,
       name: live.name ?? char.name,
     };
   };
@@ -400,7 +406,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-blue-500" />
                         </div>
                       </>
                     ) : (
