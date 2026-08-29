@@ -20947,35 +20947,35 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                     </div>
 
-                    {/* Fundamentals — race, then a DC/Speed/Fly Speed/Swim
-                        Speed/Size grid, all sharing one set of columns so DC
-                        lines up with the row below it instead of floating
-                        off on its own. No section title or per-block edit
-                        control here — both live on the single pencil button
-                        up in the header, which edits name + all of this
-                        together. Starts flush with the top of the portrait.
-                        Movement speeds shown are EFFECTIVE (base + active
-                        wound stat effects + exhaustion). */}
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <div>
-                        <Label className="text-xs text-stone-400">Race</Label>
-                        {caEditingOverview ? (
-                          <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
-                            <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
-                              <SelectValue placeholder="Select race" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {systemSpecies.map((species: any) => (
-                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
-                        )}
-                      </div>
-
+                    {/* Fundamentals — one grid throughout (Race | DC, then
+                        Speed | Fly Speed, then Swim Speed | Size) so every
+                        row shares the same two columns and DC actually lines
+                        up beside Race instead of floating on its own row.
+                        No section title or per-block edit control here —
+                        both live on the single pencil button up in the
+                        header, which edits name + all of this together.
+                        Starts flush with the top of the portrait. Movement
+                        speeds shown are EFFECTIVE (base + active wound stat
+                        effects + exhaustion). */}
+                    <div className="flex-1 min-w-0">
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        <div>
+                          <Label className="text-xs text-stone-400">Race</Label>
+                          {caEditingOverview ? (
+                            <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
+                              <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
+                                <SelectValue placeholder="Select race" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {systemSpecies.map((species: any) => (
+                                  <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
+                          )}
+                        </div>
                         <div>
                           <Label className="text-xs text-stone-400">DC</Label>
                           {caEditingOverview ? (
