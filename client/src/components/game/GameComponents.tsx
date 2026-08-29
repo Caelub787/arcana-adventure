@@ -159,7 +159,7 @@ function caWoundNodeRingColor(severity: 'none' | 'minor' | 'major'): string {
 }
 
 // Regular hexagon point list around (cx, cy), pointy-top, for the wire-frame
-// nodes in CAWoundStatusMap.
+// nodes in CAWoundMapHex.
 function caHexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
   for (let i = 0; i < 6; i++) {
@@ -176,28 +176,31 @@ function caHexPoints(cx: number, cy: number, r: number): string {
 // rendered width — comfortably clear of adjacent dots and neighboring nodes
 // on a phone screen, not just on a mouse-driven desktop.
 const CA_WOUND_NODES: { label: string; cx: number; cy: number }[] = [
-  { label: 'Head', cx: 175, cy: 52 },
-  { label: 'Torso', cx: 175, cy: 146 },
-  { label: 'R Arm', cx: 262, cy: 104 },
-  { label: 'L Arm', cx: 88, cy: 104 },
-  { label: 'R Leg', cx: 222, cy: 238 },
-  { label: 'L Leg', cx: 128, cy: 238 },
+  { label: 'Head', cx: 175, cy: 50 },
+  { label: 'Torso', cx: 175, cy: 144 },
+  { label: 'R Arm', cx: 262, cy: 102 },
+  { label: 'L Arm', cx: 88, cy: 102 },
+  { label: 'R Leg', cx: 222, cy: 236 },
+  { label: 'L Leg', cx: 128, cy: 236 },
 ];
 const CA_WOUND_HUB_INDEX = 1;
 const CA_WOUND_NODE_R = 18;
-// Matches the solid panel background CAWoundStatusMap is meant to sit on
-// (see the wrapping div at its call site) so an unchecked node's fill
-// blends into the panel instead of reading as a separate darker cutout.
-const CA_WOUND_PANEL_BG = '#171412';
 
-// The wound interface itself — no separate checkbox rows anywhere else.
-// Each hexagon IS the Major toggle for that limb (click it directly); the
-// three dots beneath each hexagon ARE the Minor toggles. Nothing here ever
-// opens a dialog — clicking just flips state in place. Every toggle target
-// has a much larger invisible hit area than its visible mark (drawn first,
-// underneath), sized for a thumb on a phone screen rather than a mouse
-// pointer on desktop.
-function CAWoundStatusMap({
+/**
+ * SAVED DESIGN — "hex". The user's favorite so far as of this pass; keep
+ * this working and don't delete it even if it's swapped out for something
+ * else below, so it stays available to switch back to on request.
+ *
+ * A wire-frame node map: one hexagon per limb, wired to a central Torso hub.
+ * Each hexagon IS the Major toggle for that limb (click it directly); the
+ * three dots beneath each hexagon ARE the Minor toggles — no separate
+ * checkbox rows anywhere, nothing opens a dialog. Deliberately paints no
+ * background of its own (unchecked marks use fill="none", just an outline)
+ * so it never introduces a visible panel/box — it sits directly on whatever
+ * card it's placed in. Every toggle has a much larger invisible hit circle
+ * than its visible mark, sized for a thumb on a phone screen.
+ */
+function CAWoundMapHex({
   wounds,
   disabled,
   onToggleMajor,
@@ -214,7 +217,7 @@ function CAWoundStatusMap({
   const interactive = disabled ? '' : 'cursor-pointer';
 
   return (
-    <svg viewBox="0 0 350 275" className="w-full h-auto" data-testid="svg-ca-wound-map">
+    <svg viewBox="0 0 350 310" className="w-full h-auto" data-testid="svg-ca-wound-map">
       {CA_WOUND_NODES.map((n, i) => i !== CA_WOUND_HUB_INDEX && (
         <line key={`wire-${i}`} x1={hub.cx} y1={hub.cy} x2={n.cx} y2={n.cy} stroke="#3a3532" strokeWidth="1.25" />
       ))}
@@ -235,7 +238,7 @@ function CAWoundStatusMap({
               <circle cx={n.cx} cy={n.cy} r={r + 8} fill="transparent" />
               <polygon
                 points={caHexPoints(n.cx, n.cy, r)}
-                fill={majorOn ? ring : CA_WOUND_PANEL_BG}
+                fill={majorOn ? ring : 'none'}
                 fillOpacity={majorOn ? 0.32 : 1}
                 stroke={ring}
                 strokeWidth={severities[i] !== 'none' ? 2 : 1.25}
@@ -257,7 +260,7 @@ function CAWoundStatusMap({
                     cx={dotX}
                     cy={minorDotY}
                     r="6.5"
-                    fill={m.checked ? '#f59e0b' : CA_WOUND_PANEL_BG}
+                    fill={m.checked ? '#f59e0b' : 'none'}
                     stroke={m.checked ? '#f59e0b' : '#5c5651'}
                     strokeWidth="1.5"
                   />
@@ -279,6 +282,65 @@ function CAWoundStatusMap({
         );
       })}
     </svg>
+  );
+}
+
+/**
+ * ACTIVE DESIGN — "pips". A completely different visual/interaction idea
+ * from "hex" above: plain HTML/CSS, no SVG at all. Each limb is a row —
+ * label, then one wide Major pip followed by three square Minor pips. Every
+ * pip is a real <button>, so it gets a native, generously-sized tap target
+ * for free instead of hand-computed SVG hit circles, and paints no
+ * background/border of its own beyond each individual pip — nothing frames
+ * the whole map, it just sits in the card's own flow.
+ */
+function CAWoundMapPips({
+  wounds,
+  disabled,
+  onToggleMajor,
+  onToggleMinor,
+}: {
+  wounds: CAWoundSlot[];
+  disabled: boolean;
+  onToggleMajor: (index: number) => void;
+  onToggleMinor: (index: number, minorIndex: number) => void;
+}) {
+  return (
+    <div className="space-y-2" data-testid="ca-wound-map-pips">
+      {wounds.map((slot, i) => {
+        const majorOn = slot.major.checked;
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-xs text-stone-300" data-testid={`text-ca-wound-label-${i}`}>{slot.label}</span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onToggleMajor(i)}
+              title={`${slot.label} — Major`}
+              className={`h-9 flex-1 rounded-md border transition-colors ${
+                majorOn ? 'bg-red-600/80 border-red-500' : 'bg-transparent border-stone-600 hover:border-stone-500'
+              } ${disabled ? '' : 'cursor-pointer'}`}
+              data-testid={`toggle-ca-wound-${i}-major`}
+            />
+            <div className="flex items-center gap-1.5 shrink-0">
+              {slot.minor.map((m, mi) => (
+                <button
+                  key={mi}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onToggleMinor(i, mi)}
+                  title={`${slot.label} — Minor ${mi + 1}`}
+                  className={`h-9 w-9 rounded-md border transition-colors ${
+                    m.checked ? 'bg-amber-500/80 border-amber-400' : 'bg-transparent border-stone-600 hover:border-stone-500'
+                  } ${disabled ? '' : 'cursor-pointer'}`}
+                  data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -20781,17 +20843,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       });
                       return (
                         <>
-                          <div
-                            className="rounded-lg border border-stone-700 p-3"
-                            style={{ backgroundColor: CA_WOUND_PANEL_BG }}
-                          >
-                            <CAWoundStatusMap
-                              wounds={allWounds}
-                              disabled={!canEditWounds}
-                              onToggleMajor={(i) => toggleCAWoundBox(i, 'major')}
-                              onToggleMinor={(i, mi) => toggleCAWoundBox(i, 'minor', mi)}
-                            />
-                          </div>
+                          <CAWoundMapPips
+                            wounds={allWounds}
+                            disabled={!canEditWounds}
+                            onToggleMajor={(i) => toggleCAWoundBox(i, 'major')}
+                            onToggleMinor={(i, mi) => toggleCAWoundBox(i, 'minor', mi)}
+                          />
                           {checkedEntries.length === 0 ? (
                             <p className="text-xs text-stone-500 text-center py-1" data-testid="text-ca-wounds-empty">No wounds — click a body part above to add one.</p>
                           ) : (
