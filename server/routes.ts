@@ -5893,7 +5893,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(list);
     } catch (err) {
       console.error("Failed to fetch maps:", err);
-      res.status(500).json({ error: "Failed to fetch maps" });
+      res.status(500).json({ error: "Failed to fetch maps", details: (err as any)?.message });
     }
   });
 
@@ -5910,7 +5910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(map);
     } catch (err) {
       console.error("Failed to create map:", err);
-      res.status(400).json({ error: "Failed to create map" });
+      res.status(400).json({ error: "Failed to create map", details: (err as any)?.message });
     }
   });
 
@@ -5926,7 +5926,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ ...map, objects });
     } catch (err) {
       console.error("Failed to fetch map:", err);
-      res.status(500).json({ error: "Failed to fetch map" });
+      res.status(500).json({ error: "Failed to fetch map", details: (err as any)?.message });
     }
   });
 
@@ -5945,7 +5945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(map);
     } catch (err) {
       console.error("Failed to update map:", err);
-      res.status(400).json({ error: "Failed to update map" });
+      res.status(400).json({ error: "Failed to update map", details: (err as any)?.message });
     }
   });
 
@@ -5961,7 +5961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to delete map:", err);
-      res.status(400).json({ error: "Failed to delete map" });
+      res.status(400).json({ error: "Failed to delete map", details: (err as any)?.message });
     }
   });
 
@@ -5987,7 +5987,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(obj);
     } catch (err) {
       console.error("Failed to create map object:", err);
-      res.status(400).json({ error: "Failed to create map object" });
+      res.status(400).json({ error: "Failed to create map object", details: (err as any)?.message });
     }
   });
 
@@ -6007,7 +6007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(obj);
     } catch (err) {
       console.error("Failed to update map object:", err);
-      res.status(400).json({ error: "Failed to update map object" });
+      res.status(400).json({ error: "Failed to update map object", details: (err as any)?.message });
     }
   });
 
@@ -6024,7 +6024,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to delete map object:", err);
-      res.status(400).json({ error: "Failed to delete map object" });
+      res.status(400).json({ error: "Failed to delete map object", details: (err as any)?.message });
     }
   });
 
@@ -6040,7 +6040,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(withVariants);
     } catch (err) {
       console.error("Failed to fetch stamp assets:", err);
-      res.status(500).json({ error: "Failed to fetch stamp assets" });
+      res.status(500).json({ error: "Failed to fetch stamp assets", details: (err as any)?.message });
     }
   });
 
@@ -6058,7 +6058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(asset);
     } catch (err) {
       console.error("Failed to create stamp asset:", err);
-      res.status(400).json({ error: "Failed to create stamp asset" });
+      res.status(400).json({ error: "Failed to create stamp asset", details: (err as any)?.message });
     }
   });
 
@@ -6075,7 +6075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(asset);
     } catch (err) {
       console.error("Failed to update stamp asset:", err);
-      res.status(400).json({ error: "Failed to update stamp asset" });
+      res.status(400).json({ error: "Failed to update stamp asset", details: (err as any)?.message });
     }
   });
 
@@ -6088,7 +6088,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to delete stamp asset:", err);
-      res.status(400).json({ error: "Failed to delete stamp asset" });
+      res.status(400).json({ error: "Failed to delete stamp asset", details: (err as any)?.message });
     }
   });
 
@@ -6106,7 +6106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(variant);
     } catch (err) {
       console.error("Failed to create stamp variant:", err);
-      res.status(400).json({ error: "Failed to create stamp variant" });
+      res.status(400).json({ error: "Failed to create stamp variant", details: (err as any)?.message });
     }
   });
 
@@ -6123,7 +6123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(variant);
     } catch (err) {
       console.error("Failed to update stamp variant:", err);
-      res.status(400).json({ error: "Failed to update stamp variant" });
+      res.status(400).json({ error: "Failed to update stamp variant", details: (err as any)?.message });
     }
   });
 
@@ -6136,7 +6136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to delete stamp variant:", err);
-      res.status(400).json({ error: "Failed to delete stamp variant" });
+      res.status(400).json({ error: "Failed to delete stamp variant", details: (err as any)?.message });
     }
   });
 
@@ -6174,7 +6174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(scene);
     } catch (err) {
       console.error("Failed to import map as scene:", err);
-      res.status(500).json({ error: "Failed to import map as scene" });
+      res.status(500).json({ error: "Failed to import map as scene", details: (err as any)?.message });
     }
   });
 
