@@ -10,10 +10,19 @@
 // mechanical HP derivation.
 // ---------------------------------------------------------------------------
 
+// A wound's optional mechanical effect: a flat delta applied to a skill, an
+// attribute, or one of the fixed movement stats while this box is checked.
+// `target` is a CA_SKILLS key, a CAAttributeKey, or a CAFixedStatTarget.
+export interface CAWoundStatEffect {
+  target: string;
+  amount: number;
+}
+
 export interface CAWoundEntry {
   checked: boolean;
   injury: string;
   effect: string;
+  statEffect?: CAWoundStatEffect | null;
 }
 
 export interface CAWoundSlot {
@@ -63,10 +72,16 @@ export function normalizeCAWounds(raw: unknown): CAWoundSlot[] {
 }
 
 function normalizeWoundEntry(raw: any): CAWoundEntry {
+  const rawEffect = raw?.statEffect;
+  const statEffect: CAWoundStatEffect | null =
+    rawEffect && typeof rawEffect.target === "string" && rawEffect.target && Number.isFinite(Number(rawEffect.amount))
+      ? { target: rawEffect.target, amount: Math.trunc(Number(rawEffect.amount)) }
+      : null;
   return {
     checked: !!raw?.checked,
     injury: typeof raw?.injury === "string" ? raw.injury : "",
     effect: typeof raw?.effect === "string" ? raw.effect : "",
+    statEffect,
   };
 }
 
@@ -96,6 +111,34 @@ export function caEffectiveMajorActive(slot: CAWoundSlot): boolean {
 export function caMajorWoundCount(wounds: unknown): number {
   const normalized = normalizeCAWounds(wounds);
   return normalized.filter(caEffectiveMajorActive).length;
+}
+
+// Movement stats a wound's effect can target besides a skill/attribute key.
+export const CA_FIXED_STAT_TARGETS = ["speed", "flySpeed", "swimSpeed"] as const;
+export type CAFixedStatTarget = typeof CA_FIXED_STAT_TARGETS[number];
+export const CA_FIXED_STAT_LABELS: Record<CAFixedStatTarget, string> = {
+  speed: "Speed",
+  flySpeed: "Fly Speed",
+  swimSpeed: "Swim Speed",
+};
+
+// Sums every CHECKED wound's statEffect that targets `target` (a skill key,
+// an attribute key, or a CAFixedStatTarget), across all 6 limbs. Unchecking
+// or clearing a wound removes its contribution immediately — this is always
+// computed fresh from the wounds array, never a separately stored total.
+export function caWoundStatEffectTotal(wounds: unknown, target: string): number {
+  if (!target) return 0;
+  const normalized = normalizeCAWounds(wounds);
+  let total = 0;
+  for (const slot of normalized) {
+    const entries = [slot.major, ...slot.minor];
+    for (const entry of entries) {
+      if (entry.checked && entry.statEffect && entry.statEffect.target === target) {
+        total += entry.statEffect.amount;
+      }
+    }
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------------------

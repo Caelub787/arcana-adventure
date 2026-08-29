@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, caEffectiveMajorActive, caMajorWoundCount, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, caEffectiveMajorActive, caMajorWoundCount, caWoundStatEffectTotal, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAFixedStatTarget, type CAWoundStatEffect, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay } from "@/components/ui/floating-panel";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -152,20 +152,32 @@ function caWoundSeverity(slot: CAWoundSlot): 'none' | 'minor' | 'major' {
   return 'none';
 }
 
-// Per-tier hues so a reader can trace an injury card back to the pip it
-// came from at a glance: Major is dark red, then Minor 1/2/3 step from red
-// through orange to yellow. Used for both the pip buttons (CAWoundMapPips)
-// and the matching accent on each checked wound's card below them.
+// Per-tier hues form a severity gradient reading left-to-right (and
+// top-to-bottom in the injury list below): Minor 1 is yellow (mildest),
+// stepping through orange and red as the minors climb toward Major, which
+// is the darkest red. Used for both the pip buttons (CAWoundMapPips) and
+// the matching accent on each checked wound's card below them.
 type CAWoundTier = 'major' | 'minor0' | 'minor1' | 'minor2';
 function caWoundTierKey(type: 'major' | 'minor', minorIndex?: number): CAWoundTier {
   return type === 'major' ? 'major' : (`minor${minorIndex}` as CAWoundTier);
 }
 const CA_WOUND_TIER_CLASSES: Record<CAWoundTier, { pipOn: string; text: string; accentBorder: string }> = {
-  minor0: { pipOn: 'bg-red-500/85 border-red-400', text: 'text-red-400', accentBorder: 'border-red-500' },
+  minor0: { pipOn: 'bg-yellow-500/85 border-yellow-400', text: 'text-yellow-400', accentBorder: 'border-yellow-500' },
   minor1: { pipOn: 'bg-orange-500/85 border-orange-400', text: 'text-orange-400', accentBorder: 'border-orange-500' },
-  minor2: { pipOn: 'bg-yellow-500/85 border-yellow-400', text: 'text-yellow-400', accentBorder: 'border-yellow-500' },
+  minor2: { pipOn: 'bg-red-500/85 border-red-400', text: 'text-red-400', accentBorder: 'border-red-500' },
   major: { pipOn: 'bg-red-800/90 border-red-700', text: 'text-red-500', accentBorder: 'border-red-800' },
 };
+
+// Friendly label for a wound's stat-effect target (a fixed movement stat, a
+// CA attribute, or a CA skill key).
+function caStatEffectTargetLabel(target: string): string {
+  if ((CA_FIXED_STAT_TARGETS as readonly string[]).includes(target)) return CA_FIXED_STAT_LABELS[target as CAFixedStatTarget];
+  const attr = CA_ATTRIBUTES.find(a => a.key === target);
+  if (attr) return attr.name;
+  const skill = CA_SKILLS.find(s => s.key === target);
+  if (skill) return skill.name;
+  return target;
+}
 
 function caWoundNodeRingColor(severity: 'none' | 'minor' | 'major'): string {
   if (severity === 'major') return '#ef4444';
@@ -17652,7 +17664,9 @@ function CAAttrsAndSkillsTab({
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {CA_ATTRIBUTES.map(attr => {
-            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+            const rawAttrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+            const attrWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, attr.key);
+            const attrVal = rawAttrVal + attrWoundEffect;
             const dieType = `d${caAttrValueToDieSides(attrVal)}`;
             return (
               <Card
@@ -17677,6 +17691,15 @@ function CAAttrsAndSkillsTab({
                     <div className="mt-1" data-testid={`text-ca-attr-${attr.key}`}>
                       <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
+                      {attrWoundEffect !== 0 && (
+                        <span
+                          className={`ml-1 text-[10px] cursor-help ${attrWoundEffect > 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                          title={`${attrWoundEffect > 0 ? '+' : ''}${attrWoundEffect} from wounds`}
+                          data-testid={`text-ca-attr-wound-effect-${attr.key}`}
+                        >
+                          ({attrWoundEffect > 0 ? `+${attrWoundEffect}` : attrWoundEffect})
+                        </span>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -17695,14 +17718,21 @@ function CAAttrsAndSkillsTab({
           <CardContent className="pt-0 pb-2 space-y-1">
             {[...CA_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = CA_ATTRIBUTES.find(a => a.key === skill.parent);
-              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
+              const rawParentAttrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
+              const parentWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.parent);
+              const attrVal = rawParentAttrVal + parentWoundEffect;
               const dieType = `d${caAttrValueToDieSides(attrVal)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
+              const skillWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.key);
               const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost);
+              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect);
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = editing ? 0 : skillScrollBoost;
+              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect);
+              const skillTempSources = [
+                skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
+                skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
+              ].filter(Boolean).join(', ');
               return (
                 <div
                   key={skill.key}
@@ -17743,10 +17773,10 @@ function CAAttrsAndSkillsTab({
                         {skillTempBoost !== 0 && (
                           <span
                             className={`ml-0.5 cursor-help ${skillTempBoost > 0 ? 'text-emerald-400' : 'text-red-400'}`}
-                            title={`${skillTempBoost > 0 ? '+' : ''}${skillTempBoost} bonus`}
+                            title={skillTempSources}
                             onClick={(e) => {
                               e.stopPropagation();
-                              toast({ title: `${skill.name} bonus`, description: `${skillTempBoost > 0 ? '+' : ''}${skillTempBoost} bonus` });
+                              toast({ title: `${skill.name} modifier`, description: skillTempSources });
                             }}
                             data-testid={`text-ca-skill-temp-${skill.key}`}
                           >
@@ -18258,6 +18288,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [caEditingName, setCaEditingName] = useState(false);
   const [caNameDraft, setCaNameDraft] = useState('');
 
+  // C.A. "fundamentals" block (race + size/armor/movement speeds) — same
+  // draft-then-Save shape as v1/v2/v3's overviewData, but scoped to just
+  // these fields instead of the whole stat payload. Selecting a race while
+  // editing auto-fills the rest of the draft from the species (mirrors
+  // applyRaceChange) but nothing is written to the character until Save.
+  const [caEditingFundamentals, setCaEditingFundamentals] = useState(false);
+  const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
+    race: '', size: '', naturalArmor: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
+  });
+
   // C.A. Traits tab: which trait's roll-builder is expanded.
   const [caExpandedTraitId, setCaExpandedTraitId] = useState<string | null>(null);
 
@@ -18297,6 +18337,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     updateCAWoundSlot(slotIndex, (slot) => {
       if (type === 'major') return { ...slot, major: { ...slot.major, [field]: value } };
       const minor = slot.minor.map((m, j) => (j === minorIndex ? { ...m, [field]: value } : m));
+      return { ...slot, minor };
+    });
+  };
+
+  // A wound's optional mechanical effect (e.g. "-2 Athletics", "-10 Speed"),
+  // applied live while the wound is checked — see caWoundStatEffectTotal.
+  const updateCAWoundStatEffect = (slotIndex: number, type: 'major' | 'minor', statEffect: CAWoundStatEffect | null, minorIndex?: number) => {
+    updateCAWoundSlot(slotIndex, (slot) => {
+      if (type === 'major') return { ...slot, major: { ...slot.major, statEffect } };
+      const minor = slot.minor.map((m, j) => (j === minorIndex ? { ...m, statEffect } : m));
       return { ...slot, minor };
     });
   };
@@ -18864,6 +18914,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   // V3 species-change confirmation
   const [pendingV3RaceChange, setPendingV3RaceChange] = useState<string | null>(null);
+
+  // C.A. race change: same species auto-fill idea as applyRaceChange, but
+  // only touches the fundamentals draft (size/naturalArmor/speed/flySpeed/
+  // swimSpeed) — no hp/energy, since C.A. doesn't derive those from species.
+  const applyCARaceChange = (raceName: string) => {
+    const raceData = systemSpecies.find((r: any) => r.name === raceName);
+    setCaFundamentalsDraft(prev => ({
+      ...prev,
+      race: raceName,
+      size: raceData?.size ?? prev.size,
+      naturalArmor: raceData?.naturalArmor ?? prev.naturalArmor,
+      speed: raceData?.speed ?? prev.speed,
+      flySpeed: raceData?.flySpeed ?? prev.flySpeed,
+      swimSpeed: (raceData as any)?.swimSpeed ?? prev.swimSpeed,
+    }));
+  };
 
   // Inventory state
   const queryClient = useQueryClient();
@@ -20799,32 +20865,179 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <Label className="text-sm text-stone-300">Character Portrait</Label>
-                      {canEdit && onUpdate && (
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setShowImageBrowser(true)} data-testid="button-browse-library">
-                            <FolderOpen className="h-4 w-4 mr-1" />
-                            Library
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => portraitInputRef.current?.click()} data-testid="button-upload-portrait">
-                            <Camera className="h-4 w-4 mr-1" />
-                            Upload
-                          </Button>
-                        </div>
-                      )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Portrait — left column on wide screens, stacked on mobile */}
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <Label className="text-sm text-stone-300">Character Portrait</Label>
+                        {canEdit && onUpdate && (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setShowImageBrowser(true)} data-testid="button-browse-library">
+                              <FolderOpen className="h-4 w-4 mr-1" />
+                              Library
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => portraitInputRef.current?.click()} data-testid="button-upload-portrait">
+                              <Camera className="h-4 w-4 mr-1" />
+                              Upload
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex justify-center">
+                        {character.portrait ? (
+                          <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
+                            <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+                          </div>
+                        ) : (
+                          <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
+                            <User className="h-12 w-12 text-stone-500" />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-center">
-                      {character.portrait ? (
-                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
-                          <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+
+                    {/* Fundamentals — race + size/armor/movement speeds, right
+                        column on wide screens. Movement speeds shown are
+                        EFFECTIVE (base + any active wound stat effects). */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm text-stone-300">Fundamentals</Label>
+                        {canEdit && onUpdate && (
+                          caEditingFundamentals ? (
+                            <div className="flex gap-1.5">
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  onUpdate?.({
+                                    race: caFundamentalsDraft.race,
+                                    size: caFundamentalsDraft.size,
+                                    naturalArmor: caFundamentalsDraft.naturalArmor,
+                                    speed: caFundamentalsDraft.speed,
+                                    flySpeed: caFundamentalsDraft.flySpeed,
+                                    swimSpeed: caFundamentalsDraft.swimSpeed,
+                                  });
+                                  setCaEditingFundamentals(false);
+                                }}
+                                data-testid="button-ca-save-fundamentals"
+                              >
+                                Save
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setCaEditingFundamentals(false)} data-testid="button-ca-cancel-fundamentals">
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setCaFundamentalsDraft({
+                                  race: liveCharacter.race || '',
+                                  size: liveCharacter.size || '',
+                                  naturalArmor: liveCharacter.naturalArmor || 0,
+                                  speed: liveCharacter.speed || 0,
+                                  flySpeed: liveCharacter.flySpeed || 0,
+                                  swimSpeed: liveCharacter.swimSpeed || 0,
+                                });
+                                setCaEditingFundamentals(true);
+                              }}
+                              data-testid="button-ca-edit-fundamentals"
+                            >
+                              Edit
+                            </Button>
+                          )
+                        )}
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-stone-400">Race</Label>
+                        {caEditingFundamentals ? (
+                          <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
+                            <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
+                              <SelectValue placeholder="Select race" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {systemSpecies.map((species: any) => (
+                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-stone-200 text-sm" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        {([
+                          { key: 'speed', label: 'Speed', testid: 'speed' },
+                          { key: 'flySpeed', label: 'Fly Speed', testid: 'fly-speed' },
+                          { key: 'swimSpeed', label: 'Swim Speed', testid: 'swim-speed' },
+                        ] as const).map(({ key, label, testid }) => (
+                          <div key={key}>
+                            <Label className="text-xs text-stone-400">{label}</Label>
+                            {caEditingFundamentals ? (
+                              <NumberInput
+                                min={0}
+                                value={caFundamentalsDraft[key]}
+                                onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, [key]: v ?? 0 }))}
+                                className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                                data-testid={`input-ca-edit-${testid}`}
+                              />
+                            ) : (() => {
+                              const baseVal = liveCharacter[key] || 0;
+                              const woundEffect = caWoundStatEffectTotal(liveCharacter.caWounds, key);
+                              const woundAdjusted = Math.max(0, baseVal + woundEffect);
+                              const exh = liveCharacter.exhaustion || 0;
+                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
+                              const isReduced = effectiveVal < baseVal;
+                              return (
+                                <p className="text-stone-200 text-sm" data-testid={`text-ca-${testid}`}>
+                                  {isReduced ? (
+                                    <>
+                                      <span className="line-through text-stone-500">{baseVal} ft</span>{' '}
+                                      <span className="text-red-400">{effectiveVal} ft</span>
+                                    </>
+                                  ) : (
+                                    <>{effectiveVal} ft</>
+                                  )}
+                                  {woundEffect !== 0 && (
+                                    <span className="ml-1 text-[10px] text-stone-500" data-testid={`text-ca-${testid}-wound-effect`}>
+                                      ({woundEffect > 0 ? '+' : ''}{woundEffect} wounds)
+                                    </span>
+                                  )}
+                                </p>
+                              );
+                            })()}
+                          </div>
+                        ))}
+                        <div>
+                          <Label className="text-xs text-stone-400">Size</Label>
+                          {caEditingFundamentals ? (
+                            <Input
+                              value={caFundamentalsDraft.size}
+                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, size: e.target.value }))}
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-size"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-size">{liveCharacter.size || 'Medium'}</p>
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
-                          <User className="h-12 w-12 text-stone-500" />
+                        <div>
+                          <Label className="text-xs text-stone-400">Natural Armor</Label>
+                          {caEditingFundamentals ? (
+                            <NumberInput
+                              min={0}
+                              value={caFundamentalsDraft.naturalArmor}
+                              onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, naturalArmor: v ?? 0 }))}
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-natural-armor"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-natural-armor">+{liveCharacter.naturalArmor ?? 5}</p>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
 
@@ -20870,14 +21083,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     {(() => {
                       const allWounds = normalizeCAWounds((liveCharacter as any).caWounds);
                       const canEditWounds = !!canEdit && !!onUpdate;
-                      const checkedEntries: { key: string; slotIndex: number; type: 'major' | 'minor'; minorIndex?: number; tier: CAWoundTier; label: string; injury: string; effect: string }[] = [];
+                      const checkedEntries: { key: string; slotIndex: number; type: 'major' | 'minor'; minorIndex?: number; tier: CAWoundTier; label: string; injury: string; effect: string; statEffect: CAWoundStatEffect | null | undefined }[] = [];
                       allWounds.forEach((slot, slotIndex) => {
                         slot.minor.forEach((m, minorIndex) => {
                           if (m.checked) {
                             checkedEntries.push({
                               key: `${slotIndex}-minor-${minorIndex}`, slotIndex, type: 'minor', minorIndex,
                               tier: caWoundTierKey('minor', minorIndex), label: `${slot.label} — Minor ${minorIndex + 1}`,
-                              injury: m.injury, effect: m.effect,
+                              injury: m.injury, effect: m.effect, statEffect: m.statEffect,
                             });
                           }
                         });
@@ -20885,7 +21098,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           checkedEntries.push({
                             key: `${slotIndex}-major-`, slotIndex, type: 'major',
                             tier: 'major', label: `${slot.label} — Major`,
-                            injury: slot.major.injury, effect: slot.major.effect,
+                            injury: slot.major.injury, effect: slot.major.effect, statEffect: slot.major.statEffect,
                           });
                         }
                       });
@@ -20930,6 +21143,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       >
                                         {collapsed ? <ChevronRight className="h-3 w-3 text-stone-500 shrink-0" /> : <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" />}
                                         <span className={`text-xs font-semibold ${tier.text}`}>{entry.label}</span>
+                                        {entry.statEffect && (
+                                          <span className="text-[10px] text-stone-400" data-testid={`text-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-summary`}>
+                                            ({caStatEffectTargetLabel(entry.statEffect.target)} {entry.statEffect.amount >= 0 ? '+' : ''}{entry.statEffect.amount})
+                                          </span>
+                                        )}
                                       </button>
                                       {!collapsed && (
                                         <>
@@ -20951,6 +21169,52 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                             className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
                                             data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect`}
                                           />
+                                          <div className="flex items-center gap-1.5">
+                                            <Select
+                                              value={entry.statEffect?.target ?? '_none'}
+                                              onValueChange={(v) => updateCAWoundStatEffect(
+                                                entry.slotIndex, entry.type,
+                                                v === '_none' ? null : { target: v, amount: entry.statEffect?.amount ?? -1 },
+                                                entry.minorIndex,
+                                              )}
+                                              disabled={!canEditWounds}
+                                            >
+                                              <SelectTrigger
+                                                className="h-7 text-xs bg-stone-800 border-stone-700 flex-1"
+                                                data-testid={`select-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-target`}
+                                              >
+                                                <SelectValue placeholder="No stat effect" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="_none">No stat effect</SelectItem>
+                                                <SelectGroup>
+                                                  <SelectLabel>Movement</SelectLabel>
+                                                  {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
+                                                </SelectGroup>
+                                                <SelectGroup>
+                                                  <SelectLabel>Attributes</SelectLabel>
+                                                  {CA_ATTRIBUTES.map(a => <SelectItem key={a.key} value={a.key}>{a.name}</SelectItem>)}
+                                                </SelectGroup>
+                                                <SelectGroup>
+                                                  <SelectLabel>Skills</SelectLabel>
+                                                  {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                                                </SelectGroup>
+                                              </SelectContent>
+                                            </Select>
+                                            {entry.statEffect && (
+                                              <NumberInput
+                                                className="w-16 h-7 text-xs bg-stone-800 border-stone-700 shrink-0"
+                                                value={entry.statEffect.amount}
+                                                onChange={(v) => updateCAWoundStatEffect(
+                                                  entry.slotIndex, entry.type,
+                                                  { target: entry.statEffect!.target, amount: v ?? 0 },
+                                                  entry.minorIndex,
+                                                )}
+                                                disabled={!canEditWounds}
+                                                data-testid={`input-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-amount`}
+                                              />
+                                            )}
+                                          </div>
                                         </>
                                       )}
                                     </div>
