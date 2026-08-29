@@ -20,7 +20,7 @@ export default function Maps() {
   const [deleteTarget, setDeleteTarget] = useState<GameMap | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
 
-  const { data: maps = [], isLoading } = useQuery<GameMap[]>({
+  const { data: maps = [], isLoading, isError, refetch } = useQuery<GameMap[]>({
     queryKey: ['/api/maps'],
     queryFn: () => api.getMaps(),
   });
@@ -84,6 +84,11 @@ export default function Maps() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-stone-500">
             <LoadingLogo className="h-6 w-6 mr-2" /> Loading maps...
+          </div>
+        ) : isError ? (
+          <div className="w-full p-10 rounded border border-dashed border-red-900/50 bg-stone-950/30 text-center text-stone-400">
+            <p className="text-red-400 mb-2">Couldn't load your maps.</p>
+            <Button variant="outline" className="border-stone-700" onClick={() => refetch()} data-testid="button-retry-load-maps">Try Again</Button>
           </div>
         ) : maps.length === 0 ? (
           <div className="w-full p-10 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-500">

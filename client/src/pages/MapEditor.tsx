@@ -426,6 +426,23 @@ export default function MapEditor() {
     return out.toDataURL('image/png');
   };
 
+  if (mapQuery.isError) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-stone-400 gap-3 px-4 text-center">
+        <p className="text-red-400">Couldn't load this map.</p>
+        <p className="text-xs text-stone-500 max-w-sm">{(mapQuery.error as any)?.message || "The server didn't respond as expected — it may still be deploying, or the map may not exist."}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" className="border-stone-700" onClick={() => mapQuery.refetch()} data-testid="button-retry-load-map">
+            Try Again
+          </Button>
+          <Button variant="outline" className="border-stone-700" onClick={() => setLocation('/maps')} data-testid="button-back-to-maps">
+            Back to Maps
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (mapQuery.isLoading || !map) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-stone-400">
