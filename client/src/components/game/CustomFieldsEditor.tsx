@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type CustomField } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -272,6 +273,11 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
   const [noteDraft, setNoteDraft] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const bodyContainerRef = useRef<HTMLDivElement>(null);
+  // Right-click-on-a-selection context menu — viewport position + the
+  // selected text captured at right-click time (clicking the menu item
+  // itself would otherwise collapse the live selection before the click
+  // handler runs, losing it) — or null when closed.
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; quote: string } | null>(null);
 
   const startEdit = () => {
     setEditHeader(field.header);
@@ -326,6 +332,25 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
     const selected = sel && !sel.isCollapsed ? sel.toString().trim() : "";
     setPendingQuote(selected);
     setNoteDraft("");
+  };
+
+  // Right-click a text selection -> small "GM only comment" menu -> opens
+  // the same note composer as the "+ Add Note" button, pre-filled with the
+  // selection. Only offered when something within this field's body is
+  // actually selected (a right-click elsewhere falls through to the normal
+  // browser context menu).
+  const handleBodyContextMenu = (e: React.MouseEvent) => {
+    if (!isGM) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    const container = bodyContainerRef.current;
+    if (!container) return;
+    const range = sel.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return;
+    const quote = sel.toString().trim();
+    if (!quote) return;
+    e.preventDefault();
+    setContextMenuPos({ x: e.clientX, y: e.clientY, quote });
   };
 
   const handleSaveAnnotation = () => {
@@ -418,6 +443,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                 <div
                   ref={bodyContainerRef}
                   className="text-xs text-stone-300 whitespace-pre-wrap mt-0.5 cursor-text"
+                  onContextMenu={handleBodyContextMenu}
                   data-testid={`text-custom-field-body-${field.id}`}
                 >
                   {computeAnnotatedSegments(body, annotations).map((seg, i) => (
@@ -535,6 +561,36 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             </div>
           )}
         </div>
+      )}
+
+      {/* Portaled to <body>, not just position:fixed in place — this row can
+          sit inside a floating panel whose own transform-based positioning
+          would otherwise turn "fixed" into "fixed relative to the panel"
+          instead of the real viewport, misplacing the menu. */}
+      {contextMenuPos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[100000]" onClick={() => setContextMenuPos(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenuPos(null); }} />
+          <div
+            className="fixed z-[100001] rounded border border-violet-700/60 bg-stone-900 shadow-xl py-1 min-w-[160px]"
+            style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+            data-testid={`contextmenu-annotation-${field.id}`}
+          >
+            <button
+              type="button"
+              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
+              onClick={() => {
+                const quote = contextMenuPos.quote;
+                setContextMenuPos(null);
+                setPendingQuote(quote);
+                setNoteDraft("");
+              }}
+              data-testid={`button-contextmenu-gm-comment-${field.id}`}
+            >
+              <Highlighter className="h-3 w-3" /> GM only comment
+            </button>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

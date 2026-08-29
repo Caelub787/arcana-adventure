@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -1189,16 +1189,45 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, []);
 
   // Track token being dragged with its current visual position
-  const [draggingToken, setDraggingToken] = useState<{ 
-    id: string; 
-    visualX: number; 
+  const [draggingToken, setDraggingToken] = useState<{
+    id: string;
+    visualX: number;
     visualY: number;
     startX: number;
     startY: number;
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
-  
+
+  // Movement-path preview mode, toggled from the battlemap toolbar (next to
+  // "hide token names"): 'average' (default, unchanged) draws the shortest
+  // diagonal-preferring route from start to end regardless of how the token
+  // was actually dragged; 'path' instead traces the literal grid cells the
+  // pointer passed through, recorded into tokenDragPath below as the drag
+  // happens.
+  const [tokenMovementMode, setTokenMovementMode] = useState<'average' | 'path'>('average');
+  // Grid-cell waypoints recorded while dragging in 'path' mode. Null outside
+  // an active path-mode drag.
+  const [tokenDragPath, setTokenDragPath] = useState<{ x: number; y: number }[] | null>(null);
+
+  // Diagonal-preferring grid walk from one cell to another, exclusive of
+  // `from` — used both to compute the 'average' mode's whole start-to-end
+  // preview and, in 'path' mode, to fill in the cells between two waypoints
+  // recorded on consecutive pointermove frames (which can be more than one
+  // cell apart if the pointer moved quickly).
+  const stepGridPath = (fromX: number, fromY: number, toX: number, toY: number): { x: number; y: number }[] => {
+    const points: { x: number; y: number }[] = [];
+    let cx = fromX, cy = fromY;
+    while (cx !== toX || cy !== toY) {
+      const dx = toX - cx, dy = toY - cy;
+      if (dx !== 0 && dy !== 0) { cx += dx > 0 ? 1 : -1; cy += dy > 0 ? 1 : -1; }
+      else if (dx !== 0) { cx += dx > 0 ? 1 : -1; }
+      else if (dy !== 0) { cy += dy > 0 ? 1 : -1; }
+      points.push({ x: cx, y: cy });
+    }
+    return points;
+  };
+
   // Multi-select state: Set of selected token IDs for shift+click selection
   const [selectedTokenIds, setSelectedTokenIds] = useState<Set<string>>(new Set());
   
@@ -1754,7 +1783,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       startPointerX,
       startPointerY
     });
-    
+
+    setTokenDragPath(tokenMovementMode === 'path'
+      ? [{ x: Math.round(visualX / effectiveGridSize), y: Math.round(visualY / effectiveGridSize) }]
+      : null);
+
     // Calculate offsets for all selected tokens relative to the dragged token
     selectedTokenOffsetsRef.current = new Map();
     const newVisualPositions = new Map<string, { x: number; y: number }>();
@@ -1820,7 +1853,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       : rawY;
     
     setDraggingToken(prev => prev ? { ...prev, visualX, visualY } : null);
-    
+
+    if (tokenMovementMode === 'path') {
+      const gx = Math.round(visualX / effectiveGridSize);
+      const gy = Math.round(visualY / effectiveGridSize);
+      setTokenDragPath(prev => {
+        if (!prev || prev.length === 0) return [{ x: gx, y: gy }];
+        const last = prev[prev.length - 1];
+        if (last.x === gx && last.y === gy) return prev;
+        return [...prev, ...stepGridPath(last.x, last.y, gx, gy)];
+      });
+    }
+
     // Update positions of all other selected tokens
     if (selectedTokenOffsetsRef.current.size > 0) {
       const newPositions = new Map<string, { x: number; y: number }>();
@@ -1915,6 +1959,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       // Always cleanup: Reset gesture mode and clear multi-select drag state
       gestureModeRef.current = 'idle';
       setDraggingToken(null);
+      setTokenDragPath(null);
       setSelectedTokenVisualPositions(new Map());
       selectedTokenOffsetsRef.current = new Map();
     }
@@ -2552,6 +2597,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
+        <Button
+           size="sm"
+           variant="secondary"
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${tokenMovementMode === 'path' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
+           data-testid="button-toggle-movement-mode"
+           title={tokenMovementMode === 'path' ? "Movement preview: following dragged path (click for shortest-route average)" : "Movement preview: shortest-route average (click to follow the dragged path)"}
+        >
+          <Route className="h-3 w-3" />
+        </Button>
         {campaignSystem === 'aa-v3' && (
           <Button
             size="sm"
@@ -3169,6 +3224,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             pendingDragRef.current = null;
             if (isDragging) {
               setDraggingToken(null);
+              setTokenDragPath(null);
               setSelectedTokenVisualPositions(new Map());
               selectedTokenOffsetsRef.current = new Map();
             }
@@ -3980,39 +4036,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })()}
 
-        {/* Token Movement Path Visualization - Shows path and distance while dragging */}
+        {/* Token Movement Path Visualization - Shows path and distance while dragging.
+            'average' mode (default): shortest diagonal-preferring route from
+            start to end, independent of how the token was actually dragged.
+            'path' mode: the literal grid cells the pointer passed through,
+            recorded live into tokenDragPath by moveTokenDrag. */}
         {draggingToken && (() => {
           const effectiveGridSize = gridSize;
-          
-          // Calculate start and end grid positions
-          const startGridX = Math.round(draggingToken.startX / effectiveGridSize);
-          const startGridY = Math.round(draggingToken.startY / effectiveGridSize);
-          const endGridX = Math.round(draggingToken.visualX / effectiveGridSize);
-          const endGridY = Math.round(draggingToken.visualY / effectiveGridSize);
-          
-          // Build grid-aligned path (Manhattan distance with diagonal support)
-          const pathPoints: { x: number; y: number }[] = [];
-          let currentX = startGridX;
-          let currentY = startGridY;
-          pathPoints.push({ x: currentX, y: currentY });
-          
-          // Move towards target using diagonal + straight moves
-          while (currentX !== endGridX || currentY !== endGridY) {
-            const dx = endGridX - currentX;
-            const dy = endGridY - currentY;
-            
-            // Prefer diagonal movement when both axes need movement
-            if (dx !== 0 && dy !== 0) {
-              currentX += dx > 0 ? 1 : -1;
-              currentY += dy > 0 ? 1 : -1;
-            } else if (dx !== 0) {
-              currentX += dx > 0 ? 1 : -1;
-            } else if (dy !== 0) {
-              currentY += dy > 0 ? 1 : -1;
-            }
-            pathPoints.push({ x: currentX, y: currentY });
+
+          let pathPoints: { x: number; y: number }[];
+          if (tokenMovementMode === 'path' && tokenDragPath && tokenDragPath.length > 0) {
+            pathPoints = tokenDragPath;
+          } else {
+            // Calculate start and end grid positions
+            const startGridX = Math.round(draggingToken.startX / effectiveGridSize);
+            const startGridY = Math.round(draggingToken.startY / effectiveGridSize);
+            const endGridX = Math.round(draggingToken.visualX / effectiveGridSize);
+            const endGridY = Math.round(draggingToken.visualY / effectiveGridSize);
+
+            // Build grid-aligned path (Manhattan distance with diagonal support)
+            pathPoints = [{ x: startGridX, y: startGridY }, ...stepGridPath(startGridX, startGridY, endGridX, endGridY)];
           }
-          
+
           // Calculate total distance (diagonal = 1.5 grid cells in D&D, but we'll use 5ft per cell for simplicity)
           // Actually for grid games, each step is 5ft including diagonals for simplicity
           let totalDistance = 0;
@@ -9298,22 +9343,29 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
 
           {/* Wounds Bar - C.A. only, replaces HP entirely. Tracks Major
               wounds only (direct or covered by all 3 Minors on a limb). */}
-          {campaignSystem === 'ca' && (
-            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
-              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
-                <span>Wounds</span>
-                <span>{caMajorWoundCount((character as any).caWounds)}/{CA_WOUND_SLOT_COUNT}</span>
+          {campaignSystem === 'ca' && (() => {
+            const majorCount = caMajorWoundCount((character as any).caWounds);
+            const healthy = CA_WOUND_SLOT_COUNT - majorCount;
+            return (
+              <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
+                <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
+                  <span>Wounds</span>
+                  {/* Reads like an HP bar: full (6/6) with none checked,
+                      counting down as major wounds go active — not counting
+                      up from 0 checked. */}
+                  <span>{healthy}/{CA_WOUND_SLOT_COUNT}</span>
+                </div>
+                <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                    initial={false}
+                    animate={{ width: `${(healthy / CA_WOUND_SLOT_COUNT) * 100}%` }}
+                    transition={{ duration: 0.8, ease: "easeInOut" }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-red-700 to-red-500"
-                  initial={false}
-                  animate={{ width: `${100 - (caMajorWoundCount((character as any).caWounds) / CA_WOUND_SLOT_COUNT) * 100}%` }}
-                  transition={{ duration: 0.8, ease: "easeInOut" }}
-                />
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Energy Bar */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-600 relative overflow-hidden w-32 md:w-44">
@@ -17668,9 +17720,7 @@ function CAAttrsAndSkillsTab({
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {CA_ATTRIBUTES.map(attr => {
-            const rawAttrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
-            const attrWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, attr.key);
-            const attrVal = rawAttrVal + attrWoundEffect;
+            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
             const dieType = `d${caAttrValueToDieSides(attrVal)}`;
             return (
               <Card
@@ -17695,15 +17745,6 @@ function CAAttrsAndSkillsTab({
                     <div className="mt-1" data-testid={`text-ca-attr-${attr.key}`}>
                       <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
-                      {attrWoundEffect !== 0 && (
-                        <span
-                          className={`ml-1 text-[10px] cursor-help ${attrWoundEffect > 0 ? 'text-emerald-400' : 'text-red-400'}`}
-                          title={`${attrWoundEffect > 0 ? '+' : ''}${attrWoundEffect} from wounds`}
-                          data-testid={`text-ca-attr-wound-effect-${attr.key}`}
-                        >
-                          ({attrWoundEffect > 0 ? `+${attrWoundEffect}` : attrWoundEffect})
-                        </span>
-                      )}
                     </div>
                   )}
                 </CardContent>
@@ -17722,9 +17763,7 @@ function CAAttrsAndSkillsTab({
           <CardContent className="pt-0 pb-2 space-y-1">
             {[...CA_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = CA_ATTRIBUTES.find(a => a.key === skill.parent);
-              const rawParentAttrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
-              const parentWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.parent);
-              const attrVal = rawParentAttrVal + parentWoundEffect;
+              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
               const dieType = `d${caAttrValueToDieSides(attrVal)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
@@ -21198,10 +21237,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                                 <SelectGroup>
                                                   <SelectLabel>Movement</SelectLabel>
                                                   {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
-                                                </SelectGroup>
-                                                <SelectGroup>
-                                                  <SelectLabel>Attributes</SelectLabel>
-                                                  {CA_ATTRIBUTES.map(a => <SelectItem key={a.key} value={a.key}>{a.name}</SelectItem>)}
                                                 </SelectGroup>
                                                 <SelectGroup>
                                                   <SelectLabel>Skills</SelectLabel>
