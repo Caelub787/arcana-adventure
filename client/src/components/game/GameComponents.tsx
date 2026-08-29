@@ -2084,7 +2084,15 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         if (hasCollision) break;
       }
       
-      if (!hasCollision) {
+      // Ending back on the exact starting grid cell cancels the move
+      // entirely (no commit, no network send) rather than re-sending an
+      // unchanged position — this is how a drag gets aborted.
+      const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+      const startSnappedX = gridEnabled ? Math.round(draggingToken.startX / effectiveGridSize) * effectiveGridSize : draggingToken.startX;
+      const startSnappedY = gridEnabled ? Math.round(draggingToken.startY / effectiveGridSize) * effectiveGridSize : draggingToken.startY;
+      const isCancelledMove = draggingToken.visualX === startSnappedX && draggingToken.visualY === startSnappedY;
+
+      if (!hasCollision && !isCancelledMove) {
         tokensToMove.forEach(t => {
           // Only the primary dragged token has a recorded path (tokens
           // moving alongside it in a multi-select drag follow a fixed
@@ -2103,6 +2111,20 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
       setSelectedTokenVisualPositions(new Map());
       selectedTokenOffsetsRef.current = new Map();
     }
+  };
+
+  /**
+   * cancelTokenDrag - Aborts an in-progress drag without committing any
+   * move (used by right-click-to-cancel). Reverts to the token's actual
+   * (unchanged) position since draggingToken is simply cleared.
+   */
+  const cancelTokenDrag = () => {
+    gestureModeRef.current = 'idle';
+    pendingDragRef.current = null;
+    setDraggingToken(null);
+    setTokenDragPath(null);
+    setSelectedTokenVisualPositions(new Map());
+    selectedTokenOffsetsRef.current = new Map();
   };
 
   const characterMap = useMemo(() => {
@@ -3372,14 +3394,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
             }
-            // Clear pending drag
-            pendingDragRef.current = null;
-            if (isDragging) {
-              setDraggingToken(null);
-              setTokenDragPath(null);
-              setSelectedTokenVisualPositions(new Map());
-              selectedTokenOffsetsRef.current = new Map();
-            }
+            cancelTokenDrag();
           };
           
           return (
@@ -3390,6 +3405,13 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               onPointerUp={handleTokenPointerUp}
               onPointerMove={handleTokenPointerMove}
               onPointerCancel={handleTokenPointerCancel}
+              onContextMenu={(e) => {
+                if (isDragging || pendingDragRef.current) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  cancelTokenDrag();
+                }
+              }}
               onClick={(e) => { 
                 // Don't handle token click when in AoE targeting or ruler mode
                 if (aoeTargetState?.active || rulerActive) return;

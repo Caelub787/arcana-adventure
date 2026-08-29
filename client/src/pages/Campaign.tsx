@@ -7237,6 +7237,7 @@ export default function Campaign() {
   // AA V3 swaps the Notes panel for the Canvas Realms ("World") panel and opens
   // the GM-linked shared world instead of the per-campaign auto-realm.
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
+  const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'ca');
 
   const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
   const { data: campaignLinkedWorld } = useLinkedWorld(effectiveCampaignId);
@@ -12739,9 +12740,9 @@ export default function Campaign() {
            )}
 
            {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
-             <BattleMapHotbars 
-               statsOnly={isAAV3}
-               overviewButton={isAAV3 ? (() => {
+             <BattleMapHotbars
+               statsOnly={isAAV3 || isCA}
+               overviewButton={(isAAV3 || isCA) ? (() => {
                  const sheetChar = role === 'gm'
                    ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
                    : character;
@@ -12812,13 +12813,13 @@ export default function Campaign() {
       {/* Character Overview Button - Outside battlemap container so fixed positioning works.
           In AA V3 this button instead renders above the bottom-left HP/Energy/Mana bars
           (passed to BattleMapHotbars as overviewButton). */}
-      {!spectatorMode && !isAAV3 && (() => {
-        const sheetChar = role === 'gm' 
-          ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
+      {!spectatorMode && !isAAV3 && !isCA && (() => {
+        const sheetChar = role === 'gm'
+          ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
           : character;
         if (!sheetChar?.id) return null;
         return (
-          <div 
+          <div
             className={`fixed z-[35] transition-all duration-300 ${isAAV3 ? 'bottom-[84px] md:bottom-[110px]' : 'bottom-[105px] md:bottom-[140px]'}`}
             style={{ right: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 16}px` : '16px' }}
             data-testid="btn-character-overview"
@@ -13475,11 +13476,12 @@ export default function Campaign() {
         </div>
       )}
       
-      {/* AA V3 free hotbar — replaces the V2-style battle/GM hotbars in V3 campaigns */}
-      {!spectatorMode && !isSandbox && isAAV3 && (
+      {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3 and C.A. campaigns */}
+      {!spectatorMode && !isSandbox && (isAAV3 || isCA) && (
         <V3FreeHotbar
           campaignId={campaignId!}
           isGM={role === 'gm'}
+          campaignSystem={campaign?.system}
           rightOffset={sidePanelOpen && !isMobile ? effectivePanelWidth : 0}
           onOpenCharacterSheet={(characterId) => {
             const char = (characters as any[] | undefined)?.find((c: any) => c.id === characterId);
@@ -13501,7 +13503,7 @@ export default function Campaign() {
       )}
 
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!spectatorMode && !isSandbox && !isAAV3 && role === 'gm' && !isMobile && (
+      {!spectatorMode && !isSandbox && !isAAV3 && !isCA && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}

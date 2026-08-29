@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
+import { caMajorWoundCount, CA_WOUND_SLOT_COUNT } from "@shared/ca";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -28,6 +29,7 @@ export interface FreeHotbarCharView {
   maxEnergy?: number;
   mana?: number;
   maxMana?: number;
+  caWounds?: unknown;
   canEdit?: boolean;
 }
 
@@ -52,7 +54,17 @@ function StatBar({ value, max, color, thin }: { value: number; max: number; colo
   );
 }
 
-function CharStatBars({ char, thin }: { char: FreeHotbarCharView; thin?: boolean }) {
+function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: boolean; isCA?: boolean }) {
+  // C.A. has no HP/mana — show Wounds-remaining (major slots) + Energy instead.
+  if (isCA) {
+    const healthy = CA_WOUND_SLOT_COUNT - caMajorWoundCount(char.caWounds);
+    return (
+      <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
+        <StatBar value={healthy} max={CA_WOUND_SLOT_COUNT} color="bg-red-600" thin={thin} />
+        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
+      </div>
+    );
+  }
   if (char.maxHp == null) return null;
   return (
     <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
@@ -71,9 +83,13 @@ interface V3FreeHotbarProps {
   // Pixel width of an open right-side panel (notes/world builder) so the
   // hotbar shifts left instead of being covered. 0 when closed / on mobile.
   rightOffset?: number;
+  // Campaign system slug ('aa-v3', 'ca', ...) — swaps the HP/Energy/Mana
+  // stat-bar display for C.A.'s Wounds/Energy display where relevant.
+  campaignSystem?: string;
 }
 
-export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, rightOffset = 0 }: V3FreeHotbarProps) {
+export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, rightOffset = 0, campaignSystem }: V3FreeHotbarProps) {
+  const isCA = campaignSystem === 'ca';
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [loadout, setLoadout] = useState(() => {
@@ -153,6 +169,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       maxEnergy: live.maxEnergy ?? char.maxEnergy,
       mana: live.mana ?? char.mana,
       maxMana: live.maxMana ?? char.maxMana,
+      caWounds: live.caWounds ?? char.caWounds,
       portrait: live.portrait ?? char.portrait,
       name: live.name ?? char.name,
     };
@@ -288,7 +305,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         </div>
                       )}
                       <div className="absolute bottom-0 left-0 right-0" data-testid={`free-hotbar-slot-${slotIndex}-bars`}>
-                        <CharStatBars char={mergeLive(entry.character)} thin />
+                        <CharStatBars char={mergeLive(entry.character)} thin isCA={isCA} />
                       </div>
                     </div>
                   ) : entry.item ? (
@@ -369,27 +386,48 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )}
                   </div>
                   <div className="flex-1 space-y-2 pt-0.5">
-                    <div>
-                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
-                        <span>HP</span>
-                        <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
-                      </div>
-                      <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color="bg-red-500" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
-                        <span>Energy</span>
-                        <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
-                      </div>
-                      <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs text-stone-400 mb-0.5">
-                        <span>Mana</span>
-                        <span data-testid="text-peek-mana">{c.mana ?? 0} / {c.maxMana ?? 0}</span>
-                      </div>
-                      <StatBar value={c.mana ?? 0} max={c.maxMana ?? 0} color="bg-fuchsia-400" />
-                    </div>
+                    {isCA ? (
+                      <>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Wounds</span>
+                            <span data-testid="text-peek-wounds">{CA_WOUND_SLOT_COUNT - caMajorWoundCount(c.caWounds)} / {CA_WOUND_SLOT_COUNT}</span>
+                          </div>
+                          <StatBar value={CA_WOUND_SLOT_COUNT - caMajorWoundCount(c.caWounds)} max={CA_WOUND_SLOT_COUNT} color="bg-red-600" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Energy</span>
+                            <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
+                          </div>
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>HP</span>
+                            <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
+                          </div>
+                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color="bg-red-500" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Energy</span>
+                            <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
+                          </div>
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Mana</span>
+                            <span data-testid="text-peek-mana">{c.mana ?? 0} / {c.maxMana ?? 0}</span>
+                          </div>
+                          <StatBar value={c.mana ?? 0} max={c.maxMana ?? 0} color="bg-fuchsia-400" />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-stone-500">View only — you can't open this character's sheet.</p>
