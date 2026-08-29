@@ -7086,6 +7086,7 @@ export default function Campaign() {
     viewportWidth: number;
     viewportHeight: number;
     zoom: number;
+    beaconColor?: string;
   }>>(new Map());
   
   const enterAoeMode = (spell: any, casterTokenId: string, pendingRollEntry?: any) => {
@@ -9388,6 +9389,8 @@ export default function Campaign() {
           
           setOtherPlayersViewports(prev => {
             const updated = new Map(prev);
+            const memberList = (membersRef.current as any[] | undefined) || [];
+            const beaconColor = memberList.find((m: any) => m.userId === userId)?.beaconColor;
             updated.set(userId, {
               userId,
               username,
@@ -9396,6 +9399,7 @@ export default function Campaign() {
               viewportWidth,
               viewportHeight,
               zoom,
+              beaconColor,
             });
             return updated;
           });

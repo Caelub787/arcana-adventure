@@ -691,6 +691,7 @@ interface BattleMapProps {
     viewportWidth: number;
     viewportHeight: number;
     zoom: number;
+    beaconColor?: string;
   }>;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
@@ -2746,6 +2747,18 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         >
           {tokenMovementMode === 'path' ? <Route className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
         </Button>
+        {isGM && (
+          <Button
+             size="sm"
+             variant="secondary"
+             className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showPlayerViewports ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+             onClick={() => setShowPlayerViewports(v => !v)}
+             data-testid="button-toggle-player-viewports"
+             title={showPlayerViewports ? "Hide player screens" : "Show player screens"}
+          >
+            <Monitor className="h-3 w-3" />
+          </Button>
+        )}
         {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
           <Button
             size="sm"
@@ -4856,17 +4869,20 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               const worldY = viewport.viewportY + MAP_OFFSET;
               const halfWidth = viewport.viewportWidth / 2;
               const halfHeight = viewport.viewportHeight / 2;
-              
-              const colors = [
-                { stroke: 'rgba(34, 211, 238, 0.9)', fill: 'rgba(34, 211, 238, 0.1)' },
-                { stroke: 'rgba(251, 146, 60, 0.9)', fill: 'rgba(251, 146, 60, 0.1)' },
-                { stroke: 'rgba(168, 85, 247, 0.9)', fill: 'rgba(168, 85, 247, 0.1)' },
-                { stroke: 'rgba(74, 222, 128, 0.9)', fill: 'rgba(74, 222, 128, 0.1)' },
-                { stroke: 'rgba(251, 191, 36, 0.9)', fill: 'rgba(251, 191, 36, 0.1)' },
-                { stroke: 'rgba(248, 113, 113, 0.9)', fill: 'rgba(248, 113, 113, 0.1)' },
+
+              // Prefer the player's own beacon color (same one used for their
+              // map ping) so the GM can match a viewport to a person at a
+              // glance; fall back to a cycling palette for anyone without one.
+              const fallbackPalette = [
+                '#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#fbbf24', '#f87171',
               ];
-              const color = colors[index % colors.length];
-              
+              const hex = viewport.beaconColor || fallbackPalette[index % fallbackPalette.length];
+              const rgb = (() => {
+                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
+              })();
+              const color = { stroke: `rgba(${rgb}, 0.9)`, fill: `rgba(${rgb}, 0.1)` };
+
               return (
                 <g key={viewport.userId}>
                   <rect
