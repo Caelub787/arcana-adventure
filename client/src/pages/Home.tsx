@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe, Download, Smartphone } from "lucide-react";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Shield, FileText, Globe, Download, Smartphone, Map as MapIcon } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
@@ -186,7 +186,7 @@ export default function Home() {
           </Card>
 
           {/* Main Menu Grid */}
-          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
             
             {/* My Campaigns */}
             <Link href="/my-campaigns">
@@ -214,6 +214,21 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">Build your world with entities, relationships, and lore.</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* Maps */}
+            <Link href="/maps">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-teal-600/50 hover:bg-stone-800/80" data-testid="card-maps">
+                <CardHeader>
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-teal-900/30 text-teal-500 group-hover:bg-teal-600 group-hover:text-white transition-colors">
+                    <MapIcon className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-teal-400">Maps</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-stone-500 group-hover:text-stone-400">Paint terrain, place stamps, and import maps as campaign scenes.</p>
                 </CardContent>
               </Card>
             </Link>

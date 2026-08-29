@@ -2593,3 +2593,103 @@ export const v3TechniqueGroupMembers = pgTable("v3_technique_group_members", {
   uniqueMember: index("v3_technique_group_members_unique_idx").on(t.groupId, t.techniqueId),
 }));
 export type V3TechniqueGroupMember = typeof v3TechniqueGroupMembers.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Map Maker
+// ---------------------------------------------------------------------------
+// A user-authored map: a painted terrain raster (freehand brush, or a
+// procedurally generated fill) plus a layer of placed stamp instances. Maps
+// are owned by whoever created them and can be imported into any campaign as
+// a new Scene (a flattened snapshot — the Map stays independently editable
+// afterward, it isn't linked back to the Scene it produced).
+export const maps = pgTable("maps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default("Untitled Map"),
+  width: integer("width").notNull().default(2000),
+  height: integer("height").notNull().default(1500),
+  gridSize: integer("grid_size").notNull().default(50),
+  // The painted/procedurally-generated terrain layer, flattened to a single
+  // raster image (data URL uploaded through the existing image pipeline).
+  // Null until the author paints or generates something.
+  terrainImage: text("terrain_image"),
+  thumbnail: text("thumbnail"),
+  // Which variant "state" every placed stamp on this map currently renders
+  // in — see stampAssetVariants below. A stamp with fewer variants than
+  // this index just clamps to its last one, so the map-wide hotkey can
+  // step past an object's variant count with no per-object bookkeeping.
+  activeVariantIndex: integer("active_variant_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertMapSchema = createInsertSchema(maps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMap = z.infer<typeof insertMapSchema>;
+// Named GameMap, not Map — the bare name would shadow the built-in generic
+// `Map` type wherever this is imported unqualified.
+export type GameMap = typeof maps.$inferSelect;
+
+// A logical stamp ("Carriage", "Pine Tree") — admin-authored, shared across
+// every map. The asset itself has no image; its variants do (see below).
+export const stampAssets = pgTable("stamp_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("misc"),
+  createdByUserId: varchar("created_by_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertStampAssetSchema = createInsertSchema(stampAssets).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertStampAsset = z.infer<typeof insertStampAssetSchema>;
+export type StampAsset = typeof stampAssets.$inferSelect;
+
+// One image variant of a stamp asset ("Normal", "On Fire", ...), ordered by
+// sortOrder. A map's activeVariantIndex picks which variant every placed
+// instance of this asset renders as — so swapping "state" for a whole map
+// (e.g. a village catching fire) is one number changing, not a per-object edit.
+export const stampAssetVariants = pgTable("stamp_asset_variants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  stampAssetId: varchar("stamp_asset_id").notNull().references(() => stampAssets.id, { onDelete: "cascade" }),
+  label: text("label").notNull().default("Default"),
+  image: text("image").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  assetIdx: index("stamp_asset_variants_asset_idx").on(t.stampAssetId),
+}));
+export const insertStampAssetVariantSchema = createInsertSchema(stampAssetVariants).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertStampAssetVariant = z.infer<typeof insertStampAssetVariantSchema>;
+export type StampAssetVariant = typeof stampAssetVariants.$inferSelect;
+
+// A placed stamp instance on a map. width/height is the instance's footprint
+// in map pixels at rotation 0 — fixed at placement/resize time, independent
+// of which variant is currently showing, so swapping variants (per-map,
+// via activeVariantIndex) never shifts an object's position or size.
+export const mapObjects = pgTable("map_objects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mapId: varchar("map_id").notNull().references(() => maps.id, { onDelete: "cascade" }),
+  stampAssetId: varchar("stamp_asset_id").notNull().references(() => stampAssets.id, { onDelete: "cascade" }),
+  x: real("x").notNull(),
+  y: real("y").notNull(),
+  rotation: real("rotation").notNull().default(0),
+  width: real("width").notNull().default(100),
+  height: real("height").notNull().default(100),
+  zIndex: integer("z_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  mapIdx: index("map_objects_map_idx").on(t.mapId),
+}));
+export const insertMapObjectSchema = createInsertSchema(mapObjects).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMapObject = z.infer<typeof insertMapObjectSchema>;
+export type MapObject = typeof mapObjects.$inferSelect;

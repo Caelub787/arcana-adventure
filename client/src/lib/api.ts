@@ -527,6 +527,51 @@ export interface CustomField {
   createdAt: string;
 }
 
+export interface GameMap {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  width: number;
+  height: number;
+  gridSize: number;
+  terrainImage: string | null;
+  thumbnail: string | null;
+  activeVariantIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MapObject {
+  id: string;
+  mapId: string;
+  stampAssetId: string;
+  x: number;
+  y: number;
+  rotation: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  createdAt: string;
+}
+
+export interface StampAssetVariant {
+  id: string;
+  stampAssetId: string;
+  label: string;
+  image: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface StampAsset {
+  id: string;
+  name: string;
+  category: string;
+  createdByUserId: string;
+  createdAt: string;
+  variants: StampAssetVariant[];
+}
+
 export interface RollEntry {
   id: string;
   ownerType: string;
@@ -1374,6 +1419,75 @@ class ApiClient {
 
   async deleteCustomField(id: string): Promise<void> {
     return this.request(`/custom-fields/${id}`, { method: 'DELETE' });
+  }
+
+  // Map Maker
+  async getMaps(): Promise<GameMap[]> {
+    return this.request('/maps');
+  }
+
+  async createMap(data: { name?: string; width?: number; height?: number; gridSize?: number }): Promise<GameMap> {
+    return this.request('/maps', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getMap(id: string): Promise<GameMap & { objects: MapObject[] }> {
+    return this.request(`/maps/${id}`);
+  }
+
+  async updateMap(id: string, data: Partial<GameMap>): Promise<GameMap> {
+    return this.request(`/maps/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteMap(id: string): Promise<void> {
+    return this.request(`/maps/${id}`, { method: 'DELETE' });
+  }
+
+  async createMapObject(mapId: string, data: { stampAssetId: string; x: number; y: number; rotation?: number; width?: number; height?: number; zIndex?: number }): Promise<MapObject> {
+    return this.request(`/maps/${mapId}/objects`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateMapObject(id: string, data: Partial<MapObject>): Promise<MapObject> {
+    return this.request(`/map-objects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteMapObject(id: string): Promise<void> {
+    return this.request(`/map-objects/${id}`, { method: 'DELETE' });
+  }
+
+  async getStampAssets(): Promise<StampAsset[]> {
+    return this.request('/stamp-assets');
+  }
+
+  async createStampAsset(data: { name: string; category?: string }): Promise<StampAsset> {
+    return this.request('/stamp-assets', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateStampAsset(id: string, data: { name?: string; category?: string }): Promise<StampAsset> {
+    return this.request(`/stamp-assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteStampAsset(id: string): Promise<void> {
+    return this.request(`/stamp-assets/${id}`, { method: 'DELETE' });
+  }
+
+  async createStampAssetVariant(stampAssetId: string, data: { label: string; image: string; sortOrder?: number }): Promise<StampAssetVariant> {
+    return this.request(`/stamp-assets/${stampAssetId}/variants`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateStampAssetVariant(id: string, data: { label?: string; image?: string; sortOrder?: number }): Promise<StampAssetVariant> {
+    return this.request(`/stamp-asset-variants/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteStampAssetVariant(id: string): Promise<void> {
+    return this.request(`/stamp-asset-variants/${id}`, { method: 'DELETE' });
+  }
+
+  async importMapToScene(mapId: string, data: { campaignId: string; image: string; name?: string }): Promise<any> {
+    return this.request(`/maps/${mapId}/import-to-scene`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async uploadBase64Image(dataUrl: string): Promise<{ url: string }> {
+    return this.request('/upload/base64', { method: 'POST', body: JSON.stringify({ data: dataUrl }) });
   }
 
   // Public system item (single item for entity references)

@@ -49,6 +49,10 @@ import {
   type SandboxFolder, type InsertSandboxFolder,
   type RollEntry, type InsertRollEntry,
   type CustomField, type InsertCustomField,
+  type GameMap, type InsertMap,
+  type StampAsset, type InsertStampAsset,
+  type StampAssetVariant, type InsertStampAssetVariant,
+  type MapObject, type InsertMapObject,
   type SceneWall, type InsertSceneWall,
   type SceneDoor, type InsertSceneDoor,
   type SceneWindow, type InsertSceneWindow,
@@ -91,7 +95,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, customFields, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, customFields, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
@@ -319,6 +323,25 @@ export interface IStorage {
   createCustomField(field: InsertCustomField): Promise<CustomField>;
   updateCustomField(id: string, data: Partial<InsertCustomField>): Promise<CustomField | undefined>;
   deleteCustomField(id: string): Promise<void>;
+
+  // Map Maker operations
+  getMapsByOwner(ownerUserId: string): Promise<GameMap[]>;
+  getMap(id: string): Promise<GameMap | undefined>;
+  createMap(map: InsertMap): Promise<GameMap>;
+  updateMap(id: string, data: Partial<InsertMap>): Promise<GameMap | undefined>;
+  deleteMap(id: string): Promise<void>;
+  getMapObjects(mapId: string): Promise<MapObject[]>;
+  createMapObject(obj: InsertMapObject): Promise<MapObject>;
+  updateMapObject(id: string, data: Partial<InsertMapObject>): Promise<MapObject | undefined>;
+  deleteMapObject(id: string): Promise<void>;
+  getStampAssets(): Promise<StampAsset[]>;
+  createStampAsset(asset: InsertStampAsset): Promise<StampAsset>;
+  updateStampAsset(id: string, data: Partial<InsertStampAsset>): Promise<StampAsset | undefined>;
+  deleteStampAsset(id: string): Promise<void>;
+  getStampAssetVariants(stampAssetId: string): Promise<StampAssetVariant[]>;
+  createStampAssetVariant(variant: InsertStampAssetVariant): Promise<StampAssetVariant>;
+  updateStampAssetVariant(id: string, data: Partial<InsertStampAssetVariant>): Promise<StampAssetVariant | undefined>;
+  deleteStampAssetVariant(id: string): Promise<void>;
 
   // Scene Wall operations
   getSceneWalls(sceneId: string): Promise<SceneWall[]>;
@@ -2918,6 +2941,89 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCustomField(id: string): Promise<void> {
     await db.delete(customFields).where(eq(customFields.id, id));
+  }
+
+  // Map Maker operations
+  async getMapsByOwner(ownerUserId: string): Promise<GameMap[]> {
+    return await db.select().from(maps).where(eq(maps.ownerUserId, ownerUserId)).orderBy(desc(maps.updatedAt));
+  }
+
+  async getMap(id: string): Promise<GameMap | undefined> {
+    const [map] = await db.select().from(maps).where(eq(maps.id, id));
+    return map;
+  }
+
+  async createMap(map: InsertMap): Promise<GameMap> {
+    const [newMap] = await db.insert(maps).values(map).returning();
+    return newMap;
+  }
+
+  async updateMap(id: string, data: Partial<InsertMap>): Promise<GameMap | undefined> {
+    const [map] = await db.update(maps)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(maps.id, id))
+      .returning();
+    return map;
+  }
+
+  async deleteMap(id: string): Promise<void> {
+    await db.delete(maps).where(eq(maps.id, id));
+  }
+
+  async getMapObjects(mapId: string): Promise<MapObject[]> {
+    return await db.select().from(mapObjects).where(eq(mapObjects.mapId, mapId)).orderBy(mapObjects.zIndex);
+  }
+
+  async createMapObject(obj: InsertMapObject): Promise<MapObject> {
+    const [newObj] = await db.insert(mapObjects).values(obj).returning();
+    return newObj;
+  }
+
+  async updateMapObject(id: string, data: Partial<InsertMapObject>): Promise<MapObject | undefined> {
+    const [obj] = await db.update(mapObjects).set(data).where(eq(mapObjects.id, id)).returning();
+    return obj;
+  }
+
+  async deleteMapObject(id: string): Promise<void> {
+    await db.delete(mapObjects).where(eq(mapObjects.id, id));
+  }
+
+  async getStampAssets(): Promise<StampAsset[]> {
+    return await db.select().from(stampAssets).orderBy(stampAssets.category, stampAssets.name);
+  }
+
+  async createStampAsset(asset: InsertStampAsset): Promise<StampAsset> {
+    const [newAsset] = await db.insert(stampAssets).values(asset).returning();
+    return newAsset;
+  }
+
+  async updateStampAsset(id: string, data: Partial<InsertStampAsset>): Promise<StampAsset | undefined> {
+    const [asset] = await db.update(stampAssets).set(data).where(eq(stampAssets.id, id)).returning();
+    return asset;
+  }
+
+  async deleteStampAsset(id: string): Promise<void> {
+    await db.delete(stampAssets).where(eq(stampAssets.id, id));
+  }
+
+  async getStampAssetVariants(stampAssetId: string): Promise<StampAssetVariant[]> {
+    return await db.select().from(stampAssetVariants)
+      .where(eq(stampAssetVariants.stampAssetId, stampAssetId))
+      .orderBy(stampAssetVariants.sortOrder);
+  }
+
+  async createStampAssetVariant(variant: InsertStampAssetVariant): Promise<StampAssetVariant> {
+    const [newVariant] = await db.insert(stampAssetVariants).values(variant).returning();
+    return newVariant;
+  }
+
+  async updateStampAssetVariant(id: string, data: Partial<InsertStampAssetVariant>): Promise<StampAssetVariant | undefined> {
+    const [variant] = await db.update(stampAssetVariants).set(data).where(eq(stampAssetVariants.id, id)).returning();
+    return variant;
+  }
+
+  async deleteStampAssetVariant(id: string): Promise<void> {
+    await db.delete(stampAssetVariants).where(eq(stampAssetVariants.id, id));
   }
 
   // Scene Wall operations

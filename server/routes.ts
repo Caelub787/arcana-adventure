@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, items, spells, systemSpells, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type CustomField, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type CustomField, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -5880,6 +5880,300 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete custom field" });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Map Maker
+  // ---------------------------------------------------------------------
+  app.get("/api/maps", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const list = await storage.getMapsByOwner(userId);
+      res.json(list);
+    } catch (err) {
+      console.error("Failed to fetch maps:", err);
+      res.status(500).json({ error: "Failed to fetch maps" });
+    }
+  });
+
+  app.post("/api/maps", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const map = await storage.createMap({
+        name: req.body.name || "Untitled Map",
+        width: req.body.width || 2000,
+        height: req.body.height || 1500,
+        gridSize: req.body.gridSize || 50,
+        ownerUserId: userId,
+      });
+      res.json(map);
+    } catch (err) {
+      console.error("Failed to create map:", err);
+      res.status(400).json({ error: "Failed to create map" });
+    }
+  });
+
+  app.get("/api/maps/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const map = await storage.getMap(req.params.id);
+      if (!map) return res.status(404).json({ error: "Map not found" });
+      if (map.ownerUserId !== userId && !(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Not authorized to view this map" });
+      }
+      const objects = await storage.getMapObjects(map.id);
+      res.json({ ...map, objects });
+    } catch (err) {
+      console.error("Failed to fetch map:", err);
+      res.status(500).json({ error: "Failed to fetch map" });
+    }
+  });
+
+  app.patch("/api/maps/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await storage.getMap(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Map not found" });
+      if (existing.ownerUserId !== userId && !(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Not authorized to edit this map" });
+      }
+      const body = { ...req.body };
+      delete body.id;
+      delete body.ownerUserId;
+      const map = await storage.updateMap(req.params.id, body);
+      res.json(map);
+    } catch (err) {
+      console.error("Failed to update map:", err);
+      res.status(400).json({ error: "Failed to update map" });
+    }
+  });
+
+  app.delete("/api/maps/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await storage.getMap(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Map not found" });
+      if (existing.ownerUserId !== userId && !(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Not authorized to delete this map" });
+      }
+      await storage.deleteMap(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete map:", err);
+      res.status(400).json({ error: "Failed to delete map" });
+    }
+  });
+
+  app.post("/api/maps/:id/objects", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const map = await storage.getMap(req.params.id);
+      if (!map) return res.status(404).json({ error: "Map not found" });
+      if (map.ownerUserId !== userId && !(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Not authorized to edit this map" });
+      }
+      const obj = await storage.createMapObject({
+        mapId: map.id,
+        stampAssetId: req.body.stampAssetId,
+        x: req.body.x,
+        y: req.body.y,
+        rotation: req.body.rotation ?? 0,
+        width: req.body.width ?? 100,
+        height: req.body.height ?? 100,
+        zIndex: req.body.zIndex ?? 0,
+      });
+      res.json(obj);
+    } catch (err) {
+      console.error("Failed to create map object:", err);
+      res.status(400).json({ error: "Failed to create map object" });
+    }
+  });
+
+  app.patch("/api/map-objects/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await db.select().from(mapObjects).where(eq(mapObjects.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Map object not found" });
+      const map = await storage.getMap(existing.mapId);
+      if (!map || (map.ownerUserId !== userId && !(await isAdminUser(userId)))) {
+        return res.status(403).json({ error: "Not authorized to edit this map" });
+      }
+      const body = { ...req.body };
+      delete body.id;
+      delete body.mapId;
+      const obj = await storage.updateMapObject(req.params.id, body);
+      res.json(obj);
+    } catch (err) {
+      console.error("Failed to update map object:", err);
+      res.status(400).json({ error: "Failed to update map object" });
+    }
+  });
+
+  app.delete("/api/map-objects/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await db.select().from(mapObjects).where(eq(mapObjects.id, req.params.id)).then(r => r[0]);
+      if (!existing) return res.status(404).json({ error: "Map object not found" });
+      const map = await storage.getMap(existing.mapId);
+      if (!map || (map.ownerUserId !== userId && !(await isAdminUser(userId)))) {
+        return res.status(403).json({ error: "Not authorized to edit this map" });
+      }
+      await storage.deleteMapObject(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete map object:", err);
+      res.status(400).json({ error: "Failed to delete map object" });
+    }
+  });
+
+  // Stamp assets are admin-authored (a small, curated shared library) but
+  // readable by anyone so players' own maps can place them.
+  app.get("/api/stamp-assets", requireAuth, async (_req, res) => {
+    try {
+      const assets = await storage.getStampAssets();
+      const withVariants = await Promise.all(assets.map(async (asset) => ({
+        ...asset,
+        variants: await storage.getStampAssetVariants(asset.id),
+      })));
+      res.json(withVariants);
+    } catch (err) {
+      console.error("Failed to fetch stamp assets:", err);
+      res.status(500).json({ error: "Failed to fetch stamp assets" });
+    }
+  });
+
+  app.post("/api/stamp-assets", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      if (!(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Only an admin can add stamp assets" });
+      }
+      const asset = await storage.createStampAsset({
+        name: req.body.name || "New Stamp",
+        category: req.body.category || "misc",
+        createdByUserId: userId,
+      });
+      res.json(asset);
+    } catch (err) {
+      console.error("Failed to create stamp asset:", err);
+      res.status(400).json({ error: "Failed to create stamp asset" });
+    }
+  });
+
+  app.patch("/api/stamp-assets/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await isAdminUser(req.session.userId!))) {
+        return res.status(403).json({ error: "Only an admin can edit stamp assets" });
+      }
+      const body = { ...req.body };
+      delete body.id;
+      delete body.createdByUserId;
+      const asset = await storage.updateStampAsset(req.params.id, body);
+      if (!asset) return res.status(404).json({ error: "Stamp asset not found" });
+      res.json(asset);
+    } catch (err) {
+      console.error("Failed to update stamp asset:", err);
+      res.status(400).json({ error: "Failed to update stamp asset" });
+    }
+  });
+
+  app.delete("/api/stamp-assets/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await isAdminUser(req.session.userId!))) {
+        return res.status(403).json({ error: "Only an admin can delete stamp assets" });
+      }
+      await storage.deleteStampAsset(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete stamp asset:", err);
+      res.status(400).json({ error: "Failed to delete stamp asset" });
+    }
+  });
+
+  app.post("/api/stamp-assets/:id/variants", requireAuth, async (req, res) => {
+    try {
+      if (!(await isAdminUser(req.session.userId!))) {
+        return res.status(403).json({ error: "Only an admin can add stamp variants" });
+      }
+      const variant = await storage.createStampAssetVariant({
+        stampAssetId: req.params.id,
+        label: req.body.label || "Default",
+        image: req.body.image,
+        sortOrder: req.body.sortOrder ?? 0,
+      });
+      res.json(variant);
+    } catch (err) {
+      console.error("Failed to create stamp variant:", err);
+      res.status(400).json({ error: "Failed to create stamp variant" });
+    }
+  });
+
+  app.patch("/api/stamp-asset-variants/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await isAdminUser(req.session.userId!))) {
+        return res.status(403).json({ error: "Only an admin can edit stamp variants" });
+      }
+      const body = { ...req.body };
+      delete body.id;
+      delete body.stampAssetId;
+      const variant = await storage.updateStampAssetVariant(req.params.id, body);
+      if (!variant) return res.status(404).json({ error: "Stamp variant not found" });
+      res.json(variant);
+    } catch (err) {
+      console.error("Failed to update stamp variant:", err);
+      res.status(400).json({ error: "Failed to update stamp variant" });
+    }
+  });
+
+  app.delete("/api/stamp-asset-variants/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await isAdminUser(req.session.userId!))) {
+        return res.status(403).json({ error: "Only an admin can delete stamp variants" });
+      }
+      await storage.deleteStampAssetVariant(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete stamp variant:", err);
+      res.status(400).json({ error: "Failed to delete stamp variant" });
+    }
+  });
+
+  // Flattens a map (terrain + stamps, already composited client-side into
+  // one image) into a brand new Scene in the target campaign. The Map
+  // itself is untouched and stays independently editable — this is a
+  // one-way export, not a link.
+  app.post("/api/maps/:id/import-to-scene", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { campaignId, image, name } = req.body;
+      if (!campaignId || !image) {
+        return res.status(400).json({ error: "campaignId and image are required" });
+      }
+      const map = await storage.getMap(req.params.id);
+      if (!map) return res.status(404).json({ error: "Map not found" });
+      if (map.ownerUserId !== userId && !(await isAdminUser(userId))) {
+        return res.status(403).json({ error: "Not authorized to import this map" });
+      }
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!(await hasGmAccess(userId, campaignId, campaign.gmUserId))) {
+        return res.status(403).json({ error: "Only the GM can import a map as a scene" });
+      }
+      const matches = (image as string).match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) return res.status(400).json({ error: "Invalid image data" });
+      const buffer = Buffer.from(matches[2], 'base64');
+      const backgroundImage = await processAndSaveImage(buffer, `map-${map.id}`);
+      const scene = await storage.createScene({
+        campaignId,
+        name: name || map.name,
+        backgroundImage,
+        gridSize: map.gridSize,
+      } as any);
+      res.json(scene);
+    } catch (err) {
+      console.error("Failed to import map as scene:", err);
+      res.status(500).json({ error: "Failed to import map as scene" });
     }
   });
 
