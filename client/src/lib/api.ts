@@ -3414,12 +3414,12 @@ export class GameWebSocket {
   // Throttle token moves per token to prevent flooding
   private tokenMoveTimestamps: Map<string, number> = new Map();
   
-  sendTokenMove(tokenId: string, x: number, y: number, force = false) {
+  sendTokenMove(tokenId: string, x: number, y: number, force = false, path?: { x: number; y: number }[]) {
     if (!this.campaignId) {
       console.error('Cannot send token move: not connected to a campaign');
       return;
     }
-    
+
     if (!force) {
       const now = Date.now();
       const lastMove = this.tokenMoveTimestamps.get(tokenId) || 0;
@@ -3428,8 +3428,8 @@ export class GameWebSocket {
     } else {
       this.tokenMoveTimestamps.set(tokenId, Date.now());
     }
-    
-    this.send({ type: 'token_move', campaignId: this.campaignId, tokenId, x, y });
+
+    this.send({ type: 'token_move', campaignId: this.campaignId, tokenId, x, y, path });
   }
 
   sendChatMessage(userId: string, sender: string, text: string, messageType = 'chat', recipientId?: string, recipientName?: string) {

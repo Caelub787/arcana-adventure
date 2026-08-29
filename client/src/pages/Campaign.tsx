@@ -8594,6 +8594,12 @@ export default function Campaign() {
 
   // Load tokens from API - preserve positions of tokens moved locally within last 3 seconds
   const localTokenMoveTimesRef = useRef<Map<string, number>>(new Map());
+  // The exact grid-cell route a token's last commit (local drag or a
+  // remote player's) actually followed, keyed by token id. BattleMap's own
+  // animation effect consumes and clears these — when present it animates
+  // along the real path instead of reconstructing a shortest-route guess
+  // from the old/new position.
+  const tokenMovePathsRef = useRef<Map<string, { x: number; y: number }[]>>(new Map());
   useEffect(() => {
     if (tokensData && Array.isArray(tokensData)) {
       const now = Date.now();
@@ -8730,7 +8736,10 @@ export default function Campaign() {
           if (data.userId === userIdRef.current) {
             return;
           }
-          setTokens(prev => prev.map(t => 
+          if (Array.isArray(data.path) && data.path.length > 1) {
+            tokenMovePathsRef.current.set(data.tokenId, data.path);
+          }
+          setTokens(prev => prev.map(t =>
             t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
           ));
           const currentCampaignId = effectiveCampaignIdRef.current;
@@ -9527,10 +9536,11 @@ export default function Campaign() {
     toast({ title: "Character Assigned", description: `${char.name} is now your active character` });
   };
 
-  const handleMoveToken = useCallback((id: string, x: number, y: number, force = false) => {
+  const handleMoveToken = useCallback((id: string, x: number, y: number, force = false, path?: { x: number; y: number }[]) => {
     localTokenMoveTimesRef.current.set(id, Date.now());
+    if (path && path.length > 1) tokenMovePathsRef.current.set(id, path);
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
-    gameWs.sendTokenMove(id, x, y, force);
+    gameWs.sendTokenMove(id, x, y, force, path);
   }, []);
 
   const handleApplyEffect = (tokenId: string, effectId: string) => {
@@ -12428,9 +12438,10 @@ export default function Campaign() {
                </button>
              </div>
            )}
-           <BattleMap 
-             tokens={tokens} 
-             onMoveToken={spectatorMode ? () => {} : handleMoveToken} 
+           <BattleMap
+             tokens={tokens}
+             onMoveToken={spectatorMode ? () => {} : handleMoveToken}
+             tokenMovePathsRef={tokenMovePathsRef}
              onTokenClick={spectatorMode ? undefined : handleTokenClick}
              onTokenDoubleClick={spectatorMode ? undefined : handleTokenDoubleClick}
              onTokenTripleClick={spectatorMode ? undefined : handleTokenTripleClick}

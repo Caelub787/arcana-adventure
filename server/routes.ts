@@ -1499,7 +1499,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (message.type === "token_move") {
-          const { campaignId, tokenId, x, y, snapToGrid } = message;
+          const { campaignId, tokenId, x, y, snapToGrid, path } = message;
           
           // Verify user has joined this campaign
           const userCampaign = (ws as any).campaigns.get(campaignId);
@@ -1521,6 +1521,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               x,
               y,
               snapToGrid,
+              // The exact grid-cell route the sender's pointer traced during
+              // the drag (if any) — pass-through only, never persisted, so
+              // other viewers can animate the real path instead of guessing
+              // a shortest route between the old and new position.
+              path,
               userId: authenticatedUserId
             });
             

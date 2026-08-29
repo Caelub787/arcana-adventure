@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -637,7 +637,13 @@ export interface OtherPlayerAoe {
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
-  onMoveToken: (id: string, x: number, y: number, force?: boolean) => void;
+  onMoveToken: (id: string, x: number, y: number, force?: boolean, path?: { x: number; y: number }[]) => void;
+  // Shared with the parent: the exact grid-cell route a token's last commit
+  // (local drag or a remote player's) actually followed, keyed by token id.
+  // The animation effect below consumes and clears entries here so it can
+  // animate along the real path instead of reconstructing a shortest-route
+  // guess between the old and new position.
+  tokenMovePathsRef?: React.RefObject<Map<string, { x: number; y: number }[]>>;
   onTokenClick?: (token: Token) => void;
   onTokenDoubleClick?: (token: Token) => void;
   onTokenTripleClick?: (token: Token) => void;
@@ -1036,7 +1042,7 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
 }
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1199,22 +1205,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     startPointerY: number;
   } | null>(null);
 
-  // Movement-path preview mode, toggled from the battlemap toolbar (next to
-  // "hide token names"): 'average' (default, unchanged) draws the shortest
-  // diagonal-preferring route from start to end regardless of how the token
-  // was actually dragged; 'path' instead traces the literal grid cells the
-  // pointer passed through, recorded into tokenDragPath below as the drag
-  // happens.
-  const [tokenMovementMode, setTokenMovementMode] = useState<'average' | 'path'>('average');
-  // Grid-cell waypoints recorded while dragging in 'path' mode. Null outside
-  // an active path-mode drag.
+  // Grid-cell waypoints recorded live as a token is dragged — the token
+  // always moves along this literal route (both the drag preview here and,
+  // via onMoveToken's path argument, what every other viewer sees) rather
+  // than a reconstructed shortest route between the start and end cell.
+  // Null outside an active drag.
   const [tokenDragPath, setTokenDragPath] = useState<{ x: number; y: number }[] | null>(null);
 
   // Diagonal-preferring grid walk from one cell to another, exclusive of
-  // `from` — used both to compute the 'average' mode's whole start-to-end
-  // preview and, in 'path' mode, to fill in the cells between two waypoints
-  // recorded on consecutive pointermove frames (which can be more than one
-  // cell apart if the pointer moved quickly).
+  // `from` — fills in the cells between two waypoints recorded on
+  // consecutive pointermove frames (which can be more than one cell apart
+  // if the pointer moved quickly), and is the fallback used to reconstruct
+  // a route for a remote move that arrived with no real path attached.
   const stepGridPath = (fromX: number, fromY: number, toX: number, toY: number): { x: number; y: number }[] => {
     const points: { x: number; y: number }[] = [];
     let cx = fromX, cy = fromY;
@@ -1399,9 +1401,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       
       // Check if position changed significantly (more than 1 pixel)
       if (prevPos && (Math.abs(prevPos.x - currPos.x) > 1 || Math.abs(prevPos.y - currPos.y) > 1)) {
-        // Position changed - start animation
-        const waypoints = calculateWaypoints(prevPos.x, prevPos.y, currPos.x, currPos.y, effectiveGridSize);
-        
+        // Position changed - start animation. Prefer the real recorded
+        // route (the dragger's own commit, or a remote player's) over a
+        // reconstructed shortest-path guess, so every viewer sees the same
+        // literal path the token was actually dragged along.
+        const recordedPath = tokenMovePathsRef?.current?.get(token.id);
+        const waypoints = recordedPath && recordedPath.length > 1
+          ? recordedPath.map(p => ({ x: p.x * effectiveGridSize, y: p.y * effectiveGridSize }))
+          : calculateWaypoints(prevPos.x, prevPos.y, currPos.x, currPos.y, effectiveGridSize);
+        if (recordedPath) tokenMovePathsRef?.current?.delete(token.id);
+
         if (waypoints.length > 1) {
           animatingTokensRef.current.set(token.id, {
             id: token.id,
@@ -1784,9 +1793,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       startPointerY
     });
 
-    setTokenDragPath(tokenMovementMode === 'path'
-      ? [{ x: Math.round(visualX / effectiveGridSize), y: Math.round(visualY / effectiveGridSize) }]
-      : null);
+    setTokenDragPath([{ x: Math.round(visualX / effectiveGridSize), y: Math.round(visualY / effectiveGridSize) }]);
 
     // Calculate offsets for all selected tokens relative to the dragged token
     selectedTokenOffsetsRef.current = new Map();
@@ -1854,16 +1861,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     
     setDraggingToken(prev => prev ? { ...prev, visualX, visualY } : null);
 
-    if (tokenMovementMode === 'path') {
-      const gx = Math.round(visualX / effectiveGridSize);
-      const gy = Math.round(visualY / effectiveGridSize);
-      setTokenDragPath(prev => {
-        if (!prev || prev.length === 0) return [{ x: gx, y: gy }];
-        const last = prev[prev.length - 1];
-        if (last.x === gx && last.y === gy) return prev;
-        return [...prev, ...stepGridPath(last.x, last.y, gx, gy)];
-      });
-    }
+    const gx = Math.round(visualX / effectiveGridSize);
+    const gy = Math.round(visualY / effectiveGridSize);
+    setTokenDragPath(prev => {
+      if (!prev || prev.length === 0) return [{ x: gx, y: gy }];
+      const last = prev[prev.length - 1];
+      if (last.x === gx && last.y === gy) return prev;
+      return [...prev, ...stepGridPath(last.x, last.y, gx, gy)];
+    });
 
     // Update positions of all other selected tokens
     if (selectedTokenOffsetsRef.current.size > 0) {
@@ -1952,7 +1957,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       
       if (!hasCollision) {
         tokensToMove.forEach(t => {
-          onMoveToken(t.id, t.visualX, t.visualY, true);
+          // Only the primary dragged token has a recorded path (tokens
+          // moving alongside it in a multi-select drag follow a fixed
+          // offset from it, not an independently-tracked route) — other
+          // viewers fall back to a reconstructed route for those.
+          onMoveToken(t.id, t.visualX, t.visualY, true, t.id === draggingToken.id ? (tokenDragPath ?? undefined) : undefined);
         });
       }
     } finally {
@@ -2596,16 +2605,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
            title={showNametags ? "Hide token names" : "Show token names"}
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-        </Button>
-        <Button
-           size="sm"
-           variant="secondary"
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${tokenMovementMode === 'path' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-           onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
-           data-testid="button-toggle-movement-mode"
-           title={tokenMovementMode === 'path' ? "Movement preview: following dragged path (click for shortest-route average)" : "Movement preview: shortest-route average (click to follow the dragged path)"}
-        >
-          <Route className="h-3 w-3" />
         </Button>
         {campaignSystem === 'aa-v3' && (
           <Button
@@ -3610,7 +3609,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     {showWound && (
                       <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`} data-testid={`bar-wound-${token.id}`}>
                         <div
-                          className={`h-full transition-all duration-700 ease-in-out ${
+                          className={`h-full ${
                             woundPercent! > 60 ? 'bg-green-500' : woundPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
                           }`}
                           style={{ width: `${Math.max(0, Math.min(100, woundPercent!))}%` }}
@@ -4036,16 +4035,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })()}
 
-        {/* Token Movement Path Visualization - Shows path and distance while dragging.
-            'average' mode (default): shortest diagonal-preferring route from
-            start to end, independent of how the token was actually dragged.
-            'path' mode: the literal grid cells the pointer passed through,
-            recorded live into tokenDragPath by moveTokenDrag. */}
+        {/* Token Movement Path Visualization - Shows the literal grid cells
+            the pointer has passed through so far, recorded live into
+            tokenDragPath by moveTokenDrag — not a reconstructed shortest
+            route from start to end. */}
         {draggingToken && (() => {
           const effectiveGridSize = gridSize;
 
           let pathPoints: { x: number; y: number }[];
-          if (tokenMovementMode === 'path' && tokenDragPath && tokenDragPath.length > 0) {
+          if (tokenDragPath && tokenDragPath.length > 0) {
             pathPoints = tokenDragPath;
           } else {
             // Calculate start and end grid positions
@@ -9360,7 +9358,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                     className="h-full bg-gradient-to-r from-red-700 to-red-500"
                     initial={false}
                     animate={{ width: `${(healthy / CA_WOUND_SLOT_COUNT) * 100}%` }}
-                    transition={{ duration: 0.8, ease: "easeInOut" }}
+                    transition={{ duration: 0 }}
                   />
                 </div>
               </div>
@@ -20276,11 +20274,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
   });
 
-  // Rapid-click safe character updates (e.g. exhaustion +/- steppers).
-  // Each click computes from a synchronously-updated ref (so three fast clicks
-  // step 7→6→5→4 instead of all computing from the same stale render value),
-  // applies locally right away, and debounces a single PATCH with the final
-  // value so out-of-order server responses can't snap the UI back.
+  // Rapid-click safe character updates (e.g. exhaustion +/- steppers, C.A.
+  // wound toggles). Each click computes from a synchronously-updated ref (so
+  // three fast clicks step 7→6→5→4 instead of all computing from the same
+  // stale render value), applies locally right away, and debounces a single
+  // PATCH with the final value so out-of-order server responses can't snap
+  // the UI back. The debounce only exists to coalesce a burst of clicks into
+  // one request — correctness comes from the ref, not from the delay — so
+  // it's kept short: other viewers' HP-equivalent bars (which read the
+  // server-synced character, not this component's own instantly-updated
+  // local state) don't start moving until the debounced PATCH round-trips.
   const liveCharRef = useRef<any>(liveCharacter);
   useEffect(() => { liveCharRef.current = liveCharacter; }, [liveCharacter]);
   const debouncedCharUpdatesRef = useRef<any>({});
@@ -20300,7 +20303,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       debouncedCharUpdatesRef.current = {};
       debouncedCharTimerRef.current = null;
       updateCharacterMutation.mutate(payload);
-    }, 350);
+    }, 100);
   };
 
   // Rest-without-food confirmation (triggered by long-press on rest buttons)
