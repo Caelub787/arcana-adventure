@@ -91,8 +91,13 @@ const SelectContent = React.forwardRef<
       <SelectPrimitive.Viewport
         className={cn(
           "p-1",
+          // Deliberately no fixed height here (the stock shadcn template pins
+          // this to the trigger's own height, which silently caps the list to
+          // ~1 row and made long option lists unscrollable — most noticeable on
+          // mobile). The outer Content's max-h[--radix-select-content-available-height]
+          // + overflow-y-auto already sizes/scrolls the popup correctly.
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+            "w-full min-w-[var(--radix-select-trigger-width)]"
         )}
       >
         {children}

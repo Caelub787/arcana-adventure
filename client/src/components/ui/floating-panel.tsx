@@ -296,6 +296,13 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const contentInnerRef = React.useRef<HTMLDivElement>(null);
   const userResizedRef = React.useRef(false);
   const fitLockedRef = React.useRef(false);
+  // fitToContent used to lock on the very first successful measurement, which
+  // often ran before async tab data (character queries, custom field/wound
+  // lists, species lookups) had landed — producing a locked-in height that
+  // didn't fit the fully-loaded sheet. Now every measurement (re)starts a
+  // short "gone quiet" timer, and only the final one (after which nothing
+  // else resized `inner` for a beat) actually locks the size.
+  const fitSettleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
@@ -388,10 +395,19 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     };
   }, []);
 
-  // Fit the panel's height to its content exactly ONCE, then lock it so the
-  // size never changes again (no per-tab resizing). The fit only runs while
-  // `fitContentActive` is true (e.g. while the designated tab is showing), so
-  // the single locked size matches that tab. Ignored after a manual resize.
+  // Fit the panel's height to its content, then lock it once things go quiet
+  // so the size never changes again after that (no per-tab resizing). The
+  // fit only runs while `fitContentActive` is true (e.g. while the
+  // designated tab is showing), so the single locked size matches that tab.
+  // Ignored after a manual resize.
+  //
+  // Locking used to happen on the very first successful measurement, but
+  // that measurement often lands before async tab content — character
+  // queries, custom-field/wound lists, species lookups — has actually
+  // rendered, producing a locked-in height that was too small for the fully
+  // loaded sheet. Every measurement now (re)arms a short "gone quiet" timer;
+  // only the one after which nothing resizes `inner` again for a beat
+  // actually locks, so the fit reflects the settled content.
   const fitToContent = React.useCallback(() => {
     if (!fitContent || fitLockedRef.current || userResizedRef.current || isFullscreen || isMinimized) return;
     if (fitContentActive === false) return;
@@ -411,9 +427,14 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     posRef.current.x = p.x;
     posRef.current.y = p.y;
     applyTransform();
-    fitLockedRef.current = true; // lock — never resize again
-    onFitLocked?.(); // let caller react before reveal (e.g. switch tab back)
-    setFitRevealed(true); // size is final; safe to show the panel
+
+    if (fitSettleTimerRef.current) clearTimeout(fitSettleTimerRef.current);
+    fitSettleTimerRef.current = setTimeout(() => {
+      fitSettleTimerRef.current = null;
+      fitLockedRef.current = true; // lock — never resize again
+      onFitLocked?.(); // let caller react before reveal (e.g. switch tab back)
+      setFitRevealed(true); // size is final; safe to show the panel
+    }, 350);
   }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition, onFitLocked]);
 
   // Whether this panel should stay hidden until the fit locks. Mirrors the
@@ -425,13 +446,15 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // Reveal immediately when we are not waiting on a fit; otherwise keep a short
   // safety timer so the panel can never stay invisible if a measurement never
   // resolves (the common case reveals pre-paint via fitToContent's lock).
+  // Longer than fitToContent's own 350ms settle delay so it doesn't fire
+  // mid-settle and reveal a still-resizing panel.
   React.useEffect(() => {
     if (fitRevealed) return;
     if (!waitingForFit) {
       setFitRevealed(true);
       return;
     }
-    const t = setTimeout(() => setFitRevealed(true), 250);
+    const t = setTimeout(() => setFitRevealed(true), 900);
     return () => clearTimeout(t);
   }, [fitRevealed, waitingForFit]);
 
@@ -446,7 +469,13 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
       if (fitLockedRef.current) ro.disconnect();
     });
     ro.observe(inner);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (fitSettleTimerRef.current) {
+        clearTimeout(fitSettleTimerRef.current);
+        fitSettleTimerRef.current = null;
+      }
+    };
   }, [fitContent, fitContentActive, fitToContent]);
 
   React.useLayoutEffect(() => {

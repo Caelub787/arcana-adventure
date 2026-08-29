@@ -9238,7 +9238,11 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
   };
 
   const equippedArmorBonus = calculateArmorBonus();
-  const totalDC = (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
+  // C.A. doesn't derive DC from size/armor/feats — it's a direct GM-set
+  // number (the Overview tab's DC field, riding on the naturalArmor column).
+  const totalDC = campaignSystem === 'ca'
+    ? (character?.naturalArmor ?? 5)
+    : (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
 
   // Don't render if no character selected
   if (!character) return null;
@@ -18288,15 +18292,24 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [caEditingName, setCaEditingName] = useState(false);
   const [caNameDraft, setCaNameDraft] = useState('');
 
-  // C.A. "fundamentals" block (race + size/armor/movement speeds) — same
+  // C.A. "fundamentals" block (race + DC/size/movement speeds) — same
   // draft-then-Save shape as v1/v2/v3's overviewData, but scoped to just
   // these fields instead of the whole stat payload. Selecting a race while
   // editing auto-fills the rest of the draft from the species (mirrors
   // applyRaceChange) but nothing is written to the character until Save.
+  // `dc` rides on the existing `naturalArmor` column (no schema change) —
+  // C.A. doesn't compute DC from size/armor/feats like v1/v2/v3 do, it's
+  // just a direct GM-set number, so the column is repurposed wholesale.
   const [caEditingFundamentals, setCaEditingFundamentals] = useState(false);
   const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
-    race: '', size: '', naturalArmor: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
+    race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
   });
+
+  // Portrait's Library/Upload controls live in a popup over the image itself
+  // (double-click on desktop, long-press on touch) instead of a permanent
+  // button row, to keep the Overview tab down to just the character's info.
+  const [showCaPortraitMenu, setShowCaPortraitMenu] = useState(false);
+  const caPortraitLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // C.A. Traits tab: which trait's roll-builder is expanded.
   const [caExpandedTraitId, setCaExpandedTraitId] = useState<string | null>(null);
@@ -18924,7 +18937,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       ...prev,
       race: raceName,
       size: raceData?.size ?? prev.size,
-      naturalArmor: raceData?.naturalArmor ?? prev.naturalArmor,
+      dc: raceData?.naturalArmor ?? prev.dc,
       speed: raceData?.speed ?? prev.speed,
       flySpeed: raceData?.flySpeed ?? prev.flySpeed,
       swimSpeed: (raceData as any)?.swimSpeed ?? prev.swimSpeed,
@@ -20865,45 +20878,69 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Portrait — left column on wide screens, stacked on mobile */}
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <Label className="text-sm text-stone-300">Character Portrait</Label>
-                        {canEdit && onUpdate && (
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => setShowImageBrowser(true)} data-testid="button-browse-library">
-                              <FolderOpen className="h-4 w-4 mr-1" />
-                              Library
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => portraitInputRef.current?.click()} data-testid="button-upload-portrait">
-                              <Camera className="h-4 w-4 mr-1" />
-                              Upload
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex justify-center">
-                        {character.portrait ? (
-                          <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
-                            <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
-                          </div>
-                        ) : (
-                          <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
-                            <User className="h-12 w-12 text-stone-500" />
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex flex-row gap-3 sm:gap-4">
+                    {/* Portrait — a fixed-width column so it stays beside the
+                        info at any screen width instead of stacking on
+                        mobile. Library/Upload live in a popup over the image
+                        itself (double-click / long-press) instead of a
+                        permanent button row, so this tab is just the info. */}
+                    <div
+                      className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0"
+                      onDoubleClick={() => { if (canEdit && onUpdate) setShowCaPortraitMenu(v => !v); }}
+                      onTouchStart={() => {
+                        if (!canEdit || !onUpdate) return;
+                        caPortraitLongPressRef.current = setTimeout(() => setShowCaPortraitMenu(true), 500);
+                      }}
+                      onTouchEnd={() => { if (caPortraitLongPressRef.current) clearTimeout(caPortraitLongPressRef.current); }}
+                      onTouchMove={() => { if (caPortraitLongPressRef.current) clearTimeout(caPortraitLongPressRef.current); }}
+                      data-testid="container-ca-portrait"
+                    >
+                      {character.portrait ? (
+                        <div className="w-full h-full rounded-xl overflow-hidden border-4 border-amber-600/50 shadow-lg">
+                          <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full rounded-xl bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
+                          <User className="h-10 w-10 text-stone-500" />
+                        </div>
+                      )}
+                      {showCaPortraitMenu && canEdit && onUpdate && (
+                        <div
+                          className="absolute inset-0 rounded-xl bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
+                          onClick={() => setShowCaPortraitMenu(false)}
+                        >
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-1.5 text-[10px]"
+                            onClick={(e) => { e.stopPropagation(); setShowCaPortraitMenu(false); setShowImageBrowser(true); }}
+                            data-testid="button-browse-library"
+                          >
+                            <FolderOpen className="h-3 w-3 mr-1" />
+                            Library
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-1.5 text-[10px]"
+                            onClick={(e) => { e.stopPropagation(); setShowCaPortraitMenu(false); portraitInputRef.current?.click(); }}
+                            data-testid="button-upload-portrait"
+                          >
+                            <Camera className="h-3 w-3 mr-1" />
+                            Upload
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Fundamentals — race + size/armor/movement speeds, right
-                        column on wide screens. Movement speeds shown are
-                        EFFECTIVE (base + any active wound stat effects). */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm text-stone-300">Fundamentals</Label>
-                        {canEdit && onUpdate && (
-                          caEditingFundamentals ? (
+                    {/* Fundamentals — race + DC, then movement speeds/size.
+                        No section title, just the info. Movement speeds
+                        shown are EFFECTIVE (base + active wound stat
+                        effects + exhaustion). */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      {canEdit && onUpdate && (
+                        <div className="flex justify-end">
+                          {caEditingFundamentals ? (
                             <div className="flex gap-1.5">
                               <Button
                                 size="sm"
@@ -20911,7 +20948,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   onUpdate?.({
                                     race: caFundamentalsDraft.race,
                                     size: caFundamentalsDraft.size,
-                                    naturalArmor: caFundamentalsDraft.naturalArmor,
+                                    naturalArmor: caFundamentalsDraft.dc,
                                     speed: caFundamentalsDraft.speed,
                                     flySpeed: caFundamentalsDraft.flySpeed,
                                     swimSpeed: caFundamentalsDraft.swimSpeed,
@@ -20929,12 +20966,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           ) : (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
                               onClick={() => {
                                 setCaFundamentalsDraft({
                                   race: liveCharacter.race || '',
                                   size: liveCharacter.size || '',
-                                  naturalArmor: liveCharacter.naturalArmor || 0,
+                                  dc: liveCharacter.naturalArmor ?? 5,
                                   speed: liveCharacter.speed || 0,
                                   flySpeed: liveCharacter.flySpeed || 0,
                                   swimSpeed: liveCharacter.swimSpeed || 0,
@@ -20943,28 +20981,44 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               }}
                               data-testid="button-ca-edit-fundamentals"
                             >
-                              Edit
+                              <Pencil className="h-3.5 w-3.5 text-stone-400" />
                             </Button>
-                          )
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
 
-                      <div>
-                        <Label className="text-xs text-stone-400">Race</Label>
-                        {caEditingFundamentals ? (
-                          <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
-                            <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
-                              <SelectValue placeholder="Select race" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {systemSpecies.map((species: any) => (
-                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <p className="text-stone-200 text-sm" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
-                        )}
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1 min-w-0">
+                          <Label className="text-xs text-stone-400">Race</Label>
+                          {caEditingFundamentals ? (
+                            <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
+                              <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
+                                <SelectValue placeholder="Select race" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {systemSpecies.map((species: any) => (
+                                  <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
+                          )}
+                        </div>
+                        <div className="w-14 shrink-0">
+                          <Label className="text-xs text-stone-400">DC</Label>
+                          {caEditingFundamentals ? (
+                            <NumberInput
+                              min={0}
+                              value={caFundamentalsDraft.dc}
+                              onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, dc: v ?? 0 }))}
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-dc"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-dc">{liveCharacter.naturalArmor ?? 5}</p>
+                          )}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
@@ -21021,20 +21075,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             />
                           ) : (
                             <p className="text-stone-200 text-sm" data-testid="text-ca-size">{liveCharacter.size || 'Medium'}</p>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs text-stone-400">Natural Armor</Label>
-                          {caEditingFundamentals ? (
-                            <NumberInput
-                              min={0}
-                              value={caFundamentalsDraft.naturalArmor}
-                              onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, naturalArmor: v ?? 0 }))}
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-natural-armor"
-                            />
-                          ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-natural-armor">+{liveCharacter.naturalArmor ?? 5}</p>
                           )}
                         </div>
                       </div>
