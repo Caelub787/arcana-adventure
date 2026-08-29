@@ -771,9 +771,20 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
         style={{ display: isMinimized ? 'none' : '' }}
       >
         {/* fitContent wraps children in a measuring div so we can read their
-            natural height. Adopters relying on children being a direct scroll
-            child or on parent-height contracts should verify layout. */}
-        {fitContent ? <div ref={contentInnerRef}>{children}</div> : children}
+            natural height — while still measuring (before the fit locks) it
+            stays a plain unbounded block so scrollHeight reflects the TRUE
+            content height. Once locked, it switches to a real h-full flex
+            column: children that implement their own pinned-header +
+            scrollable-body layout (flex-1 min-h-0 overflow-y-auto, like the
+            character sheet's tabs) only work with a bounded ancestor — until
+            now they had none, so nothing below the header ever actually
+            became scrollable and this outer wrapper's own overflow-y-auto
+            scrolled the whole panel (header included) as one block instead.
+            Content that doesn't care about being a flex-column is unaffected
+            (fitToContent already sized the panel to match it exactly). */}
+        {fitContent ? (
+          <div ref={contentInnerRef} className={fitRevealed ? "flex flex-col h-full" : undefined}>{children}</div>
+        ) : children}
       </div>
 
       {!isMinimized && (

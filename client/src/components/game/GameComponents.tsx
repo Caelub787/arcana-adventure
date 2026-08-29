@@ -18287,20 +18287,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
 
-  // C.A.'s minimal Overview tab has its own tiny name-edit state, separate
-  // from the v1/v2/v3 overviewData flow (which carries a full stat payload).
-  const [caEditingName, setCaEditingName] = useState(false);
+  // C.A.'s minimal Overview tab edits name + fundamentals (race/DC/size/
+  // movement speeds) together under one pencil button and one Save/Cancel,
+  // separate from the v1/v2/v3 overviewData flow (which carries a much
+  // larger stat payload). `dc` rides on the existing `naturalArmor` column
+  // (no schema change) — C.A. doesn't compute DC from size/armor/feats like
+  // v1/v2/v3 do, it's just a direct GM-set number, so the column is
+  // repurposed wholesale. Nothing is written until Save; selecting a race
+  // while editing auto-fills the rest of the fundamentals draft from the
+  // species (mirrors applyRaceChange).
+  const [caEditingOverview, setCaEditingOverview] = useState(false);
   const [caNameDraft, setCaNameDraft] = useState('');
-
-  // C.A. "fundamentals" block (race + DC/size/movement speeds) — same
-  // draft-then-Save shape as v1/v2/v3's overviewData, but scoped to just
-  // these fields instead of the whole stat payload. Selecting a race while
-  // editing auto-fills the rest of the draft from the species (mirrors
-  // applyRaceChange) but nothing is written to the character until Save.
-  // `dc` rides on the existing `naturalArmor` column (no schema change) —
-  // C.A. doesn't compute DC from size/armor/feats like v1/v2/v3 do, it's
-  // just a direct GM-set number, so the column is repurposed wholesale.
-  const [caEditingFundamentals, setCaEditingFundamentals] = useState(false);
   const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
     race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
   });
@@ -20832,48 +20829,65 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader>
                   <CardTitle className="text-amber-500 flex items-center justify-between">
-                    {caEditingName ? (
-                      <div className="flex-1 mr-4 flex items-center gap-2">
+                    {caEditingOverview ? (
+                      <div className="flex-1 mr-4">
                         <Input
                           value={caNameDraft}
                           onChange={(e) => setCaNameDraft(e.target.value)}
                           className="bg-stone-900 border-stone-700 text-amber-500"
                           data-testid="input-ca-edit-name"
                         />
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            onUpdate?.({ name: caNameDraft.trim() || liveCharacter.name });
-                            setCaEditingName(false);
-                          }}
-                          data-testid="button-ca-save-name"
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setCaEditingName(false)}
-                          data-testid="button-ca-cancel-name"
-                        >
-                          Cancel
-                        </Button>
                       </div>
                     ) : (
                       <span data-testid="text-character-name">{liveCharacter.name}</span>
                     )}
-                    {!caEditingName && (isOwner || isGM) && onUpdate && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setCaNameDraft(liveCharacter.name || '');
-                          setCaEditingName(true);
-                        }}
-                        data-testid="button-ca-edit-name"
-                      >
-                        Edit
-                      </Button>
+                    {(isOwner || isGM) && onUpdate && (
+                      caEditingOverview ? (
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              onUpdate?.({
+                                name: caNameDraft.trim() || liveCharacter.name,
+                                race: caFundamentalsDraft.race,
+                                size: caFundamentalsDraft.size,
+                                naturalArmor: caFundamentalsDraft.dc,
+                                speed: caFundamentalsDraft.speed,
+                                flySpeed: caFundamentalsDraft.flySpeed,
+                                swimSpeed: caFundamentalsDraft.swimSpeed,
+                              });
+                              setCaEditingOverview(false);
+                            }}
+                            data-testid="button-ca-save-overview"
+                          >
+                            Save
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setCaEditingOverview(false)} data-testid="button-ca-cancel-overview">
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 shrink-0"
+                          onClick={() => {
+                            setCaNameDraft(liveCharacter.name || '');
+                            setCaFundamentalsDraft({
+                              race: liveCharacter.race || '',
+                              size: liveCharacter.size || '',
+                              dc: liveCharacter.naturalArmor ?? 5,
+                              speed: liveCharacter.speed || 0,
+                              flySpeed: liveCharacter.flySpeed || 0,
+                              swimSpeed: liveCharacter.swimSpeed || 0,
+                            });
+                            setCaEditingOverview(true);
+                          }}
+                          data-testid="button-ca-edit-overview"
+                        >
+                          <Pencil className="h-4 w-4 text-stone-400" />
+                        </Button>
+                      )
                     )}
                   </CardTitle>
                 </CardHeader>
@@ -20885,7 +20899,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         itself (double-click / long-press) instead of a
                         permanent button row, so this tab is just the info. */}
                     <div
-                      className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0"
+                      className="relative w-28 h-28 sm:w-36 sm:h-36 shrink-0"
                       onDoubleClick={() => { if (canEdit && onUpdate) setShowCaPortraitMenu(v => !v); }}
                       onTouchStart={() => {
                         if (!canEdit || !onUpdate) return;
@@ -20933,81 +20947,38 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                     </div>
 
-                    {/* Fundamentals — race + DC, then movement speeds/size.
-                        No section title, just the info. Movement speeds
-                        shown are EFFECTIVE (base + active wound stat
-                        effects + exhaustion). */}
+                    {/* Fundamentals — race, then a DC/Speed/Fly Speed/Swim
+                        Speed/Size grid, all sharing one set of columns so DC
+                        lines up with the row below it instead of floating
+                        off on its own. No section title or per-block edit
+                        control here — both live on the single pencil button
+                        up in the header, which edits name + all of this
+                        together. Starts flush with the top of the portrait.
+                        Movement speeds shown are EFFECTIVE (base + active
+                        wound stat effects + exhaustion). */}
                     <div className="flex-1 min-w-0 space-y-2">
-                      {canEdit && onUpdate && (
-                        <div className="flex justify-end">
-                          {caEditingFundamentals ? (
-                            <div className="flex gap-1.5">
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  onUpdate?.({
-                                    race: caFundamentalsDraft.race,
-                                    size: caFundamentalsDraft.size,
-                                    naturalArmor: caFundamentalsDraft.dc,
-                                    speed: caFundamentalsDraft.speed,
-                                    flySpeed: caFundamentalsDraft.flySpeed,
-                                    swimSpeed: caFundamentalsDraft.swimSpeed,
-                                  });
-                                  setCaEditingFundamentals(false);
-                                }}
-                                data-testid="button-ca-save-fundamentals"
-                              >
-                                Save
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => setCaEditingFundamentals(false)} data-testid="button-ca-cancel-fundamentals">
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0"
-                              onClick={() => {
-                                setCaFundamentalsDraft({
-                                  race: liveCharacter.race || '',
-                                  size: liveCharacter.size || '',
-                                  dc: liveCharacter.naturalArmor ?? 5,
-                                  speed: liveCharacter.speed || 0,
-                                  flySpeed: liveCharacter.flySpeed || 0,
-                                  swimSpeed: liveCharacter.swimSpeed || 0,
-                                });
-                                setCaEditingFundamentals(true);
-                              }}
-                              data-testid="button-ca-edit-fundamentals"
-                            >
-                              <Pencil className="h-3.5 w-3.5 text-stone-400" />
-                            </Button>
-                          )}
-                        </div>
-                      )}
+                      <div>
+                        <Label className="text-xs text-stone-400">Race</Label>
+                        {caEditingOverview ? (
+                          <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
+                            <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
+                              <SelectValue placeholder="Select race" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {systemSpecies.map((species: any) => (
+                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
+                        )}
+                      </div>
 
-                      <div className="flex items-end gap-2">
-                        <div className="flex-1 min-w-0">
-                          <Label className="text-xs text-stone-400">Race</Label>
-                          {caEditingFundamentals ? (
-                            <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
-                              <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
-                                <SelectValue placeholder="Select race" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {systemSpecies.map((species: any) => (
-                                  <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
-                          )}
-                        </div>
-                        <div className="w-14 shrink-0">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        <div>
                           <Label className="text-xs text-stone-400">DC</Label>
-                          {caEditingFundamentals ? (
+                          {caEditingOverview ? (
                             <NumberInput
                               min={0}
                               value={caFundamentalsDraft.dc}
@@ -21019,9 +20990,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <p className="text-stone-200 text-sm" data-testid="text-ca-dc">{liveCharacter.naturalArmor ?? 5}</p>
                           )}
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                         {([
                           { key: 'speed', label: 'Speed', testid: 'speed' },
                           { key: 'flySpeed', label: 'Fly Speed', testid: 'fly-speed' },
@@ -21029,7 +20997,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ] as const).map(({ key, label, testid }) => (
                           <div key={key}>
                             <Label className="text-xs text-stone-400">{label}</Label>
-                            {caEditingFundamentals ? (
+                            {caEditingOverview ? (
                               <NumberInput
                                 min={0}
                                 value={caFundamentalsDraft[key]}
@@ -21066,7 +21034,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ))}
                         <div>
                           <Label className="text-xs text-stone-400">Size</Label>
-                          {caEditingFundamentals ? (
+                          {caEditingOverview ? (
                             <Input
                               value={caFundamentalsDraft.size}
                               onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, size: e.target.value }))}

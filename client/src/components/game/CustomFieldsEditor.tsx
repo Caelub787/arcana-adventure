@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type CustomField } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -282,19 +282,34 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
     });
   };
 
-  const handleBodySelectionEnd = () => {
+  // Listened for on the document rather than just this row's own
+  // mouseup/touchend: a real drag-select routinely ends with the pointer
+  // released outside the exact bounds of the text container (past the last
+  // line, over the row's padding, etc.), and a handler attached only to the
+  // container would silently never fire for those — which is exactly what
+  // made this feel broken. Selection state itself is still checked against
+  // this row's own container, so other rows' selections are ignored.
+  useEffect(() => {
     if (!isGM) return;
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-    const container = bodyContainerRef.current;
-    if (!container) return;
-    const range = sel.getRangeAt(0);
-    if (!container.contains(range.commonAncestorContainer)) return;
-    const text = sel.toString();
-    if (!text.trim()) return;
-    setPendingSelection(text);
-    setNoteDraft("");
-  };
+    const handler = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const container = bodyContainerRef.current;
+      if (!container) return;
+      const range = sel.getRangeAt(0);
+      if (!container.contains(range.commonAncestorContainer)) return;
+      const text = sel.toString();
+      if (!text.trim()) return;
+      setPendingSelection(text);
+      setNoteDraft("");
+    };
+    document.addEventListener("mouseup", handler);
+    document.addEventListener("touchend", handler);
+    return () => {
+      document.removeEventListener("mouseup", handler);
+      document.removeEventListener("touchend", handler);
+    };
+  }, [isGM]);
 
   const handleSaveAnnotation = () => {
     if (!pendingSelection || !noteDraft.trim()) return;
@@ -386,8 +401,6 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                 <div
                   ref={bodyContainerRef}
                   className="text-xs text-stone-300 whitespace-pre-wrap mt-0.5 cursor-text"
-                  onMouseUp={handleBodySelectionEnd}
-                  onTouchEnd={handleBodySelectionEnd}
                   data-testid={`text-custom-field-body-${field.id}`}
                 >
                   {computeAnnotatedSegments(body, annotations).map((seg, i) => (
@@ -408,6 +421,12 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
               ) : (
                 <div className="text-xs text-stone-300 whitespace-pre-wrap mt-0.5">{body}</div>
               )
+            )}
+
+            {isGM && body && !pendingSelection && (
+              <div className="text-[9px] text-stone-600 italic mt-0.5 flex items-center gap-1">
+                <Highlighter className="h-2.5 w-2.5" /> Select text above to pin a private note to it
+              </div>
             )}
 
             {isGM && pendingSelection && (
