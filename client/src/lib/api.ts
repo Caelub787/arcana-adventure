@@ -551,6 +551,7 @@ export interface MapObject {
   width: number;
   height: number;
   zIndex: number;
+  layer: string;
   createdAt: string;
 }
 
@@ -1442,7 +1443,7 @@ class ApiClient {
     return this.request(`/maps/${id}`, { method: 'DELETE' });
   }
 
-  async createMapObject(mapId: string, data: { stampAssetId: string; x: number; y: number; rotation?: number; width?: number; height?: number; zIndex?: number }): Promise<MapObject> {
+  async createMapObject(mapId: string, data: { stampAssetId: string; x: number; y: number; rotation?: number; width?: number; height?: number; zIndex?: number; layer?: string }): Promise<MapObject> {
     return this.request(`/maps/${mapId}/objects`, { method: 'POST', body: JSON.stringify(data) });
   }
 

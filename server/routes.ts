@@ -5982,6 +5982,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         width: req.body.width ?? 100,
         height: req.body.height ?? 100,
         zIndex: req.body.zIndex ?? 0,
+        layer: req.body.layer || "structures",
       });
       res.json(obj);
     } catch (err) {

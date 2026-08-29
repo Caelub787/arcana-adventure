@@ -2683,6 +2683,10 @@ export const mapObjects = pgTable("map_objects", {
   width: real("width").notNull().default(100),
   height: real("height").notNull().default(100),
   zIndex: integer("z_index").notNull().default(0),
+  // Per-map grouping for the Layers panel (visibility toggling / where a
+  // new placement lands) — independent of stampAssets.category, which is
+  // just the asset library's own browsing organization.
+  layer: text("layer").notNull().default("structures"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({
   mapIdx: index("map_objects_map_idx").on(t.mapId),

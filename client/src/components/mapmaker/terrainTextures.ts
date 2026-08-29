@@ -1,0 +1,111 @@
+// Placeholder tileable terrain textures for the Map Maker's Land/Water
+// brush. Real hand-painted textures are the eventual replacement — these
+// are procedurally speckled swatches (a base color plus scattered grain)
+// so painted terrain reads as an actual material rather than a flat
+// color fill. Grain is scattered independently of any large-scale
+// pattern, so unlike true Perlin-style noise it needs no seam-matching to
+// tile convincingly — fine texture doesn't show repeat boundaries.
+export type TerrainKind = 'grass' | 'forest' | 'sand' | 'water' | 'stone' | 'snow';
+
+export const TERRAIN_KINDS: { kind: TerrainKind; label: string }[] = [
+  { kind: 'grass', label: 'Grass' },
+  { kind: 'forest', label: 'Forest Floor' },
+  { kind: 'sand', label: 'Sand' },
+  { kind: 'water', label: 'Water' },
+  { kind: 'stone', label: 'Stone' },
+  { kind: 'snow', label: 'Snow' },
+];
+
+const TILE_SIZE = 220;
+
+function rand(seed: { v: number }) {
+  // Small deterministic-ish LCG so a given texture's grain is reproducible
+  // per page load without needing crypto-quality randomness.
+  seed.v = (seed.v * 1103515245 + 12345) & 0x7fffffff;
+  return seed.v / 0x7fffffff;
+}
+
+function speckle(ctx: CanvasRenderingContext2D, seed: { v: number }, count: number, sizeMin: number, sizeMax: number, colors: string[], alphaMin = 0.15, alphaMax = 0.4) {
+  for (let i = 0; i < count; i++) {
+    const x = rand(seed) * TILE_SIZE;
+    const y = rand(seed) * TILE_SIZE;
+    const size = sizeMin + rand(seed) * (sizeMax - sizeMin);
+    const color = colors[Math.floor(rand(seed) * colors.length)];
+    ctx.globalAlpha = alphaMin + rand(seed) * (alphaMax - alphaMin);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, size, size * (0.7 + rand(seed) * 0.6), rand(seed) * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function buildTexture(kind: TerrainKind): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = TILE_SIZE;
+  canvas.height = TILE_SIZE;
+  const ctx = canvas.getContext('2d')!;
+  const seed = { v: (kind.charCodeAt(0) * 9973 + kind.length * 131) & 0x7fffffff };
+
+  switch (kind) {
+    case 'grass':
+      ctx.fillStyle = '#4a7c3a';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 260, 2, 6, ['#5c9448', '#3a6530', '#6ba859'], 0.2, 0.45);
+      break;
+    case 'forest':
+      ctx.fillStyle = '#2d5016';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 90, 8, 18, ['#1f3a0f', '#3a6620', '#254512'], 0.35, 0.6);
+      speckle(ctx, seed, 200, 2, 5, ['#3f7024', '#1a300c'], 0.2, 0.4);
+      break;
+    case 'sand':
+      ctx.fillStyle = '#d4b483';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 300, 1.5, 4, ['#e0c79a', '#bfa06d', '#c9ac7a'], 0.2, 0.4);
+      break;
+    case 'water':
+      ctx.fillStyle = '#2a5f8f';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      for (let i = 0; i < 40; i++) {
+        const x = rand(seed) * TILE_SIZE, y = rand(seed) * TILE_SIZE;
+        const w = 14 + rand(seed) * 22;
+        ctx.globalAlpha = 0.12 + rand(seed) * 0.18;
+        ctx.strokeStyle = rand(seed) > 0.5 ? '#4a86b8' : '#1a3f6f';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + w / 2, y + (rand(seed) - 0.5) * 6, x + w, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      break;
+    case 'stone':
+      ctx.fillStyle = '#6b6b6b';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 70, 6, 16, ['#4f4f4f', '#8a8a8a', '#5c5c5c'], 0.3, 0.55);
+      speckle(ctx, seed, 180, 1, 3, ['#3a3a3a', '#a0a0a0'], 0.2, 0.4);
+      break;
+    case 'snow':
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 200, 1.5, 4, ['#ffffff', '#c9d6de', '#d8e2e8'], 0.15, 0.35);
+      break;
+  }
+  return canvas;
+}
+
+const cache = new Map<TerrainKind, HTMLCanvasElement>();
+
+export function getTerrainTextureCanvas(kind: TerrainKind): HTMLCanvasElement {
+  let c = cache.get(kind);
+  if (!c) {
+    c = buildTexture(kind);
+    cache.set(kind, c);
+  }
+  return c;
+}
+
+export function getTerrainPattern(ctx: CanvasRenderingContext2D, kind: TerrainKind): CanvasPattern {
+  return ctx.createPattern(getTerrainTextureCanvas(kind), 'repeat')!;
+}
