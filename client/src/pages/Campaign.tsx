@@ -6729,6 +6729,10 @@ export default function Campaign() {
 
   // Ruler / AOE measurement tool state (pure measurement layer, no damage)
   const [rulerShape, setRulerShape] = useState<RulerShape>('cone');
+  // When on (default), circle/square markers center on the nearest grid cell
+  // and cone/line markers aim along the nearest 45° increment, instead of
+  // following the raw cursor position/angle exactly.
+  const [rulerSnapToGrid, setRulerSnapToGrid] = useState(true);
   const [rulerDims, setRulerDims] = useState({
     coneLength: 15,
     coneArc: 15,
@@ -7654,9 +7658,29 @@ export default function Campaign() {
       if (!casterToken) return null;
       casterX = casterToken.x + gridSizeVal / 2;
       casterY = casterToken.y + gridSizeVal / 2;
-    } else {
+      if (rulerSnapToGrid) {
+        // Snap the aim to the nearest 45° increment instead of the raw angle,
+        // keeping the same distance from the caster.
+        const dx = rawX - casterX;
+        const dy = rawY - casterY;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0.0001) {
+          const snappedAngle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+          targetX = casterX + Math.cos(snappedAngle) * dist;
+          targetY = casterY + Math.sin(snappedAngle) * dist;
+        }
+      }
+    } else if (rulerSnapToGrid) {
       targetX = Math.floor(rawX / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
       targetY = Math.floor(rawY / gridSizeVal) * gridSizeVal + gridSizeVal / 2;
+      if (casterToken) {
+        casterX = casterToken.x + gridSizeVal / 2;
+        casterY = casterToken.y + gridSizeVal / 2;
+      } else {
+        casterX = targetX;
+        casterY = targetY;
+      }
+    } else {
       if (casterToken) {
         casterX = casterToken.x + gridSizeVal / 2;
         casterY = casterToken.y + gridSizeVal / 2;
@@ -12677,6 +12701,16 @@ export default function Campaign() {
                      ft
                    </label>
                  )}
+                 <Button
+                   size="sm"
+                   variant="outline"
+                   onClick={() => setRulerSnapToGrid(v => !v)}
+                   className={`h-8 text-xs border-stone-600 hover:bg-stone-700 ${rulerSnapToGrid ? 'text-amber-300 border-amber-600/60' : 'text-stone-400'}`}
+                   title={rulerSnapToGrid ? "Snap to Grid: on" : "Snap to Grid: off"}
+                   data-testid="button-ruler-snap-to-grid"
+                 >
+                   <Grid3X3 className="h-3.5 w-3.5" />
+                 </Button>
                  <Button
                    size="sm"
                    variant="outline"

@@ -1041,6 +1041,128 @@ function RulerShapeSvg({ marker, gridSize, isPreview = false }: { marker: RulerM
   );
 }
 
+// Point-membership test mirroring RulerShapeSvg's exact geometry, used to
+// sample which grid cells a marker actually covers (see computeAoeAffectedCells).
+function isPointInAoeMarker(px: number, py: number, marker: RulerMarker, gridSize: number): boolean {
+  const pxPerFoot = gridSize / 5;
+  if (marker.shape === 'circle') {
+    const radiusPx = ((marker.radius ?? 15) / 2) * pxPerFoot;
+    const dx = px - marker.targetX, dy = py - marker.targetY;
+    return dx * dx + dy * dy <= radiusPx * radiusPx;
+  }
+  if (marker.shape === 'square') {
+    const halfPx = ((marker.side ?? 15) * pxPerFoot) / 2;
+    return Math.abs(px - marker.targetX) <= halfPx && Math.abs(py - marker.targetY) <= halfPx;
+  }
+  const dirX = marker.targetX - marker.casterX;
+  const dirY = marker.targetY - marker.casterY;
+  const rawLen = Math.sqrt(dirX * dirX + dirY * dirY);
+  const normX = rawLen < 0.0001 ? 1 : dirX / rawLen;
+  const normY = rawLen < 0.0001 ? 0 : dirY / rawLen;
+  if (marker.shape === 'cone') {
+    const lengthFeet = marker.length ?? 15;
+    const arcFeet = marker.arc ?? 15;
+    const radiusPx = lengthFeet * pxPerFoot;
+    const halfRad = lengthFeet > 0 ? Math.min(arcFeet / (2 * lengthFeet), Math.PI * 0.9999) : 0;
+    const toX = px - marker.casterX, toY = py - marker.casterY;
+    const dist = Math.sqrt(toX * toX + toY * toY);
+    if (dist > radiusPx || dist === 0) return false;
+    let a = Math.atan2(toY, toX) - Math.atan2(normY, normX);
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return Math.abs(a) <= halfRad;
+  }
+  // line
+  const lengthFeet = marker.length ?? 30;
+  const widthFeet = marker.width ?? 5;
+  const lengthPx = lengthFeet * pxPerFoot;
+  const widthPx = widthFeet * pxPerFoot;
+  const toX = px - marker.casterX, toY = py - marker.casterY;
+  const along = toX * normX + toY * normY;
+  const perp = toX * -normY + toY * normX;
+  return along >= 0 && along <= lengthPx && Math.abs(perp) <= widthPx / 2;
+}
+
+// Which grid cells (grid-index coords, not world coords) a marker covers at
+// least `MIN_COVERAGE` of — approximated by sampling a small grid of points
+// within each candidate cell rather than computing exact shape/rectangle
+// intersection areas per shape (circle, cone and line all have non-trivial
+// intersection-area formulas; this is simpler and fast enough at this scale).
+function computeAoeAffectedCells(marker: RulerMarker, gridSize: number): { x: number; y: number }[] {
+  const MIN_COVERAGE = 0.4;
+  const SAMPLES = 5; // 5x5 = 25 sub-samples per candidate cell
+  const pxPerFoot = gridSize / 5;
+
+  let minX: number, maxX: number, minY: number, maxY: number;
+  if (marker.shape === 'circle') {
+    const r = ((marker.radius ?? 15) / 2) * pxPerFoot;
+    minX = marker.targetX - r; maxX = marker.targetX + r;
+    minY = marker.targetY - r; maxY = marker.targetY + r;
+  } else if (marker.shape === 'square') {
+    const half = ((marker.side ?? 15) * pxPerFoot) / 2;
+    minX = marker.targetX - half; maxX = marker.targetX + half;
+    minY = marker.targetY - half; maxY = marker.targetY + half;
+  } else {
+    // Cone/line both reach at most `length` feet from the caster in any
+    // direction — a caster-centered square is a safe (if loose) superset.
+    const lengthFeet = marker.length ?? (marker.shape === 'cone' ? 15 : 30);
+    const r = lengthFeet * pxPerFoot;
+    minX = marker.casterX - r; maxX = marker.casterX + r;
+    minY = marker.casterY - r; maxY = marker.casterY + r;
+  }
+
+  const gMinX = Math.floor(minX / gridSize);
+  const gMaxX = Math.ceil(maxX / gridSize);
+  const gMinY = Math.floor(minY / gridSize);
+  const gMaxY = Math.ceil(maxY / gridSize);
+  // Safety cap for pathologically large AOEs — skip highlighting rather than
+  // hang the frame.
+  if ((gMaxX - gMinX + 1) * (gMaxY - gMinY + 1) > 2000) return [];
+
+  const result: { x: number; y: number }[] = [];
+  for (let gy = gMinY; gy <= gMaxY; gy++) {
+    for (let gx = gMinX; gx <= gMaxX; gx++) {
+      let hits = 0;
+      for (let sy = 0; sy < SAMPLES; sy++) {
+        for (let sx = 0; sx < SAMPLES; sx++) {
+          const px = gx * gridSize + ((sx + 0.5) / SAMPLES) * gridSize;
+          const py = gy * gridSize + ((sy + 0.5) / SAMPLES) * gridSize;
+          if (isPointInAoeMarker(px, py, marker, gridSize)) hits++;
+        }
+      }
+      if (hits / (SAMPLES * SAMPLES) >= MIN_COVERAGE) result.push({ x: gx, y: gy });
+    }
+  }
+  return result;
+}
+
+// Faint outlines for every grid cell an AOE marker meaningfully covers, so
+// it's clear at a glance which squares are actually targeted.
+function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: RulerMarker; gridSize: number; isPreview?: boolean }) {
+  const OFFSET = 9000;
+  const cells = React.useMemo(() => computeAoeAffectedCells(marker, gridSize), [
+    marker.shape, marker.casterX, marker.casterY, marker.targetX, marker.targetY,
+    marker.length, marker.width, marker.arc, marker.side, marker.radius, gridSize,
+  ]);
+  if (cells.length === 0) return null;
+  const stroke = isPreview ? 'rgba(34,211,238,0.45)' : 'rgba(34,211,238,0.6)';
+  return (
+    <g pointerEvents="none">
+      {cells.map((c, i) => (
+        <rect
+          key={i}
+          x={c.x * gridSize + OFFSET}
+          y={c.y * gridSize + OFFSET}
+          width={gridSize}
+          height={gridSize}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+      ))}
+    </g>
+  );
+}
 
 export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
@@ -4429,10 +4551,16 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             style={{ left: 0, top: 0, width: '20000px', height: '20000px', overflow: 'visible', zIndex: 26 }}
           >
             {rulerMarkers.map((m) => (
-              <RulerShapeSvg key={m.id} marker={m} gridSize={gridSize} />
+              <React.Fragment key={m.id}>
+                <RulerShapeSvg marker={m} gridSize={gridSize} />
+                <AoeAffectedCellsOverlay marker={m} gridSize={gridSize} />
+              </React.Fragment>
             ))}
             {rulerPreviewMarker && (
-              <RulerShapeSvg marker={rulerPreviewMarker} gridSize={gridSize} isPreview />
+              <>
+                <RulerShapeSvg marker={rulerPreviewMarker} gridSize={gridSize} isPreview />
+                <AoeAffectedCellsOverlay marker={rulerPreviewMarker} gridSize={gridSize} isPreview />
+              </>
             )}
           </svg>
         )}
