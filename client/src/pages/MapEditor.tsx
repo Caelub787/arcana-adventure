@@ -49,7 +49,7 @@ import {
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderSmoothClassifiedTerrain } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, type TerrainBand, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderOrganicTerrain } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
@@ -127,14 +127,48 @@ function fractalNoise(noise: (x: number, y: number) => number, x: number, y: num
   return value / total;
 }
 
-function biomeTerrainFor(n: number): TerrainKind {
-  if (n < 0.35) return 'water';
-  if (n < 0.46) return 'sand';
-  if (n < 0.66) return 'grass';
-  if (n < 0.82) return 'forest';
-  if (n < 0.92) return 'stone';
-  return 'snow';
+// Builds a single elevation field (0..1) that "Generate Terrain" classifies
+// into biome bands. Combines: a base fractal-noise landmass at the chosen
+// feature size, an optional domain warp (offsetting sample coordinates by
+// a second noise field) for non-radial, organic coastlines instead of
+// blobby noise contours, and an optional min() blend with a higher-frequency
+// "detail" field that carves inlets/channels into a landmass — the standard
+// way to turn one big blob into a fragmented island chain — rather than
+// just uniformly shrinking it.
+function makeElevationFn(opts: {
+  seed: number;
+  featureSize: number;
+  islandFragmentation: number; // 0..1
+  coastlineRoughness: number; // 0..1
+}) {
+  const baseNoise = makeNoise2D(opts.seed);
+  const warpNoiseX = makeNoise2D(opts.seed + 1000);
+  const warpNoiseY = makeNoise2D(opts.seed + 2000);
+  const detailNoise = makeNoise2D(opts.seed + 3000);
+  const baseScale = 1 / Math.max(20, opts.featureSize);
+  const warpAmount = opts.coastlineRoughness * opts.featureSize * 0.5;
+  const detailScale = baseScale * (2.5 + opts.islandFragmentation * 7);
+
+  return (worldX: number, worldY: number) => {
+    const warpX = worldX + (fractalNoise(warpNoiseX, worldX * baseScale * 0.6, worldY * baseScale * 0.6) - 0.5) * 2 * warpAmount;
+    const warpY = worldY + (fractalNoise(warpNoiseY, worldX * baseScale * 0.6, worldY * baseScale * 0.6) - 0.5) * 2 * warpAmount;
+    let e = fractalNoise(baseNoise, warpX * baseScale, warpY * baseScale);
+    if (opts.islandFragmentation > 0) {
+      const detail = fractalNoise(detailNoise, warpX * detailScale, warpY * detailScale);
+      const carved = Math.min(e, detail);
+      e = e * (1 - opts.islandFragmentation) + carved * opts.islandFragmentation;
+    }
+    return e;
+  };
 }
+
+type GenScaleKey = 'world' | 'continent' | 'region' | 'city';
+const GEN_SCALE_PRESETS: { key: GenScaleKey; label: string; featureSize: number }[] = [
+  { key: 'world', label: 'World Map', featureSize: 3000 },
+  { key: 'continent', label: 'Continent', featureSize: 1200 },
+  { key: 'region', label: 'Region', featureSize: 500 },
+  { key: 'city', label: 'City / Local', featureSize: 150 },
+];
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
@@ -185,6 +219,12 @@ export default function MapEditor() {
   // How large the tiled source texture is drawn before it's revealed by
   // brush/shape/bucket — a bigger scale means bigger, more zoomed-in grain.
   const [textureScale, setTextureScale] = useState(1);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genScale, setGenScale] = useState<GenScaleKey>('continent');
+  const [genFeatureSize, setGenFeatureSize] = useState(GEN_SCALE_PRESETS[1].featureSize);
+  const [genLandAmount, setGenLandAmount] = useState(55);
+  const [genFragmentation, setGenFragmentation] = useState(25);
+  const [genRoughness, setGenRoughness] = useState(40);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
   const setShapePoints = useCallback((next: Point[]) => {
@@ -605,19 +645,30 @@ export default function MapEditor() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedObjectId, maxVariantCount]);
 
-  const handleGenerate = () => {
+  const runGenerate = () => {
     const canvas = paintCanvasRefs.current.get(activePaintLayerId);
     if (!map || !canvas) return;
-    if (!confirm("Replace the active paint layer with a generated one? This can't be undone with Undo history alone if you keep editing after — but one Ctrl/Cmd+Z will restore what's there now.")) return;
     pushUndoSnapshot();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const noise = makeNoise2D(Math.random() * 1000);
-    const scale = 1 / 260;
-    renderSmoothClassifiedTerrain(
-      ctx, map.width, map.height,
-      (worldX, worldY) => biomeTerrainFor(fractalNoise(noise, worldX * scale, worldY * scale)),
-    );
+    const elevationAt = makeElevationFn({
+      seed: Math.random() * 100000,
+      featureSize: genFeatureSize,
+      islandFragmentation: genFragmentation / 100,
+      coastlineRoughness: genRoughness / 100,
+    });
+    const seaLevel = 1 - genLandAmount / 100;
+    const landRange = Math.max(0.05, genLandAmount / 100);
+    const bands: TerrainBand[] = [
+      { kind: 'water', max: seaLevel },
+      { kind: 'sand', max: seaLevel + landRange * 0.08 },
+      { kind: 'grass', max: seaLevel + landRange * 0.45 },
+      { kind: 'forest', max: seaLevel + landRange * 0.72 },
+      { kind: 'stone', max: seaLevel + landRange * 0.90 },
+      { kind: 'snow', max: 1 },
+    ];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    renderOrganicTerrain(ctx, map.width, map.height, elevationAt, bands, textureScale, 4);
   };
 
   // Composites background + visible paint layers (respecting each layer's
@@ -1008,7 +1059,7 @@ export default function MapEditor() {
           className="h-8 w-16 bg-stone-900 border-stone-700 text-xs px-1.5 shrink-0"
           data-testid="input-grid-size"
         />
-        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleGenerate} title={`Generate onto: ${activePaintLayer?.name ?? ''}`} data-testid="button-generate-terrain">
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={() => setGenOpen(true)} title={`Generate onto: ${activePaintLayer?.name ?? ''}`} data-testid="button-generate-terrain">
           <Wand2 className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Generate</span>
         </Button>
         <Button
@@ -1209,6 +1260,22 @@ export default function MapEditor() {
       </div>
 
       <ImportToSceneDialog open={importOpen} onOpenChange={setImportOpen} mapName={map.name} onFlatten={flattenToDataUrl} mapId={map.id} />
+      <GenerateTerrainDialog
+        open={genOpen}
+        onOpenChange={setGenOpen}
+        targetLayerName={activePaintLayer?.name ?? ''}
+        scale={genScale}
+        onScaleChange={(key, featureSize) => { setGenScale(key); setGenFeatureSize(featureSize); }}
+        featureSize={genFeatureSize}
+        onFeatureSizeChange={setGenFeatureSize}
+        landAmount={genLandAmount}
+        onLandAmountChange={setGenLandAmount}
+        fragmentation={genFragmentation}
+        onFragmentationChange={setGenFragmentation}
+        roughness={genRoughness}
+        onRoughnessChange={setGenRoughness}
+        onGenerate={runGenerate}
+      />
     </div>
   );
 }
@@ -1225,6 +1292,85 @@ function TextureSwatch({ kind }: { kind: TerrainKind }) {
     ctx.fillRect(0, 0, 40, 40);
   }, [kind]);
   return <canvas ref={ref} className="w-full h-full" />;
+}
+
+function GenerateTerrainDialog({
+  open, onOpenChange, targetLayerName,
+  scale, onScaleChange, featureSize, onFeatureSizeChange,
+  landAmount, onLandAmountChange, fragmentation, onFragmentationChange,
+  roughness, onRoughnessChange, onGenerate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  targetLayerName: string;
+  scale: GenScaleKey;
+  onScaleChange: (key: GenScaleKey, featureSize: number) => void;
+  featureSize: number;
+  onFeatureSizeChange: (v: number) => void;
+  landAmount: number;
+  onLandAmountChange: (v: number) => void;
+  fragmentation: number;
+  onFragmentationChange: (v: number) => void;
+  roughness: number;
+  onRoughnessChange: (v: number) => void;
+  onGenerate: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-stone-200">Generate Terrain</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-xs text-stone-500">Generates onto the active paint layer ({targetLayerName || 'none'}), using the same textures as the brush. Adjust and press Generate again for a new variation.</p>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1.5">Map Scale</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {GEN_SCALE_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  className={pillClass(scale === p.key)}
+                  onClick={() => onScaleChange(p.key, p.featureSize)}
+                  data-testid={`button-gen-scale-${p.key}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Feature Size</p>
+            <Slider min={50} max={4000} step={25} value={[featureSize]} onValueChange={([v]) => onFeatureSizeChange(v)} data-testid="slider-gen-feature-size" />
+            <p className="text-xs text-stone-500 mt-1">{featureSize}px — how large a single landmass/region reads, independent of the preset above</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Land Amount</p>
+            <Slider min={5} max={95} step={5} value={[landAmount]} onValueChange={([v]) => onLandAmountChange(v)} data-testid="slider-gen-land-amount" />
+            <p className="text-xs text-stone-500 mt-1">{landAmount}% land, {100 - landAmount}% water</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Islands / Fragmentation</p>
+            <Slider min={0} max={100} step={5} value={[fragmentation]} onValueChange={([v]) => onFragmentationChange(v)} data-testid="slider-gen-fragmentation" />
+            <p className="text-xs text-stone-500 mt-1">{fragmentation === 0 ? "One solid landmass" : `${fragmentation}% — breaks land into islands/archipelago`}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Coastline Roughness</p>
+            <Slider min={0} max={100} step={5} value={[roughness]} onValueChange={([v]) => onRoughnessChange(v)} data-testid="slider-gen-roughness" />
+            <p className="text-xs text-stone-500 mt-1">{roughness}% — how jagged vs. smooth the coastline is</p>
+          </div>
+
+          <Button className="w-full bg-amber-700 hover:bg-amber-600" onClick={onGenerate} data-testid="button-run-generate-terrain">
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ImportToSceneDialog({ open, onOpenChange, mapName, onFlatten, mapId }: {
