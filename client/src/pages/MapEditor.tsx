@@ -44,7 +44,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, MousePointer2, Image as ImageIcon, Wand2, Save,
   Upload, ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff, Maximize, Mountain, Trees,
-  Undo2, Grid3x3, Layers as LayersIcon, PaintBucket, Plus, Trash2,
+  Undo2, Grid3x3, Layers as LayersIcon, PaintBucket, Plus, Trash2, Settings,
 } from "lucide-react";
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -217,6 +217,60 @@ function generateLandmassPoints(
   return points;
 }
 
+// Pushes every vertex of a closed polygon outward along its local normal
+// (averaged from its two adjacent edges, sign-corrected to always point
+// away from the centroid) by `distance` — an approximate but cheap and
+// robust polygon offset that works for the star-shaped output of
+// generateLandmassPoints and for ordinary hand-drawn land shapes alike.
+function offsetPolygonOutward(points: Point[], distance: number): Point[] {
+  const n = points.length;
+  if (n < 3) return points;
+  let cx = 0, cy = 0;
+  for (const p of points) { cx += p.x; cy += p.y; }
+  cx /= n; cy /= n;
+
+  return points.map((p, i) => {
+    const prev = points[(i - 1 + n) % n];
+    const next = points[(i + 1) % n];
+    const e1x = p.x - prev.x, e1y = p.y - prev.y;
+    const e2x = next.x - p.x, e2y = next.y - p.y;
+    let n1x = -e1y, n1y = e1x;
+    let n2x = -e2y, n2y = e2x;
+    const len1 = Math.hypot(n1x, n1y) || 1;
+    const len2 = Math.hypot(n2x, n2y) || 1;
+    n1x /= len1; n1y /= len1; n2x /= len2; n2y /= len2;
+    let nx = n1x + n2x, ny = n1y + n2y;
+    const nlen = Math.hypot(nx, ny) || 1;
+    nx /= nlen; ny /= nlen;
+    const toCentroidX = cx - p.x, toCentroidY = cy - p.y;
+    if (nx * toCentroidX + ny * toCentroidY > 0) { nx = -nx; ny = -ny; }
+    return { x: p.x + nx * distance, y: p.y + ny * distance };
+  });
+}
+
+// Draws a few faint, fading concentric lines just offshore, following the
+// coastline's own shape — the classic hand-drawn-map "waves lapping the
+// shore" convention Inkarnate also uses — rather than a flat coastline
+// with nothing in the water.
+function drawCoastlineWaves(ctx: CanvasRenderingContext2D, points: Point[]) {
+  const rings = [
+    { distance: 8, alpha: 0.45 },
+    { distance: 18, alpha: 0.3 },
+    { distance: 30, alpha: 0.16 },
+  ];
+  for (const ring of rings) {
+    const offset = offsetPolygonOutward(points, ring.distance);
+    ctx.save();
+    ctx.strokeStyle = `rgba(30,55,85,${ring.alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    traceSmoothClosedPath(ctx, offset);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 type GenScaleKey = 'world' | 'continent' | 'region' | 'city';
 const GEN_SCALE_PRESETS: { key: GenScaleKey; label: string; featureSize: number }[] = [
   { key: 'world', label: 'World Map', featureSize: 3000 },
@@ -280,6 +334,10 @@ export default function MapEditor() {
   const [genLandAmount, setGenLandAmount] = useState(55);
   const [genFragmentation, setGenFragmentation] = useState(25);
   const [genRoughness, setGenRoughness] = useState(40);
+  // Inkarnate-style faint concentric lines just offshore, following the
+  // coastline — a "waves lapping the shore" flourish applied to any closed
+  // land shape (hand-drawn or generated), not just Generate specifically.
+  const [showWaveLines, setShowWaveLines] = useState(true);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
   const setShapePoints = useCallback((next: Point[]) => {
@@ -506,6 +564,7 @@ export default function MapEditor() {
       if (points.length < 3) { setShapePoints([]); return; }
       pushUndoSnapshot();
       fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
+      if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(ctx, points);
     } else if (terrainMode === 'path') {
       if (points.length < 2) { setShapePoints([]); return; }
       pushUndoSnapshot();
@@ -772,13 +831,14 @@ export default function MapEditor() {
   // feathered edge, same ink-shadow coastline, same texture — using
   // whichever terrain kind is currently selected in the Terrain flyout, so
   // it reads as "a land shape someone drew," not a distinct auto-painted
-  // map. Additive (doesn't clear the layer first): click again to drop
-  // another landmass elsewhere, building up an archipelago by hand-off.
+  // map. Clears the active paint layer first: Generate always replaces
+  // whatever was there (previously generated or hand-painted) rather than
+  // stacking landmasses on top of each other — one Ctrl/Cmd+Z restores it.
   const runGenerate = () => {
     if (!map) return;
     const canvas = paintCanvasRefs.current.get(activePaintLayerId);
     const ctx = canvas?.getContext('2d');
-    if (!ctx) return;
+    if (!ctx || !canvas) return;
     const elevationAt = makeElevationFn({
       seed: Math.random() * 100000,
       featureSize: genFeatureSize,
@@ -788,12 +848,14 @@ export default function MapEditor() {
     const seaLevel = 1 - genLandAmount / 100;
     const points = generateLandmassPoints(map.width, map.height, elevationAt, seaLevel, genFeatureSize);
     if (points.length < 3) {
-      toast({ title: "No land generated", description: "Try a higher Land Amount or a different Feature Size, then Generate again." });
+      toast({ title: "No land generated", description: "Try a higher Landmass Size or a different Feature Size, then Generate again." });
       return;
     }
     pushUndoSnapshot();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const softnessPx = 1 + (softness / 100) * 10;
     fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
+    if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(ctx, points);
   };
 
   // Composites background + visible paint layers (respecting each layer's
@@ -939,6 +1001,16 @@ export default function MapEditor() {
           </button>
         ))}
       </div>
+      <label className="flex items-center gap-2 mb-3 text-xs text-stone-300 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={showWaveLines}
+          onChange={(e) => setShowWaveLines(e.target.checked)}
+          className="accent-amber-600"
+          data-testid="checkbox-wave-lines"
+        />
+        Wave lines on coastlines
+      </label>
       {terrainMode !== 'path' && (
         <div className="grid grid-cols-3 gap-1.5 mb-3">
           {TERRAIN_KINDS.filter((t) => t.kind !== 'road').map(({ kind, label }) => (
@@ -1184,8 +1256,11 @@ export default function MapEditor() {
           className="h-8 w-16 bg-stone-900 border-stone-700 text-xs px-1.5 shrink-0"
           data-testid="input-grid-size"
         />
-        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={() => setGenOpen(true)} title={`Generate onto: ${activePaintLayer?.name ?? ''}`} data-testid="button-generate-terrain">
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={runGenerate} title={`Generate onto: ${activePaintLayer?.name ?? ''} (replaces its current contents)`} data-testid="button-generate-terrain">
           <Wand2 className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Generate</span>
+        </Button>
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0 px-2" onClick={() => setGenOpen(true)} title="Generate Terrain settings" data-testid="button-generate-terrain-settings">
+          <Settings className="h-3.5 w-3.5" />
         </Button>
         <Button
           size="sm" variant="outline" className="border-stone-700 shrink-0"
@@ -1447,7 +1522,7 @@ function GenerateTerrainDialog({
           <DialogTitle className="text-stone-200">Generate Terrain</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-stone-500">Draws one landmass onto the active paint layer ({targetLayerName || 'none'}) in the currently selected texture — exactly like finishing a hand-drawn Land Shape. It doesn't clear anything first, so pressing Generate again drops another landmass elsewhere — click a few times to build up a continent or an archipelago.</p>
+          <p className="text-xs text-stone-500">Replaces the active paint layer ({targetLayerName || 'none'}) with one freshly generated landmass in the currently selected texture — exactly like finishing a hand-drawn Land Shape. Generating again clears this layer and starts over rather than stacking on top; one Ctrl/Cmd+Z undoes it.</p>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1.5">Map Scale</p>
