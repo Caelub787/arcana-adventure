@@ -36,16 +36,16 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, MousePointer2, Image as ImageIcon, Wand2, Save,
   Upload, ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff, Maximize, Mountain, Trees,
-  Undo2, Grid3x3, Layers as LayersIcon,
+  Undo2, Grid3x3, Layers as LayersIcon, PaintBucket,
 } from "lucide-react";
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, floodFillTerrain } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
-type TerrainMode = 'brush' | 'shape' | 'path';
+type TerrainMode = 'brush' | 'shape' | 'path' | 'bucket';
 type PathKind = 'river' | 'road';
 type MobileSheet = null | 'terrain' | 'assets' | 'select' | 'layers';
 
@@ -277,13 +277,33 @@ export default function MapEditor() {
     if (canvas && ctx && snap) ctx.putImageData(snap, 0, 0);
   };
 
+  // Paints a continuous stroke rather than a series of separate dabs: each
+  // call draws a round-capped line from wherever the brush last was to
+  // (x, y), so a fast drag reads as one solid line instead of disconnected
+  // circles with gaps between them. lastPaintPosRef is null at the start
+  // of a stroke (pointerdown) so the first call just drops a single dot.
+  const lastPaintPosRef = useRef<{ x: number; y: number } | null>(null);
   const paintAt = (x: number, y: number) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = getTerrainPattern(ctx, terrainKind);
-    ctx.beginPath();
-    ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-    ctx.fill();
+    const pattern = getTerrainPattern(ctx, terrainKind);
+    const last = lastPaintPosRef.current;
+    if (!last) {
+      ctx.fillStyle = pattern;
+      ctx.beginPath();
+      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = pattern;
+      ctx.lineWidth = brushSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    lastPaintPosRef.current = { x, y };
   };
 
   const finishTerrainPoints = () => {
@@ -386,7 +406,7 @@ export default function MapEditor() {
     }
     if (e.button !== 0) return;
 
-    if (tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path')) {
+    if (tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path' || terrainMode === 'bucket')) {
       tapStartRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -395,6 +415,7 @@ export default function MapEditor() {
     if (tool === 'terrain') {
       pushUndoSnapshot();
       isPaintingRef.current = true;
+      lastPaintPosRef.current = null;
       paintAt(x, y);
     } else if (tool === 'assets' && selectedStampAssetId) {
       scatterRef.current = { lastX: x, lastY: y, lastTime: performance.now(), placedAny: false };
@@ -477,11 +498,19 @@ export default function MapEditor() {
       } else {
         setShapePoints([...prev, { x, y }]);
       }
+    } else if (wasTap && tool === 'terrain' && terrainMode === 'bucket') {
+      const { x, y } = toWorld(e.clientX, e.clientY);
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx) {
+        pushUndoSnapshot();
+        floodFillTerrain(ctx, x, y, terrainKind);
+      }
     }
     tapStartRef.current = null;
 
     isPanningRef.current = false;
     isPaintingRef.current = false;
+    lastPaintPosRef.current = null;
     scatterRef.current = null;
     if (dragRef.current) {
       const { id: objId } = dragRef.current;
@@ -615,6 +644,7 @@ export default function MapEditor() {
         <button className={pillClass(terrainMode === 'brush')} onClick={() => { setTerrainMode('brush'); setShapePoints([]); }} data-testid="button-terrain-mode-brush">Brush</button>
         <button className={pillClass(terrainMode === 'shape')} onClick={() => { setTerrainMode('shape'); setShapePoints([]); }} data-testid="button-terrain-mode-shape">Land Shape</button>
         <button className={pillClass(terrainMode === 'path')} onClick={() => { setTerrainMode('path'); setShapePoints([]); }} data-testid="button-terrain-mode-path">River/Road</button>
+        <button className={pillClass(terrainMode === 'bucket')} onClick={() => { setTerrainMode('bucket'); setShapePoints([]); }} data-testid="button-terrain-mode-bucket">Fill</button>
       </div>
       {terrainMode !== 'path' && (
         <div className="grid grid-cols-3 gap-1.5 mb-3">
@@ -674,6 +704,9 @@ export default function MapEditor() {
             </div>
           )}
         </>
+      )}
+      {terrainMode === 'bucket' && (
+        <p className="text-xs text-stone-500">Tap anywhere on the terrain to flood-fill that connected region with the selected texture — it stops at the edge of whatever's already painted there, so it respects land shapes, rivers, and other fills already on the map.</p>
       )}
     </>
   );

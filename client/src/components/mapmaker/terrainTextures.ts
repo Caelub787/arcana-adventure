@@ -116,3 +116,67 @@ export function getTerrainTextureCanvas(kind: TerrainKind): HTMLCanvasElement {
 export function getTerrainPattern(ctx: CanvasRenderingContext2D, kind: TerrainKind): CanvasPattern {
   return ctx.createPattern(getTerrainTextureCanvas(kind), 'repeat')!;
 }
+
+// Bucket/paint-fill: flood-fills the region connected to (startX, startY)
+// with the given terrain texture. Textures are speckled (not flat color),
+// so this compares each pixel to the STARTING pixel's color within a
+// tolerance — the same technique paint programs use for a "magic wand"
+// selection on noisy/textured source images — rather than requiring exact
+// color matches, which would leak through every fleck of grain.
+export function floodFillTerrain(ctx: CanvasRenderingContext2D, startX: number, startY: number, fillKind: TerrainKind, tolerance = 60) {
+  const canvas = ctx.canvas;
+  const w = canvas.width, h = canvas.height;
+  const sx = Math.round(startX), sy = Math.round(startY);
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return;
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  const startIdx = (sy * w + sx) * 4;
+  const tr = data[startIdx], tg = data[startIdx + 1], tb = data[startIdx + 2];
+
+  // Render the fill texture into an offscreen buffer the same size as the
+  // canvas so we can read a per-pixel fill color (canvas patterns don't
+  // expose that directly).
+  const fillCanvas = document.createElement('canvas');
+  fillCanvas.width = w; fillCanvas.height = h;
+  const fillCtx = fillCanvas.getContext('2d')!;
+  fillCtx.fillStyle = getTerrainPattern(fillCtx, fillKind);
+  fillCtx.fillRect(0, 0, w, h);
+  const fillData = fillCtx.getImageData(0, 0, w, h).data;
+
+  // Each pixel is marked visited (and painted) the moment it's pushed, not
+  // when it's popped — so it can only ever be pushed once, which bounds
+  // the stack to exactly w*h coordinate pairs with no risk of overflow.
+  const visited = new Uint8Array(w * h);
+  const stack = new Int32Array(w * h * 2);
+  let sp = 0;
+  const toleranceSq = tolerance * tolerance;
+
+  const paint = (p: number) => {
+    const i = p * 4;
+    data[i] = fillData[i]; data[i + 1] = fillData[i + 1]; data[i + 2] = fillData[i + 2]; data[i + 3] = 255;
+  };
+  const tryPush = (x: number, y: number) => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return;
+    const p = y * w + x;
+    if (visited[p]) return;
+    const i = p * 4;
+    const dr = data[i] - tr, dg = data[i + 1] - tg, db = data[i + 2] - tb;
+    if (dr * dr + dg * dg + db * db > toleranceSq) return;
+    visited[p] = 1;
+    paint(p);
+    stack[sp++] = x; stack[sp++] = y;
+  };
+
+  tryPush(sx, sy);
+  while (sp > 0) {
+    const y = stack[--sp];
+    const x = stack[--sp];
+    tryPush(x + 1, y);
+    tryPush(x - 1, y);
+    tryPush(x, y + 1);
+    tryPush(x, y - 1);
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
