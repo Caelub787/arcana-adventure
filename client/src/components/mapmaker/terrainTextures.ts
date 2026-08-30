@@ -117,13 +117,51 @@ export function getTerrainPattern(ctx: CanvasRenderingContext2D, kind: TerrainKi
   return ctx.createPattern(getTerrainTextureCanvas(kind), 'repeat')!;
 }
 
+// A single, large, already-tiled source image per (kind, size, scale) —
+// generated once and cached, not regenerated per brush dab. Every tool
+// (brush, land shape, river/road, bucket) reads from this SAME static
+// canvas at world-aligned coordinates, so no matter how strokes overlap
+// or which tool touched an area, the grain is always the one continuous
+// image — there's no "stamp" boundary to see, because nothing is ever
+// stamped twice from independent copies of the tile.
+const fullTextureCache = new Map<string, HTMLCanvasElement>();
+
+export function getFullSizeTerrainTexture(kind: TerrainKind, width: number, height: number, scale = 1): HTMLCanvasElement {
+  const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(height));
+  const key = `${kind}:${w}:${h}:${scale}`;
+  let c = fullTextureCache.get(key);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!;
+  const tile = getTerrainTextureCanvas(kind);
+  let source: HTMLCanvasElement = tile;
+  if (scale !== 1) {
+    const scaled = document.createElement('canvas');
+    scaled.width = Math.max(8, Math.round(tile.width * scale));
+    scaled.height = Math.max(8, Math.round(tile.height * scale));
+    const sctx = scaled.getContext('2d')!;
+    sctx.imageSmoothingEnabled = true;
+    sctx.drawImage(tile, 0, 0, scaled.width, scaled.height);
+    source = scaled;
+  }
+  ctx.fillStyle = ctx.createPattern(source, 'repeat')!;
+  ctx.fillRect(0, 0, w, h);
+  fullTextureCache.set(key, c);
+  if (fullTextureCache.size > 30) {
+    const firstKey = fullTextureCache.keys().next().value;
+    if (firstKey) fullTextureCache.delete(firstKey);
+  }
+  return c;
+}
+
 // Bucket/paint-fill: flood-fills the region connected to (startX, startY)
 // with the given terrain texture. Textures are speckled (not flat color),
 // so this compares each pixel to the STARTING pixel's color within a
 // tolerance — the same technique paint programs use for a "magic wand"
 // selection on noisy/textured source images — rather than requiring exact
 // color matches, which would leak through every fleck of grain.
-export function floodFillTerrain(ctx: CanvasRenderingContext2D, startX: number, startY: number, fillKind: TerrainKind, tolerance = 60) {
+export function floodFillTerrain(ctx: CanvasRenderingContext2D, startX: number, startY: number, fillKind: TerrainKind, scale = 1, tolerance = 60) {
   const canvas = ctx.canvas;
   const w = canvas.width, h = canvas.height;
   const sx = Math.round(startX), sy = Math.round(startY);
@@ -134,15 +172,9 @@ export function floodFillTerrain(ctx: CanvasRenderingContext2D, startX: number, 
   const startIdx = (sy * w + sx) * 4;
   const tr = data[startIdx], tg = data[startIdx + 1], tb = data[startIdx + 2];
 
-  // Render the fill texture into an offscreen buffer the same size as the
-  // canvas so we can read a per-pixel fill color (canvas patterns don't
-  // expose that directly).
-  const fillCanvas = document.createElement('canvas');
-  fillCanvas.width = w; fillCanvas.height = h;
-  const fillCtx = fillCanvas.getContext('2d')!;
-  fillCtx.fillStyle = getTerrainPattern(fillCtx, fillKind);
-  fillCtx.fillRect(0, 0, w, h);
-  const fillData = fillCtx.getImageData(0, 0, w, h).data;
+  // Read fill color from the same cached full-size source every other tool
+  // uses, so a bucket fill matches whatever the brush would have painted.
+  const fillData = getFullSizeTerrainTexture(fillKind, w, h, scale).getContext('2d')!.getImageData(0, 0, w, h).data;
 
   // Each pixel is marked visited (and painted) the moment it's pushed, not
   // when it's popped — so it can only ever be pushed once, which bounds
@@ -215,27 +247,25 @@ function getSoftMask(diameter: number, softness: number): HTMLCanvasElement {
   return mask;
 }
 
-// Paints one feathered dab, world-aligned so the texture inside it lines up
-// with dabs painted anywhere else on the same canvas (a CanvasPattern's
-// coordinate space is local to whatever context it's filled into, so
-// without the setTransform below each small dab canvas would restart the
-// tile from its own corner and the grain would visibly seam between dabs).
-export function paintSoftDab(mainCtx: CanvasRenderingContext2D, x: number, y: number, diameter: number, kind: TerrainKind, softness: number, scratch: HTMLCanvasElement) {
+// Reveals one feathered dab's worth of the SAME big source texture at its
+// world-aligned position — not a freshly-stamped tile copy. Because every
+// dab (and every other tool) reads from the identical static source image,
+// two overlapping or adjacent dabs always show the exact same underlying
+// pixels in their overlap, so there's no seam, no repeated-tile look, and
+// no visible "stamp" — it reads as one continuous painted material, the
+// same way revealing a mask over a single background image would.
+export function paintSoftDab(mainCtx: CanvasRenderingContext2D, x: number, y: number, diameter: number, sourceTexture: HTMLCanvasElement, softness: number, scratch: HTMLCanvasElement) {
   const d = Math.max(4, Math.round(diameter));
   if (scratch.width !== d || scratch.height !== d) { scratch.width = d; scratch.height = d; }
   const dctx = scratch.getContext('2d')!;
   dctx.clearRect(0, 0, d, d);
   dctx.globalCompositeOperation = 'source-over';
-  const pattern = getTerrainPattern(dctx, kind);
-  try {
-    (pattern as any).setTransform?.(new DOMMatrix().translate(x - d / 2, y - d / 2));
-  } catch { /* setTransform unsupported — dab still paints, just not perfectly grain-aligned */ }
-  dctx.fillStyle = pattern;
-  dctx.fillRect(0, 0, d, d);
+  const sx = x - d / 2, sy = y - d / 2;
+  dctx.drawImage(sourceTexture, sx, sy, d, d, 0, 0, d, d);
   dctx.globalCompositeOperation = 'destination-in';
   dctx.drawImage(getSoftMask(d, softness), 0, 0);
   dctx.globalCompositeOperation = 'source-over';
-  mainCtx.drawImage(scratch, x - d / 2, y - d / 2);
+  mainCtx.drawImage(scratch, sx, sy);
 }
 
 // --- feathered shape/path fills ------------------------------------------
@@ -253,6 +283,7 @@ export function fillSmoothPathFeathered(
   closed: boolean,
   strokeWidth: number,
   softnessPx: number,
+  scale = 1,
 ) {
   if (points.length === 0) return;
   const pad = Math.max(24, strokeWidth) + softnessPx * 2 + 16;
@@ -281,13 +312,19 @@ export function fillSmoothPathFeathered(
   const layer = document.createElement('canvas');
   layer.width = w; layer.height = h;
   const lctx = layer.getContext('2d')!;
-  lctx.save();
-  lctx.translate(-minX, -minY);
-  const pattern = getTerrainPattern(lctx, kind);
-  try { (pattern as any).setTransform?.(new DOMMatrix().translate(minX, minY)); } catch { /* unsupported */ }
-  lctx.fillStyle = pattern;
-  lctx.fillRect(minX, minY, w, h);
-  lctx.restore();
+  // Sample the exact world-aligned region of the same big cached source
+  // texture every other tool reads from, clamped to its bounds.
+  const sourceTexture = getFullSizeTerrainTexture(kind, mainCtx.canvas.width, mainCtx.canvas.height, scale);
+  const clampedMinX = Math.max(0, minX), clampedMinY = Math.max(0, minY);
+  const clampedMaxX = Math.min(sourceTexture.width, maxX), clampedMaxY = Math.min(sourceTexture.height, maxY);
+  const srcW = Math.max(0, clampedMaxX - clampedMinX), srcH = Math.max(0, clampedMaxY - clampedMinY);
+  if (srcW > 0 && srcH > 0) {
+    lctx.drawImage(
+      sourceTexture,
+      clampedMinX, clampedMinY, srcW, srcH,
+      clampedMinX - minX, clampedMinY - minY, srcW, srcH,
+    );
+  }
   lctx.globalCompositeOperation = 'destination-in';
   lctx.drawImage(blurred, 0, 0);
   lctx.globalCompositeOperation = 'source-over';

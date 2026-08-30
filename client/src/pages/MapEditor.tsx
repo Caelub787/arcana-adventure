@@ -5,15 +5,23 @@
 //     Shape tool (tap points around a landmass, close it, and it's smoothed
 //     into a soft ink-outlined coastline and filled with the chosen
 //     texture) — the actual mechanic Inkarnate maps are recognizable by,
-//     not a raster blob. Both bake onto one flattened terrain raster, which
+//     not a raster blob. Both bake onto the active paint layer, which
 //     "Generate Terrain" can also fill in one shot from a noise heightmap.
+//   - Painting reveals a single large, already-tiled texture image (per
+//     terrain kind + scale) rather than stamping independent copies per
+//     dab/shape — every tool samples the SAME cached source canvas at
+//     world-aligned coordinates, so grain never shows a seam or a
+//     repeated-stamp look no matter how strokes overlap.
+//   - Layers come in three types: one fixed Background (always water,
+//     bottom of the stack), any number of Paint layers (each own canvas,
+//     opacity + blend-mode effects, terrain tools always target the
+//     active one), and any number of Stamp layers (each with visibility +
+//     an active one new placements land in). Everything is flattened into
+//     one raster on Save/Import — layer structure itself is session-only.
 //   - A single "Assets" tool places stamp instances: a quick tap drops one,
 //     a drag scatters several with jittered position/rotation/scale along
 //     the stroke — Inkarnate's mechanic for both single buildings and
 //     tree/mountain clusters.
-//   - Every placed stamp belongs to one of four layers (Terrain Features,
-//     Vegetation, Structures, Decor); the Layers panel toggles a layer's
-//     visibility and picks which layer new placements land in.
 //   - Every stamp instance also renders the variant at the map's
 //     activeVariantIndex from its own asset's variant list — pressing V
 //     cycles that one number so a whole map's placed stamps can flip
@@ -23,9 +31,9 @@
 //     fingers pan and pinch-zoom, mirroring how Procreate/Photoshop split
 //     drawing from navigation on a touchscreen. Desktop keeps
 //     shift/middle/right-drag to pan and scroll-to-zoom (cursor-anchored).
-//   - "Import to Campaign" flattens terrain + all visible-layer stamps
-//     into one PNG and creates a brand new Scene — a one-way export, the
-//     source Map stays independently editable after.
+//   - "Import to Campaign" flattens background + visible paint layers +
+//     visible-layer stamps into one PNG and creates a brand new Scene — a
+//     one-way export, the source Map stays independently editable after.
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -36,12 +44,12 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, MousePointer2, Image as ImageIcon, Wand2, Save,
   Upload, ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff, Maximize, Mountain, Trees,
-  Undo2, Grid3x3, Layers as LayersIcon, PaintBucket,
+  Undo2, Grid3x3, Layers as LayersIcon, PaintBucket, Plus, Trash2,
 } from "lucide-react";
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderSmoothClassifiedTerrain } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderSmoothClassifiedTerrain } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
@@ -49,7 +57,42 @@ type TerrainMode = 'brush' | 'shape' | 'path' | 'bucket';
 type PathKind = 'river' | 'road';
 type MobileSheet = null | 'terrain' | 'assets' | 'select' | 'layers';
 
-const LAYERS: { key: string; label: string }[] = [
+// Canvas globalCompositeOperation names that double as valid CSS
+// mix-blend-mode values, except 'source-over' (canvas) <-> 'normal' (CSS) —
+// CSS_BLEND_MODE below bridges that one mismatch for live on-screen display.
+type BlendMode = 'source-over' | 'multiply' | 'overlay' | 'soft-light' | 'screen' | 'darken' | 'lighten';
+const BLEND_MODES: { mode: BlendMode; label: string }[] = [
+  { mode: 'source-over', label: 'Normal' },
+  { mode: 'multiply', label: 'Multiply' },
+  { mode: 'overlay', label: 'Overlay' },
+  { mode: 'soft-light', label: 'Soft Light' },
+  { mode: 'screen', label: 'Screen' },
+  { mode: 'darken', label: 'Darken' },
+  { mode: 'lighten', label: 'Lighten' },
+];
+const CSS_BLEND_MODE: Record<BlendMode, React.CSSProperties['mixBlendMode']> = {
+  'source-over': 'normal',
+  multiply: 'multiply',
+  overlay: 'overlay',
+  'soft-light': 'soft-light',
+  screen: 'screen',
+  darken: 'darken',
+  lighten: 'lighten',
+};
+
+interface PaintLayer {
+  id: string;
+  name: string;
+  opacity: number; // 0-100
+  blendMode: BlendMode;
+  visible: boolean;
+}
+interface StampLayerDef {
+  key: string;
+  label: string;
+}
+
+const DEFAULT_STAMP_LAYERS: StampLayerDef[] = [
   { key: 'terrain-features', label: 'Terrain Features' },
   { key: 'vegetation', label: 'Vegetation' },
   { key: 'structures', label: 'Structures' },
@@ -139,6 +182,9 @@ export default function MapEditor() {
   // "softness" control, applied to the freehand brush's dabs and to the
   // land-shape/river-road fill edges alike.
   const [softness, setSoftness] = useState(55);
+  // How large the tiled source texture is drawn before it's revealed by
+  // brush/shape/bucket — a bigger scale means bigger, more zoomed-in grain.
+  const [textureScale, setTextureScale] = useState(1);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
   const setShapePoints = useCallback((next: Point[]) => {
@@ -147,10 +193,18 @@ export default function MapEditor() {
   }, []);
   const [selectedStampAssetId, setSelectedStampAssetId] = useState<string | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
-  const [activeLayer, setActiveLayer] = useState('structures');
+
+  const [paintLayers, setPaintLayers] = useState<PaintLayer[]>([
+    { id: 'land', name: 'Land', opacity: 100, blendMode: 'source-over', visible: true },
+  ]);
+  const [activePaintLayerId, setActivePaintLayerId] = useState('land');
+
+  const [stampLayers, setStampLayers] = useState<StampLayerDef[]>(DEFAULT_STAMP_LAYERS);
+  const [activeStampLayer, setActiveStampLayer] = useState('structures');
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(LAYERS.map((l) => [l.key, true]))
+    () => Object.fromEntries(DEFAULT_STAMP_LAYERS.map((l) => [l.key, true]))
   );
+
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.4);
   const [hasFitOnce, setHasFitOnce] = useState(false);
@@ -161,7 +215,8 @@ export default function MapEditor() {
   const [mobileSheet, setMobileSheet] = useState<MobileSheet>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const paintCanvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const imgRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const isPaintingRef = useRef(false);
   const isPanningRef = useRef(false);
@@ -171,7 +226,7 @@ export default function MapEditor() {
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchRef = useRef<null | { startDist: number; startMid: { x: number; y: number }; startZoom: number; startPan: { x: number; y: number } }>(null);
-  const undoStackRef = useRef<ImageData[]>([]);
+  const undoStackRef = useRef<{ layerId: string; snap: ImageData }[]>([]);
   const dabScratchRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
 
   const stampAssetsById = useMemo(() => {
@@ -201,21 +256,27 @@ export default function MapEditor() {
     return counts;
   }, [objects]);
 
-  // Draw the saved terrain image onto the canvas once, per map load.
+  // Fill the background with water once, and (for maps saved before the
+  // layer rework) draw the old flattened terrain image onto the default
+  // "Land" paint layer so existing maps still open looking the same.
   useEffect(() => {
-    if (!map || !canvasRef.current || loadedTerrainFor === map.id) return;
-    const canvas = canvasRef.current;
-    canvas.width = map.width;
-    canvas.height = map.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = getTerrainPattern(ctx, 'grass');
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!map || loadedTerrainFor === map.id) return;
+    const bg = bgCanvasRef.current;
+    const land = paintCanvasRefs.current.get('land');
+    if (!bg || !land) return;
+    const bgCtx = bg.getContext('2d');
+    if (bgCtx) {
+      bgCtx.fillStyle = getTerrainPattern(bgCtx, 'water');
+      bgCtx.fillRect(0, 0, bg.width, bg.height);
+    }
     if (map.terrainImage) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      img.src = map.terrainImage;
+      const landCtx = land.getContext('2d');
+      if (landCtx) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => landCtx.drawImage(img, 0, 0, land.width, land.height);
+        img.src = map.terrainImage;
+      }
     }
     setShowGrid(map.mapType === 'battle');
     setLoadedTerrainFor(map.id);
@@ -261,47 +322,50 @@ export default function MapEditor() {
     });
   };
 
-  const pushUndoSnapshot = () => {
-    const canvas = canvasRef.current;
+  const pushUndoSnapshot = (layerId: string = activePaintLayerId) => {
+    const canvas = paintCanvasRefs.current.get(layerId);
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
     try {
       const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      undoStackRef.current.push(snap);
+      undoStackRef.current.push({ layerId, snap });
       if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift();
       setUndoCount(undoStackRef.current.length);
     } catch { /* ignore */ }
   };
 
   const handleUndo = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const snap = undoStackRef.current.pop();
+    const entry = undoStackRef.current.pop();
     setUndoCount(undoStackRef.current.length);
-    if (canvas && ctx && snap) ctx.putImageData(snap, 0, 0);
+    if (!entry) return;
+    const canvas = paintCanvasRefs.current.get(entry.layerId);
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) ctx.putImageData(entry.snap, 0, 0);
   };
 
-  // Paints dense, overlapping SOFT dabs rather than a hard-edged line: each
-  // call stamps one or more feathered dabs between wherever the brush last
-  // was and (x, y) — spaced closely enough to overlap heavily, the same
-  // stamping technique real paint-brush engines use — so a drag reads as
-  // one continuous, softly-blended stroke instead of either gapped circles
-  // or a hard-edged pixelated line. lastPaintPosRef is null at the start of
-  // a stroke (pointerdown) so the first call just drops a single dab.
+  // Paints dense, overlapping SOFT dabs — each revealing a piece of the
+  // same large cached source texture at its world-aligned position, rather
+  // than a freshly-stamped tile copy — so a drag reads as one continuous,
+  // seamlessly painted material instead of gapped or repeated-looking
+  // circles. lastPaintPosRef is null at the start of a stroke (pointerdown)
+  // so the first call just drops a single dab.
   const lastPaintPosRef = useRef<{ x: number; y: number } | null>(null);
   const paintAt = (x: number, y: number) => {
-    const ctx = canvasRef.current?.getContext('2d');
+    if (!map) return;
+    const canvas = paintCanvasRefs.current.get(activePaintLayerId);
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
+    const sourceTexture = getFullSizeTerrainTexture(terrainKind, map.width, map.height, textureScale);
     const last = lastPaintPosRef.current;
     if (!last) {
-      paintSoftDab(ctx, x, y, brushSize, terrainKind, softness, dabScratchRef.current);
+      paintSoftDab(ctx, x, y, brushSize, sourceTexture, softness, dabScratchRef.current);
     } else {
       const dist = Math.hypot(x - last.x, y - last.y);
       const spacing = Math.max(2, brushSize * 0.18);
       const steps = Math.max(1, Math.round(dist / spacing));
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
-        paintSoftDab(ctx, last.x + (x - last.x) * t, last.y + (y - last.y) * t, brushSize, terrainKind, softness, dabScratchRef.current);
+        paintSoftDab(ctx, last.x + (x - last.x) * t, last.y + (y - last.y) * t, brushSize, sourceTexture, softness, dabScratchRef.current);
       }
     }
     lastPaintPosRef.current = { x, y };
@@ -309,18 +373,18 @@ export default function MapEditor() {
 
   const finishTerrainPoints = () => {
     const points = shapePointsRef.current;
-    const canvas = canvasRef.current;
+    const canvas = paintCanvasRefs.current.get(activePaintLayerId);
     if (!canvas) { setShapePoints([]); return; }
     const ctx = canvas.getContext('2d')!;
     const softnessPx = 1 + (softness / 100) * 10;
     if (terrainMode === 'shape') {
       if (points.length < 3) { setShapePoints([]); return; }
       pushUndoSnapshot();
-      fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx);
+      fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
     } else if (terrainMode === 'path') {
       if (points.length < 2) { setShapePoints([]); return; }
       pushUndoSnapshot();
-      fillSmoothPathFeathered(ctx, (c) => traceSmoothOpenPath(c, points), points, pathKind === 'river' ? 'water' : 'road', false, brushSize, softnessPx);
+      fillSmoothPathFeathered(ctx, (c) => traceSmoothOpenPath(c, points), points, pathKind === 'river' ? 'water' : 'road', false, brushSize, softnessPx, textureScale);
     }
     setShapePoints([]);
   };
@@ -361,7 +425,7 @@ export default function MapEditor() {
       rotation,
       width: size,
       height: size,
-      layer: activeLayer,
+      layer: activeStampLayer,
     });
   };
 
@@ -484,10 +548,11 @@ export default function MapEditor() {
       }
     } else if (wasTap && tool === 'terrain' && terrainMode === 'bucket') {
       const { x, y } = toWorld(e.clientX, e.clientY);
-      const ctx = canvasRef.current?.getContext('2d');
+      const canvas = paintCanvasRefs.current.get(activePaintLayerId);
+      const ctx = canvas?.getContext('2d');
       if (ctx) {
         pushUndoSnapshot();
-        floodFillTerrain(ctx, x, y, terrainKind);
+        floodFillTerrain(ctx, x, y, terrainKind, textureScale);
       }
     }
     tapStartRef.current = null;
@@ -541,10 +606,11 @@ export default function MapEditor() {
   }, [selectedObjectId, maxVariantCount]);
 
   const handleGenerate = () => {
-    if (!map || !canvasRef.current) return;
-    if (!confirm("Replace the entire terrain layer with a generated one? This can't be undone with Undo history alone if you keep editing after — but one Ctrl/Cmd+Z will restore what's there now.")) return;
+    const canvas = paintCanvasRefs.current.get(activePaintLayerId);
+    if (!map || !canvas) return;
+    if (!confirm("Replace the active paint layer with a generated one? This can't be undone with Undo history alone if you keep editing after — but one Ctrl/Cmd+Z will restore what's there now.")) return;
     pushUndoSnapshot();
-    const ctx = canvasRef.current.getContext('2d');
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const noise = makeNoise2D(Math.random() * 1000);
     const scale = 1 / 260;
@@ -554,11 +620,39 @@ export default function MapEditor() {
     );
   };
 
+  // Composites background + visible paint layers (respecting each layer's
+  // opacity/blend-mode effect) into one flattened canvas. Shared by Save
+  // (terrain only) and flattenToDataUrl (which adds stamps on top).
+  const flattenTerrainCanvas = (): HTMLCanvasElement | null => {
+    if (!map) return null;
+    const bg = bgCanvasRef.current;
+    if (!bg) return null;
+    const out = document.createElement('canvas');
+    out.width = map.width;
+    out.height = map.height;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(bg, 0, 0);
+    for (const layer of paintLayers) {
+      if (!layer.visible) continue;
+      const canvas = paintCanvasRefs.current.get(layer.id);
+      if (!canvas) continue;
+      ctx.globalAlpha = layer.opacity / 100;
+      ctx.globalCompositeOperation = layer.blendMode;
+      ctx.drawImage(canvas, 0, 0);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    return out;
+  };
+
   const handleSave = async () => {
-    if (!canvasRef.current || !map) return;
+    if (!map) return;
+    const flat = flattenTerrainCanvas();
+    if (!flat) return;
     setSaving(true);
     try {
-      const dataUrl = canvasRef.current.toDataURL('image/png');
+      const dataUrl = flat.toDataURL('image/png');
       const { url } = await api.uploadBase64Image(dataUrl);
       await api.updateMap(map.id, { terrainImage: url, thumbnail: url });
       queryClient.invalidateQueries({ queryKey: ['/api/maps'] });
@@ -571,13 +665,11 @@ export default function MapEditor() {
   };
 
   const flattenToDataUrl = (): string | null => {
-    if (!canvasRef.current || !map) return null;
-    const out = document.createElement('canvas');
-    out.width = map.width;
-    out.height = map.height;
+    if (!map) return null;
+    const out = flattenTerrainCanvas();
+    if (!out) return null;
     const ctx = out.getContext('2d');
     if (!ctx) return null;
-    ctx.drawImage(canvasRef.current, 0, 0);
     for (const obj of [...objects].filter((o) => layerVisibility[o.layer] !== false).sort((a, b) => a.zIndex - b.zIndex)) {
       const img = imgRefs.current.get(obj.id);
       if (!img || !img.complete || img.naturalWidth === 0) continue;
@@ -588,6 +680,42 @@ export default function MapEditor() {
       ctx.restore();
     }
     return out.toDataURL('image/png');
+  };
+
+  const updatePaintLayer = (paintLayerId: string, patch: Partial<PaintLayer>) => {
+    setPaintLayers((prev) => prev.map((l) => (l.id === paintLayerId ? { ...l, ...patch } : l)));
+  };
+
+  const addPaintLayer = () => {
+    const name = window.prompt('New paint layer name?', `Paint Layer ${paintLayers.length + 1}`);
+    if (!name || !name.trim()) return;
+    const newId = `paint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setPaintLayers((prev) => [...prev, { id: newId, name: name.trim(), opacity: 100, blendMode: 'source-over', visible: true }]);
+    setActivePaintLayerId(newId);
+  };
+
+  const removePaintLayer = (paintLayerId: string) => {
+    if (paintLayers.length <= 1) return;
+    const remaining = paintLayers.filter((l) => l.id !== paintLayerId);
+    setPaintLayers(remaining);
+    paintCanvasRefs.current.delete(paintLayerId);
+    if (activePaintLayerId === paintLayerId) setActivePaintLayerId(remaining[0]?.id ?? '');
+  };
+
+  const addStampLayer = () => {
+    const name = window.prompt('New stamp layer name?', `Stamp Layer ${stampLayers.length + 1}`);
+    if (!name || !name.trim()) return;
+    const key = `stamp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setStampLayers((prev) => [...prev, { key, label: name.trim() }]);
+    setLayerVisibility((prev) => ({ ...prev, [key]: true }));
+    setActiveStampLayer(key);
+  };
+
+  const removeStampLayer = (key: string) => {
+    if (stampLayers.length <= 1 || (objectCountByLayer[key] ?? 0) > 0) return;
+    const remaining = stampLayers.filter((l) => l.key !== key);
+    setStampLayers(remaining);
+    if (activeStampLayer === key) setActiveStampLayer(remaining[0]?.key ?? '');
   };
 
   if (mapQuery.isError) {
@@ -616,6 +744,7 @@ export default function MapEditor() {
   }
 
   const visibleObjects = [...objects].filter((o) => layerVisibility[o.layer] !== false).sort((a, b) => a.zIndex - b.zIndex);
+  const activePaintLayer = paintLayers.find((l) => l.id === activePaintLayerId);
 
   const terrainFlyoutContent = (
     <>
@@ -625,6 +754,14 @@ export default function MapEditor() {
         <button className={pillClass(terrainMode === 'shape')} onClick={() => { setTerrainMode('shape'); setShapePoints([]); }} data-testid="button-terrain-mode-shape">Land Shape</button>
         <button className={pillClass(terrainMode === 'path')} onClick={() => { setTerrainMode('path'); setShapePoints([]); }} data-testid="button-terrain-mode-path">River/Road</button>
         <button className={pillClass(terrainMode === 'bucket')} onClick={() => { setTerrainMode('bucket'); setShapePoints([]); }} data-testid="button-terrain-mode-bucket">Fill</button>
+      </div>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Painting On</p>
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        {paintLayers.map((l) => (
+          <button key={l.id} className={pillClass(activePaintLayerId === l.id)} onClick={() => setActivePaintLayerId(l.id)} data-testid={`button-active-paint-layer-${l.id}`}>
+            {l.name}
+          </button>
+        ))}
       </div>
       {terrainMode !== 'path' && (
         <div className="grid grid-cols-3 gap-1.5 mb-3">
@@ -641,6 +778,9 @@ export default function MapEditor() {
           ))}
         </div>
       )}
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Texture Scale</p>
+      <Slider min={0.5} max={3} step={0.1} value={[textureScale]} onValueChange={([v]) => setTextureScale(v)} data-testid="slider-texture-scale" />
+      <p className="text-xs text-stone-500 mt-1 mb-3">{textureScale.toFixed(1)}x</p>
       {terrainMode === 'brush' && (
         <>
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
@@ -726,7 +866,7 @@ export default function MapEditor() {
       <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
       <p className="text-xs text-stone-500 mt-1 mb-2">Tap to place one, drag to scatter a cluster.</p>
       <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Placing into</p>
-      <p className="text-xs text-amber-400">{LAYERS.find((l) => l.key === activeLayer)?.label}</p>
+      <p className="text-xs text-amber-400">{stampLayers.find((l) => l.key === activeStampLayer)?.label}</p>
     </>
   );
 
@@ -736,13 +876,74 @@ export default function MapEditor() {
 
   const layersContent = (
     <>
-      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Layers</p>
+      <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Background</p>
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded text-sm text-stone-400 border border-stone-800 mb-3">
+        <span className="h-3 w-3 rounded-sm shrink-0" style={{ background: '#2a5f8f' }} />
+        <span className="flex-1">Water (fixed)</span>
+      </div>
+
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[10px] uppercase tracking-wide text-stone-500">Paint Layers</p>
+        <button className="text-stone-400 hover:text-amber-400" onClick={addPaintLayer} title="Add paint layer" data-testid="button-add-paint-layer">
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="space-y-2 mb-3">
+        {paintLayers.map((l) => (
+          <div
+            key={l.id}
+            className={`rounded px-2 py-1.5 border cursor-pointer ${activePaintLayerId === l.id ? 'bg-amber-900/30 border-amber-700/60' : 'border-stone-800 hover:bg-stone-800'}`}
+            onClick={() => setActivePaintLayerId(l.id)}
+            data-testid={`paint-layer-row-${l.id}`}
+          >
+            <div className="flex items-center gap-1.5 text-sm">
+              <button
+                className="text-stone-400 hover:text-white shrink-0"
+                onClick={(e) => { e.stopPropagation(); updatePaintLayer(l.id, { visible: !l.visible }); }}
+                data-testid={`button-toggle-paint-layer-${l.id}`}
+              >
+                {l.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+              </button>
+              <span className={`flex-1 truncate ${activePaintLayerId === l.id ? 'text-amber-300' : 'text-stone-300'}`}>{l.name}</span>
+              {paintLayers.length > 1 && (
+                <button
+                  className="text-stone-500 hover:text-red-400 shrink-0"
+                  onClick={(e) => { e.stopPropagation(); removePaintLayer(l.id); }}
+                  data-testid={`button-remove-paint-layer-${l.id}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="mt-1.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[10px] text-stone-500 w-10 shrink-0">{l.opacity}%</span>
+              <Slider min={0} max={100} step={5} value={[l.opacity]} onValueChange={([v]) => updatePaintLayer(l.id, { opacity: v })} data-testid={`slider-paint-layer-opacity-${l.id}`} />
+            </div>
+            <select
+              className="mt-1.5 w-full bg-stone-900 border border-stone-700 rounded text-xs text-stone-300 px-1.5 py-1"
+              value={l.blendMode}
+              onChange={(e) => updatePaintLayer(l.id, { blendMode: e.target.value as BlendMode })}
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`select-paint-layer-blend-${l.id}`}
+            >
+              {BLEND_MODES.map((b) => <option key={b.mode} value={b.mode}>{b.label}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[10px] uppercase tracking-wide text-stone-500">Stamp Layers</p>
+        <button className="text-stone-400 hover:text-amber-400" onClick={addStampLayer} title="Add stamp layer" data-testid="button-add-stamp-layer">
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
       <div className="space-y-1">
-        {LAYERS.map((l) => (
+        {stampLayers.map((l) => (
           <div
             key={l.key}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm ${activeLayer === l.key ? 'bg-amber-900/30 text-amber-300 border border-amber-700/60' : 'text-stone-300 border border-transparent hover:bg-stone-800'}`}
-            onClick={() => setActiveLayer(l.key)}
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm ${activeStampLayer === l.key ? 'bg-amber-900/30 text-amber-300 border border-amber-700/60' : 'text-stone-300 border border-transparent hover:bg-stone-800'}`}
+            onClick={() => setActiveStampLayer(l.key)}
             data-testid={`layer-row-${l.key}`}
           >
             <button
@@ -754,10 +955,19 @@ export default function MapEditor() {
             </button>
             <span className="flex-1 truncate">{l.label}</span>
             <span className="text-[10px] text-stone-500">{objectCountByLayer[l.key] ?? 0}</span>
+            {stampLayers.length > 1 && (objectCountByLayer[l.key] ?? 0) === 0 && (
+              <button
+                className="text-stone-500 hover:text-red-400 shrink-0"
+                onClick={(e) => { e.stopPropagation(); removeStampLayer(l.key); }}
+                data-testid={`button-remove-stamp-layer-${l.key}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-stone-600 mt-3">Tap a layer to place new assets into it. The eye toggles visibility on the canvas and in exports.</p>
+      <p className="text-[10px] text-stone-600 mt-3">Tap a layer to place new assets into it. The eye toggles visibility on the canvas and in exports. Layer structure (not the art) resets if you leave without saving.</p>
     </>
   );
 
@@ -782,7 +992,7 @@ export default function MapEditor() {
         <Button size="sm" variant="outline" className={`border-stone-700 shrink-0 ${showGrid ? 'text-amber-400 border-amber-700' : ''}`} onClick={() => setShowGrid((v) => !v)} title="Toggle battle-map grid" data-testid="button-toggle-grid">
           <Grid3x3 className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleGenerate} data-testid="button-generate-terrain">
+        <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleGenerate} title={`Generate onto: ${activePaintLayer?.name ?? ''}`} data-testid="button-generate-terrain">
           <Wand2 className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Generate</span>
         </Button>
         <Button
@@ -854,7 +1064,17 @@ export default function MapEditor() {
           <div
             style={{ position: 'absolute', left: 0, top: 0, width: map.width, height: map.height, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.6)' }}
           >
-            <canvas ref={canvasRef} className="absolute left-0 top-0" />
+            <canvas ref={bgCanvasRef} width={map.width} height={map.height} className="absolute left-0 top-0" />
+            {paintLayers.map((l) => (
+              <canvas
+                key={l.id}
+                ref={(el) => { if (el) paintCanvasRefs.current.set(l.id, el); else paintCanvasRefs.current.delete(l.id); }}
+                width={map.width}
+                height={map.height}
+                className="absolute left-0 top-0"
+                style={{ opacity: l.visible ? l.opacity / 100 : 0, mixBlendMode: CSS_BLEND_MODE[l.blendMode] }}
+              />
+            ))}
             {showGrid && (
               <svg className="absolute left-0 top-0 pointer-events-none" width={map.width} height={map.height}>
                 {Array.from({ length: Math.ceil(map.width / map.gridSize) + 1 }).map((_, i) => (
@@ -921,7 +1141,7 @@ export default function MapEditor() {
         </div>
 
         {/* Desktop layers panel */}
-        <div className="hidden md:block w-48 bg-stone-950 border-l border-stone-800 p-2 overflow-y-auto shrink-0">
+        <div className="hidden md:block w-52 bg-stone-950 border-l border-stone-800 p-2 overflow-y-auto shrink-0">
           {layersContent}
         </div>
       </div>

@@ -132,10 +132,58 @@ async function ensureMapMakerColumns() {
   }
 }
 
+// Compact inline SVG placeholders — just enough to try out placement,
+// scatter, and the variant-swap hotkey before real art exists. Encoded as
+// data: URIs so no upload/storage step is needed to seed them.
+function svgDataUri(svg: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+const TEST_STAMP_SVGS = {
+  treeNormal: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="44" y="62" width="12" height="26" fill="#5c4033"/><polygon points="50,8 22,52 78,52" fill="#2d5016"/><polygon points="50,26 27,64 73,64" fill="#3f7024"/></svg>`,
+  treeAutumn: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="44" y="62" width="12" height="26" fill="#5c4033"/><polygon points="50,8 22,52 78,52" fill="#c2410c"/><polygon points="50,26 27,64 73,64" fill="#ea580c"/></svg>`,
+  mountain: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,10 10,88 90,88" fill="#6b6b6b"/><polygon points="50,10 38,42 62,42" fill="#e8e8e8"/></svg>`,
+  house: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="22" y="46" width="56" height="42" fill="#8b7355"/><polygon points="50,14 14,50 86,50" fill="#7f1d1d"/><rect x="44" y="64" width="14" height="24" fill="#3f2a1a"/></svg>`,
+  rock: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M20 75 Q10 50 32 40 Q48 20 65 32 Q90 35 82 60 Q88 82 60 80 Q30 92 20 75 Z" fill="#7a7a7a"/><path d="M32 40 Q48 20 65 32 Q55 45 40 50 Q30 46 32 40 Z" fill="#969696"/></svg>`,
+};
+async function ensureTestStampAssets() {
+  try {
+    const existing = await dbPool.query(`SELECT COUNT(*)::int AS count FROM stamp_assets`);
+    if ((existing.rows?.[0]?.count ?? 0) > 0) return;
+    const admin = await dbPool.query(`SELECT id FROM users WHERE is_admin = true ORDER BY created_at ASC LIMIT 1`);
+    const adminId = admin.rows?.[0]?.id;
+    if (!adminId) return; // nothing to attribute the seed to yet
+
+    const seedAsset = async (name: string, category: string, variants: { label: string; image: string }[]) => {
+      const asset = await dbPool.query(
+        `INSERT INTO stamp_assets (name, category, created_by_user_id) VALUES ($1, $2, $3) RETURNING id`,
+        [name, category, adminId]
+      );
+      const assetId = asset.rows[0].id;
+      for (let i = 0; i < variants.length; i++) {
+        await dbPool.query(
+          `INSERT INTO stamp_asset_variants (stamp_asset_id, label, image, sort_order) VALUES ($1, $2, $3, $4)`,
+          [assetId, variants[i].label, variants[i].image, i]
+        );
+      }
+    };
+
+    await seedAsset('Tree', 'Nature', [
+      { label: 'Normal', image: svgDataUri(TEST_STAMP_SVGS.treeNormal) },
+      { label: 'Autumn', image: svgDataUri(TEST_STAMP_SVGS.treeAutumn) },
+    ]);
+    await seedAsset('Mountain', 'Nature', [{ label: 'Normal', image: svgDataUri(TEST_STAMP_SVGS.mountain) }]);
+    await seedAsset('Rock', 'Nature', [{ label: 'Normal', image: svgDataUri(TEST_STAMP_SVGS.rock) }]);
+    await seedAsset('House', 'Structures', [{ label: 'Normal', image: svgDataUri(TEST_STAMP_SVGS.house) }]);
+  } catch (err) {
+    console.error("Failed to seed test stamp assets:", err);
+  }
+}
+
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
   await ensureMapMakerColumns();
+  await ensureTestStampAssets();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
