@@ -42,10 +42,11 @@ import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern } from "@/components/mapmaker/terrainTextures";
-import { traceSmoothClosedPath, type Point } from "@/components/mapmaker/pathSmoothing";
+import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
-type TerrainMode = 'brush' | 'shape';
+type TerrainMode = 'brush' | 'shape' | 'path';
+type PathKind = 'river' | 'road';
 type MobileSheet = null | 'terrain' | 'assets' | 'select' | 'layers';
 
 const LAYERS: { key: string; label: string }[] = [
@@ -133,6 +134,7 @@ export default function MapEditor() {
   const [tool, setTool] = useState<Tool>('terrain');
   const [terrainMode, setTerrainMode] = useState<TerrainMode>('brush');
   const [terrainKind, setTerrainKind] = useState<TerrainKind>('grass');
+  const [pathKind, setPathKind] = useState<PathKind>('river');
   const [brushSize, setBrushSize] = useState(50);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
@@ -211,6 +213,7 @@ export default function MapEditor() {
       img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       img.src = map.terrainImage;
     }
+    setShowGrid(map.mapType === 'battle');
     setLoadedTerrainFor(map.id);
   }, [map, loadedTerrainFor]);
 
@@ -283,18 +286,38 @@ export default function MapEditor() {
     ctx.fill();
   };
 
-  const finishLandShape = () => {
+  const finishTerrainPoints = () => {
     const points = shapePointsRef.current;
     const canvas = canvasRef.current;
-    if (points.length < 3 || !canvas) { setShapePoints([]); return; }
-    pushUndoSnapshot();
-    const ctx = canvas.getContext('2d')!;
-    traceSmoothClosedPath(ctx, points);
-    ctx.fillStyle = getTerrainPattern(ctx, terrainKind);
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = COASTLINE_STROKE;
-    ctx.stroke();
+    if (!canvas) { setShapePoints([]); return; }
+    if (terrainMode === 'shape') {
+      if (points.length < 3) { setShapePoints([]); return; }
+      pushUndoSnapshot();
+      const ctx = canvas.getContext('2d')!;
+      traceSmoothClosedPath(ctx, points);
+      ctx.fillStyle = getTerrainPattern(ctx, terrainKind);
+      ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = COASTLINE_STROKE;
+      ctx.stroke();
+    } else if (terrainMode === 'path') {
+      if (points.length < 2) { setShapePoints([]); return; }
+      pushUndoSnapshot();
+      const ctx = canvas.getContext('2d')!;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Dark ink edge first (slightly wider), then the textured stroke on
+      // top — gives the same hand-inked riverbank/road-edge look as the
+      // land shape's coastline.
+      traceSmoothOpenPath(ctx, points);
+      ctx.lineWidth = brushSize + 6;
+      ctx.strokeStyle = COASTLINE_STROKE;
+      ctx.stroke();
+      traceSmoothOpenPath(ctx, points);
+      ctx.lineWidth = brushSize;
+      ctx.strokeStyle = getTerrainPattern(ctx, pathKind === 'river' ? 'water' : 'road');
+      ctx.stroke();
+    }
     setShapePoints([]);
   };
 
@@ -363,7 +386,7 @@ export default function MapEditor() {
     }
     if (e.button !== 0) return;
 
-    if (tool === 'terrain' && terrainMode === 'shape') {
+    if (tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path')) {
       tapStartRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -446,11 +469,11 @@ export default function MapEditor() {
     activePointersRef.current.delete(e.pointerId);
     if (activePointersRef.current.size < 2) pinchRef.current = null;
 
-    if (wasTap && tool === 'terrain' && terrainMode === 'shape') {
+    if (wasTap && tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path')) {
       const { x, y } = toWorld(e.clientX, e.clientY);
       const prev = shapePointsRef.current;
-      if (prev.length >= 3 && Math.hypot(x - prev[0].x, y - prev[0].y) < 20 / zoom) {
-        finishLandShape();
+      if (terrainMode === 'shape' && prev.length >= 3 && Math.hypot(x - prev[0].x, y - prev[0].y) < 20 / zoom) {
+        finishTerrainPoints();
       } else {
         setShapePoints([...prev, { x, y }]);
       }
@@ -588,38 +611,64 @@ export default function MapEditor() {
   const terrainFlyoutContent = (
     <>
       <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-2">Terrain</p>
-      <div className="flex gap-1.5 mb-3">
-        <button className={pillClass(terrainMode === 'brush')} onClick={() => setTerrainMode('brush')} data-testid="button-terrain-mode-brush">Brush</button>
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        <button className={pillClass(terrainMode === 'brush')} onClick={() => { setTerrainMode('brush'); setShapePoints([]); }} data-testid="button-terrain-mode-brush">Brush</button>
         <button className={pillClass(terrainMode === 'shape')} onClick={() => { setTerrainMode('shape'); setShapePoints([]); }} data-testid="button-terrain-mode-shape">Land Shape</button>
+        <button className={pillClass(terrainMode === 'path')} onClick={() => { setTerrainMode('path'); setShapePoints([]); }} data-testid="button-terrain-mode-path">River/Road</button>
       </div>
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
-        {TERRAIN_KINDS.map(({ kind, label }) => (
-          <button
-            key={kind}
-            title={label}
-            className={`aspect-square rounded border-2 overflow-hidden ${terrainKind === kind ? 'border-amber-500' : 'border-stone-700'}`}
-            onClick={() => setTerrainKind(kind)}
-            data-testid={`button-terrain-${kind}`}
-          >
-            <TextureSwatch kind={kind} />
-          </button>
-        ))}
-      </div>
-      {terrainMode === 'brush' ? (
+      {terrainMode !== 'path' && (
+        <div className="grid grid-cols-3 gap-1.5 mb-3">
+          {TERRAIN_KINDS.filter((t) => t.kind !== 'road').map(({ kind, label }) => (
+            <button
+              key={kind}
+              title={label}
+              className={`aspect-square rounded border-2 overflow-hidden ${terrainKind === kind ? 'border-amber-500' : 'border-stone-700'}`}
+              onClick={() => setTerrainKind(kind)}
+              data-testid={`button-terrain-${kind}`}
+            >
+              <TextureSwatch kind={kind} />
+            </button>
+          ))}
+        </div>
+      )}
+      {terrainMode === 'brush' && (
         <>
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
           <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
           <p className="text-xs text-stone-500 mt-1">{brushSize}px</p>
         </>
-      ) : (
+      )}
+      {terrainMode === 'shape' && (
         <>
           <p className="text-xs text-stone-500 mb-2">Tap to place points around a landmass. Tap near your first point (or press Finish) to close it into a smooth coastline.</p>
           {shapePoints.length > 0 && (
             <div className="flex gap-1.5">
-              <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishLandShape} disabled={shapePoints.length < 3} data-testid="button-finish-land-shape">
+              <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishTerrainPoints} disabled={shapePoints.length < 3} data-testid="button-finish-land-shape">
                 Finish ({shapePoints.length})
               </Button>
               <Button size="sm" variant="outline" className="border-stone-700" onClick={() => setShapePoints([])} data-testid="button-cancel-land-shape">
+                Cancel
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      {terrainMode === 'path' && (
+        <>
+          <div className="flex gap-1.5 mb-3">
+            <button className={pillClass(pathKind === 'river')} onClick={() => setPathKind('river')} data-testid="button-path-kind-river">River</button>
+            <button className={pillClass(pathKind === 'road')} onClick={() => setPathKind('road')} data-testid="button-path-kind-road">Road</button>
+          </div>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Width</p>
+          <Slider min={8} max={120} step={2} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
+          <p className="text-xs text-stone-500 mt-1 mb-2">{brushSize}px</p>
+          <p className="text-xs text-stone-500 mb-2">Tap to place points along the {pathKind}. Press Finish when done — it won't auto-close like a land shape.</p>
+          {shapePoints.length > 0 && (
+            <div className="flex gap-1.5">
+              <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishTerrainPoints} disabled={shapePoints.length < 2} data-testid="button-finish-path">
+                Finish ({shapePoints.length})
+              </Button>
+              <Button size="sm" variant="outline" className="border-stone-700" onClick={() => setShapePoints([])} data-testid="button-cancel-path">
                 Cancel
               </Button>
             </div>

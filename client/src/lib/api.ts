@@ -534,6 +534,7 @@ export interface GameMap {
   width: number;
   height: number;
   gridSize: number;
+  mapType: string;
   terrainImage: string | null;
   thumbnail: string | null;
   activeVariantIndex: number;
@@ -1427,7 +1428,7 @@ class ApiClient {
     return this.request('/maps');
   }
 
-  async createMap(data: { name?: string; width?: number; height?: number; gridSize?: number }): Promise<GameMap> {
+  async createMap(data: { name?: string; width?: number; height?: number; gridSize?: number; mapType?: string }): Promise<GameMap> {
     return this.request('/maps', { method: 'POST', body: JSON.stringify(data) });
   }
 

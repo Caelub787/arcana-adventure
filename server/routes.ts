@@ -5905,6 +5905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         width: req.body.width || 2000,
         height: req.body.height || 1500,
         gridSize: req.body.gridSize || 50,
+        mapType: req.body.mapType === 'battle' ? 'battle' : 'regional',
         ownerUserId: userId,
       });
       res.json(map);

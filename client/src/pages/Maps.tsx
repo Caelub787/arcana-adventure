@@ -6,7 +6,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Map as MapIcon, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Plus, Map as MapIcon, Trash2, Wand2, Globe, Swords } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type GameMap } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
@@ -15,11 +15,18 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { StampAssetManager } from "@/components/mapmaker/StampAssetManager";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 
-const SIZE_PRESETS = [
-  { label: "Small (Tavern / Dungeon Room)", width: 1200, height: 900 },
-  { label: "Medium (Town / Dungeon Level)", width: 2000, height: 1500 },
-  { label: "Large (Region)", width: 3000, height: 2200 },
-  { label: "Huge (Continent)", width: 4500, height: 3200 },
+const REGIONAL_SIZE_PRESETS = [
+  { label: "Small (Local Area)", width: 1500, height: 1100 },
+  { label: "Medium (Kingdom)", width: 2500, height: 1800 },
+  { label: "Large (Region)", width: 3500, height: 2500 },
+  { label: "Huge (Continent)", width: 5000, height: 3600 },
+];
+
+const BATTLE_SIZE_PRESETS = [
+  { label: "Small (Room / Skirmish)", width: 900, height: 700 },
+  { label: "Medium (Dungeon Level)", width: 1500, height: 1100 },
+  { label: "Large (Encounter Site)", width: 2200, height: 1600 },
+  { label: "Huge (Multi-Room Complex)", width: 3200, height: 2200 },
 ];
 
 export default function Maps() {
@@ -31,10 +38,12 @@ export default function Maps() {
   const [managerOpen, setManagerOpen] = useState(false);
   const [newMapOpen, setNewMapOpen] = useState(false);
   const [newMapName, setNewMapName] = useState("");
+  const [newMapType, setNewMapType] = useState<'regional' | 'battle'>('regional');
   const [presetIndex, setPresetIndex] = useState(1);
   const [customWidth, setCustomWidth] = useState(2000);
   const [customHeight, setCustomHeight] = useState(1500);
   const [useCustomSize, setUseCustomSize] = useState(false);
+  const sizePresets = newMapType === 'battle' ? BATTLE_SIZE_PRESETS : REGIONAL_SIZE_PRESETS;
 
   const { data: maps = [], isLoading, isError, refetch } = useQuery<GameMap[]>({
     queryKey: ['/api/maps'],
@@ -42,7 +51,7 @@ export default function Maps() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; width: number; height: number }) => api.createMap(data),
+    mutationFn: (data: { name: string; width: number; height: number; mapType: string; gridSize?: number }) => api.createMap(data),
     onSuccess: (map) => {
       queryClient.invalidateQueries({ queryKey: ['/api/maps'] });
       setNewMapOpen(false);
@@ -53,6 +62,7 @@ export default function Maps() {
 
   const openNewMapDialog = () => {
     setNewMapName("");
+    setNewMapType('regional');
     setPresetIndex(1);
     setUseCustomSize(false);
     setNewMapOpen(true);
@@ -61,8 +71,13 @@ export default function Maps() {
   const handleCreateMap = () => {
     const { width, height } = useCustomSize
       ? { width: Math.max(200, Math.min(8000, customWidth || 2000)), height: Math.max(200, Math.min(8000, customHeight || 1500)) }
-      : SIZE_PRESETS[presetIndex];
-    createMutation.mutate({ name: newMapName.trim() || "Untitled Map", width, height });
+      : sizePresets[presetIndex];
+    createMutation.mutate({
+      name: newMapName.trim() || "Untitled Map",
+      width, height,
+      mapType: newMapType,
+      gridSize: newMapType === 'battle' ? 50 : undefined,
+    });
   };
 
   const deleteMutation = useMutation({
@@ -141,6 +156,10 @@ export default function Maps() {
                   )}
                 </div>
                 <CardHeader className="pb-2">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-stone-500 mb-0.5">
+                    {map.mapType === 'battle' ? <Swords className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+                    {map.mapType === 'battle' ? 'Battle Map' : 'World Map'}
+                  </div>
                   <CardTitle className="flex justify-between items-start text-base text-stone-200 font-display">
                     <span className="truncate" data-testid={`text-map-name-${map.id}`}>{map.name}</span>
                     <Button
@@ -184,7 +203,7 @@ export default function Maps() {
       {isAdmin && <StampAssetManager open={managerOpen} onOpenChange={setManagerOpen} />}
 
       <Dialog open={newMapOpen} onOpenChange={setNewMapOpen}>
-        <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-sm max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-stone-200">New Map</DialogTitle>
           </DialogHeader>
@@ -201,9 +220,32 @@ export default function Maps() {
               />
             </div>
             <div>
+              <Label className="text-xs text-stone-400 mb-1 block">Type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setNewMapType('regional'); setPresetIndex(1); }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded border ${newMapType === 'regional' ? 'bg-amber-900/30 border-amber-700 text-amber-200' : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'}`}
+                  data-testid="button-map-type-regional"
+                >
+                  <Globe className="h-5 w-5" />
+                  <span className="text-sm font-medium">World Map</span>
+                  <span className="text-[10px] text-stone-500">Regions, continents, overland travel</span>
+                </button>
+                <button
+                  onClick={() => { setNewMapType('battle'); setPresetIndex(1); }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded border ${newMapType === 'battle' ? 'bg-amber-900/30 border-amber-700 text-amber-200' : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'}`}
+                  data-testid="button-map-type-battle"
+                >
+                  <Swords className="h-5 w-5" />
+                  <span className="text-sm font-medium">Battle Map</span>
+                  <span className="text-[10px] text-stone-500">Tactical scale, grid on by default</span>
+                </button>
+              </div>
+            </div>
+            <div>
               <Label className="text-xs text-stone-400 mb-1 block">Size</Label>
               <div className="space-y-1">
-                {SIZE_PRESETS.map((p, i) => (
+                {sizePresets.map((p, i) => (
                   <button
                     key={p.label}
                     onClick={() => { setPresetIndex(i); setUseCustomSize(false); }}

@@ -5,7 +5,7 @@
 // color fill. Grain is scattered independently of any large-scale
 // pattern, so unlike true Perlin-style noise it needs no seam-matching to
 // tile convincingly — fine texture doesn't show repeat boundaries.
-export type TerrainKind = 'grass' | 'forest' | 'sand' | 'water' | 'stone' | 'snow';
+export type TerrainKind = 'grass' | 'forest' | 'sand' | 'water' | 'stone' | 'snow' | 'road';
 
 export const TERRAIN_KINDS: { kind: TerrainKind; label: string }[] = [
   { kind: 'grass', label: 'Grass' },
@@ -14,6 +14,7 @@ export const TERRAIN_KINDS: { kind: TerrainKind; label: string }[] = [
   { kind: 'water', label: 'Water' },
   { kind: 'stone', label: 'Stone' },
   { kind: 'snow', label: 'Snow' },
+  { kind: 'road', label: 'Road / Dirt' },
 ];
 
 const TILE_SIZE = 220;
@@ -90,6 +91,12 @@ function buildTexture(kind: TerrainKind): HTMLCanvasElement {
       ctx.fillStyle = '#e8e8e8';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
       speckle(ctx, seed, 200, 1.5, 4, ['#ffffff', '#c9d6de', '#d8e2e8'], 0.15, 0.35);
+      break;
+    case 'road':
+      ctx.fillStyle = '#8b7355';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      speckle(ctx, seed, 220, 1.5, 4, ['#9c8264', '#6f5a41', '#7a6249'], 0.2, 0.4);
+      speckle(ctx, seed, 30, 4, 9, ['#5c4a35', '#a8916f'], 0.25, 0.4);
       break;
   }
   return canvas;

@@ -2609,6 +2609,10 @@ export const maps = pgTable("maps", {
   width: integer("width").notNull().default(2000),
   height: integer("height").notNull().default(1500),
   gridSize: integer("grid_size").notNull().default(50),
+  // "regional" (world/continent-scale) or "battle" (tactical encounter
+  // scale) — purely a UI/default hint (battle maps default their grid
+  // overlay on); nothing else in the data model branches on it.
+  mapType: text("map_type").notNull().default("regional"),
   // The painted/procedurally-generated terrain layer, flattened to a single
   // raster image (data URL uploaded through the existing image pipeline).
   // Null until the author paints or generates something.
