@@ -17,7 +17,7 @@ export const TERRAIN_KINDS: { kind: TerrainKind; label: string }[] = [
   { kind: 'road', label: 'Road / Dirt' },
 ];
 
-const TILE_SIZE = 220;
+const TILE_SIZE = 340;
 
 function rand(seed: { v: number }) {
   // Small deterministic-ish LCG so a given texture's grain is reproducible
@@ -52,23 +52,23 @@ function buildTexture(kind: TerrainKind): HTMLCanvasElement {
     case 'grass':
       ctx.fillStyle = '#4a7c3a';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 260, 2, 6, ['#5c9448', '#3a6530', '#6ba859'], 0.2, 0.45);
+      speckle(ctx, seed, 620, 2, 6, ['#5c9448', '#3a6530', '#6ba859'], 0.2, 0.45);
       break;
     case 'forest':
       ctx.fillStyle = '#2d5016';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 90, 8, 18, ['#1f3a0f', '#3a6620', '#254512'], 0.35, 0.6);
-      speckle(ctx, seed, 200, 2, 5, ['#3f7024', '#1a300c'], 0.2, 0.4);
+      speckle(ctx, seed, 215, 8, 18, ['#1f3a0f', '#3a6620', '#254512'], 0.35, 0.6);
+      speckle(ctx, seed, 480, 2, 5, ['#3f7024', '#1a300c'], 0.2, 0.4);
       break;
     case 'sand':
       ctx.fillStyle = '#d4b483';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 300, 1.5, 4, ['#e0c79a', '#bfa06d', '#c9ac7a'], 0.2, 0.4);
+      speckle(ctx, seed, 720, 1.5, 4, ['#e0c79a', '#bfa06d', '#c9ac7a'], 0.2, 0.4);
       break;
     case 'water':
       ctx.fillStyle = '#2a5f8f';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 95; i++) {
         const x = rand(seed) * TILE_SIZE, y = rand(seed) * TILE_SIZE;
         const w = 14 + rand(seed) * 22;
         ctx.globalAlpha = 0.12 + rand(seed) * 0.18;
@@ -84,19 +84,19 @@ function buildTexture(kind: TerrainKind): HTMLCanvasElement {
     case 'stone':
       ctx.fillStyle = '#6b6b6b';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 70, 6, 16, ['#4f4f4f', '#8a8a8a', '#5c5c5c'], 0.3, 0.55);
-      speckle(ctx, seed, 180, 1, 3, ['#3a3a3a', '#a0a0a0'], 0.2, 0.4);
+      speckle(ctx, seed, 170, 6, 16, ['#4f4f4f', '#8a8a8a', '#5c5c5c'], 0.3, 0.55);
+      speckle(ctx, seed, 430, 1, 3, ['#3a3a3a', '#a0a0a0'], 0.2, 0.4);
       break;
     case 'snow':
       ctx.fillStyle = '#e8e8e8';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 200, 1.5, 4, ['#ffffff', '#c9d6de', '#d8e2e8'], 0.15, 0.35);
+      speckle(ctx, seed, 480, 1.5, 4, ['#ffffff', '#c9d6de', '#d8e2e8'], 0.15, 0.35);
       break;
     case 'road':
       ctx.fillStyle = '#8b7355';
       ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      speckle(ctx, seed, 220, 1.5, 4, ['#9c8264', '#6f5a41', '#7a6249'], 0.2, 0.4);
-      speckle(ctx, seed, 30, 4, 9, ['#5c4a35', '#a8916f'], 0.25, 0.4);
+      speckle(ctx, seed, 530, 1.5, 4, ['#9c8264', '#6f5a41', '#7a6249'], 0.2, 0.4);
+      speckle(ctx, seed, 70, 4, 9, ['#5c4a35', '#a8916f'], 0.25, 0.4);
       break;
   }
   return canvas;
@@ -179,4 +179,162 @@ export function floodFillTerrain(ctx: CanvasRenderingContext2D, startX: number, 
   }
 
   ctx.putImageData(imgData, 0, 0);
+}
+
+// --- soft (feathered) painting -------------------------------------------
+// Inkarnate's own docs call out brush "softness" as a core control — a
+// hard-edged dab reads as pixelated/cutout, a soft one blends into
+// whatever's underneath. softness is 0 (hard circle) to 100 (very feathered).
+const softMaskCache = new Map<string, HTMLCanvasElement>();
+
+function getSoftMask(diameter: number, softness: number): HTMLCanvasElement {
+  const d = Math.max(4, Math.round(diameter));
+  const key = `${d}:${Math.round(softness)}`;
+  let mask = softMaskCache.get(key);
+  if (mask) return mask;
+  mask = document.createElement('canvas');
+  mask.width = d; mask.height = d;
+  const ctx = mask.getContext('2d')!;
+  const r = d / 2;
+  // softness 0 -> inner stop at ~0.92 (barely feathered), 100 -> inner
+  // stop at ~0.1 (almost entirely gradient).
+  const innerStop = Math.max(0.05, 0.92 - (softness / 100) * 0.82);
+  const grad = ctx.createRadialGradient(r, r, r * innerStop, r, r, r);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(r, r, r, 0, Math.PI * 2);
+  ctx.fill();
+  softMaskCache.set(key, mask);
+  if (softMaskCache.size > 60) {
+    // drop the oldest entry so brush-size dragging can't grow this forever
+    const firstKey = softMaskCache.keys().next().value;
+    if (firstKey) softMaskCache.delete(firstKey);
+  }
+  return mask;
+}
+
+// Paints one feathered dab, world-aligned so the texture inside it lines up
+// with dabs painted anywhere else on the same canvas (a CanvasPattern's
+// coordinate space is local to whatever context it's filled into, so
+// without the setTransform below each small dab canvas would restart the
+// tile from its own corner and the grain would visibly seam between dabs).
+export function paintSoftDab(mainCtx: CanvasRenderingContext2D, x: number, y: number, diameter: number, kind: TerrainKind, softness: number, scratch: HTMLCanvasElement) {
+  const d = Math.max(4, Math.round(diameter));
+  if (scratch.width !== d || scratch.height !== d) { scratch.width = d; scratch.height = d; }
+  const dctx = scratch.getContext('2d')!;
+  dctx.clearRect(0, 0, d, d);
+  dctx.globalCompositeOperation = 'source-over';
+  const pattern = getTerrainPattern(dctx, kind);
+  try {
+    (pattern as any).setTransform?.(new DOMMatrix().translate(x - d / 2, y - d / 2));
+  } catch { /* setTransform unsupported — dab still paints, just not perfectly grain-aligned */ }
+  dctx.fillStyle = pattern;
+  dctx.fillRect(0, 0, d, d);
+  dctx.globalCompositeOperation = 'destination-in';
+  dctx.drawImage(getSoftMask(d, softness), 0, 0);
+  dctx.globalCompositeOperation = 'source-over';
+  mainCtx.drawImage(scratch, x - d / 2, y - d / 2);
+}
+
+// --- feathered shape/path fills ------------------------------------------
+// Fills a smoothed closed (land shape) or open (river/road) path with soft
+// edges plus a thin blurred ink line for depth — the "shadow where waves
+// meet rocks" darkening Inkarnate's coastline guide describes, done here as
+// a blurred multiply-ish stroke rather than a hard outline. Bounded to the
+// path's own bounding box (not the whole map) so it stays cheap regardless
+// of overall map size.
+export function fillSmoothPathFeathered(
+  mainCtx: CanvasRenderingContext2D,
+  tracePath: (ctx: CanvasRenderingContext2D) => void,
+  points: { x: number; y: number }[],
+  kind: TerrainKind,
+  closed: boolean,
+  strokeWidth: number,
+  softnessPx: number,
+) {
+  if (points.length === 0) return;
+  const pad = Math.max(24, strokeWidth) + softnessPx * 2 + 16;
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+  const minX = Math.min(...xs) - pad, minY = Math.min(...ys) - pad;
+  const maxX = Math.max(...xs) + pad, maxY = Math.max(...ys) + pad;
+  const w = Math.max(1, Math.ceil(maxX - minX)), h = Math.max(1, Math.ceil(maxY - minY));
+
+  const silhouette = document.createElement('canvas');
+  silhouette.width = w; silhouette.height = h;
+  const sctx = silhouette.getContext('2d')!;
+  sctx.translate(-minX, -minY);
+  sctx.fillStyle = '#fff'; sctx.strokeStyle = '#fff';
+  sctx.lineCap = 'round'; sctx.lineJoin = 'round';
+  sctx.lineWidth = strokeWidth;
+  tracePath(sctx);
+  if (closed) sctx.fill(); else sctx.stroke();
+
+  const blurred = document.createElement('canvas');
+  blurred.width = w; blurred.height = h;
+  const bctx = blurred.getContext('2d')!;
+  bctx.filter = `blur(${Math.max(1, softnessPx)}px)`;
+  bctx.drawImage(silhouette, 0, 0);
+  bctx.filter = 'none';
+
+  const layer = document.createElement('canvas');
+  layer.width = w; layer.height = h;
+  const lctx = layer.getContext('2d')!;
+  lctx.save();
+  lctx.translate(-minX, -minY);
+  const pattern = getTerrainPattern(lctx, kind);
+  try { (pattern as any).setTransform?.(new DOMMatrix().translate(minX, minY)); } catch { /* unsupported */ }
+  lctx.fillStyle = pattern;
+  lctx.fillRect(minX, minY, w, h);
+  lctx.restore();
+  lctx.globalCompositeOperation = 'destination-in';
+  lctx.drawImage(blurred, 0, 0);
+  lctx.globalCompositeOperation = 'source-over';
+
+  // Ink shadow line for depth (coastline/riverbank), re-clipped to the
+  // feathered silhouette afterward so it can't spill past the soft edge.
+  lctx.save();
+  lctx.translate(-minX, -minY);
+  lctx.strokeStyle = 'rgba(32,24,14,0.5)';
+  lctx.lineWidth = closed ? 7 : strokeWidth * 0.22 + 5;
+  lctx.filter = 'blur(1.5px)';
+  lctx.lineCap = 'round'; lctx.lineJoin = 'round';
+  tracePath(lctx);
+  lctx.stroke();
+  lctx.restore();
+  lctx.globalCompositeOperation = 'destination-in';
+  lctx.drawImage(blurred, 0, 0);
+  lctx.globalCompositeOperation = 'source-over';
+
+  mainCtx.drawImage(layer, minX, minY);
+}
+
+// --- non-blocky procedural fill -------------------------------------------
+// Renders the classifier at a fraction of full resolution, then scales that
+// tiny canvas up with the browser's own bilinear filtering — which blends
+// neighboring cells continuously — instead of stamping hard-edged
+// fillRect() blocks straight onto the full-size canvas (the literal source
+// of a "pixelated" generated terrain: every block boundary is a hard seam).
+export function renderSmoothClassifiedTerrain(
+  mainCtx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  classify: (worldX: number, worldY: number) => TerrainKind,
+  downscale = 10,
+) {
+  const smallW = Math.max(1, Math.round(width / downscale));
+  const smallH = Math.max(1, Math.round(height / downscale));
+  const small = document.createElement('canvas');
+  small.width = smallW; small.height = smallH;
+  const sctx = small.getContext('2d')!;
+  for (let x = 0; x < smallW; x++) {
+    for (let y = 0; y < smallH; y++) {
+      sctx.fillStyle = getTerrainPattern(sctx, classify(x * downscale, y * downscale));
+      sctx.fillRect(x, y, 1, 1);
+    }
+  }
+  mainCtx.imageSmoothingEnabled = true;
+  (mainCtx as any).imageSmoothingQuality = 'high';
+  mainCtx.drawImage(small, 0, 0, smallW, smallH, 0, 0, width, height);
 }

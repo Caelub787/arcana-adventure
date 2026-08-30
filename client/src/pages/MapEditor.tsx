@@ -41,7 +41,7 @@ import {
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, floodFillTerrain } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderSmoothClassifiedTerrain } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
@@ -96,7 +96,6 @@ function biomeTerrainFor(n: number): TerrainKind {
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
 const UNDO_LIMIT = 8;
-const COASTLINE_STROKE = 'rgba(40,28,15,0.35)';
 
 function pillClass(active: boolean) {
   return `px-2.5 py-1 rounded text-xs border ${active ? 'bg-amber-900/30 text-amber-200 border-amber-700' : 'bg-stone-800 text-stone-300 border-stone-700 hover:bg-stone-700'}`;
@@ -136,6 +135,10 @@ export default function MapEditor() {
   const [terrainKind, setTerrainKind] = useState<TerrainKind>('grass');
   const [pathKind, setPathKind] = useState<PathKind>('river');
   const [brushSize, setBrushSize] = useState(50);
+  // 0 = hard edge, 100 = maximally feathered — mirrors Inkarnate's brush
+  // "softness" control, applied to the freehand brush's dabs and to the
+  // land-shape/river-road fill edges alike.
+  const [softness, setSoftness] = useState(55);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
   const setShapePoints = useCallback((next: Point[]) => {
@@ -169,6 +172,7 @@ export default function MapEditor() {
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchRef = useRef<null | { startDist: number; startMid: { x: number; y: number }; startZoom: number; startPan: { x: number; y: number } }>(null);
   const undoStackRef = useRef<ImageData[]>([]);
+  const dabScratchRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
 
   const stampAssetsById = useMemo(() => {
     const m = new Map<string, StampAsset>();
@@ -277,31 +281,28 @@ export default function MapEditor() {
     if (canvas && ctx && snap) ctx.putImageData(snap, 0, 0);
   };
 
-  // Paints a continuous stroke rather than a series of separate dabs: each
-  // call draws a round-capped line from wherever the brush last was to
-  // (x, y), so a fast drag reads as one solid line instead of disconnected
-  // circles with gaps between them. lastPaintPosRef is null at the start
-  // of a stroke (pointerdown) so the first call just drops a single dot.
+  // Paints dense, overlapping SOFT dabs rather than a hard-edged line: each
+  // call stamps one or more feathered dabs between wherever the brush last
+  // was and (x, y) — spaced closely enough to overlap heavily, the same
+  // stamping technique real paint-brush engines use — so a drag reads as
+  // one continuous, softly-blended stroke instead of either gapped circles
+  // or a hard-edged pixelated line. lastPaintPosRef is null at the start of
+  // a stroke (pointerdown) so the first call just drops a single dab.
   const lastPaintPosRef = useRef<{ x: number; y: number } | null>(null);
   const paintAt = (x: number, y: number) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    const pattern = getTerrainPattern(ctx, terrainKind);
     const last = lastPaintPosRef.current;
     if (!last) {
-      ctx.fillStyle = pattern;
-      ctx.beginPath();
-      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      ctx.fill();
+      paintSoftDab(ctx, x, y, brushSize, terrainKind, softness, dabScratchRef.current);
     } else {
-      ctx.strokeStyle = pattern;
-      ctx.lineWidth = brushSize;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.beginPath();
-      ctx.moveTo(last.x, last.y);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      const dist = Math.hypot(x - last.x, y - last.y);
+      const spacing = Math.max(2, brushSize * 0.18);
+      const steps = Math.max(1, Math.round(dist / spacing));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        paintSoftDab(ctx, last.x + (x - last.x) * t, last.y + (y - last.y) * t, brushSize, terrainKind, softness, dabScratchRef.current);
+      }
     }
     lastPaintPosRef.current = { x, y };
   };
@@ -310,33 +311,16 @@ export default function MapEditor() {
     const points = shapePointsRef.current;
     const canvas = canvasRef.current;
     if (!canvas) { setShapePoints([]); return; }
+    const ctx = canvas.getContext('2d')!;
+    const softnessPx = 1 + (softness / 100) * 10;
     if (terrainMode === 'shape') {
       if (points.length < 3) { setShapePoints([]); return; }
       pushUndoSnapshot();
-      const ctx = canvas.getContext('2d')!;
-      traceSmoothClosedPath(ctx, points);
-      ctx.fillStyle = getTerrainPattern(ctx, terrainKind);
-      ctx.fill();
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = COASTLINE_STROKE;
-      ctx.stroke();
+      fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx);
     } else if (terrainMode === 'path') {
       if (points.length < 2) { setShapePoints([]); return; }
       pushUndoSnapshot();
-      const ctx = canvas.getContext('2d')!;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      // Dark ink edge first (slightly wider), then the textured stroke on
-      // top — gives the same hand-inked riverbank/road-edge look as the
-      // land shape's coastline.
-      traceSmoothOpenPath(ctx, points);
-      ctx.lineWidth = brushSize + 6;
-      ctx.strokeStyle = COASTLINE_STROKE;
-      ctx.stroke();
-      traceSmoothOpenPath(ctx, points);
-      ctx.lineWidth = brushSize;
-      ctx.strokeStyle = getTerrainPattern(ctx, pathKind === 'river' ? 'water' : 'road');
-      ctx.stroke();
+      fillSmoothPathFeathered(ctx, (c) => traceSmoothOpenPath(c, points), points, pathKind === 'river' ? 'water' : 'road', false, brushSize, softnessPx);
     }
     setShapePoints([]);
   };
@@ -563,15 +547,11 @@ export default function MapEditor() {
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
     const noise = makeNoise2D(Math.random() * 1000);
-    const block = 12;
     const scale = 1 / 260;
-    for (let px = 0; px < map.width; px += block) {
-      for (let py = 0; py < map.height; py += block) {
-        const n = fractalNoise(noise, px * scale, py * scale);
-        ctx.fillStyle = getTerrainPattern(ctx, biomeTerrainFor(n));
-        ctx.fillRect(px, py, block, block);
-      }
-    }
+    renderSmoothClassifiedTerrain(
+      ctx, map.width, map.height,
+      (worldX, worldY) => biomeTerrainFor(fractalNoise(noise, worldX * scale, worldY * scale)),
+    );
   };
 
   const handleSave = async () => {
@@ -665,11 +645,17 @@ export default function MapEditor() {
         <>
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
           <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
-          <p className="text-xs text-stone-500 mt-1">{brushSize}px</p>
+          <p className="text-xs text-stone-500 mt-1 mb-2">{brushSize}px</p>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Softness</p>
+          <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
+          <p className="text-xs text-stone-500 mt-1">{softness}%</p>
         </>
       )}
       {terrainMode === 'shape' && (
         <>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Softness</p>
+          <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
+          <p className="text-xs text-stone-500 mt-1 mb-2">{softness}%</p>
           <p className="text-xs text-stone-500 mb-2">Tap to place points around a landmass. Tap near your first point (or press Finish) to close it into a smooth coastline.</p>
           {shapePoints.length > 0 && (
             <div className="flex gap-1.5">
@@ -692,6 +678,9 @@ export default function MapEditor() {
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Width</p>
           <Slider min={8} max={120} step={2} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
           <p className="text-xs text-stone-500 mt-1 mb-2">{brushSize}px</p>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Softness</p>
+          <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
+          <p className="text-xs text-stone-500 mt-1 mb-2">{softness}%</p>
           <p className="text-xs text-stone-500 mb-2">Tap to place points along the {pathKind}. Press Finish when done — it won't auto-close like a land shape.</p>
           {shapePoints.length > 0 && (
             <div className="flex gap-1.5">
