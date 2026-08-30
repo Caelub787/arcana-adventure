@@ -49,7 +49,7 @@ import {
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, type TerrainBand, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered, renderOrganicTerrain } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
@@ -162,6 +162,61 @@ function makeElevationFn(opts: {
   };
 }
 
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+// Turns the elevation field into an actual set of outline points — the
+// exact same shape of input the Land Shape tool produces when you
+// hand-click points around a coastline — so "Generate" can hand them to
+// the identical fillSmoothPathFeathered() call finishTerrainPoints() uses
+// and render pixel-for-pixel the same way a manually-drawn land shape
+// would (same soft feather, same ink-shadow coastline, same texture),
+// rather than a separate biome-painting algorithm. Anchors on the highest
+// point in a coarse probe grid, then walks a ray outward at each of
+// numPoints angles and binary-searches where that ray's elevation drops
+// below sea level — a "star-shaped from center" polygon, which is also
+// how a person naturally clicks points going around a landmass by hand.
+function generateLandmassPoints(
+  width: number,
+  height: number,
+  elevationAt: (worldX: number, worldY: number) => number,
+  seaLevel: number,
+  featureSize: number,
+): Point[] {
+  const probe = 20;
+  let anchorX = width / 2, anchorY = height / 2, bestE = -1;
+  for (let i = 0; i < probe; i++) {
+    for (let j = 0; j < probe; j++) {
+      const x = (i + 0.5) * (width / probe);
+      const y = (j + 0.5) * (height / probe);
+      const e = elevationAt(x, y);
+      if (e > bestE) { bestE = e; anchorX = x; anchorY = y; }
+    }
+  }
+  if (bestE < seaLevel) return [];
+
+  const numPoints = 40;
+  const maxRadius = Math.max(60, Math.min(Math.min(width, height) * 0.9, featureSize * 1.8));
+  const points: Point[] = [];
+  for (let i = 0; i < numPoints; i++) {
+    const angle = (i / numPoints) * Math.PI * 2;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    let lo = 0, hi = maxRadius;
+    if (elevationAt(anchorX + dx * hi, anchorY + dy * hi) > seaLevel) {
+      points.push({ x: clamp(anchorX + dx * hi, 0, width), y: clamp(anchorY + dy * hi, 0, height) });
+      continue;
+    }
+    for (let s = 0; s < 16; s++) {
+      const mid = (lo + hi) / 2;
+      if (elevationAt(anchorX + dx * mid, anchorY + dy * mid) > seaLevel) lo = mid; else hi = mid;
+    }
+    const r = (lo + hi) / 2;
+    points.push({ x: clamp(anchorX + dx * r, 0, width), y: clamp(anchorY + dy * r, 0, height) });
+  }
+  return points;
+}
+
 type GenScaleKey = 'world' | 'continent' | 'region' | 'city';
 const GEN_SCALE_PRESETS: { key: GenScaleKey; label: string; featureSize: number }[] = [
   { key: 'world', label: 'World Map', featureSize: 3000 },
@@ -268,6 +323,13 @@ export default function MapEditor() {
   const pinchRef = useRef<null | { startDist: number; startMid: { x: number; y: number }; startZoom: number; startPan: { x: number; y: number } }>(null);
   const undoStackRef = useRef<{ layerId: string; snap: ImageData }[]>([]);
   const dabScratchRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
+  // A touch brush-stroke doesn't paint the instant a finger lands — a
+  // second finger arriving shortly after (to pan/zoom) can't be
+  // distinguished from a one-finger stroke starting until either a beat
+  // passes with no second finger, or the finger moves enough to prove it's
+  // a deliberate single-finger drag. Without this, every two-finger pan
+  // gesture stamped a stray dab where the first finger touched down.
+  const pendingBrushRef = useRef<null | { pointerId: number; clientX: number; clientY: number; timer: ReturnType<typeof setTimeout> }>(null);
 
   const stampAssetsById = useMemo(() => {
     const m = new Map<string, StampAsset>();
@@ -411,6 +473,29 @@ export default function MapEditor() {
     lastPaintPosRef.current = { x, y };
   };
 
+  // See pendingBrushRef above: cancels an armed-but-not-yet-committed touch
+  // brush stroke (a second finger arrived, meaning this was actually the
+  // start of a two-finger pan/zoom, not a paint stroke).
+  const cancelPendingBrush = () => {
+    if (pendingBrushRef.current) {
+      clearTimeout(pendingBrushRef.current.timer);
+      pendingBrushRef.current = null;
+    }
+  };
+
+  // Commits an armed touch brush stroke as a real paint action, either
+  // because the disambiguation delay elapsed with no second finger, the
+  // finger moved enough to prove it's a deliberate stroke, or it lifted
+  // as a quick tap (which should still drop a single dab).
+  const commitPendingBrush = (worldX: number, worldY: number) => {
+    if (!pendingBrushRef.current) return;
+    cancelPendingBrush();
+    pushUndoSnapshot();
+    isPaintingRef.current = true;
+    lastPaintPosRef.current = null;
+    paintAt(worldX, worldY);
+  };
+
   const finishTerrainPoints = () => {
     const points = shapePointsRef.current;
     const canvas = paintCanvasRefs.current.get(activePaintLayerId);
@@ -474,8 +559,11 @@ export default function MapEditor() {
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (activePointersRef.current.size === 2) {
       // Second finger down: switch to two-finger pan/zoom, abort whatever
-      // the first finger was doing.
+      // the first finger was doing (including an armed-but-not-yet-fired
+      // touch brush stroke — this is what proves it was actually the start
+      // of a pan/zoom gesture, not a one-finger stroke).
       isPaintingRef.current = false;
+      cancelPendingBrush();
       scatterRef.current = null;
       dragRef.current = null;
       tapStartRef.current = null;
@@ -501,10 +589,25 @@ export default function MapEditor() {
 
     const { x, y } = toWorld(e.clientX, e.clientY);
     if (tool === 'terrain') {
-      pushUndoSnapshot();
-      isPaintingRef.current = true;
-      lastPaintPosRef.current = null;
-      paintAt(x, y);
+      if (e.pointerType === 'touch') {
+        // Don't commit to painting yet — a second finger arriving in the
+        // next moment (to pan/zoom) will cancel this via the size===2
+        // branch above. Committing happens on timeout, on the finger
+        // moving enough to prove it's a deliberate stroke, or on a quick
+        // tap-and-release with no second finger.
+        cancelPendingBrush();
+        pendingBrushRef.current = {
+          pointerId: e.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          timer: setTimeout(() => commitPendingBrush(x, y), 100),
+        };
+      } else {
+        pushUndoSnapshot();
+        isPaintingRef.current = true;
+        lastPaintPosRef.current = null;
+        paintAt(x, y);
+      }
     } else if (tool === 'assets' && selectedStampAssetId) {
       scatterRef.current = { lastX: x, lastY: y, lastTime: performance.now(), placedAny: false };
       placeStamp(x, y, false);
@@ -535,6 +638,18 @@ export default function MapEditor() {
       return;
     }
     if (activePointersRef.current.size >= 2) return;
+
+    if (pendingBrushRef.current && pendingBrushRef.current.pointerId === e.pointerId) {
+      // Still only one finger down — if it's moved enough to prove this is
+      // a deliberate stroke (not a static wait for a second finger), start
+      // painting immediately rather than waiting out the full delay.
+      const dist = Math.hypot(e.clientX - pendingBrushRef.current.clientX, e.clientY - pendingBrushRef.current.clientY);
+      if (dist > 6) {
+        const { x, y } = toWorld(e.clientX, e.clientY);
+        commitPendingBrush(x, y);
+      }
+      return;
+    }
 
     if (isPanningRef.current) {
       setPan({ x: panStartRef.current.panX + (e.clientX - panStartRef.current.x), y: panStartRef.current.panY + (e.clientY - panStartRef.current.y) });
@@ -577,6 +692,13 @@ export default function MapEditor() {
     const wasTap = !!tapStartRef.current && Math.hypot(e.clientX - tapStartRef.current.x, e.clientY - tapStartRef.current.y) < 10;
     activePointersRef.current.delete(e.pointerId);
     if (activePointersRef.current.size < 2) pinchRef.current = null;
+
+    if (pendingBrushRef.current && pendingBrushRef.current.pointerId === e.pointerId) {
+      // Finger lifted before the disambiguation delay fired and no second
+      // finger ever showed up — a genuine quick tap, so drop a single dab.
+      const { x, y } = toWorld(e.clientX, e.clientY);
+      commitPendingBrush(x, y);
+    }
 
     if (wasTap && tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path')) {
       const { x, y } = toWorld(e.clientX, e.clientY);
@@ -645,11 +767,17 @@ export default function MapEditor() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedObjectId, maxVariantCount]);
 
+  // Generates one landmass and draws it with the exact same call
+  // finishTerrainPoints() uses to finish a hand-drawn Land Shape — same
+  // feathered edge, same ink-shadow coastline, same texture — using
+  // whichever terrain kind is currently selected in the Terrain flyout, so
+  // it reads as "a land shape someone drew," not a distinct auto-painted
+  // map. Additive (doesn't clear the layer first): click again to drop
+  // another landmass elsewhere, building up an archipelago by hand-off.
   const runGenerate = () => {
+    if (!map) return;
     const canvas = paintCanvasRefs.current.get(activePaintLayerId);
-    if (!map || !canvas) return;
-    pushUndoSnapshot();
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     const elevationAt = makeElevationFn({
       seed: Math.random() * 100000,
@@ -658,17 +786,14 @@ export default function MapEditor() {
       coastlineRoughness: genRoughness / 100,
     });
     const seaLevel = 1 - genLandAmount / 100;
-    const landRange = Math.max(0.05, genLandAmount / 100);
-    const bands: TerrainBand[] = [
-      { kind: 'water', max: seaLevel },
-      { kind: 'sand', max: seaLevel + landRange * 0.08 },
-      { kind: 'grass', max: seaLevel + landRange * 0.45 },
-      { kind: 'forest', max: seaLevel + landRange * 0.72 },
-      { kind: 'stone', max: seaLevel + landRange * 0.90 },
-      { kind: 'snow', max: 1 },
-    ];
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    renderOrganicTerrain(ctx, map.width, map.height, elevationAt, bands, textureScale, 4);
+    const points = generateLandmassPoints(map.width, map.height, elevationAt, seaLevel, genFeatureSize);
+    if (points.length < 3) {
+      toast({ title: "No land generated", description: "Try a higher Land Amount or a different Feature Size, then Generate again." });
+      return;
+    }
+    pushUndoSnapshot();
+    const softnessPx = 1 + (softness / 100) * 10;
+    fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
   };
 
   // Composites background + visible paint layers (respecting each layer's
@@ -1322,7 +1447,7 @@ function GenerateTerrainDialog({
           <DialogTitle className="text-stone-200">Generate Terrain</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-stone-500">Generates onto the active paint layer ({targetLayerName || 'none'}), using the same textures as the brush. Adjust and press Generate again for a new variation.</p>
+          <p className="text-xs text-stone-500">Draws one landmass onto the active paint layer ({targetLayerName || 'none'}) in the currently selected texture — exactly like finishing a hand-drawn Land Shape. It doesn't clear anything first, so pressing Generate again drops another landmass elsewhere — click a few times to build up a continent or an archipelago.</p>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1.5">Map Scale</p>
@@ -1343,19 +1468,19 @@ function GenerateTerrainDialog({
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Feature Size</p>
             <Slider min={50} max={4000} step={25} value={[featureSize]} onValueChange={([v]) => onFeatureSizeChange(v)} data-testid="slider-gen-feature-size" />
-            <p className="text-xs text-stone-500 mt-1">{featureSize}px — how large a single landmass/region reads, independent of the preset above</p>
+            <p className="text-xs text-stone-500 mt-1">{featureSize}px — roughly how big this one landmass will be, independent of the preset above</p>
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Land Amount</p>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Landmass Size</p>
             <Slider min={5} max={95} step={5} value={[landAmount]} onValueChange={([v]) => onLandAmountChange(v)} data-testid="slider-gen-land-amount" />
-            <p className="text-xs text-stone-500 mt-1">{landAmount}% land, {100 - landAmount}% water</p>
+            <p className="text-xs text-stone-500 mt-1">{landAmount}% — how far out the coastline extends before it's water</p>
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Islands / Fragmentation</p>
+            <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Coastline Complexity</p>
             <Slider min={0} max={100} step={5} value={[fragmentation]} onValueChange={([v]) => onFragmentationChange(v)} data-testid="slider-gen-fragmentation" />
-            <p className="text-xs text-stone-500 mt-1">{fragmentation === 0 ? "One solid landmass" : `${fragmentation}% — breaks land into islands/archipelago`}</p>
+            <p className="text-xs text-stone-500 mt-1">{fragmentation === 0 ? "A simple, rounded coastline" : `${fragmentation}% — more coves, peninsulas, and inlets`}</p>
           </div>
 
           <div>
