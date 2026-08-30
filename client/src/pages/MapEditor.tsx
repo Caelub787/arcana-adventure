@@ -992,6 +992,22 @@ export default function MapEditor() {
         <Button size="sm" variant="outline" className={`border-stone-700 shrink-0 ${showGrid ? 'text-amber-400 border-amber-700' : ''}`} onClick={() => setShowGrid((v) => !v)} title="Toggle battle-map grid" data-testid="button-toggle-grid">
           <Grid3x3 className="h-3.5 w-3.5" />
         </Button>
+        <Input
+          key={`grid-${map.id}`}
+          type="number"
+          min={5}
+          max={500}
+          defaultValue={map.gridSize}
+          onBlur={(e) => {
+            const parsed = Math.round(Number(e.target.value));
+            const next = Number.isFinite(parsed) ? Math.max(5, Math.min(500, parsed)) : map.gridSize;
+            e.target.value = String(next);
+            if (next !== map.gridSize) updateMapMutation.mutate({ gridSize: next });
+          }}
+          title="Grid cell size in pixels — carried over exactly when you import this map as a Scene, so tokens line up"
+          className="h-8 w-16 bg-stone-900 border-stone-700 text-xs px-1.5 shrink-0"
+          data-testid="input-grid-size"
+        />
         <Button size="sm" variant="outline" className="border-stone-700 shrink-0" onClick={handleGenerate} title={`Generate onto: ${activePaintLayer?.name ?? ''}`} data-testid="button-generate-terrain">
           <Wand2 className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Generate</span>
         </Button>
