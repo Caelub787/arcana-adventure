@@ -1,12 +1,18 @@
 // Map Maker editor — Inkarnate-inspired: a bounded map "sheet" you paint
 // textured terrain onto and scatter/place asset stamps over, organized
 // into layers, navigated with cursor/touch-anchored pan/zoom. Fundamentals:
-//   - Terrain has two modes: a freehand textured brush, and a vector Land
-//     Shape tool (tap points around a landmass, close it, and it's smoothed
-//     into a soft ink-outlined coastline and filled with the chosen
-//     texture) — the actual mechanic Inkarnate maps are recognizable by,
-//     not a raster blob. Both bake onto the active paint layer, which
-//     "Generate Terrain" can also fill in one shot from a noise heightmap.
+//   - Terrain has a freehand textured brush, plus a Land Shape tool that's
+//     ALSO a brush — drag roughly around where a landmass should be, and on
+//     release its rough coverage gets traced (marching squares) into a
+//     closed coastline, decimated to a sane point count, given organic
+//     per-vertex edge jitter (so it never reads as a smoothed-out circle),
+//     then filled with soft ink-outlined edges and the chosen texture —
+//     the actual mechanic Inkarnate's land tool is recognizable by, not a
+//     raster blob. Both bake onto the active paint layer, which "Generate
+//     Terrain" also fills from — tracing the real zero-contour of a noise
+//     field (the same marching-squares machinery), not a single-center
+//     ray-cast, so it comes out with real bays/peninsulas/islands instead
+//     of a blob.
 //   - Painting reveals a single large, already-tiled texture image (per
 //     terrain kind + scale) rather than stamping independent copies per
 //     dab/shape — every tool samples the SAME cached source canvas at
@@ -49,7 +55,7 @@ import {
 import { api, type StampAsset, type MapObject } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
-import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, fillSmoothPathFeathered } from "@/components/mapmaker/terrainTextures";
+import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, paintSoftMaskDab, fillSmoothPathFeathered } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
 type Tool = 'terrain' | 'assets' | 'select';
@@ -166,55 +172,182 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-// Turns the elevation field into an actual set of outline points — the
-// exact same shape of input the Land Shape tool produces when you
-// hand-click points around a coastline — so "Generate" can hand them to
-// the identical fillSmoothPathFeathered() call finishTerrainPoints() uses
-// and render pixel-for-pixel the same way a manually-drawn land shape
-// would (same soft feather, same ink-shadow coastline, same texture),
-// rather than a separate biome-painting algorithm. Anchors on the highest
-// point in a coarse probe grid, then walks a ray outward at each of
-// numPoints angles and binary-searches where that ray's elevation drops
-// below sea level — a "star-shaped from center" polygon, which is also
-// how a person naturally clicks points going around a landmass by hand.
-function generateLandmassPoints(
+interface ContourSeg { a: Point; b: Point; aKey: string; bKey: string; }
+
+// --- marching squares: turns any scalar field into real coastline shapes --
+// A single center radially ray-cast into a "star" polygon can never
+// produce an actual bay, peninsula, fjord, or separate island — every one
+// of those requires the boundary to loop back on itself, which is
+// impossible from one center. Real (and believable fantasy) coastlines
+// come out of tracing the zero-contour of a 2D field, so that's what this
+// does: sample `valueAt` on a grid (positive = land, negative = water,
+// already offset by whatever threshold the caller cares about), run
+// marching squares to find every place the sign flips, and link the
+// resulting edge segments into closed loops. The whole field's OUTER ring
+// of samples is forced negative so every contour closes cleanly at the
+// map edge instead of running off it. Reused by both Generate (elevation
+// field) and the Land Brush tool (a painted coverage mask's alpha).
+function extractContoursFromField(
   width: number,
   height: number,
-  elevationAt: (worldX: number, worldY: number) => number,
-  seaLevel: number,
-  featureSize: number,
-): Point[] {
-  const probe = 20;
-  let anchorX = width / 2, anchorY = height / 2, bestE = -1;
-  for (let i = 0; i < probe; i++) {
-    for (let j = 0; j < probe; j++) {
-      const x = (i + 0.5) * (width / probe);
-      const y = (j + 0.5) * (height / probe);
-      const e = elevationAt(x, y);
-      if (e > bestE) { bestE = e; anchorX = x; anchorY = y; }
-    }
-  }
-  if (bestE < seaLevel) return [];
+  valueAt: (x: number, y: number) => number,
+  cellSize: number,
+): Point[][] {
+  const cols = Math.max(2, Math.round(width / cellSize));
+  const rows = Math.max(2, Math.round(height / cellSize));
+  const cw = width / cols, ch = height / rows;
+  const gw = cols + 1, gh = rows + 1;
 
-  const numPoints = 40;
-  const maxRadius = Math.max(60, Math.min(Math.min(width, height) * 0.9, featureSize * 1.8));
-  const points: Point[] = [];
-  for (let i = 0; i < numPoints; i++) {
-    const angle = (i / numPoints) * Math.PI * 2;
-    const dx = Math.cos(angle), dy = Math.sin(angle);
-    let lo = 0, hi = maxRadius;
-    if (elevationAt(anchorX + dx * hi, anchorY + dy * hi) > seaLevel) {
-      points.push({ x: clamp(anchorX + dx * hi, 0, width), y: clamp(anchorY + dy * hi, 0, height) });
-      continue;
+  const vals = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const isBorder = gx === 0 || gy === 0 || gx === gw - 1 || gy === gh - 1;
+      vals[gy * gw + gx] = isBorder ? -1 : valueAt(gx * cw, gy * ch);
     }
-    for (let s = 0; s < 16; s++) {
-      const mid = (lo + hi) / 2;
-      if (elevationAt(anchorX + dx * mid, anchorY + dy * mid) > seaLevel) lo = mid; else hi = mid;
-    }
-    const r = (lo + hi) / 2;
-    points.push({ x: clamp(anchorX + dx * r, 0, width), y: clamp(anchorY + dy * r, 0, height) });
   }
-  return points;
+  const at = (gx: number, gy: number) => vals[gy * gw + gx];
+
+  const segments: ContourSeg[] = [];
+  const lerpEdge = (x0: number, y0: number, v0: number, x1: number, y1: number, v1: number): Point => {
+    const t = v0 === v1 ? 0.5 : v0 / (v0 - v1);
+    return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
+  };
+
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      const tl = at(cx, cy), tr = at(cx + 1, cy), br = at(cx + 1, cy + 1), bl = at(cx, cy + 1);
+      let caseIdx = 0;
+      if (tl > 0) caseIdx |= 8;
+      if (tr > 0) caseIdx |= 4;
+      if (br > 0) caseIdx |= 2;
+      if (bl > 0) caseIdx |= 1;
+      if (caseIdx === 0 || caseIdx === 15) continue;
+
+      const x0 = cx * cw, x1 = (cx + 1) * cw, y0 = cy * ch, y1 = (cy + 1) * ch;
+      const top = { pt: lerpEdge(x0, y0, tl, x1, y0, tr), key: `h:${cx}:${cy}` };
+      const bottom = { pt: lerpEdge(x0, y1, bl, x1, y1, br), key: `h:${cx}:${cy + 1}` };
+      const left = { pt: lerpEdge(x0, y0, tl, x0, y1, bl), key: `v:${cx}:${cy}` };
+      const right = { pt: lerpEdge(x1, y0, tr, x1, y1, br), key: `v:${cx + 1}:${cy}` };
+      const addSeg = (e1: { pt: Point; key: string }, e2: { pt: Point; key: string }) => {
+        segments.push({ a: e1.pt, b: e2.pt, aKey: e1.key, bKey: e2.key });
+      };
+      const center = tl + tr + br + bl;
+
+      switch (caseIdx) {
+        case 1: addSeg(left, bottom); break;
+        case 2: addSeg(bottom, right); break;
+        case 3: addSeg(left, right); break;
+        case 4: addSeg(top, right); break;
+        case 5: if (center > 0) { addSeg(top, left); addSeg(bottom, right); } else { addSeg(top, right); addSeg(left, bottom); } break;
+        case 6: addSeg(top, bottom); break;
+        case 7: addSeg(top, left); break;
+        case 8: addSeg(left, top); break;
+        case 9: addSeg(top, bottom); break;
+        case 10: if (center > 0) { addSeg(top, right); addSeg(left, bottom); } else { addSeg(top, left); addSeg(bottom, right); } break;
+        case 11: addSeg(top, right); break;
+        case 12: addSeg(left, right); break;
+        case 13: addSeg(bottom, right); break;
+        case 14: addSeg(left, bottom); break;
+      }
+    }
+  }
+
+  // Link segments into closed loops by walking shared edge-crossing keys —
+  // in a field with a forced-negative border, every key touches exactly 0
+  // or 2 segments, so this always closes.
+  const byKey = new Map<string, { seg: ContourSeg; end: 'a' | 'b' }[]>();
+  const record = (key: string, seg: ContourSeg, end: 'a' | 'b') => {
+    let list = byKey.get(key);
+    if (!list) { list = []; byKey.set(key, list); }
+    list.push({ seg, end });
+  };
+  for (const seg of segments) { record(seg.aKey, seg, 'a'); record(seg.bKey, seg, 'b'); }
+
+  const visited = new Set<ContourSeg>();
+  const contours: Point[][] = [];
+  for (const startSeg of segments) {
+    if (visited.has(startSeg)) continue;
+    visited.add(startSeg);
+    const contour: Point[] = [startSeg.a];
+    let currentSeg: ContourSeg = startSeg;
+    let currentEnd: 'a' | 'b' = 'b';
+    let guard = 0;
+    while (guard++ < segments.length + 4) {
+      const pt: Point = currentEnd === 'a' ? currentSeg.a : currentSeg.b;
+      contour.push(pt);
+      const key: string = currentEnd === 'a' ? currentSeg.aKey : currentSeg.bKey;
+      const candidates: { seg: ContourSeg; end: 'a' | 'b' }[] = byKey.get(key) || [];
+      const next: { seg: ContourSeg; end: 'a' | 'b' } | undefined = candidates.find((c: { seg: ContourSeg; end: 'a' | 'b' }) => c.seg !== currentSeg && !visited.has(c.seg));
+      if (!next) break;
+      visited.add(next.seg);
+      currentSeg = next.seg;
+      currentEnd = next.end === 'a' ? 'b' : 'a';
+    }
+    if (contour.length >= 3) contours.push(contour);
+  }
+  return contours;
+}
+
+function boundingBoxOf(points: Point[]) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+// Thins a dense marching-squares contour down to a sparse point list by
+// keeping a point only once the path has traveled at least `minSpacing`
+// since the last kept one — the same rough point density a person
+// clicking a Land Shape by hand would produce, which is what the
+// Catmull-Rom smoothing in traceSmoothClosedPath is tuned for (too many
+// points fights the smoothing and looks jagged even after it).
+function decimateContour(points: Point[], minSpacing: number): Point[] {
+  if (points.length <= 4) return points;
+  const out: Point[] = [points[0]];
+  let last = points[0];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (Math.hypot(p.x - last.x, p.y - last.y) >= minSpacing) {
+      out.push(p);
+      last = p;
+    }
+  }
+  return out.length >= 3 ? out : points.slice(0, Math.min(points.length, 8));
+}
+
+// Pushes each vertex outward (or inward) by a noise-driven amount along its
+// local normal — the "never a perfect circle" wobble Inkarnate's land brush
+// applies to a freehand stroke before turning it into a coastline. Reuses
+// the same tangent-normal-with-centroid-sign-correction trick as
+// offsetPolygonOutward, just with a signed rather than one-directional
+// offset, and samples noise continuously around the loop (via cos/sin of
+// each point's position in the sequence) so neighboring points move
+// together instead of independently jittering like static.
+function jitterContourOrganic(points: Point[], amount: number, seed: number): Point[] {
+  const n = points.length;
+  if (amount <= 0 || n < 3) return points;
+  const noise = makeNoise2D(seed);
+  let cx = 0, cy = 0;
+  for (const p of points) { cx += p.x; cy += p.y; }
+  cx /= n; cy /= n;
+
+  return points.map((p, i) => {
+    const prev = points[(i - 1 + n) % n];
+    const next = points[(i + 1) % n];
+    let nx = -(next.y - prev.y), ny = (next.x - prev.x);
+    const len = Math.hypot(nx, ny) || 1;
+    nx /= len; ny /= len;
+    const toCentroidX = cx - p.x, toCentroidY = cy - p.y;
+    if (nx * toCentroidX + ny * toCentroidY > 0) { nx = -nx; ny = -ny; }
+    const t = (i / n) * Math.PI * 2;
+    const w = fractalNoise(noise, Math.cos(t) * 2.5 + 5, Math.sin(t) * 2.5 + 5);
+    const offset = (w - 0.5) * 2 * amount;
+    return { x: p.x + nx * offset, y: p.y + ny * offset };
+  });
 }
 
 // Pushes every vertex of a closed polygon outward along its local normal
@@ -338,6 +471,11 @@ export default function MapEditor() {
   // coastline — a "waves lapping the shore" flourish applied to any closed
   // land shape (hand-drawn or generated), not just Generate specifically.
   const [showWaveLines, setShowWaveLines] = useState(true);
+  // How much organic wobble the Land Brush tool adds to a freehand
+  // stroke's traced outline — 0 leaves it looking like a rounded blob,
+  // higher values make it read as an actual hand-drawn coastline instead
+  // of "never a straight circle," per Inkarnate's land brush.
+  const [shapeJitter, setShapeJitter] = useState(45);
   const [shapePoints, setShapePointsState] = useState<Point[]>([]);
   const shapePointsRef = useRef<Point[]>([]);
   const setShapePoints = useCallback((next: Point[]) => {
@@ -388,6 +526,13 @@ export default function MapEditor() {
   // a deliberate single-finger drag. Without this, every two-finger pan
   // gesture stamped a stray dab where the first finger touched down.
   const pendingBrushRef = useRef<null | { pointerId: number; clientX: number; clientY: number; timer: ReturnType<typeof setTimeout> }>(null);
+  // Land Shape mode paints into this scratch canvas (a rough coverage
+  // mask, rendered on screen at partial opacity as live feedback) instead
+  // of the paint layer directly — on release its coverage gets traced into
+  // an actual landmass outline and drawn for real. lastPaintPosRef (below)
+  // is shared between the real brush and this one since only one can be
+  // active at a time.
+  const landBrushCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const stampAssetsById = useMemo(() => {
     const m = new Map<string, StampAsset>();
@@ -541,17 +686,98 @@ export default function MapEditor() {
     }
   };
 
-  // Commits an armed touch brush stroke as a real paint action, either
-  // because the disambiguation delay elapsed with no second finger, the
-  // finger moved enough to prove it's a deliberate stroke, or it lifted
-  // as a quick tap (which should still drop a single dab).
-  const commitPendingBrush = (worldX: number, worldY: number) => {
-    if (!pendingBrushRef.current) return;
-    cancelPendingBrush();
+  // Land Shape mode's freehand equivalent of paintAt — dense soft dabs
+  // into the scratch mask canvas instead of the paint layer, so what's
+  // visible while dragging is a rough coverage preview, not final texture.
+  const paintMaskAt = (x: number, y: number) => {
+    const ctx = landBrushCanvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const last = lastPaintPosRef.current;
+    if (!last) {
+      paintSoftMaskDab(ctx, x, y, brushSize, 40);
+    } else {
+      const dist = Math.hypot(x - last.x, y - last.y);
+      const spacing = Math.max(2, brushSize * 0.18);
+      const steps = Math.max(1, Math.round(dist / spacing));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        paintSoftMaskDab(ctx, last.x + (x - last.x) * t, last.y + (y - last.y) * t, brushSize, 40);
+      }
+    }
+    lastPaintPosRef.current = { x, y };
+  };
+
+  // Starts a stroke for whichever paint-style terrain mode is active —
+  // shared by the mouse path (called directly) and the touch path (called
+  // once pendingBrushRef commits, see below). pushUndoSnapshot() always
+  // captures the PAINT layer's pre-stroke pixels even for Land Shape mode,
+  // since that's what finalizeLandBrushStroke() will draw onto once the
+  // freehand mask gets traced — so Undo reverts the finished shape in one
+  // step, not the invisible mask.
+  const beginBrushStroke = (x: number, y: number) => {
     pushUndoSnapshot();
     isPaintingRef.current = true;
     lastPaintPosRef.current = null;
-    paintAt(worldX, worldY);
+    if (terrainMode === 'shape') {
+      const mask = landBrushCanvasRef.current;
+      mask?.getContext('2d')?.clearRect(0, 0, mask.width, mask.height);
+      paintMaskAt(x, y);
+    } else {
+      paintAt(x, y);
+    }
+  };
+
+  // Commits an armed touch stroke (real brush OR Land Shape mask) as a
+  // real paint action, either because the disambiguation delay elapsed
+  // with no second finger, the finger moved enough to prove it's a
+  // deliberate stroke, or it lifted as a quick tap.
+  const commitPendingBrush = (worldX: number, worldY: number) => {
+    if (!pendingBrushRef.current) return;
+    cancelPendingBrush();
+    beginBrushStroke(worldX, worldY);
+  };
+
+  // Traces the Land Shape mask's coverage (wherever it's opaque enough to
+  // count as "brushed over") into real closed contours via the same
+  // marching-squares machinery Generate uses, adds organic edge jitter so
+  // it doesn't read as a smoothed-out circle, then draws each one for real
+  // with the same feathered-fill-plus-wave-lines call every other closed
+  // land shape uses. Called once the stroke ends (pointerup/cancel/leave).
+  const finalizeLandBrushStroke = () => {
+    const mask = landBrushCanvasRef.current;
+    const paintCanvas = paintCanvasRefs.current.get(activePaintLayerId);
+    const pctx = paintCanvas?.getContext('2d');
+    const mctx = mask?.getContext('2d');
+    if (!mask || !mctx || !pctx || !map) return;
+
+    const w = mask.width, h = mask.height;
+    const imgData = mctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    const alphaAt = (x: number, y: number) => {
+      const xi = Math.max(0, Math.min(w - 1, Math.round(x)));
+      const yi = Math.max(0, Math.min(h - 1, Math.round(y)));
+      return data[(yi * w + xi) * 4 + 3];
+    };
+    mctx.clearRect(0, 0, w, h);
+
+    const cellSize = clamp(Math.round(brushSize / 6), 3, 20);
+    const rawContours = extractContoursFromField(w, h, (x, y) => alphaAt(x, y) - 90, cellSize);
+    const jitterAmount = (shapeJitter / 100) * Math.max(8, brushSize * 0.5);
+    const softnessPx = 1 + (softness / 100) * 10;
+
+    let drawn = 0;
+    for (const raw of rawContours) {
+      const bbox = boundingBoxOf(raw);
+      if (Math.max(bbox.w, bbox.h) < brushSize * 1.2) continue;
+      let points = decimateContour(raw, Math.max(6, brushSize * 0.25));
+      if (jitterAmount > 0) points = jitterContourOrganic(points, jitterAmount, Math.random() * 100000);
+      fillSmoothPathFeathered(pctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
+      if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(pctx, points);
+      drawn++;
+    }
+    if (drawn === 0) {
+      toast({ title: "Nothing to draw", description: "Try a bigger brush or a longer stroke." });
+    }
   };
 
   const finishTerrainPoints = () => {
@@ -560,13 +786,7 @@ export default function MapEditor() {
     if (!canvas) { setShapePoints([]); return; }
     const ctx = canvas.getContext('2d')!;
     const softnessPx = 1 + (softness / 100) * 10;
-    if (terrainMode === 'shape') {
-      if (points.length < 3) { setShapePoints([]); return; }
-      pushUndoSnapshot();
-      fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
-      if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(ctx, points);
-    } else if (terrainMode === 'path') {
-      if (points.length < 2) { setShapePoints([]); return; }
+    if (points.length >= 2) {
       pushUndoSnapshot();
       fillSmoothPathFeathered(ctx, (c) => traceSmoothOpenPath(c, points), points, pathKind === 'river' ? 'water' : 'road', false, brushSize, softnessPx, textureScale);
     }
@@ -641,13 +861,13 @@ export default function MapEditor() {
     }
     if (e.button !== 0) return;
 
-    if (tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path' || terrainMode === 'bucket')) {
+    if (tool === 'terrain' && (terrainMode === 'path' || terrainMode === 'bucket')) {
       tapStartRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
 
     const { x, y } = toWorld(e.clientX, e.clientY);
-    if (tool === 'terrain') {
+    if (tool === 'terrain' && (terrainMode === 'brush' || terrainMode === 'shape')) {
       if (e.pointerType === 'touch') {
         // Don't commit to painting yet — a second finger arriving in the
         // next moment (to pan/zoom) will cancel this via the size===2
@@ -662,10 +882,7 @@ export default function MapEditor() {
           timer: setTimeout(() => commitPendingBrush(x, y), 100),
         };
       } else {
-        pushUndoSnapshot();
-        isPaintingRef.current = true;
-        lastPaintPosRef.current = null;
-        paintAt(x, y);
+        beginBrushStroke(x, y);
       }
     } else if (tool === 'assets' && selectedStampAssetId) {
       scatterRef.current = { lastX: x, lastY: y, lastTime: performance.now(), placedAny: false };
@@ -714,9 +931,9 @@ export default function MapEditor() {
       setPan({ x: panStartRef.current.panX + (e.clientX - panStartRef.current.x), y: panStartRef.current.panY + (e.clientY - panStartRef.current.y) });
       return;
     }
-    if (isPaintingRef.current && tool === 'terrain' && terrainMode === 'brush') {
+    if (isPaintingRef.current && tool === 'terrain' && (terrainMode === 'brush' || terrainMode === 'shape')) {
       const { x, y } = toWorld(e.clientX, e.clientY);
-      paintAt(x, y);
+      if (terrainMode === 'shape') paintMaskAt(x, y); else paintAt(x, y);
       return;
     }
     if (scatterRef.current && tool === 'assets' && selectedStampAssetId) {
@@ -759,14 +976,9 @@ export default function MapEditor() {
       commitPendingBrush(x, y);
     }
 
-    if (wasTap && tool === 'terrain' && (terrainMode === 'shape' || terrainMode === 'path')) {
+    if (wasTap && tool === 'terrain' && terrainMode === 'path') {
       const { x, y } = toWorld(e.clientX, e.clientY);
-      const prev = shapePointsRef.current;
-      if (terrainMode === 'shape' && prev.length >= 3 && Math.hypot(x - prev[0].x, y - prev[0].y) < 20 / zoom) {
-        finishTerrainPoints();
-      } else {
-        setShapePoints([...prev, { x, y }]);
-      }
+      setShapePoints([...shapePointsRef.current, { x, y }]);
     } else if (wasTap && tool === 'terrain' && terrainMode === 'bucket') {
       const { x, y } = toWorld(e.clientX, e.clientY);
       const canvas = paintCanvasRefs.current.get(activePaintLayerId);
@@ -777,6 +989,10 @@ export default function MapEditor() {
       }
     }
     tapStartRef.current = null;
+
+    if (isPaintingRef.current && tool === 'terrain' && terrainMode === 'shape') {
+      finalizeLandBrushStroke();
+    }
 
     isPanningRef.current = false;
     isPaintingRef.current = false;
@@ -826,14 +1042,16 @@ export default function MapEditor() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedObjectId, maxVariantCount]);
 
-  // Generates one landmass and draws it with the exact same call
-  // finishTerrainPoints() uses to finish a hand-drawn Land Shape — same
-  // feathered edge, same ink-shadow coastline, same texture — using
-  // whichever terrain kind is currently selected in the Terrain flyout, so
-  // it reads as "a land shape someone drew," not a distinct auto-painted
-  // map. Clears the active paint layer first: Generate always replaces
-  // whatever was there (previously generated or hand-painted) rather than
-  // stacking landmasses on top of each other — one Ctrl/Cmd+Z restores it.
+  // Traces the REAL zero-contour of the elevation field (marching squares,
+  // not a single-center ray-cast) so the result actually has bays,
+  // peninsulas, and separate islands where the noise calls for them — a
+  // whole believable coastline in one shot, not one blob. Every contour
+  // found gets drawn with the same fillSmoothPathFeathered() call the Land
+  // Brush tool uses to finish a freehand stroke (same feather, same
+  // ink-shadow coastline, same texture). Clears the active paint layer
+  // first: Generate always replaces whatever was there rather than
+  // stacking on top of it —
+  // one Ctrl/Cmd+Z restores it.
   const runGenerate = () => {
     if (!map) return;
     const canvas = paintCanvasRefs.current.get(activePaintLayerId);
@@ -846,16 +1064,33 @@ export default function MapEditor() {
       coastlineRoughness: genRoughness / 100,
     });
     const seaLevel = 1 - genLandAmount / 100;
-    const points = generateLandmassPoints(map.width, map.height, elevationAt, seaLevel, genFeatureSize);
-    if (points.length < 3) {
+    // Fine enough to catch real coastline detail regardless of feature
+    // size (that's what featureSize/roughness/fragmentation already
+    // control, in the noise itself) — tied only to map size, capped for
+    // performance on very large maps.
+    const cellSize = clamp(Math.round(Math.min(map.width, map.height) / 220), 4, 40);
+    const rawContours = extractContoursFromField(map.width, map.height, (x, y) => elevationAt(x, y) - seaLevel, cellSize);
+
+    const minSize = cellSize * 2.5;
+    const candidates = rawContours
+      .map((raw) => ({ raw, bbox: boundingBoxOf(raw) }))
+      .filter(({ bbox }) => Math.max(bbox.w, bbox.h) >= minSize)
+      .sort((a, b) => (b.bbox.w * b.bbox.h) - (a.bbox.w * a.bbox.h))
+      .slice(0, 60);
+
+    if (candidates.length === 0) {
       toast({ title: "No land generated", description: "Try a higher Landmass Size or a different Feature Size, then Generate again." });
       return;
     }
+
     pushUndoSnapshot();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const softnessPx = 1 + (softness / 100) * 10;
-    fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
-    if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(ctx, points);
+    for (const { raw } of candidates) {
+      const points = decimateContour(raw, Math.max(cellSize * 1.5, 10));
+      fillSmoothPathFeathered(ctx, (c) => traceSmoothClosedPath(c, points), points, terrainKind, true, 0, softnessPx, textureScale);
+      if (showWaveLines && terrainKind !== 'water') drawCoastlineWaves(ctx, points);
+    }
   };
 
   // Composites background + visible paint layers (respecting each layer's
@@ -1029,32 +1264,22 @@ export default function MapEditor() {
       <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Texture Scale</p>
       <Slider min={0.5} max={3} step={0.1} value={[textureScale]} onValueChange={([v]) => setTextureScale(v)} data-testid="slider-texture-scale" />
       <p className="text-xs text-stone-500 mt-1 mb-3">{textureScale.toFixed(1)}x</p>
-      {terrainMode === 'brush' && (
+      {(terrainMode === 'brush' || terrainMode === 'shape') && (
         <>
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Brush Size</p>
           <Slider min={10} max={200} step={5} value={[brushSize]} onValueChange={([v]) => setBrushSize(v)} />
           <p className="text-xs text-stone-500 mt-1 mb-2">{brushSize}px</p>
-          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Softness</p>
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">{terrainMode === 'shape' ? 'Edge Softness' : 'Softness'}</p>
           <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
-          <p className="text-xs text-stone-500 mt-1">{softness}%</p>
+          <p className="text-xs text-stone-500 mt-1 mb-2">{softness}%</p>
         </>
       )}
       {terrainMode === 'shape' && (
         <>
-          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Softness</p>
-          <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
-          <p className="text-xs text-stone-500 mt-1 mb-2">{softness}%</p>
-          <p className="text-xs text-stone-500 mb-2">Tap to place points around a landmass. Tap near your first point (or press Finish) to close it into a smooth coastline.</p>
-          {shapePoints.length > 0 && (
-            <div className="flex gap-1.5">
-              <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishTerrainPoints} disabled={shapePoints.length < 3} data-testid="button-finish-land-shape">
-                Finish ({shapePoints.length})
-              </Button>
-              <Button size="sm" variant="outline" className="border-stone-700" onClick={() => setShapePoints([])} data-testid="button-cancel-land-shape">
-                Cancel
-              </Button>
-            </div>
-          )}
+          <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Roughness</p>
+          <Slider min={0} max={100} step={5} value={[shapeJitter]} onValueChange={([v]) => setShapeJitter(v)} data-testid="slider-shape-jitter" />
+          <p className="text-xs text-stone-500 mt-1 mb-2">{shapeJitter === 0 ? "Smooth, rounded edge" : `${shapeJitter}% — organic, hand-drawn-looking edge`}</p>
+          <p className="text-xs text-stone-500 mb-2">Drag to paint a rough landmass — release and it's traced into a proper coastline, textured and feathered, in whatever shape you painted.</p>
         </>
       )}
       {terrainMode === 'path' && (
@@ -1342,6 +1567,12 @@ export default function MapEditor() {
                 style={{ opacity: l.visible ? l.opacity / 100 : 0, mixBlendMode: CSS_BLEND_MODE[l.blendMode] }}
               />
             ))}
+            <canvas
+              ref={landBrushCanvasRef}
+              width={map.width}
+              height={map.height}
+              className="absolute left-0 top-0 pointer-events-none opacity-50"
+            />
             {showGrid && (
               <svg className="absolute left-0 top-0 pointer-events-none" width={map.width} height={map.height}>
                 {Array.from({ length: Math.ceil(map.width / map.gridSize) + 1 }).map((_, i) => (

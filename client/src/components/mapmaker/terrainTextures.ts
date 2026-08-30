@@ -268,6 +268,17 @@ export function paintSoftDab(mainCtx: CanvasRenderingContext2D, x: number, y: nu
   mainCtx.drawImage(scratch, sx, sy);
 }
 
+// Plain soft-alpha dab with no texture — used to build a coverage MASK (the
+// Land Brush tool paints freehand into one of these, then traces its
+// coverage into an actual landmass shape) rather than to paint final
+// pixels. Overlapping dabs accumulate toward full opacity in the core via
+// ordinary 'source-over' alpha compositing, which is exactly the "was this
+// area brushed over" signal the mask needs.
+export function paintSoftMaskDab(maskCtx: CanvasRenderingContext2D, x: number, y: number, diameter: number, softness: number) {
+  const d = Math.max(4, Math.round(diameter));
+  maskCtx.drawImage(getSoftMask(d, softness), x - d / 2, y - d / 2);
+}
+
 // --- feathered shape/path fills ------------------------------------------
 // Fills a smoothed closed (land shape) or open (river/road) path with soft
 // edges plus a thin blurred ink line for depth — the "shadow where waves
