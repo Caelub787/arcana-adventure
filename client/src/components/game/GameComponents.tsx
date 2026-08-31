@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, CA_BODY_PARTS, caEffectiveMajorActive, caMajorWoundCount, caWoundStatEffectTotal, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, CA_CUSTOM_EFFECT_TARGET, type CAFixedStatTarget, type CAWoundStatEffect, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, caWoundCapacity, CA_WOUND_DEFAULT_CAP, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -143,499 +143,6 @@ function resolveRollAttrAndSkillMod(
     breakdownParts.push(`${skillDef?.name || rollEntry.linkedSkillKey}: ${skillMod >= 0 ? '+' : ''}${skillMod}`);
   }
   return { mod, breakdownParts };
-}
-
-// C.A. wound severity, used to color the status map.
-function caWoundSeverity(slot: CAWoundSlot): 'none' | 'minor' | 'major' {
-  if (slot.major.checked) return 'major';
-  if (slot.minor.some(m => m.checked)) return 'minor';
-  return 'none';
-}
-
-// Per-tier hues form a severity gradient reading left-to-right (and
-// top-to-bottom in the injury list below): Minor 1 is yellow (mildest),
-// stepping through orange and red as the minors climb toward Major, which
-// is the darkest red. Used across all three wound-map designs (hex/pips/
-// figure) and
-// the matching accent on each checked wound's card below them.
-type CAWoundTier = 'major' | 'minor0' | 'minor1' | 'minor2';
-function caWoundTierKey(type: 'major' | 'minor', minorIndex?: number): CAWoundTier {
-  return type === 'major' ? 'major' : (`minor${minorIndex}` as CAWoundTier);
-}
-const CA_WOUND_TIER_CLASSES: Record<CAWoundTier, { pipOn: string; text: string; accentBorder: string }> = {
-  minor0: { pipOn: 'bg-yellow-500/85 border-yellow-400', text: 'text-yellow-400', accentBorder: 'border-yellow-500' },
-  minor1: { pipOn: 'bg-orange-500/85 border-orange-400', text: 'text-orange-400', accentBorder: 'border-orange-500' },
-  minor2: { pipOn: 'bg-red-500/85 border-red-400', text: 'text-red-400', accentBorder: 'border-red-500' },
-  major: { pipOn: 'bg-red-800/90 border-red-700', text: 'text-red-500', accentBorder: 'border-red-800' },
-};
-// Same tier language as CA_WOUND_TIER_CLASSES above, as raw hex values —
-// used by CAWoundMapFigure, which paints directly into SVG fill/stroke
-// attributes rather than Tailwind classes.
-const CA_WOUND_TIER_HEX: Record<CAWoundTier, string> = {
-  minor0: '#eab308',
-  minor1: '#f97316',
-  minor2: '#ef4444',
-  major: '#991b1b',
-};
-
-// Friendly label for a wound's stat-effect target (a fixed movement stat, a
-// CA attribute, or a CA skill key).
-function caStatEffectTargetLabel(target: string): string {
-  if (target === CA_CUSTOM_EFFECT_TARGET) return "Custom";
-  if ((CA_FIXED_STAT_TARGETS as readonly string[]).includes(target)) return CA_FIXED_STAT_LABELS[target as CAFixedStatTarget];
-  const attr = CA_ATTRIBUTES.find(a => a.key === target);
-  if (attr) return attr.name;
-  const skill = CA_SKILLS.find(s => s.key === target);
-  if (skill) return skill.name;
-  return target;
-}
-
-function caWoundNodeRingColor(severity: 'none' | 'minor' | 'major'): string {
-  if (severity === 'major') return '#ef4444';
-  if (severity === 'minor') return '#f59e0b';
-  return '#57534e';
-}
-
-// Regular hexagon point list around (cx, cy), pointy-top, for the wire-frame
-// nodes in CAWoundMapHex.
-function caHexPoints(cx: number, cy: number, r: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 2;
-    pts.push(`${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`);
-  }
-  return pts.join(' ');
-}
-
-// Node positions, indices matching CA_BODY_PARTS order (Head, Torso, R Arm,
-// L Arm, R Leg, L Leg). Torso is the hub every other node wires into.
-// Spacing is generous specifically for touch: minor-dot centers are 34px
-// apart in SVG user units, which map close to real CSS pixels at the
-// rendered width — comfortably clear of adjacent dots and neighboring nodes
-// on a phone screen, not just on a mouse-driven desktop.
-const CA_WOUND_NODES: { label: string; cx: number; cy: number }[] = [
-  { label: 'Head', cx: 175, cy: 50 },
-  { label: 'Torso', cx: 175, cy: 144 },
-  { label: 'R Arm', cx: 262, cy: 102 },
-  { label: 'L Arm', cx: 88, cy: 102 },
-  { label: 'R Leg', cx: 222, cy: 236 },
-  { label: 'L Leg', cx: 128, cy: 236 },
-];
-const CA_WOUND_HUB_INDEX = 1;
-const CA_WOUND_NODE_R = 18;
-
-/**
- * SAVED DESIGN — "hex". The user's favorite so far as of this pass; keep
- * this working and don't delete it even if it's swapped out for something
- * else below, so it stays available to switch back to on request.
- *
- * A wire-frame node map: one hexagon per limb, wired to a central Torso hub.
- * Each hexagon IS the Major toggle for that limb (click it directly); the
- * three dots beneath each hexagon ARE the Minor toggles — no separate
- * checkbox rows anywhere, nothing opens a dialog. Deliberately paints no
- * background of its own (unchecked marks use fill="none", just an outline)
- * so it never introduces a visible panel/box — it sits directly on whatever
- * card it's placed in. Every toggle has a much larger invisible hit circle
- * than its visible mark, sized for a thumb on a phone screen.
- */
-function CAWoundMapHex({
-  wounds,
-  disabled,
-  onToggleMajor,
-  onToggleMinor,
-}: {
-  wounds: CAWoundSlot[];
-  disabled: boolean;
-  onToggleMajor: (index: number) => void;
-  onToggleMinor: (index: number, minorIndex: number) => void;
-}) {
-  const severities = wounds.map(caWoundSeverity);
-  const hub = CA_WOUND_NODES[CA_WOUND_HUB_INDEX];
-  const r = CA_WOUND_NODE_R;
-  const interactive = disabled ? '' : 'cursor-pointer';
-
-  return (
-    <svg viewBox="0 0 350 310" className="w-full h-auto" data-testid="svg-ca-wound-map">
-      {CA_WOUND_NODES.map((n, i) => i !== CA_WOUND_HUB_INDEX && (
-        <line key={`wire-${i}`} x1={hub.cx} y1={hub.cy} x2={n.cx} y2={n.cy} stroke="#3a3532" strokeWidth="1.25" />
-      ))}
-      {CA_WOUND_NODES.map((n, i) => {
-        const ring = caWoundNodeRingColor(severities[i]);
-        const slot = wounds[i];
-        const majorOn = slot.major.checked;
-        const minorDotY = n.cy + r + 20;
-        return (
-          <g key={n.label}>
-            <g
-              onClick={() => !disabled && onToggleMajor(i)}
-              className={interactive}
-              data-testid={`toggle-ca-wound-${i}-major`}
-            >
-              <title>{`${n.label} — Major${majorOn ? ' (checked)' : ''}`}</title>
-              {/* Generous invisible hit area, well past the visible hexagon */}
-              <circle cx={n.cx} cy={n.cy} r={r + 8} fill="transparent" />
-              <polygon
-                points={caHexPoints(n.cx, n.cy, r)}
-                fill={majorOn ? ring : 'none'}
-                fillOpacity={majorOn ? 0.32 : 1}
-                stroke={ring}
-                strokeWidth={severities[i] !== 'none' ? 2 : 1.25}
-              />
-            </g>
-            {slot.minor.map((m, mi) => {
-              const dotX = n.cx + (mi - 1) * 34;
-              return (
-                <g
-                  key={mi}
-                  onClick={() => !disabled && onToggleMinor(i, mi)}
-                  className={interactive}
-                  data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
-                >
-                  <title>{`${n.label} — Minor ${mi + 1}${m.checked ? ' (checked)' : ''}`}</title>
-                  {/* Invisible hit area — much larger than the visible dot */}
-                  <circle cx={dotX} cy={minorDotY} r="16" fill="transparent" />
-                  <circle
-                    cx={dotX}
-                    cy={minorDotY}
-                    r="6.5"
-                    fill={m.checked ? '#f59e0b' : 'none'}
-                    stroke={m.checked ? '#f59e0b' : '#5c5651'}
-                    strokeWidth="1.5"
-                  />
-                </g>
-              );
-            })}
-            <text
-              x={n.cx}
-              y={minorDotY + 20}
-              textAnchor="middle"
-              fontSize="10"
-              letterSpacing="0.4"
-              fill="#a8a29e"
-              className="pointer-events-none"
-            >
-              {n.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/**
- * SAVED DESIGN — "pips". Was the active design before "figure" below; kept
- * working so it stays available to switch back to on request. A completely
- * different visual/interaction idea from "hex" above: plain HTML/CSS, no
- * SVG at all. Each limb is a row —
- * label, then the three Minor pips (red → orange → yellow), then the wide
- * Major pip (dark red) at the far right — minors on the left, major on the
- * right, matching the reading order of the injury list below (same tier
- * colors, so a card's accent traces straight back to the pip it came from).
- * Every pip is a real <button>, so it gets a native, generously-sized tap
- * target for free instead of hand-computed SVG hit circles, and paints no
- * background/border of its own beyond each individual pip — nothing frames
- * the whole map, it just sits in the card's own flow.
- */
-function CAWoundMapPips({
-  wounds,
-  disabled,
-  onToggleMajor,
-  onToggleMinor,
-}: {
-  wounds: CAWoundSlot[];
-  disabled: boolean;
-  onToggleMajor: (index: number) => void;
-  onToggleMinor: (index: number, minorIndex: number) => void;
-}) {
-  return (
-    <div className="space-y-2" data-testid="ca-wound-map-pips">
-      {wounds.map((slot, i) => {
-        const majorChecked = slot.major.checked;
-        // Three checked Minors auto-cover the Major (see caEffectiveMajorActive)
-        // — shown as a dimmed/dashed version of the same fill so it reads as
-        // "covered" rather than "you explicitly marked this."
-        const majorAutoCovered = !majorChecked && caEffectiveMajorActive(slot);
-        const majorTier = CA_WOUND_TIER_CLASSES.major;
-        return (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-14 shrink-0 text-xs text-stone-300" data-testid={`text-ca-wound-label-${i}`}>{slot.label}</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {slot.minor.map((m, mi) => {
-                const tier = CA_WOUND_TIER_CLASSES[caWoundTierKey('minor', mi)];
-                return (
-                  <button
-                    key={mi}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => onToggleMinor(i, mi)}
-                    title={`${slot.label} — Minor ${mi + 1}`}
-                    className={`h-9 w-9 rounded-md border transition-colors ${
-                      m.checked ? tier.pipOn : 'bg-transparent border-stone-600 hover:border-stone-500'
-                    } ${disabled ? '' : 'cursor-pointer'}`}
-                    data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
-                  />
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onToggleMajor(i)}
-              title={`${slot.label} — Major${majorAutoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`}
-              className={`h-9 flex-1 rounded-md border transition-colors ${
-                majorChecked
-                  ? majorTier.pipOn
-                  : majorAutoCovered
-                    ? `${majorTier.pipOn} opacity-60 border-dashed`
-                    : 'bg-transparent border-stone-600 hover:border-stone-500'
-              } ${disabled ? '' : 'cursor-pointer'}`}
-              data-testid={`toggle-ca-wound-${i}-major`}
-            />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Every region is a plain axis-aligned circle or rect — no rotation, no
-// hand-drawn bezier silhouette — deliberately, so each shape's hit target
-// can be "this exact box, +3px" with zero ambiguity about which region a
-// tap landed in. Regions are spaced with generous real gaps (>=18px
-// horizontally between torso and an arm, >=8px between the two legs) so
-// that even a padded hit target can never bleed into a neighboring
-// region — the previous pass used one big blanket hit-circle per region
-// sized off its own bounding box, which was large enough to swallow
-// whole neighboring regions (clicking the torso activated an arm, the
-// right leg was unreachable because the left leg's oversized hit circle
-// sat on top of it in paint order). Index is into CA_BODY_PARTS (Head,
-// Torso, R Arm, L Arm, R Leg, L Leg).
-type CAFigureShape =
-  | { kind: 'circle'; cx: number; cy: number; r: number }
-  | { kind: 'rect'; x: number; y: number; w: number; h: number; rx: number };
-const CA_FIGURE_SHAPES: CAFigureShape[] = [
-  { kind: 'circle', cx: 130, cy: 48, r: 26 },                // Head
-  { kind: 'rect', x: 92, y: 82, w: 76, h: 128, rx: 18 },     // Torso (x:92-168)
-  { kind: 'rect', x: 186, y: 88, w: 34, h: 124, rx: 16 },    // R Arm (x:186-220, gap 18 from torso)
-  { kind: 'rect', x: 40, y: 88, w: 34, h: 124, rx: 16 },     // L Arm (x:40-74, gap 18 from torso)
-  { kind: 'rect', x: 134, y: 216, w: 36, h: 140, rx: 16 },   // R Leg (x:134-170)
-  { kind: 'rect', x: 90, y: 216, w: 36, h: 140, rx: 16 },    // L Leg (x:90-126, gap 8 from R Leg)
-];
-
-// Purely decorative silhouette for each region, drawn well inside its own
-// CA_FIGURE_SHAPES hit box above (which is untouched — still what actually
-// receives clicks) so improving the art here can never risk the hit-test
-// correctness that was the last pass's real bug. Straight-edged tapered
-// polygons rather than bezier curves — no risk of a malformed curve
-// shipping unseen — mirrored around the centerline (x=130) by construction
-// so left/right symmetry doesn't depend on hand-matching two shapes.
-type CAFigureVisual =
-  | { kind: 'circle'; cx: number; cy: number; r: number }
-  | { kind: 'poly'; points: string };
-const CA_FIGURE_VISUALS: CAFigureVisual[] = [
-  { kind: 'circle', cx: 130, cy: 48, r: 24 },                                  // Head
-  { kind: 'poly', points: '104,88 156,88 150,150 142,204 118,204 110,150' },   // Torso — tapered, hourglass waist
-  { kind: 'poly', points: '192,94 210,94 206,200 196,200' },                   // R Arm — tapered toward the wrist
-  { kind: 'poly', points: '68,94 50,94 54,200 64,200' },                       // L Arm (mirror of R Arm)
-  { kind: 'poly', points: '142,222 162,222 156,330 160,350 144,350 148,330' }, // R Leg — tapered shin, flared boot
-  { kind: 'poly', points: '118,222 98,222 104,330 100,350 116,350 112,330' },  // L Leg (mirror of R Leg)
-];
-
-// Where each region's 3 Minor-wound ticks sit — right next to (or, for
-// Torso, inside the lower chest of) that region's own shape, so a tick
-// always reads as belonging to its limb and the whole thing stays one
-// connected diagram instead of a figure plus a separate legend elsewhere
-// on the page. `lx`/`ly`/`label` are an optional short R/L tag — Head and
-// Torso have no left/right ambiguity so they don't get one.
-const CA_FIGURE_TICKS: { label?: string; lx?: number; ly?: number; x: number; y: number; dx: number; dy: number }[] = [
-  { x: 118, y: 16, dx: 12, dy: 0 },                                  // Head — row above
-  { x: 110, y: 196, dx: 20, dy: 0 },                                 // Torso — row across the lower chest
-  { label: 'R', lx: 226, ly: 106, x: 226, y: 122, dx: 0, dy: 34 },   // R Arm — column to the right
-  { label: 'L', lx: 34, ly: 106, x: 34, y: 122, dx: 0, dy: 34 },     // L Arm — column to the left
-  { label: 'R', lx: 178, ly: 246, x: 178, y: 262, dx: 0, dy: 38 },   // R Leg — column to the right
-  { label: 'L', lx: 82, ly: 246, x: 82, y: 262, dx: 0, dy: 38 },     // L Leg — column to the left
-];
-
-/**
- * ACTIVE DESIGN — "figure" (v3). A body silhouette instead of an abstract
- * diagram: each region IS the anatomical shape (head/torso/arms/legs), so
- * the character's own body doubles as its own status display — no
- * translating "hexagon #3" or "row 2" into "which limb is that." Sits
- * inside an actual framed plaque (a bordered, vignetted panel with a
- * subtle grain texture) rather than floating on bare background, and the
- * figure itself is a tapered silhouette (see CA_FIGURE_VISUALS) instead
- * of plain rounded rectangles — the same warm, dark ink-outline treatment
- * the Map Maker's coastlines use, not a bright tier-colored outline, so it
- * reads as one consistent hand-drawn material rather than flat vector
- * shapes. A region's fill still climbs the same minor/major tier colors
- * everywhere else uses as it takes damage, an effective Major wound draws
- * a jagged scar across it, and the whole figure sits in front of a soft
- * red vignette that intensifies with how many limbs have an effective
- * Major wound. The invisible hit target for every region is still the
- * plain, exact, non-overlapping box/circle from CA_FIGURE_SHAPES above,
- * completely decoupled from this visual layer — the art here can be
- * freely improved without any risk to the click-accuracy that was fixed
- * in the previous pass. Minor toggles sit directly next to their own limb
- * (see CA_FIGURE_TICKS above), never in a separate legend elsewhere.
- */
-function CAWoundMapFigure({
-  wounds,
-  disabled,
-  onToggleMajor,
-  onToggleMinor,
-}: {
-  wounds: CAWoundSlot[];
-  disabled: boolean;
-  onToggleMajor: (index: number) => void;
-  onToggleMinor: (index: number, minorIndex: number) => void;
-}) {
-  const uid = useId();
-  const majorCount = wounds.filter(caEffectiveMajorActive).length;
-  const perilOpacity = Math.min(0.45, (majorCount / CA_WOUND_SLOT_COUNT) * 0.5);
-  const interactive = disabled ? '' : 'cursor-pointer';
-  const gradId = (tier: CAWoundTier) => `ca-wound-grad-${tier}-${uid}`;
-  const baseId = `ca-wound-base-${uid}`;
-  const perilId = `ca-wound-peril-${uid}`;
-  const panelId = `ca-wound-panel-${uid}`;
-  const shadowId = `ca-wound-shadow-${uid}`;
-  const grainId = `ca-wound-grain-${uid}`;
-  const inkStroke = 'rgba(26,18,12,0.85)';
-
-  return (
-    <svg viewBox="0 0 260 400" className="w-full h-auto" data-testid="svg-ca-wound-figure">
-      <defs>
-        <radialGradient id={panelId} cx="50%" cy="32%" r="80%">
-          <stop offset="0%" stopColor="#3a332c" />
-          <stop offset="100%" stopColor="#131110" />
-        </radialGradient>
-        <radialGradient id={perilId} cx="50%" cy="38%" r="65%">
-          <stop offset="0%" stopColor="#dc2626" stopOpacity={perilOpacity} />
-          <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
-        </radialGradient>
-        <linearGradient id={baseId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6b5d4f" />
-          <stop offset="100%" stopColor="#443a2f" />
-        </linearGradient>
-        {(['minor0', 'minor1', 'minor2', 'major'] as CAWoundTier[]).map((tier) => (
-          <linearGradient key={tier} id={gradId(tier)} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.95} />
-            <stop offset="100%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.62} />
-          </linearGradient>
-        ))}
-        <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
-        </filter>
-        <filter id={grainId}>
-          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise" />
-          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0.7 0.7 0 0" result="noiseAlpha" />
-          <feComposite in="noiseAlpha" in2="SourceGraphic" operator="in" />
-        </filter>
-      </defs>
-
-      {/* Framed plaque background — everything else sits inside this one
-          panel rather than floating on bare page background. */}
-      <rect x={4} y={4} width={252} height={392} rx={16} fill={`url(#${panelId})`} stroke="#78350f" strokeWidth={2} />
-      <rect x={9} y={9} width={242} height={382} rx={11} fill="none" stroke="rgba(217,119,6,0.35)" strokeWidth={1} className="pointer-events-none" />
-      <rect x={4} y={4} width={252} height={392} rx={16} fill="#000" filter={`url(#${grainId})`} opacity={0.05} className="pointer-events-none" />
-
-      <rect x={4} y={4} width={252} height={392} rx={16} fill={`url(#${perilId})`} data-testid="rect-ca-wound-peril" className="pointer-events-none" />
-      <ellipse cx={130} cy={378} rx={64} ry={10} fill="#000000" opacity={0.35} className="pointer-events-none" />
-
-      <g filter={`url(#${shadowId})`}>
-        {CA_BODY_PARTS.map((label, i) => {
-          const slot = wounds[i];
-          const shape = CA_FIGURE_SHAPES[i];
-          const visual = CA_FIGURE_VISUALS[i];
-          const majorOn = slot.major.checked;
-          const autoCovered = !majorOn && caEffectiveMajorActive(slot);
-          const highestMinor: CAWoundTier | null =
-            slot.minor[2].checked ? 'minor2' : slot.minor[1].checked ? 'minor1' : slot.minor[0].checked ? 'minor0' : null;
-          const tierKey: CAWoundTier | null = (majorOn || autoCovered) ? 'major' : highestMinor;
-          const fill = tierKey ? `url(#${gradId(tierKey)})` : `url(#${baseId})`;
-          const strokeWidth = majorOn ? 2.25 : 1.25;
-          const dash = autoCovered ? '4 3' : undefined;
-          const titleText = `${label} — Major${majorOn ? ' (checked)' : autoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`;
-
-          // Crack mark uses the (unchanged) hit-box geometry for its
-          // bounds, not the visual polygon — it only needs to read as
-          // "across this limb," not align to the silhouette exactly.
-          const crackPoints = shape.kind === 'circle'
-            ? `${shape.cx - shape.r * 0.5},${shape.cy - shape.r * 0.4} ${shape.cx + shape.r * 0.2},${shape.cy - shape.r * 0.05} ${shape.cx - shape.r * 0.15},${shape.cy + shape.r * 0.25} ${shape.cx + shape.r * 0.45},${shape.cy + shape.r * 0.55}`
-            : `${shape.x + shape.w * 0.2},${shape.y + shape.h * 0.15} ${shape.x + shape.w * 0.75},${shape.y + shape.h * 0.4} ${shape.x + shape.w * 0.3},${shape.y + shape.h * 0.55} ${shape.x + shape.w * 0.8},${shape.y + shape.h * 0.85}`;
-
-          return (
-            <g
-              key={label}
-              onClick={() => !disabled && onToggleMajor(i)}
-              className={interactive}
-              data-testid={`toggle-ca-wound-${i}-major`}
-            >
-              <title>{titleText}</title>
-              {/* Invisible, exact, non-overlapping hit target — unchanged
-                  from the geometry fix, deliberately not tied to the
-                  visual polygon below it. */}
-              {shape.kind === 'circle' ? (
-                <circle cx={shape.cx} cy={shape.cy} r={shape.r + 3} fill="transparent" />
-              ) : (
-                <rect x={shape.x - 3} y={shape.y - 3} width={shape.w + 6} height={shape.h + 6} rx={shape.rx} fill="transparent" />
-              )}
-              {visual.kind === 'circle' ? (
-                <circle cx={visual.cx} cy={visual.cy} r={visual.r} fill={fill} stroke={inkStroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={dash} />
-              ) : (
-                <polygon points={visual.points} fill={fill} stroke={inkStroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={dash} />
-              )}
-              {majorOn && (
-                <polyline
-                  points={crackPoints}
-                  fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round"
-                  className="pointer-events-none"
-                />
-              )}
-            </g>
-          );
-        })}
-        {/* Purely decorative chest emblem, sits on top of Torso */}
-        <polygon points="130,112 146,130 130,166 114,130" fill="none" stroke="rgba(214,197,169,0.3)" strokeWidth={1.25} className="pointer-events-none" />
-      </g>
-
-      {CA_BODY_PARTS.map((label, i) => {
-        const slot = wounds[i];
-        const t = CA_FIGURE_TICKS[i];
-        return (
-          <g key={`ticks-${label}`}>
-            {t.label && (
-              <text x={t.lx} y={t.ly} fontSize="10" fontWeight={600} letterSpacing="0.5" fill="#c9b99a" textAnchor="middle" className="pointer-events-none">
-                {t.label}
-              </text>
-            )}
-            {slot.minor.map((m, mi) => {
-              const color = CA_WOUND_TIER_HEX[caWoundTierKey('minor', mi)];
-              const x = t.x + mi * t.dx;
-              const y = t.y + mi * t.dy;
-              return (
-                <g
-                  key={mi}
-                  onClick={() => !disabled && onToggleMinor(i, mi)}
-                  className={interactive}
-                  data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
-                >
-                  <title>{`${label} — Minor ${mi + 1}${m.checked ? ' (checked)' : ''}`}</title>
-                  <circle cx={x} cy={y} r={10} fill="transparent" />
-                  <rect
-                    x={x - 5} y={y - 6} width={10} height={12} rx={3}
-                    fill={m.checked ? color : 'rgba(107,93,79,0.4)'}
-                    stroke={m.checked ? 'rgba(26,18,12,0.85)' : '#8a7862'}
-                    strokeWidth={1.25}
-                  />
-                </g>
-              );
-            })}
-          </g>
-        );
-      })}
-    </svg>
-  );
 }
 
 function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
@@ -3512,9 +3019,9 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
-          // HP for C.A. tracks Major wounds only (direct or covered by all
-          // 3 Minors on a limb) — Minor wounds short of that don't move it.
-          const woundPercent = (character && campaignSystem === 'ca') ? 100 - (caMajorWoundCount((character as any).caWounds) / CA_WOUND_SLOT_COUNT) * 100 : null;
+          // C.A. tracks remaining Wound Capacity (CON + Level) minus the
+          // point cost of active (untreated) wounds.
+          const woundPercent = (character && campaignSystem === 'ca') ? Math.max(0, 100 - (caWoundTotalCost((character as any).caWounds) / Math.max(1, caWoundCapacity(character))) * 100) : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -9778,25 +9285,23 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           </div>
           )}
 
-          {/* Wounds Bar - C.A. only, replaces HP entirely. Tracks Major
-              wounds only (direct or covered by all 3 Minors on a limb). */}
+          {/* Wounds Bar - C.A. only, replaces HP entirely. Reads like an HP
+              bar: full with no active wounds, draining as wound point cost
+              eats into Wound Capacity (CON + Level). */}
           {campaignSystem === 'ca' && (() => {
-            const majorCount = caMajorWoundCount((character as any).caWounds);
-            const healthy = CA_WOUND_SLOT_COUNT - majorCount;
+            const capacity = Math.max(1, caWoundCapacity(character));
+            const remaining = Math.max(0, capacity - caWoundTotalCost((character as any).caWounds));
             return (
               <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
                 <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
                   <span>Wounds</span>
-                  {/* Reads like an HP bar: full (6/6) with none checked,
-                      counting down as major wounds go active — not counting
-                      up from 0 checked. */}
-                  <span>{healthy}/{CA_WOUND_SLOT_COUNT}</span>
+                  <span>{remaining}/{capacity}</span>
                 </div>
                 <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                   <motion.div
                     className="h-full bg-gradient-to-r from-red-700 to-red-500"
                     initial={false}
-                    animate={{ width: `${(healthy / CA_WOUND_SLOT_COUNT) * 100}%` }}
+                    animate={{ width: `${(remaining / capacity) * 100}%` }}
                     transition={{ duration: 0 }}
                   />
                 </div>
@@ -18204,15 +17709,11 @@ function CAAttrsAndSkillsTab({
               const dieType = `d${caAttrValueToDieSides(attrVal)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
-              const skillWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.key);
               const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect);
+              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost);
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect);
-              const skillTempSources = [
-                skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
-                skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
-              ].filter(Boolean).join(', ');
+              const skillTempBoost = editing ? 0 : skillScrollBoost;
+              const skillTempSources = skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : '';
               return (
                 <div
                   key={skill.key}
@@ -18787,64 +18288,49 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // C.A. Traits tab: which trait's roll-builder is expanded.
   const [caExpandedTraitId, setCaExpandedTraitId] = useState<string | null>(null);
 
-  // C.A. wounds: every limb's controls are always on screen, and any
-  // checked box's injury/effect text is always visible right there — never
-  // gated behind a click. No dialog. Pressing a pip toggles it: checking it
-  // on starts it blank and ready to fill in; pressing the SAME pip again
-  // (unchecking) fully clears it (checked/injury/effect all reset) — no
-  // separate Clear control, "press again to clear" is the whole model.
+  // C.A. wounds: a freeform pin on the body diagram rather than a fixed
+  // grid — "Add Wound" arms placement mode, the next click on the diagram
+  // drops a marker there and opens it for editing in the list on the right.
   // Routed through queueCharacterUpdate (defined below) rather than the
   // onUpdate prop directly: queueCharacterUpdate reads/writes a ref that's
-  // updated synchronously on every call, so rapidly toggling several
-  // different wounds in a row composes correctly instead of each toggle
+  // updated synchronously on every call, so rapidly editing several
+  // different wounds in a row composes correctly instead of each update
   // computing its "updated wounds" array from a stale pre-click snapshot
   // and clobbering the others.
-  const updateCAWoundSlot = (slotIndex: number, updater: (slot: CAWoundSlot) => CAWoundSlot) => {
+  const [isPlacingCAWound, setIsPlacingCAWound] = useState(false);
+  const [selectedCAWoundId, setSelectedCAWoundId] = useState<string | null>(null);
+
+  const addCAWound = (x: number, y: number) => {
+    const wound = makeCAWound(x, y);
     queueCharacterUpdate((cur: any) => {
       const wounds = normalizeCAWounds(cur?.caWounds);
-      const updated = wounds.map((slot, i) => (i === slotIndex ? updater(slot) : slot));
+      return { caWounds: [...wounds, wound] };
+    });
+    setIsPlacingCAWound(false);
+    setSelectedCAWoundId(wound.id);
+  };
+
+  const updateCAWound = (id: string, patch: Partial<CAWound>) => {
+    queueCharacterUpdate((cur: any) => {
+      const wounds = normalizeCAWounds(cur?.caWounds);
+      const updated = wounds.map((w) => (w.id === id ? { ...w, ...patch } : w));
       return { caWounds: updated };
     });
   };
 
-  const toggleCAWoundBox = (slotIndex: number, type: 'major' | 'minor', minorIndex?: number) => {
-    updateCAWoundSlot(slotIndex, (slot) => {
-      const current = type === 'major' ? slot.major : slot.minor[minorIndex!];
-      const next = current.checked
-        ? { checked: false, injury: '', effect: '' }
-        : { ...current, checked: true };
-      if (type === 'major') return { ...slot, major: next };
-      const minor = slot.minor.map((m, j) => (j === minorIndex ? next : m));
-      return { ...slot, minor };
+  const removeCAWound = (id: string) => {
+    queueCharacterUpdate((cur: any) => {
+      const wounds = normalizeCAWounds(cur?.caWounds);
+      return { caWounds: wounds.filter((w) => w.id !== id) };
     });
+    setSelectedCAWoundId((prev) => (prev === id ? null : prev));
   };
 
-  const updateCAWoundText = (slotIndex: number, type: 'major' | 'minor', field: 'injury' | 'effect', value: string, minorIndex?: number) => {
-    updateCAWoundSlot(slotIndex, (slot) => {
-      if (type === 'major') return { ...slot, major: { ...slot.major, [field]: value } };
-      const minor = slot.minor.map((m, j) => (j === minorIndex ? { ...m, [field]: value } : m));
-      return { ...slot, minor };
-    });
-  };
-
-  // A wound's optional mechanical effect (e.g. "-2 Athletics", "-10 Speed"),
-  // applied live while the wound is checked — see caWoundStatEffectTotal.
-  const updateCAWoundStatEffect = (slotIndex: number, type: 'major' | 'minor', statEffect: CAWoundStatEffect | null, minorIndex?: number) => {
-    updateCAWoundSlot(slotIndex, (slot) => {
-      if (type === 'major') return { ...slot, major: { ...slot.major, statEffect } };
-      const minor = slot.minor.map((m, j) => (j === minorIndex ? { ...m, statEffect } : m));
-      return { ...slot, minor };
-    });
-  };
-
-  // Which checked wounds are collapsed (default: none — everything starts
-  // open). Keyed by `${slotIndex}-${type}-${minorIndex ?? ''}`.
-  const [caCollapsedWoundKeys, setCaCollapsedWoundKeys] = useState<Set<string>>(new Set());
-  const toggleCAWoundCollapsed = (key: string) => {
-    setCaCollapsedWoundKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
+  const toggleCAWoundTreated = (id: string) => {
+    queueCharacterUpdate((cur: any) => {
+      const wounds = normalizeCAWounds(cur?.caWounds);
+      const updated = wounds.map((w) => (w.id === id ? { ...w, treated: !w.treated } : w));
+      return { caWounds: updated };
     });
   };
 
@@ -21488,10 +20974,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               />
                             ) : (() => {
                               const baseVal = liveCharacter[key] || 0;
-                              const woundEffect = caWoundStatEffectTotal(liveCharacter.caWounds, key);
-                              const woundAdjusted = Math.max(0, baseVal + woundEffect);
                               const exh = liveCharacter.exhaustion || 0;
-                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
+                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseVal / 2) : baseVal;
                               const isReduced = effectiveVal < baseVal;
                               return (
                                 <p className="text-stone-200 text-sm" data-testid={`text-ca-${testid}`}>
@@ -21502,11 +20986,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     </>
                                   ) : (
                                     <>{effectiveVal} ft</>
-                                  )}
-                                  {woundEffect !== 0 && (
-                                    <span className="ml-1 text-[10px] text-stone-500" data-testid={`text-ca-${testid}-wound-effect`}>
-                                      ({woundEffect > 0 ? '+' : ''}{woundEffect} wounds)
-                                    </span>
                                   )}
                                 </p>
                               );
@@ -21555,165 +21034,232 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-ca-energy" />
                   </div>
 
-                  {/* Wounds — replaces HP entirely for C.A. The figure IS
-                      the entire selection interface (see CAWoundMapFigure).
-                      Any checked wound's injury/effect card is always
-                      visible below it, never gated behind a click or a
-                      dialog — only its own text can be collapsed to save
-                      space, not its existence. Pressing a checked toggle
-                      again fully clears it — no separate Clear control. */}
+                  {/* Wounds — replaces HP entirely for C.A. Freeform: "Add
+                      Wound" arms placement mode, the next click on the body
+                      diagram drops a marker there. Wounds are purely
+                      descriptive (name/location/severity/description/effect
+                      lines) — no auto-derived mechanical stat penalties,
+                      severity only costs points against Wound Capacity. */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm text-stone-300">Wounds</Label>
                       <span className="text-xs text-stone-500" data-testid="text-ca-wound-count">
-                        {caWoundCount((liveCharacter as any).caWounds)} / {CA_WOUND_TOTAL_BOXES}
+                        {(() => {
+                          const cap = caWoundCapacity(liveCharacter);
+                          const used = caWoundTotalCost((liveCharacter as any).caWounds);
+                          return `${used} / ${cap}`;
+                        })()}
                       </span>
                     </div>
                     {(() => {
                       const allWounds = normalizeCAWounds((liveCharacter as any).caWounds);
                       const canEditWounds = !!canEdit && !!onUpdate;
-                      const checkedEntries: { key: string; slotIndex: number; type: 'major' | 'minor'; minorIndex?: number; tier: CAWoundTier; label: string; injury: string; effect: string; statEffect: CAWoundStatEffect | null | undefined }[] = [];
-                      allWounds.forEach((slot, slotIndex) => {
-                        slot.minor.forEach((m, minorIndex) => {
-                          if (m.checked) {
-                            checkedEntries.push({
-                              key: `${slotIndex}-minor-${minorIndex}`, slotIndex, type: 'minor', minorIndex,
-                              tier: caWoundTierKey('minor', minorIndex), label: `${slot.label} — Minor ${minorIndex + 1}`,
-                              injury: m.injury, effect: m.effect, statEffect: m.statEffect,
-                            });
-                          }
-                        });
-                        if (slot.major.checked) {
-                          checkedEntries.push({
-                            key: `${slotIndex}-major-`, slotIndex, type: 'major',
-                            tier: 'major', label: `${slot.label} — Major`,
-                            injury: slot.major.injury, effect: slot.major.effect, statEffect: slot.major.statEffect,
-                          });
-                        }
+                      const sortedWounds = [...allWounds].sort((a, b) => {
+                        if (a.treated !== b.treated) return a.treated ? 1 : -1;
+                        return CA_WOUND_SEVERITY_RANK[b.severity] - CA_WOUND_SEVERITY_RANK[a.severity];
                       });
-                      const allCollapsed = checkedEntries.length > 0 && checkedEntries.every((e) => caCollapsedWoundKeys.has(e.key));
+                      const severityDot: Record<CAWoundSeverity, string> = {
+                        minor: 'bg-stone-400',
+                        moderate: 'bg-amber-500',
+                        serious: 'bg-red-600',
+                      };
+                      const severityBorder: Record<CAWoundSeverity, string> = {
+                        minor: 'border-stone-500',
+                        moderate: 'border-amber-500',
+                        serious: 'border-red-600',
+                      };
+                      const placeWound = (e: React.MouseEvent<HTMLDivElement>) => {
+                        if (!isPlacingCAWound || !canEditWounds) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+                        addCAWound(x, y);
+                      };
                       return (
-                        <>
-                          <CAWoundMapFigure
-                            wounds={allWounds}
-                            disabled={!canEditWounds}
-                            onToggleMajor={(i) => toggleCAWoundBox(i, 'major')}
-                            onToggleMinor={(i, mi) => toggleCAWoundBox(i, 'minor', mi)}
-                          />
-                          {checkedEntries.length === 0 ? (
-                            <p className="text-xs text-stone-500 text-center py-1" data-testid="text-ca-wounds-empty">No wounds — press a pip above to add one.</p>
-                          ) : (
-                            <>
-                              <div className="flex justify-end">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* Left: body diagram + legend + capacity */}
+                          <div className="space-y-2">
+                            <div
+                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-[#e8dcc0] overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+                              onClick={placeWound}
+                              data-testid="area-ca-wound-diagram"
+                            >
+                              <svg viewBox="0 0 100 150" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMin meet">
+                                <g fill="#8a7d63" opacity={0.85}>
+                                  <circle cx="50" cy="16" r="11" />
+                                  <rect x="36" y="28" width="28" height="46" rx="10" />
+                                  <rect x="16" y="30" width="14" height="42" rx="6" />
+                                  <rect x="70" y="30" width="14" height="42" rx="6" />
+                                  <rect x="38" y="74" width="12" height="52" rx="6" />
+                                  <rect x="50" y="74" width="12" height="52" rx="6" />
+                                </g>
+                              </svg>
+                              {sortedWounds.map((w) => (
                                 <button
+                                  key={w.id}
                                   type="button"
-                                  className="text-[10px] text-stone-400 hover:text-stone-200"
-                                  onClick={() => setCaCollapsedWoundKeys(allCollapsed ? new Set() : new Set(checkedEntries.map((e) => e.key)))}
-                                  data-testid="button-toggle-all-ca-wounds"
+                                  className={`absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 ${severityDot[w.severity]} ${w.treated ? 'opacity-35' : ''} ${selectedCAWoundId === w.id ? 'ring-2 ring-offset-1 ring-white' : ''}`}
+                                  style={{ left: `${w.x}%`, top: `${w.y}%` }}
+                                  onClick={(e) => { e.stopPropagation(); setSelectedCAWoundId(w.id); }}
+                                  data-testid={`marker-ca-wound-${w.id}`}
+                                  title={w.name || 'Unnamed wound'}
+                                />
+                              ))}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isPlacingCAWound ? 'default' : 'outline'}
+                              className="w-full"
+                              disabled={!canEditWounds}
+                              onClick={() => setIsPlacingCAWound((v) => !v)}
+                              data-testid="button-add-ca-wound"
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1" />
+                              {isPlacingCAWound ? 'Click the body to place...' : 'Add Wound'}
+                            </Button>
+                            <div className="flex flex-col gap-1 text-[10px] text-stone-400">
+                              {CA_WOUND_SEVERITIES.map((sev) => (
+                                <div key={sev} className="flex items-center gap-1.5">
+                                  <span className={`w-2.5 h-2.5 rounded-full ${severityDot[sev]}`} />
+                                  <span>{CA_WOUND_SEVERITY_LABELS[sev]} = {CA_WOUND_SEVERITY_COST[sev]} {CA_WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Right: severity-sorted wound list */}
+                          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
+                            {sortedWounds.length === 0 ? (
+                              <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds — press Add Wound and click the body to place one.</p>
+                            ) : sortedWounds.map((w) => {
+                              const expanded = selectedCAWoundId === w.id;
+                              return (
+                                <div
+                                  key={w.id}
+                                  className={`rounded border p-2 space-y-1.5 bg-stone-900/50 ${severityBorder[w.severity]} ${w.treated ? 'opacity-60' : ''}`}
+                                  data-testid={`card-ca-wound-${w.id}`}
                                 >
-                                  {allCollapsed ? 'Expand All' : 'Collapse All'}
-                                </button>
-                              </div>
-                              <div className="space-y-2">
-                                {checkedEntries.map((entry) => {
-                                  const tier = CA_WOUND_TIER_CLASSES[entry.tier];
-                                  const collapsed = caCollapsedWoundKeys.has(entry.key);
-                                  return (
-                                    <div
-                                      key={entry.key}
-                                      className={`rounded border p-2 space-y-1.5 bg-stone-900/50 ${tier.accentBorder}`}
-                                      data-testid={`card-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}`}
-                                    >
-                                      <button
-                                        type="button"
-                                        className="flex items-center gap-1.5 w-full text-left"
-                                        onClick={() => toggleCAWoundCollapsed(entry.key)}
-                                        data-testid={`button-toggle-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}`}
-                                      >
-                                        {collapsed ? <ChevronRight className="h-3 w-3 text-stone-500 shrink-0" /> : <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" />}
-                                        <span className={`text-xs font-semibold ${tier.text}`}>{entry.label}</span>
-                                        {entry.statEffect && (
-                                          <span className="text-[10px] text-stone-400" data-testid={`text-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-summary`}>
-                                            {entry.statEffect.target === CA_CUSTOM_EFFECT_TARGET
-                                              ? '(Custom)'
-                                              : `(${caStatEffectTargetLabel(entry.statEffect.target)} ${entry.statEffect.amount >= 0 ? '+' : ''}${entry.statEffect.amount})`}
-                                          </span>
-                                        )}
-                                      </button>
-                                      {!collapsed && (
-                                        <>
-                                          <Textarea
-                                            key={`injury-${entry.key}`}
-                                            defaultValue={entry.injury}
-                                            onBlur={(e) => updateCAWoundText(entry.slotIndex, entry.type, 'injury', e.target.value, entry.minorIndex)}
-                                            disabled={!canEditWounds}
-                                            placeholder="Injury..."
-                                            className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                            data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-injury`}
-                                          />
-                                          <div className="flex items-center gap-1.5">
-                                            <Select
-                                              value={entry.statEffect?.target ?? '_none'}
-                                              onValueChange={(v) => updateCAWoundStatEffect(
-                                                entry.slotIndex, entry.type,
-                                                v === '_none' ? null : { target: v, amount: v === CA_CUSTOM_EFFECT_TARGET ? 0 : (entry.statEffect?.amount ?? -1) },
-                                                entry.minorIndex,
-                                              )}
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1.5 w-full text-left"
+                                    onClick={() => setSelectedCAWoundId(expanded ? null : w.id)}
+                                    data-testid={`button-toggle-ca-wound-${w.id}`}
+                                  >
+                                    {expanded ? <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" /> : <ChevronRight className="h-3 w-3 text-stone-500 shrink-0" />}
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${severityDot[w.severity]}`} />
+                                    <span className="text-xs font-semibold text-stone-200 truncate">{w.name || 'Unnamed Wound'}</span>
+                                    <span className="text-[10px] text-stone-500 ml-auto shrink-0">
+                                      {CA_WOUND_SEVERITY_LABELS[w.severity].toUpperCase()} {CA_WOUND_SEVERITY_COST[w.severity]}
+                                    </span>
+                                  </button>
+                                  {!expanded && w.location && (
+                                    <p className="text-[10px] text-stone-500 pl-4">{w.location}</p>
+                                  )}
+                                  {expanded && (
+                                    <div className="space-y-1.5 pl-4">
+                                      <Input
+                                        defaultValue={w.name}
+                                        onBlur={(e) => updateCAWound(w.id, { name: e.target.value })}
+                                        disabled={!canEditWounds}
+                                        placeholder="Wound name..."
+                                        className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
+                                        data-testid={`input-ca-wound-${w.id}-name`}
+                                      />
+                                      <div className="flex items-center gap-1.5">
+                                        <Select
+                                          value={w.severity}
+                                          onValueChange={(v) => updateCAWound(w.id, { severity: v as CAWoundSeverity })}
+                                          disabled={!canEditWounds}
+                                        >
+                                          <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700 flex-1" data-testid={`select-ca-wound-${w.id}-severity`}>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {CA_WOUND_SEVERITIES.map((sev) => (
+                                              <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        <Input
+                                          defaultValue={w.location}
+                                          onBlur={(e) => updateCAWound(w.id, { location: e.target.value })}
+                                          disabled={!canEditWounds}
+                                          placeholder="Location..."
+                                          className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200 flex-1"
+                                          data-testid={`input-ca-wound-${w.id}-location`}
+                                        />
+                                      </div>
+                                      <Textarea
+                                        defaultValue={w.description}
+                                        onBlur={(e) => updateCAWound(w.id, { description: e.target.value })}
+                                        disabled={!canEditWounds}
+                                        placeholder="Description..."
+                                        className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                        data-testid={`textarea-ca-wound-${w.id}-description`}
+                                      />
+                                      <div className="space-y-1">
+                                        {w.effects.map((eff, i) => (
+                                          <div key={i} className="flex items-center gap-1">
+                                            <Input
+                                              defaultValue={eff}
+                                              onBlur={(e) => updateCAWound(w.id, { effects: w.effects.map((x, j) => j === i ? e.target.value : x) })}
                                               disabled={!canEditWounds}
-                                            >
-                                              <SelectTrigger
-                                                className="h-7 text-xs bg-stone-800 border-stone-700 flex-1"
-                                                data-testid={`select-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-target`}
+                                              placeholder="Effect..."
+                                              className="h-6 text-xs bg-stone-800 border-stone-700 text-stone-200 flex-1"
+                                              data-testid={`input-ca-wound-${w.id}-effect-${i}`}
+                                            />
+                                            {canEditWounds && (
+                                              <button
+                                                type="button"
+                                                onClick={() => updateCAWound(w.id, { effects: w.effects.filter((_, j) => j !== i) })}
+                                                className="text-stone-500 hover:text-red-400"
+                                                data-testid={`button-remove-ca-wound-${w.id}-effect-${i}`}
                                               >
-                                                <SelectValue placeholder="No stat effect" />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                <SelectItem value="_none">No stat effect</SelectItem>
-                                                <SelectItem value={CA_CUSTOM_EFFECT_TARGET}>Custom</SelectItem>
-                                                <SelectGroup>
-                                                  <SelectLabel>Movement</SelectLabel>
-                                                  {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
-                                                </SelectGroup>
-                                                <SelectGroup>
-                                                  <SelectLabel>Skills</SelectLabel>
-                                                  {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
-                                                </SelectGroup>
-                                              </SelectContent>
-                                            </Select>
-                                            {entry.statEffect && entry.statEffect.target !== CA_CUSTOM_EFFECT_TARGET && (
-                                              <NumberInput
-                                                className="w-16 h-7 text-xs bg-stone-800 border-stone-700 shrink-0"
-                                                value={entry.statEffect.amount}
-                                                onChange={(v) => updateCAWoundStatEffect(
-                                                  entry.slotIndex, entry.type,
-                                                  { target: entry.statEffect!.target, amount: v ?? 0 },
-                                                  entry.minorIndex,
-                                                )}
-                                                disabled={!canEditWounds}
-                                                data-testid={`input-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-amount`}
-                                              />
+                                                <X className="h-3 w-3" />
+                                              </button>
                                             )}
                                           </div>
-                                          {entry.statEffect?.target === CA_CUSTOM_EFFECT_TARGET && (
-                                            <Textarea
-                                              key={`effect-${entry.key}`}
-                                              defaultValue={entry.effect}
-                                              onBlur={(e) => updateCAWoundText(entry.slotIndex, entry.type, 'effect', e.target.value, entry.minorIndex)}
-                                              disabled={!canEditWounds}
-                                              placeholder="Describe the custom effect..."
-                                              className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                              data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect`}
-                                            />
-                                          )}
-                                        </>
+                                        ))}
+                                        {canEditWounds && (
+                                          <button
+                                            type="button"
+                                            className="text-[10px] text-amber-500 hover:text-amber-400"
+                                            onClick={() => updateCAWound(w.id, { effects: [...w.effects, ''] })}
+                                            data-testid={`button-add-ca-wound-${w.id}-effect`}
+                                          >
+                                            + Add effect line
+                                          </button>
+                                        )}
+                                      </div>
+                                      {canEditWounds && (
+                                        <div className="flex items-center gap-2 pt-1">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-6 text-[10px] flex-1"
+                                            onClick={() => toggleCAWoundTreated(w.id)}
+                                            data-testid={`button-treat-ca-wound-${w.id}`}
+                                          >
+                                            {w.treated ? 'Mark Untreated' : 'Treat Wound'}
+                                          </Button>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeCAWound(w.id)}
+                                            className="text-stone-500 hover:text-red-400"
+                                            data-testid={`button-delete-ca-wound-${w.id}`}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          )}
-                        </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })()}
                   </div>

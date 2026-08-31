@@ -5,148 +5,129 @@
 // independent so future edits to either system never affect the other.
 
 // ---------------------------------------------------------------------------
-// Wounds — replaces HP entirely for C.A. 6 slots, each with 1 "major" wound
-// and 3 "minor" wounds. Purely narrative/GM-discretion tracking, no
-// mechanical HP derivation.
+// Wounds — replaces HP entirely for C.A. A freeform pin on a body diagram,
+// not a fixed grid of slots: click "Add Wound", click a spot on the body,
+// and that becomes a wound with its own name, location, severity, a
+// description, and a list of narrative effect lines — purely GM/player
+// narrative content, no auto-derived mechanical stat penalties.
 // ---------------------------------------------------------------------------
 
-// A wound's optional mechanical effect: a flat delta applied to a skill, an
-// attribute, or one of the fixed movement stats while this box is checked.
-// `target` is a CA_SKILLS key, a CAAttributeKey, or a CAFixedStatTarget.
-export interface CAWoundStatEffect {
-  target: string;
-  amount: number;
+export type CAWoundSeverity = "minor" | "moderate" | "serious";
+
+export const CA_WOUND_SEVERITIES: CAWoundSeverity[] = ["minor", "moderate", "serious"];
+
+export const CA_WOUND_SEVERITY_LABELS: Record<CAWoundSeverity, string> = {
+  minor: "Minor",
+  moderate: "Moderate",
+  serious: "Serious",
+};
+
+// How many points of Wound Capacity an active (untreated) wound of this
+// severity costs.
+export const CA_WOUND_SEVERITY_COST: Record<CAWoundSeverity, number> = {
+  minor: 0.5,
+  moderate: 1,
+  serious: 2,
+};
+
+// Sort weight for "most severe first" — higher sorts first.
+export const CA_WOUND_SEVERITY_RANK: Record<CAWoundSeverity, number> = {
+  serious: 3,
+  moderate: 2,
+  minor: 1,
+};
+
+export interface CAWound {
+  id: string;
+  x: number; // 0-100, percent position on the body diagram
+  y: number; // 0-100
+  name: string;
+  location: string;
+  severity: CAWoundSeverity;
+  description: string;
+  effects: string[];
+  treated: boolean;
 }
 
-export interface CAWoundEntry {
-  checked: boolean;
-  injury: string;
-  effect: string;
-  statEffect?: CAWoundStatEffect | null;
+let caWoundIdCounter = 0;
+function makeCAWoundId(): string {
+  caWoundIdCounter += 1;
+  return `w${Date.now().toString(36)}${caWoundIdCounter}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export interface CAWoundSlot {
-  label: string;
-  major: CAWoundEntry;
-  minor: CAWoundEntry[]; // always length 3
-}
-
-export const CA_WOUND_SLOT_COUNT = 6;
-export const CA_WOUND_MINOR_PER_SLOT = 3;
-export const CA_WOUND_TOTAL_BOXES = CA_WOUND_SLOT_COUNT * (1 + CA_WOUND_MINOR_PER_SLOT);
-
-// Each of the 6 slots is a fixed body region, in display order. The label is
-// always derived from this array by index — never trusted from stored data —
-// so ordering/naming is guaranteed consistent across every character.
-export const CA_BODY_PARTS = ["Head", "Torso", "R Arm", "L Arm", "R Leg", "L Leg"] as const;
-export type CABodyPart = typeof CA_BODY_PARTS[number];
-
-function emptyWoundEntry(): CAWoundEntry {
-  return { checked: false, injury: "", effect: "" };
-}
-
-export function makeEmptyCAWounds(): CAWoundSlot[] {
-  return CA_BODY_PARTS.map((label) => ({
-    label,
-    major: emptyWoundEntry(),
-    minor: Array.from({ length: CA_WOUND_MINOR_PER_SLOT }, () => emptyWoundEntry()),
-  }));
-}
-
-// Tolerates missing/malformed data (e.g. a character predating this column,
-// or a slot count that doesn't match if this ever changes) by falling back
-// to a fresh empty set rather than throwing. Labels are always the canonical
-// CA_BODY_PARTS name for that index, regardless of what (if anything) was
-// stored, so a stale/legacy label can never surface in the UI.
-export function normalizeCAWounds(raw: unknown): CAWoundSlot[] {
-  if (!Array.isArray(raw) || raw.length !== CA_WOUND_SLOT_COUNT) {
-    return makeEmptyCAWounds();
-  }
-  return raw.map((slot: any, i: number) => ({
-    label: CA_BODY_PARTS[i],
-    major: normalizeWoundEntry(slot?.major),
-    minor: Array.from({ length: CA_WOUND_MINOR_PER_SLOT }, (_, j) =>
-      normalizeWoundEntry(slot?.minor?.[j])
-    ),
-  }));
-}
-
-function normalizeWoundEntry(raw: any): CAWoundEntry {
-  const rawEffect = raw?.statEffect;
-  const statEffect: CAWoundStatEffect | null =
-    rawEffect && typeof rawEffect.target === "string" && rawEffect.target && Number.isFinite(Number(rawEffect.amount))
-      ? { target: rawEffect.target, amount: Math.trunc(Number(rawEffect.amount)) }
-      : null;
+// A fresh wound pinned at (x, y) — percent coordinates on the body diagram,
+// clamped 0-100 so a click just outside the image can't store a marker
+// that renders off it.
+export function makeCAWound(x: number, y: number): CAWound {
   return {
-    checked: !!raw?.checked,
-    injury: typeof raw?.injury === "string" ? raw.injury : "",
-    effect: typeof raw?.effect === "string" ? raw.effect : "",
-    statEffect,
+    id: makeCAWoundId(),
+    x: Math.max(0, Math.min(100, x)),
+    y: Math.max(0, Math.min(100, y)),
+    name: "",
+    location: "",
+    severity: "minor",
+    description: "",
+    effects: [],
+    treated: false,
   };
 }
 
-export function caWoundCount(wounds: unknown): number {
-  const normalized = normalizeCAWounds(wounds);
-  let count = 0;
-  for (const slot of normalized) {
-    if (slot.major.checked) count++;
-    for (const m of slot.minor) if (m.checked) count++;
+// Tolerates missing/malformed data (a character predating this shape, an
+// old fixed-slot-era wounds array, or a plain corrupt value) by dropping
+// anything that doesn't look like a real wound rather than throwing.
+export function normalizeCAWounds(raw: unknown): CAWound[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CAWound[] = [];
+  for (const w of raw) {
+    if (!w || typeof w !== "object") continue;
+    const anyW = w as any;
+    if (typeof anyW.x !== "number" && typeof anyW.y !== "number") continue; // old fixed-slot shape, drop it
+    const severity: CAWoundSeverity =
+      anyW.severity === "moderate" || anyW.severity === "serious" ? anyW.severity : "minor";
+    out.push({
+      id: typeof anyW.id === "string" && anyW.id ? anyW.id : makeCAWoundId(),
+      x: Number.isFinite(Number(anyW.x)) ? Math.max(0, Math.min(100, Number(anyW.x))) : 50,
+      y: Number.isFinite(Number(anyW.y)) ? Math.max(0, Math.min(100, Number(anyW.y))) : 50,
+      name: typeof anyW.name === "string" ? anyW.name : "",
+      location: typeof anyW.location === "string" ? anyW.location : "",
+      severity,
+      description: typeof anyW.description === "string" ? anyW.description : "",
+      effects: Array.isArray(anyW.effects) ? anyW.effects.filter((e: any) => typeof e === "string") : [],
+      treated: !!anyW.treated,
+    });
   }
-  return count;
+  return out;
 }
 
-// A limb's Major wound is "in effect" either because it was checked
-// directly, or because all 3 of its Minor wounds are checked — three minors
-// add up to as dangerous as a major injury. This is purely computed, never
-// stored: checking/unchecking a single minor immediately changes the
-// answer, and the player's own major.checked flag (if they set it
-// themselves) is preserved independently underneath it either way.
-export function caEffectiveMajorActive(slot: CAWoundSlot): boolean {
-  return slot.major.checked || slot.minor.every(m => m.checked);
-}
-
-// HP for C.A. is driven by Major wounds only (direct or minor-covered) —
-// Minor wounds short of covering a whole limb don't affect it. Returns how
-// many of the 6 limbs currently have an effective Major wound, 0-6.
-export function caMajorWoundCount(wounds: unknown): number {
-  const normalized = normalizeCAWounds(wounds);
-  return normalized.filter(caEffectiveMajorActive).length;
-}
-
-// Sentinel statEffect.target value meaning "this wound has a narrative
-// effect that isn't reducible to a single stat delta" — selecting it in
-// the effect-target dropdown is what reveals the free-text Effect field,
-// which otherwise stays hidden since a real stat target already shows its
-// own effect right there in the dropdown + amount.
-export const CA_CUSTOM_EFFECT_TARGET = "custom";
-
-// Movement stats a wound's effect can target besides a skill/attribute key.
-export const CA_FIXED_STAT_TARGETS = ["speed", "flySpeed", "swimSpeed"] as const;
-export type CAFixedStatTarget = typeof CA_FIXED_STAT_TARGETS[number];
-export const CA_FIXED_STAT_LABELS: Record<CAFixedStatTarget, string> = {
-  speed: "Speed",
-  flySpeed: "Fly Speed",
-  swimSpeed: "Swim Speed",
-};
-
-// Sums every CHECKED wound's statEffect that targets `target` (a skill key,
-// an attribute key, or a CAFixedStatTarget), across all 6 limbs. Unchecking
-// or clearing a wound removes its contribution immediately — this is always
-// computed fresh from the wounds array, never a separately stored total.
-export function caWoundStatEffectTotal(wounds: unknown, target: string): number {
-  if (!target) return 0;
+// Total active Wound Capacity spent — treated wounds don't count unless
+// asked for explicitly (e.g. a "wound history" view).
+export function caWoundTotalCost(wounds: unknown, includeTreated = false): number {
   const normalized = normalizeCAWounds(wounds);
   let total = 0;
-  for (const slot of normalized) {
-    const entries = [slot.major, ...slot.minor];
-    for (const entry of entries) {
-      if (entry.checked && entry.statEffect && entry.statEffect.target === target) {
-        total += entry.statEffect.amount;
-      }
-    }
+  for (const w of normalized) {
+    if (!includeTreated && w.treated) continue;
+    total += CA_WOUND_SEVERITY_COST[w.severity];
   }
   return total;
 }
+
+export function caActiveWoundCount(wounds: unknown): number {
+  return normalizeCAWounds(wounds).filter((w) => !w.treated).length;
+}
+
+// Wound Capacity = Constitution + Level — how many points of wounds a
+// character can carry before being fully overwhelmed.
+export function caWoundCapacity(character: { constitution?: number | null; level?: number | null } | null | undefined): number {
+  const con = Math.max(0, Math.floor(Number(character?.constitution) || 0));
+  const level = Math.max(1, Math.floor(Number(character?.level) || 1));
+  return con + level;
+}
+
+// A conservative reference cap for compact displays (hotbar/roster peeks)
+// that don't have the full character record (Constitution/Level) on hand
+// to compute a real caWoundCapacity — a stand-in denominator only, never
+// used where the real character record is available.
+export const CA_WOUND_DEFAULT_CAP = 10;
 
 // ---------------------------------------------------------------------------
 // Attributes + skills — starts as an editable copy of V3's 6 attributes and
