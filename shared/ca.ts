@@ -113,6 +113,13 @@ export function caMajorWoundCount(wounds: unknown): number {
   return normalized.filter(caEffectiveMajorActive).length;
 }
 
+// Sentinel statEffect.target value meaning "this wound has a narrative
+// effect that isn't reducible to a single stat delta" — selecting it in
+// the effect-target dropdown is what reveals the free-text Effect field,
+// which otherwise stays hidden since a real stat target already shows its
+// own effect right there in the dropdown + amount.
+export const CA_CUSTOM_EFFECT_TARGET = "custom";
+
 // Movement stats a wound's effect can target besides a skill/attribute key.
 export const CA_FIXED_STAT_TARGETS = ["speed", "flySpeed", "swimSpeed"] as const;
 export type CAFixedStatTarget = typeof CA_FIXED_STAT_TARGETS[number];

@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, caEffectiveMajorActive, caMajorWoundCount, caWoundStatEffectTotal, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAFixedStatTarget, type CAWoundStatEffect, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, caWoundCount, CA_WOUND_TOTAL_BOXES, CA_WOUND_SLOT_COUNT, CA_BODY_PARTS, caEffectiveMajorActive, caMajorWoundCount, caWoundStatEffectTotal, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, CA_CUSTOM_EFFECT_TARGET, type CAFixedStatTarget, type CAWoundStatEffect, type CAWoundSlot, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -155,7 +155,8 @@ function caWoundSeverity(slot: CAWoundSlot): 'none' | 'minor' | 'major' {
 // Per-tier hues form a severity gradient reading left-to-right (and
 // top-to-bottom in the injury list below): Minor 1 is yellow (mildest),
 // stepping through orange and red as the minors climb toward Major, which
-// is the darkest red. Used for both the pip buttons (CAWoundMapPips) and
+// is the darkest red. Used across all three wound-map designs (hex/pips/
+// figure) and
 // the matching accent on each checked wound's card below them.
 type CAWoundTier = 'major' | 'minor0' | 'minor1' | 'minor2';
 function caWoundTierKey(type: 'major' | 'minor', minorIndex?: number): CAWoundTier {
@@ -167,10 +168,20 @@ const CA_WOUND_TIER_CLASSES: Record<CAWoundTier, { pipOn: string; text: string; 
   minor2: { pipOn: 'bg-red-500/85 border-red-400', text: 'text-red-400', accentBorder: 'border-red-500' },
   major: { pipOn: 'bg-red-800/90 border-red-700', text: 'text-red-500', accentBorder: 'border-red-800' },
 };
+// Same tier language as CA_WOUND_TIER_CLASSES above, as raw hex values —
+// used by CAWoundMapFigure, which paints directly into SVG fill/stroke
+// attributes rather than Tailwind classes.
+const CA_WOUND_TIER_HEX: Record<CAWoundTier, string> = {
+  minor0: '#eab308',
+  minor1: '#f97316',
+  minor2: '#ef4444',
+  major: '#991b1b',
+};
 
 // Friendly label for a wound's stat-effect target (a fixed movement stat, a
 // CA attribute, or a CA skill key).
 function caStatEffectTargetLabel(target: string): string {
+  if (target === CA_CUSTOM_EFFECT_TARGET) return "Custom";
   if ((CA_FIXED_STAT_TARGETS as readonly string[]).includes(target)) return CA_FIXED_STAT_LABELS[target as CAFixedStatTarget];
   const attr = CA_ATTRIBUTES.find(a => a.key === target);
   if (attr) return attr.name;
@@ -313,8 +324,10 @@ function CAWoundMapHex({
 }
 
 /**
- * ACTIVE DESIGN — "pips". A completely different visual/interaction idea
- * from "hex" above: plain HTML/CSS, no SVG at all. Each limb is a row —
+ * SAVED DESIGN — "pips". Was the active design before "figure" below; kept
+ * working so it stays available to switch back to on request. A completely
+ * different visual/interaction idea from "hex" above: plain HTML/CSS, no
+ * SVG at all. Each limb is a row —
  * label, then the three Minor pips (red → orange → yellow), then the wide
  * Major pip (dark red) at the far right — minors on the left, major on the
  * right, matching the reading order of the injury list below (same tier
@@ -383,6 +396,142 @@ function CAWoundMapPips({
         );
       })}
     </div>
+  );
+}
+
+// Simple, rotation-free geometry for a stylized standing figure — head
+// circle, torso/limb rounded rects, arms and legs spaced out from the
+// body rather than angled, so nothing depends on SVG transform math.
+// Index is into CA_BODY_PARTS (Head, Torso, R Arm, L Arm, R Leg, L Leg).
+const CA_FIGURE_SHAPES: { cx: number; cy: number; w: number; h: number; rx: number; isCircle?: boolean }[] = [
+  { cx: 140, cy: 36, w: 48, h: 48, rx: 24, isCircle: true }, // Head
+  { cx: 140, cy: 118, w: 64, h: 108, rx: 16 }, // Torso
+  { cx: 188, cy: 118, w: 24, h: 96, rx: 12 }, // R Arm
+  { cx: 92, cy: 118, w: 24, h: 96, rx: 12 }, // L Arm
+  { cx: 153, cy: 232, w: 26, h: 112, rx: 13 }, // R Leg
+  { cx: 121, cy: 232, w: 26, h: 112, rx: 13 }, // L Leg
+];
+const CA_FIGURE_LEGEND_ROW_Y = [40, 88, 136, 184, 232, 280];
+
+/**
+ * ACTIVE DESIGN — "figure". A body silhouette instead of an abstract
+ * diagram: each region IS the anatomical shape (head/torso/arms/legs),
+ * so the character's own body doubles as its own status display — no
+ * translating "hexagon #3" or "row 2" into "which limb is that." A
+ * region's fill climbs the same minor/major tier colors everywhere else
+ * uses as it takes damage, an effective Major wound additionally draws a
+ * jagged scar/crack across the shape, and the whole figure sits in front
+ * of a soft red vignette that intensifies with how many limbs have an
+ * effective Major wound — a whole-character "how bad is this" read at a
+ * glance neither "hex" nor "pips" had, layered on top of the same
+ * per-limb detail. Minor toggles live in a fixed-position legend column
+ * next to the figure (same "generous, predictable hit target" idea as
+ * "hex" — just laid out as a legend rather than dots wired to each node),
+ * since a solid, differently-shaped silhouette per limb doesn't offer a
+ * reliable spot to cram 3 more precise tap targets directly onto it.
+ */
+function CAWoundMapFigure({
+  wounds,
+  disabled,
+  onToggleMajor,
+  onToggleMinor,
+}: {
+  wounds: CAWoundSlot[];
+  disabled: boolean;
+  onToggleMajor: (index: number) => void;
+  onToggleMinor: (index: number, minorIndex: number) => void;
+}) {
+  const majorCount = wounds.filter(caEffectiveMajorActive).length;
+  const perilOpacity = Math.min(0.55, (majorCount / CA_WOUND_SLOT_COUNT) * 0.6);
+  const interactive = disabled ? '' : 'cursor-pointer';
+
+  return (
+    <svg viewBox="0 0 300 320" className="w-full h-auto" data-testid="svg-ca-wound-figure">
+      <defs>
+        <radialGradient id="ca-wound-peril" cx="50%" cy="42%" r="62%">
+          <stop offset="0%" stopColor="#dc2626" stopOpacity={perilOpacity} />
+          <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      {perilOpacity > 0 && <rect x={0} y={0} width={300} height={320} fill="url(#ca-wound-peril)" data-testid="rect-ca-wound-peril" />}
+
+      {CA_BODY_PARTS.map((label, i) => {
+        const slot = wounds[i];
+        const shape = CA_FIGURE_SHAPES[i];
+        const majorOn = slot.major.checked;
+        const autoCovered = !majorOn && caEffectiveMajorActive(slot);
+        const highestMinor: CAWoundTier | null =
+          slot.minor[2].checked ? 'minor2' : slot.minor[1].checked ? 'minor1' : slot.minor[0].checked ? 'minor0' : null;
+        const tierKey: CAWoundTier | null = (majorOn || autoCovered) ? 'major' : highestMinor;
+        const color = tierKey ? CA_WOUND_TIER_HEX[tierKey] : '#57534e';
+        const hitR = Math.max(shape.w, shape.h) / 2 + 10;
+
+        return (
+          <g
+            key={label}
+            onClick={() => !disabled && onToggleMajor(i)}
+            className={interactive}
+            data-testid={`toggle-ca-wound-${i}-major`}
+          >
+            <title>{`${label} — Major${majorOn ? ' (checked)' : autoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`}</title>
+            <circle cx={shape.cx} cy={shape.cy} r={hitR} fill="transparent" />
+            {shape.isCircle ? (
+              <circle
+                cx={shape.cx} cy={shape.cy} r={shape.rx}
+                fill={tierKey ? color : 'none'} fillOpacity={majorOn ? 0.85 : tierKey ? 0.4 : 1}
+                stroke={tierKey ? color : '#57534e'} strokeWidth={majorOn ? 2.5 : 1.25}
+                strokeDasharray={autoCovered ? '4 3' : undefined}
+              />
+            ) : (
+              <rect
+                x={shape.cx - shape.w / 2} y={shape.cy - shape.h / 2} width={shape.w} height={shape.h} rx={shape.rx}
+                fill={tierKey ? color : 'none'} fillOpacity={majorOn ? 0.85 : tierKey ? 0.4 : 1}
+                stroke={tierKey ? color : '#57534e'} strokeWidth={majorOn ? 2.5 : 1.25}
+                strokeDasharray={autoCovered ? '4 3' : undefined}
+              />
+            )}
+            {majorOn && (
+              <polyline
+                points={`${shape.cx - shape.w * 0.3},${shape.cy - shape.h * 0.35} ${shape.cx + shape.w * 0.18},${shape.cy - shape.h * 0.06} ${shape.cx - shape.w * 0.12},${shape.cy + shape.h * 0.1} ${shape.cx + shape.w * 0.3},${shape.cy + shape.h * 0.35}`}
+                fill="none" stroke="rgba(12,8,6,0.75)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                className="pointer-events-none"
+              />
+            )}
+          </g>
+        );
+      })}
+
+      {CA_BODY_PARTS.map((label, i) => {
+        const y = CA_FIGURE_LEGEND_ROW_Y[i];
+        const slot = wounds[i];
+        return (
+          <g key={`legend-${label}`}>
+            <text x={222} y={y - 14} fontSize="10" letterSpacing="0.3" fill="#a8a29e">{label}</text>
+            {slot.minor.map((m, mi) => {
+              const color = CA_WOUND_TIER_HEX[caWoundTierKey('minor', mi)];
+              const x = 222 + mi * 20;
+              return (
+                <g
+                  key={mi}
+                  onClick={() => !disabled && onToggleMinor(i, mi)}
+                  className={interactive}
+                  data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
+                >
+                  <title>{`${label} — Minor ${mi + 1}${m.checked ? ' (checked)' : ''}`}</title>
+                  <circle cx={x} cy={y} r={12} fill="transparent" />
+                  <rect
+                    x={x - 6} y={y - 8} width={12} height={16} rx={3}
+                    fill={m.checked ? color : 'none'}
+                    stroke={m.checked ? color : '#5c5651'}
+                    strokeWidth={1.5}
+                  />
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -21303,13 +21452,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-ca-energy" />
                   </div>
 
-                  {/* Wounds — replaces HP entirely for C.A. The pip row IS
-                      the entire selection interface (see CAWoundMapPips).
+                  {/* Wounds — replaces HP entirely for C.A. The figure IS
+                      the entire selection interface (see CAWoundMapFigure).
                       Any checked wound's injury/effect card is always
                       visible below it, never gated behind a click or a
                       dialog — only its own text can be collapsed to save
-                      space, not its existence. Pressing a checked pip again
-                      fully clears it — no separate Clear control. */}
+                      space, not its existence. Pressing a checked toggle
+                      again fully clears it — no separate Clear control. */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm text-stone-300">Wounds</Label>
@@ -21342,7 +21491,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       const allCollapsed = checkedEntries.length > 0 && checkedEntries.every((e) => caCollapsedWoundKeys.has(e.key));
                       return (
                         <>
-                          <CAWoundMapPips
+                          <CAWoundMapFigure
                             wounds={allWounds}
                             disabled={!canEditWounds}
                             onToggleMajor={(i) => toggleCAWoundBox(i, 'major')}
@@ -21382,7 +21531,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                         <span className={`text-xs font-semibold ${tier.text}`}>{entry.label}</span>
                                         {entry.statEffect && (
                                           <span className="text-[10px] text-stone-400" data-testid={`text-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect-summary`}>
-                                            ({caStatEffectTargetLabel(entry.statEffect.target)} {entry.statEffect.amount >= 0 ? '+' : ''}{entry.statEffect.amount})
+                                            {entry.statEffect.target === CA_CUSTOM_EFFECT_TARGET
+                                              ? '(Custom)'
+                                              : `(${caStatEffectTargetLabel(entry.statEffect.target)} ${entry.statEffect.amount >= 0 ? '+' : ''}${entry.statEffect.amount})`}
                                           </span>
                                         )}
                                       </button>
@@ -21397,21 +21548,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                             className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
                                             data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-injury`}
                                           />
-                                          <Textarea
-                                            key={`effect-${entry.key}`}
-                                            defaultValue={entry.effect}
-                                            onBlur={(e) => updateCAWoundText(entry.slotIndex, entry.type, 'effect', e.target.value, entry.minorIndex)}
-                                            disabled={!canEditWounds}
-                                            placeholder="Effect..."
-                                            className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                            data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect`}
-                                          />
                                           <div className="flex items-center gap-1.5">
                                             <Select
                                               value={entry.statEffect?.target ?? '_none'}
                                               onValueChange={(v) => updateCAWoundStatEffect(
                                                 entry.slotIndex, entry.type,
-                                                v === '_none' ? null : { target: v, amount: entry.statEffect?.amount ?? -1 },
+                                                v === '_none' ? null : { target: v, amount: v === CA_CUSTOM_EFFECT_TARGET ? 0 : (entry.statEffect?.amount ?? -1) },
                                                 entry.minorIndex,
                                               )}
                                               disabled={!canEditWounds}
@@ -21424,6 +21566,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                               </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="_none">No stat effect</SelectItem>
+                                                <SelectItem value={CA_CUSTOM_EFFECT_TARGET}>Custom</SelectItem>
                                                 <SelectGroup>
                                                   <SelectLabel>Movement</SelectLabel>
                                                   {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
@@ -21434,7 +21577,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                                 </SelectGroup>
                                               </SelectContent>
                                             </Select>
-                                            {entry.statEffect && (
+                                            {entry.statEffect && entry.statEffect.target !== CA_CUSTOM_EFFECT_TARGET && (
                                               <NumberInput
                                                 className="w-16 h-7 text-xs bg-stone-800 border-stone-700 shrink-0"
                                                 value={entry.statEffect.amount}
@@ -21448,6 +21591,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                               />
                                             )}
                                           </div>
+                                          {entry.statEffect?.target === CA_CUSTOM_EFFECT_TARGET && (
+                                            <Textarea
+                                              key={`effect-${entry.key}`}
+                                              defaultValue={entry.effect}
+                                              onBlur={(e) => updateCAWoundText(entry.slotIndex, entry.type, 'effect', e.target.value, entry.minorIndex)}
+                                              disabled={!canEditWounds}
+                                              placeholder="Describe the custom effect..."
+                                              className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                              data-testid={`textarea-ca-wound-${entry.slotIndex}-${entry.type}${entry.minorIndex !== undefined ? `-${entry.minorIndex}` : ''}-effect`}
+                                            />
+                                          )}
                                         </>
                                       )}
                                     </div>
