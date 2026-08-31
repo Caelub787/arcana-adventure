@@ -423,6 +423,25 @@ const CA_FIGURE_SHAPES: CAFigureShape[] = [
   { kind: 'rect', x: 90, y: 216, w: 36, h: 140, rx: 16 },    // L Leg (x:90-126, gap 8 from R Leg)
 ];
 
+// Purely decorative silhouette for each region, drawn well inside its own
+// CA_FIGURE_SHAPES hit box above (which is untouched — still what actually
+// receives clicks) so improving the art here can never risk the hit-test
+// correctness that was the last pass's real bug. Straight-edged tapered
+// polygons rather than bezier curves — no risk of a malformed curve
+// shipping unseen — mirrored around the centerline (x=130) by construction
+// so left/right symmetry doesn't depend on hand-matching two shapes.
+type CAFigureVisual =
+  | { kind: 'circle'; cx: number; cy: number; r: number }
+  | { kind: 'poly'; points: string };
+const CA_FIGURE_VISUALS: CAFigureVisual[] = [
+  { kind: 'circle', cx: 130, cy: 48, r: 24 },                                  // Head
+  { kind: 'poly', points: '104,88 156,88 150,150 142,204 118,204 110,150' },   // Torso — tapered, hourglass waist
+  { kind: 'poly', points: '192,94 210,94 206,200 196,200' },                   // R Arm — tapered toward the wrist
+  { kind: 'poly', points: '68,94 50,94 54,200 64,200' },                       // L Arm (mirror of R Arm)
+  { kind: 'poly', points: '142,222 162,222 156,330 160,350 144,350 148,330' }, // R Leg — tapered shin, flared boot
+  { kind: 'poly', points: '118,222 98,222 104,330 100,350 116,350 112,330' },  // L Leg (mirror of R Leg)
+];
+
 // Where each region's 3 Minor-wound ticks sit — right next to (or, for
 // Torso, inside the lower chest of) that region's own shape, so a tick
 // always reads as belonging to its limb and the whole thing stays one
@@ -439,24 +458,26 @@ const CA_FIGURE_TICKS: { label?: string; lx?: number; ly?: number; x: number; y:
 ];
 
 /**
- * ACTIVE DESIGN — "figure" (v2). A body silhouette instead of an abstract
+ * ACTIVE DESIGN — "figure" (v3). A body silhouette instead of an abstract
  * diagram: each region IS the anatomical shape (head/torso/arms/legs), so
  * the character's own body doubles as its own status display — no
- * translating "hexagon #3" or "row 2" into "which limb is that." A
- * region's fill climbs the same minor/major tier colors everywhere else
- * uses as it takes damage (now rendered as a soft top-to-bottom gradient,
- * not a flat tint, for a less cartoonish look), an effective Major wound
- * additionally draws a jagged scar across the shape, and the whole figure
- * sits in front of a soft red vignette that intensifies with how many
- * limbs have an effective Major wound. A drop shadow under the whole
- * figure and a ground shadow under its feet give it some presence instead
- * of reading as flat clip-art; a faint chest-plate outline on the torso
- * hints at armor rather than a bare mannequin. v1's separate legend
- * column for the Minor toggles is gone — every tick now sits directly
- * next to its own limb (see CA_FIGURE_TICKS above), so the whole thing is
- * one continuous graphic, and every hit target is an exact, tightly
- * padded match for its own shape (see CA_FIGURE_SHAPES above) instead of
- * an oversized circle that could steal clicks meant for a neighbor.
+ * translating "hexagon #3" or "row 2" into "which limb is that." Sits
+ * inside an actual framed plaque (a bordered, vignetted panel with a
+ * subtle grain texture) rather than floating on bare background, and the
+ * figure itself is a tapered silhouette (see CA_FIGURE_VISUALS) instead
+ * of plain rounded rectangles — the same warm, dark ink-outline treatment
+ * the Map Maker's coastlines use, not a bright tier-colored outline, so it
+ * reads as one consistent hand-drawn material rather than flat vector
+ * shapes. A region's fill still climbs the same minor/major tier colors
+ * everywhere else uses as it takes damage, an effective Major wound draws
+ * a jagged scar across it, and the whole figure sits in front of a soft
+ * red vignette that intensifies with how many limbs have an effective
+ * Major wound. The invisible hit target for every region is still the
+ * plain, exact, non-overlapping box/circle from CA_FIGURE_SHAPES above,
+ * completely decoupled from this visual layer — the art here can be
+ * freely improved without any risk to the click-accuracy that was fixed
+ * in the previous pass. Minor toggles sit directly next to their own limb
+ * (see CA_FIGURE_TICKS above), never in a separate legend elsewhere.
  */
 function CAWoundMapFigure({
   wounds,
@@ -471,52 +492,77 @@ function CAWoundMapFigure({
 }) {
   const uid = useId();
   const majorCount = wounds.filter(caEffectiveMajorActive).length;
-  const perilOpacity = Math.min(0.5, (majorCount / CA_WOUND_SLOT_COUNT) * 0.55);
+  const perilOpacity = Math.min(0.45, (majorCount / CA_WOUND_SLOT_COUNT) * 0.5);
   const interactive = disabled ? '' : 'cursor-pointer';
   const gradId = (tier: CAWoundTier) => `ca-wound-grad-${tier}-${uid}`;
   const baseId = `ca-wound-base-${uid}`;
   const perilId = `ca-wound-peril-${uid}`;
+  const panelId = `ca-wound-panel-${uid}`;
   const shadowId = `ca-wound-shadow-${uid}`;
+  const grainId = `ca-wound-grain-${uid}`;
+  const inkStroke = 'rgba(26,18,12,0.85)';
 
   return (
     <svg viewBox="0 0 260 400" className="w-full h-auto" data-testid="svg-ca-wound-figure">
       <defs>
+        <radialGradient id={panelId} cx="50%" cy="32%" r="80%">
+          <stop offset="0%" stopColor="#3a332c" />
+          <stop offset="100%" stopColor="#131110" />
+        </radialGradient>
         <radialGradient id={perilId} cx="50%" cy="38%" r="65%">
           <stop offset="0%" stopColor="#dc2626" stopOpacity={perilOpacity} />
           <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
         </radialGradient>
         <linearGradient id={baseId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#5f584f" />
-          <stop offset="100%" stopColor="#38332e" />
+          <stop offset="0%" stopColor="#6b5d4f" />
+          <stop offset="100%" stopColor="#443a2f" />
         </linearGradient>
         {(['minor0', 'minor1', 'minor2', 'major'] as CAWoundTier[]).map((tier) => (
           <linearGradient key={tier} id={gradId(tier)} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.95} />
-            <stop offset="100%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.55} />
+            <stop offset="100%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.62} />
           </linearGradient>
         ))}
         <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
           <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
         </filter>
+        <filter id={grainId}>
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise" />
+          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0.7 0.7 0 0" result="noiseAlpha" />
+          <feComposite in="noiseAlpha" in2="SourceGraphic" operator="in" />
+        </filter>
       </defs>
 
-      <rect x={0} y={0} width={260} height={400} fill={`url(#${perilId})`} data-testid="rect-ca-wound-peril" />
-      <ellipse cx={130} cy={378} rx={68} ry={11} fill="#000000" opacity={0.35} className="pointer-events-none" />
+      {/* Framed plaque background — everything else sits inside this one
+          panel rather than floating on bare page background. */}
+      <rect x={4} y={4} width={252} height={392} rx={16} fill={`url(#${panelId})`} stroke="#78350f" strokeWidth={2} />
+      <rect x={9} y={9} width={242} height={382} rx={11} fill="none" stroke="rgba(217,119,6,0.35)" strokeWidth={1} className="pointer-events-none" />
+      <rect x={4} y={4} width={252} height={392} rx={16} fill="#000" filter={`url(#${grainId})`} opacity={0.05} className="pointer-events-none" />
+
+      <rect x={4} y={4} width={252} height={392} rx={16} fill={`url(#${perilId})`} data-testid="rect-ca-wound-peril" className="pointer-events-none" />
+      <ellipse cx={130} cy={378} rx={64} ry={10} fill="#000000" opacity={0.35} className="pointer-events-none" />
 
       <g filter={`url(#${shadowId})`}>
         {CA_BODY_PARTS.map((label, i) => {
           const slot = wounds[i];
           const shape = CA_FIGURE_SHAPES[i];
+          const visual = CA_FIGURE_VISUALS[i];
           const majorOn = slot.major.checked;
           const autoCovered = !majorOn && caEffectiveMajorActive(slot);
           const highestMinor: CAWoundTier | null =
             slot.minor[2].checked ? 'minor2' : slot.minor[1].checked ? 'minor1' : slot.minor[0].checked ? 'minor0' : null;
           const tierKey: CAWoundTier | null = (majorOn || autoCovered) ? 'major' : highestMinor;
           const fill = tierKey ? `url(#${gradId(tierKey)})` : `url(#${baseId})`;
-          const stroke = tierKey ? CA_WOUND_TIER_HEX[tierKey] : '#78716c';
-          const strokeWidth = majorOn ? 2.5 : 1.5;
+          const strokeWidth = majorOn ? 2.25 : 1.25;
           const dash = autoCovered ? '4 3' : undefined;
           const titleText = `${label} — Major${majorOn ? ' (checked)' : autoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`;
+
+          // Crack mark uses the (unchanged) hit-box geometry for its
+          // bounds, not the visual polygon — it only needs to read as
+          // "across this limb," not align to the silhouette exactly.
+          const crackPoints = shape.kind === 'circle'
+            ? `${shape.cx - shape.r * 0.5},${shape.cy - shape.r * 0.4} ${shape.cx + shape.r * 0.2},${shape.cy - shape.r * 0.05} ${shape.cx - shape.r * 0.15},${shape.cy + shape.r * 0.25} ${shape.cx + shape.r * 0.45},${shape.cy + shape.r * 0.55}`
+            : `${shape.x + shape.w * 0.2},${shape.y + shape.h * 0.15} ${shape.x + shape.w * 0.75},${shape.y + shape.h * 0.4} ${shape.x + shape.w * 0.3},${shape.y + shape.h * 0.55} ${shape.x + shape.w * 0.8},${shape.y + shape.h * 0.85}`;
 
           return (
             <g
@@ -526,36 +572,31 @@ function CAWoundMapFigure({
               data-testid={`toggle-ca-wound-${i}-major`}
             >
               <title>{titleText}</title>
+              {/* Invisible, exact, non-overlapping hit target — unchanged
+                  from the geometry fix, deliberately not tied to the
+                  visual polygon below it. */}
               {shape.kind === 'circle' ? (
-                <>
-                  <circle cx={shape.cx} cy={shape.cy} r={shape.r + 3} fill="transparent" />
-                  <circle cx={shape.cx} cy={shape.cy} r={shape.r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
-                  {majorOn && (
-                    <polyline
-                      points={`${shape.cx - shape.r * 0.5},${shape.cy - shape.r * 0.4} ${shape.cx + shape.r * 0.2},${shape.cy - shape.r * 0.05} ${shape.cx - shape.r * 0.15},${shape.cy + shape.r * 0.25} ${shape.cx + shape.r * 0.45},${shape.cy + shape.r * 0.55}`}
-                      fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
-                      className="pointer-events-none"
-                    />
-                  )}
-                </>
+                <circle cx={shape.cx} cy={shape.cy} r={shape.r + 3} fill="transparent" />
               ) : (
-                <>
-                  <rect x={shape.x - 3} y={shape.y - 3} width={shape.w + 6} height={shape.h + 6} rx={shape.rx} fill="transparent" />
-                  <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h} rx={shape.rx} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
-                  {majorOn && (
-                    <polyline
-                      points={`${shape.x + shape.w * 0.2},${shape.y + shape.h * 0.15} ${shape.x + shape.w * 0.75},${shape.y + shape.h * 0.4} ${shape.x + shape.w * 0.3},${shape.y + shape.h * 0.55} ${shape.x + shape.w * 0.8},${shape.y + shape.h * 0.85}`}
-                      fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
-                      className="pointer-events-none"
-                    />
-                  )}
-                </>
+                <rect x={shape.x - 3} y={shape.y - 3} width={shape.w + 6} height={shape.h + 6} rx={shape.rx} fill="transparent" />
+              )}
+              {visual.kind === 'circle' ? (
+                <circle cx={visual.cx} cy={visual.cy} r={visual.r} fill={fill} stroke={inkStroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={dash} />
+              ) : (
+                <polygon points={visual.points} fill={fill} stroke={inkStroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={dash} />
+              )}
+              {majorOn && (
+                <polyline
+                  points={crackPoints}
+                  fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round"
+                  className="pointer-events-none"
+                />
               )}
             </g>
           );
         })}
-        {/* Purely decorative chest-plate accent, sits on top of Torso */}
-        <rect x={104} y={98} width={52} height={64} rx={10} fill="none" stroke="rgba(214,197,169,0.16)" strokeWidth={1.5} className="pointer-events-none" />
+        {/* Purely decorative chest emblem, sits on top of Torso */}
+        <polygon points="130,112 146,130 130,166 114,130" fill="none" stroke="rgba(214,197,169,0.3)" strokeWidth={1.25} className="pointer-events-none" />
       </g>
 
       {CA_BODY_PARTS.map((label, i) => {
@@ -564,7 +605,7 @@ function CAWoundMapFigure({
         return (
           <g key={`ticks-${label}`}>
             {t.label && (
-              <text x={t.lx} y={t.ly} fontSize="10" fontWeight={600} letterSpacing="0.5" fill="#a8a29e" textAnchor="middle" className="pointer-events-none">
+              <text x={t.lx} y={t.ly} fontSize="10" fontWeight={600} letterSpacing="0.5" fill="#c9b99a" textAnchor="middle" className="pointer-events-none">
                 {t.label}
               </text>
             )}
@@ -583,8 +624,8 @@ function CAWoundMapFigure({
                   <circle cx={x} cy={y} r={10} fill="transparent" />
                   <rect
                     x={x - 5} y={y - 6} width={10} height={12} rx={3}
-                    fill={m.checked ? color : 'rgba(87,83,78,0.35)'}
-                    stroke={m.checked ? color : '#78716c'}
+                    fill={m.checked ? color : 'rgba(107,93,79,0.4)'}
+                    stroke={m.checked ? 'rgba(26,18,12,0.85)' : '#8a7862'}
                     strokeWidth={1.25}
                   />
                 </g>
