@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useId } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
@@ -399,36 +399,64 @@ function CAWoundMapPips({
   );
 }
 
-// Simple, rotation-free geometry for a stylized standing figure — head
-// circle, torso/limb rounded rects, arms and legs spaced out from the
-// body rather than angled, so nothing depends on SVG transform math.
-// Index is into CA_BODY_PARTS (Head, Torso, R Arm, L Arm, R Leg, L Leg).
-const CA_FIGURE_SHAPES: { cx: number; cy: number; w: number; h: number; rx: number; isCircle?: boolean }[] = [
-  { cx: 140, cy: 36, w: 48, h: 48, rx: 24, isCircle: true }, // Head
-  { cx: 140, cy: 118, w: 64, h: 108, rx: 16 }, // Torso
-  { cx: 188, cy: 118, w: 24, h: 96, rx: 12 }, // R Arm
-  { cx: 92, cy: 118, w: 24, h: 96, rx: 12 }, // L Arm
-  { cx: 153, cy: 232, w: 26, h: 112, rx: 13 }, // R Leg
-  { cx: 121, cy: 232, w: 26, h: 112, rx: 13 }, // L Leg
+// Every region is a plain axis-aligned circle or rect — no rotation, no
+// hand-drawn bezier silhouette — deliberately, so each shape's hit target
+// can be "this exact box, +3px" with zero ambiguity about which region a
+// tap landed in. Regions are spaced with generous real gaps (>=18px
+// horizontally between torso and an arm, >=8px between the two legs) so
+// that even a padded hit target can never bleed into a neighboring
+// region — the previous pass used one big blanket hit-circle per region
+// sized off its own bounding box, which was large enough to swallow
+// whole neighboring regions (clicking the torso activated an arm, the
+// right leg was unreachable because the left leg's oversized hit circle
+// sat on top of it in paint order). Index is into CA_BODY_PARTS (Head,
+// Torso, R Arm, L Arm, R Leg, L Leg).
+type CAFigureShape =
+  | { kind: 'circle'; cx: number; cy: number; r: number }
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; rx: number };
+const CA_FIGURE_SHAPES: CAFigureShape[] = [
+  { kind: 'circle', cx: 130, cy: 48, r: 26 },                // Head
+  { kind: 'rect', x: 92, y: 82, w: 76, h: 128, rx: 18 },     // Torso (x:92-168)
+  { kind: 'rect', x: 186, y: 88, w: 34, h: 124, rx: 16 },    // R Arm (x:186-220, gap 18 from torso)
+  { kind: 'rect', x: 40, y: 88, w: 34, h: 124, rx: 16 },     // L Arm (x:40-74, gap 18 from torso)
+  { kind: 'rect', x: 134, y: 216, w: 36, h: 140, rx: 16 },   // R Leg (x:134-170)
+  { kind: 'rect', x: 90, y: 216, w: 36, h: 140, rx: 16 },    // L Leg (x:90-126, gap 8 from R Leg)
 ];
-const CA_FIGURE_LEGEND_ROW_Y = [40, 88, 136, 184, 232, 280];
+
+// Where each region's 3 Minor-wound ticks sit — right next to (or, for
+// Torso, inside the lower chest of) that region's own shape, so a tick
+// always reads as belonging to its limb and the whole thing stays one
+// connected diagram instead of a figure plus a separate legend elsewhere
+// on the page. `lx`/`ly`/`label` are an optional short R/L tag — Head and
+// Torso have no left/right ambiguity so they don't get one.
+const CA_FIGURE_TICKS: { label?: string; lx?: number; ly?: number; x: number; y: number; dx: number; dy: number }[] = [
+  { x: 118, y: 16, dx: 12, dy: 0 },                                  // Head — row above
+  { x: 110, y: 196, dx: 20, dy: 0 },                                 // Torso — row across the lower chest
+  { label: 'R', lx: 226, ly: 106, x: 226, y: 122, dx: 0, dy: 34 },   // R Arm — column to the right
+  { label: 'L', lx: 34, ly: 106, x: 34, y: 122, dx: 0, dy: 34 },     // L Arm — column to the left
+  { label: 'R', lx: 178, ly: 246, x: 178, y: 262, dx: 0, dy: 38 },   // R Leg — column to the right
+  { label: 'L', lx: 82, ly: 246, x: 82, y: 262, dx: 0, dy: 38 },     // L Leg — column to the left
+];
 
 /**
- * ACTIVE DESIGN — "figure". A body silhouette instead of an abstract
- * diagram: each region IS the anatomical shape (head/torso/arms/legs),
- * so the character's own body doubles as its own status display — no
+ * ACTIVE DESIGN — "figure" (v2). A body silhouette instead of an abstract
+ * diagram: each region IS the anatomical shape (head/torso/arms/legs), so
+ * the character's own body doubles as its own status display — no
  * translating "hexagon #3" or "row 2" into "which limb is that." A
  * region's fill climbs the same minor/major tier colors everywhere else
- * uses as it takes damage, an effective Major wound additionally draws a
- * jagged scar/crack across the shape, and the whole figure sits in front
- * of a soft red vignette that intensifies with how many limbs have an
- * effective Major wound — a whole-character "how bad is this" read at a
- * glance neither "hex" nor "pips" had, layered on top of the same
- * per-limb detail. Minor toggles live in a fixed-position legend column
- * next to the figure (same "generous, predictable hit target" idea as
- * "hex" — just laid out as a legend rather than dots wired to each node),
- * since a solid, differently-shaped silhouette per limb doesn't offer a
- * reliable spot to cram 3 more precise tap targets directly onto it.
+ * uses as it takes damage (now rendered as a soft top-to-bottom gradient,
+ * not a flat tint, for a less cartoonish look), an effective Major wound
+ * additionally draws a jagged scar across the shape, and the whole figure
+ * sits in front of a soft red vignette that intensifies with how many
+ * limbs have an effective Major wound. A drop shadow under the whole
+ * figure and a ground shadow under its feet give it some presence instead
+ * of reading as flat clip-art; a faint chest-plate outline on the torso
+ * hints at armor rather than a bare mannequin. v1's separate legend
+ * column for the Minor toggles is gone — every tick now sits directly
+ * next to its own limb (see CA_FIGURE_TICKS above), so the whole thing is
+ * one continuous graphic, and every hit target is an exact, tightly
+ * padded match for its own shape (see CA_FIGURE_SHAPES above) instead of
+ * an oversized circle that could steal clicks meant for a neighbor.
  */
 function CAWoundMapFigure({
   wounds,
@@ -441,75 +469,109 @@ function CAWoundMapFigure({
   onToggleMajor: (index: number) => void;
   onToggleMinor: (index: number, minorIndex: number) => void;
 }) {
+  const uid = useId();
   const majorCount = wounds.filter(caEffectiveMajorActive).length;
-  const perilOpacity = Math.min(0.55, (majorCount / CA_WOUND_SLOT_COUNT) * 0.6);
+  const perilOpacity = Math.min(0.5, (majorCount / CA_WOUND_SLOT_COUNT) * 0.55);
   const interactive = disabled ? '' : 'cursor-pointer';
+  const gradId = (tier: CAWoundTier) => `ca-wound-grad-${tier}-${uid}`;
+  const baseId = `ca-wound-base-${uid}`;
+  const perilId = `ca-wound-peril-${uid}`;
+  const shadowId = `ca-wound-shadow-${uid}`;
 
   return (
-    <svg viewBox="0 0 300 320" className="w-full h-auto" data-testid="svg-ca-wound-figure">
+    <svg viewBox="0 0 260 400" className="w-full h-auto" data-testid="svg-ca-wound-figure">
       <defs>
-        <radialGradient id="ca-wound-peril" cx="50%" cy="42%" r="62%">
+        <radialGradient id={perilId} cx="50%" cy="38%" r="65%">
           <stop offset="0%" stopColor="#dc2626" stopOpacity={perilOpacity} />
           <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
         </radialGradient>
+        <linearGradient id={baseId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#5f584f" />
+          <stop offset="100%" stopColor="#38332e" />
+        </linearGradient>
+        {(['minor0', 'minor1', 'minor2', 'major'] as CAWoundTier[]).map((tier) => (
+          <linearGradient key={tier} id={gradId(tier)} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.95} />
+            <stop offset="100%" stopColor={CA_WOUND_TIER_HEX[tier]} stopOpacity={0.55} />
+          </linearGradient>
+        ))}
+        <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
+        </filter>
       </defs>
-      {perilOpacity > 0 && <rect x={0} y={0} width={300} height={320} fill="url(#ca-wound-peril)" data-testid="rect-ca-wound-peril" />}
+
+      <rect x={0} y={0} width={260} height={400} fill={`url(#${perilId})`} data-testid="rect-ca-wound-peril" />
+      <ellipse cx={130} cy={378} rx={68} ry={11} fill="#000000" opacity={0.35} className="pointer-events-none" />
+
+      <g filter={`url(#${shadowId})`}>
+        {CA_BODY_PARTS.map((label, i) => {
+          const slot = wounds[i];
+          const shape = CA_FIGURE_SHAPES[i];
+          const majorOn = slot.major.checked;
+          const autoCovered = !majorOn && caEffectiveMajorActive(slot);
+          const highestMinor: CAWoundTier | null =
+            slot.minor[2].checked ? 'minor2' : slot.minor[1].checked ? 'minor1' : slot.minor[0].checked ? 'minor0' : null;
+          const tierKey: CAWoundTier | null = (majorOn || autoCovered) ? 'major' : highestMinor;
+          const fill = tierKey ? `url(#${gradId(tierKey)})` : `url(#${baseId})`;
+          const stroke = tierKey ? CA_WOUND_TIER_HEX[tierKey] : '#78716c';
+          const strokeWidth = majorOn ? 2.5 : 1.5;
+          const dash = autoCovered ? '4 3' : undefined;
+          const titleText = `${label} — Major${majorOn ? ' (checked)' : autoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`;
+
+          return (
+            <g
+              key={label}
+              onClick={() => !disabled && onToggleMajor(i)}
+              className={interactive}
+              data-testid={`toggle-ca-wound-${i}-major`}
+            >
+              <title>{titleText}</title>
+              {shape.kind === 'circle' ? (
+                <>
+                  <circle cx={shape.cx} cy={shape.cy} r={shape.r + 3} fill="transparent" />
+                  <circle cx={shape.cx} cy={shape.cy} r={shape.r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
+                  {majorOn && (
+                    <polyline
+                      points={`${shape.cx - shape.r * 0.5},${shape.cy - shape.r * 0.4} ${shape.cx + shape.r * 0.2},${shape.cy - shape.r * 0.05} ${shape.cx - shape.r * 0.15},${shape.cy + shape.r * 0.25} ${shape.cx + shape.r * 0.45},${shape.cy + shape.r * 0.55}`}
+                      fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                      className="pointer-events-none"
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  <rect x={shape.x - 3} y={shape.y - 3} width={shape.w + 6} height={shape.h + 6} rx={shape.rx} fill="transparent" />
+                  <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h} rx={shape.rx} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
+                  {majorOn && (
+                    <polyline
+                      points={`${shape.x + shape.w * 0.2},${shape.y + shape.h * 0.15} ${shape.x + shape.w * 0.75},${shape.y + shape.h * 0.4} ${shape.x + shape.w * 0.3},${shape.y + shape.h * 0.55} ${shape.x + shape.w * 0.8},${shape.y + shape.h * 0.85}`}
+                      fill="none" stroke="rgba(10,6,4,0.8)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                      className="pointer-events-none"
+                    />
+                  )}
+                </>
+              )}
+            </g>
+          );
+        })}
+        {/* Purely decorative chest-plate accent, sits on top of Torso */}
+        <rect x={104} y={98} width={52} height={64} rx={10} fill="none" stroke="rgba(214,197,169,0.16)" strokeWidth={1.5} className="pointer-events-none" />
+      </g>
 
       {CA_BODY_PARTS.map((label, i) => {
         const slot = wounds[i];
-        const shape = CA_FIGURE_SHAPES[i];
-        const majorOn = slot.major.checked;
-        const autoCovered = !majorOn && caEffectiveMajorActive(slot);
-        const highestMinor: CAWoundTier | null =
-          slot.minor[2].checked ? 'minor2' : slot.minor[1].checked ? 'minor1' : slot.minor[0].checked ? 'minor0' : null;
-        const tierKey: CAWoundTier | null = (majorOn || autoCovered) ? 'major' : highestMinor;
-        const color = tierKey ? CA_WOUND_TIER_HEX[tierKey] : '#57534e';
-        const hitR = Math.max(shape.w, shape.h) / 2 + 10;
-
+        const t = CA_FIGURE_TICKS[i];
         return (
-          <g
-            key={label}
-            onClick={() => !disabled && onToggleMajor(i)}
-            className={interactive}
-            data-testid={`toggle-ca-wound-${i}-major`}
-          >
-            <title>{`${label} — Major${majorOn ? ' (checked)' : autoCovered ? ' (auto-covered by 3 Minor wounds)' : ''}`}</title>
-            <circle cx={shape.cx} cy={shape.cy} r={hitR} fill="transparent" />
-            {shape.isCircle ? (
-              <circle
-                cx={shape.cx} cy={shape.cy} r={shape.rx}
-                fill={tierKey ? color : 'none'} fillOpacity={majorOn ? 0.85 : tierKey ? 0.4 : 1}
-                stroke={tierKey ? color : '#57534e'} strokeWidth={majorOn ? 2.5 : 1.25}
-                strokeDasharray={autoCovered ? '4 3' : undefined}
-              />
-            ) : (
-              <rect
-                x={shape.cx - shape.w / 2} y={shape.cy - shape.h / 2} width={shape.w} height={shape.h} rx={shape.rx}
-                fill={tierKey ? color : 'none'} fillOpacity={majorOn ? 0.85 : tierKey ? 0.4 : 1}
-                stroke={tierKey ? color : '#57534e'} strokeWidth={majorOn ? 2.5 : 1.25}
-                strokeDasharray={autoCovered ? '4 3' : undefined}
-              />
+          <g key={`ticks-${label}`}>
+            {t.label && (
+              <text x={t.lx} y={t.ly} fontSize="10" fontWeight={600} letterSpacing="0.5" fill="#a8a29e" textAnchor="middle" className="pointer-events-none">
+                {t.label}
+              </text>
             )}
-            {majorOn && (
-              <polyline
-                points={`${shape.cx - shape.w * 0.3},${shape.cy - shape.h * 0.35} ${shape.cx + shape.w * 0.18},${shape.cy - shape.h * 0.06} ${shape.cx - shape.w * 0.12},${shape.cy + shape.h * 0.1} ${shape.cx + shape.w * 0.3},${shape.cy + shape.h * 0.35}`}
-                fill="none" stroke="rgba(12,8,6,0.75)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
-                className="pointer-events-none"
-              />
-            )}
-          </g>
-        );
-      })}
-
-      {CA_BODY_PARTS.map((label, i) => {
-        const y = CA_FIGURE_LEGEND_ROW_Y[i];
-        const slot = wounds[i];
-        return (
-          <g key={`legend-${label}`}>
-            <text x={222} y={y - 14} fontSize="10" letterSpacing="0.3" fill="#a8a29e">{label}</text>
             {slot.minor.map((m, mi) => {
               const color = CA_WOUND_TIER_HEX[caWoundTierKey('minor', mi)];
-              const x = 222 + mi * 20;
+              const x = t.x + mi * t.dx;
+              const y = t.y + mi * t.dy;
               return (
                 <g
                   key={mi}
@@ -518,12 +580,12 @@ function CAWoundMapFigure({
                   data-testid={`toggle-ca-wound-${i}-minor-${mi}`}
                 >
                   <title>{`${label} — Minor ${mi + 1}${m.checked ? ' (checked)' : ''}`}</title>
-                  <circle cx={x} cy={y} r={12} fill="transparent" />
+                  <circle cx={x} cy={y} r={10} fill="transparent" />
                   <rect
-                    x={x - 6} y={y - 8} width={12} height={16} rx={3}
-                    fill={m.checked ? color : 'none'}
-                    stroke={m.checked ? color : '#5c5651'}
-                    strokeWidth={1.5}
+                    x={x - 5} y={y - 6} width={10} height={12} rx={3}
+                    fill={m.checked ? color : 'rgba(87,83,78,0.35)'}
+                    stroke={m.checked ? color : '#78716c'}
+                    strokeWidth={1.25}
                   />
                 </g>
               );
