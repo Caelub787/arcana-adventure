@@ -129,6 +129,13 @@ export function caWoundCapacity(character: { constitution?: number | null; level
 // used where the real character record is available.
 export const CA_WOUND_DEFAULT_CAP = 10;
 
+// Which body diagram renders behind the wound markers. Defaults to male.
+export type CABodySex = "male" | "female";
+
+export function caBodySexOf(character: { caBodySex?: string | null } | null | undefined): CABodySex {
+  return character?.caBodySex === "female" ? "female" : "male";
+}
+
 // ---------------------------------------------------------------------------
 // Attributes + skills — starts as an editable copy of V3's 6 attributes and
 // 19 attribute-linked skills (same names, same die-tier scaling), but is its

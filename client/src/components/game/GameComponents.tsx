@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, caWoundCapacity, CA_WOUND_DEFAULT_CAP, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, caWoundCapacity, CA_WOUND_DEFAULT_CAP, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -45,6 +45,8 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
+import caWoundBodyMale from "@/assets/ca_wound_body_male.png";
+import caWoundBodyFemale from "@/assets/ca_wound_body_female.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
 import { CustomFieldsEditor } from './CustomFieldsEditor';
@@ -21075,25 +21077,40 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         const y = ((e.clientY - rect.top) / rect.height) * 100;
                         addCAWound(x, y);
                       };
+                      const bodySex = caBodySexOf(liveCharacter);
+                      const toggleBodySex = () => {
+                        queueCharacterUpdate((cur: any) => ({ caBodySex: caBodySexOf(cur) === 'female' ? 'male' : 'female' }));
+                      };
                       return (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: body diagram + legend + capacity */}
                           <div className="space-y-2">
                             <div
-                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-[#e8dcc0] overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-black overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
                               onClick={placeWound}
                               data-testid="area-ca-wound-diagram"
                             >
-                              <svg viewBox="0 0 100 150" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMin meet">
-                                <g fill="#8a7d63" opacity={0.85}>
-                                  <circle cx="50" cy="16" r="11" />
-                                  <rect x="36" y="28" width="28" height="46" rx="10" />
-                                  <rect x="16" y="30" width="14" height="42" rx="6" />
-                                  <rect x="70" y="30" width="14" height="42" rx="6" />
-                                  <rect x="38" y="74" width="12" height="52" rx="6" />
-                                  <rect x="50" y="74" width="12" height="52" rx="6" />
-                                </g>
-                              </svg>
+                              <img
+                                src={bodySex === 'female' ? caWoundBodyFemale : caWoundBodyMale}
+                                alt=""
+                                className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+                                style={{ filter: 'brightness(1.6) contrast(1.1)' }}
+                                draggable={false}
+                              />
+                              {/* Body-type switch — intentionally understated (a small
+                                  corner glyph, not a labeled control) and only present
+                                  while actively editing the Overview tab. */}
+                              {caEditingOverview && canEditWounds && (
+                                <button
+                                  type="button"
+                                  className="absolute top-1.5 right-1.5 z-10 p-1 rounded-full bg-black/40 hover:bg-black/60 text-stone-400 hover:text-stone-200 transition-colors"
+                                  onClick={(e) => { e.stopPropagation(); toggleBodySex(); }}
+                                  title="Switch body type"
+                                  data-testid="button-toggle-ca-body-sex"
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                </button>
+                              )}
                               {sortedWounds.map((w) => (
                                 <button
                                   key={w.id}
