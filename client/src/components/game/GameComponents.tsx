@@ -2567,15 +2567,18 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
     >
       
       {/* Left-side toolbar: camera controls and token options, matching the
-          Select/Ruler tool buttons' position and look. Center-on-Token and
-          Change-Token-Movement are permanent, always-visible buttons - a
-          plain click fires them immediately, every time. The remaining,
-          less-common actions (reset camera, lock camera, token names,
-          resource bars) sit in a small hold-menu next to each: a quick
-          click fires whichever of those is first, while pressing and
-          holding reveals the rest to the right; picking one performs it
-          once and the menu closes back to the plain button. Holding never
-          fires the visible default itself. */}
+          Select/Ruler tool buttons' position and look. Each is a single
+          hold-menu button with a fixed stack order that never changes: for
+          camera, Center on Token / Reset camera position / Lock camera
+          movement; for token, Change Token Movement / Hide token names /
+          Hide resource bars. A plain click always fires the first (Center
+          on Token, Change Token Movement); pressing and holding without
+          releasing reveals the other two stacked to the right, and picking
+          one performs it once before the menu closes back to the plain
+          button - it never becomes the new default. Holding never fires
+          the visible default itself, only a release before the hold
+          threshold does. "Show player screens" is its own separate button,
+          not part of either hold-menu. */}
       {(() => {
         const handleResetView = () => {
           const defaultZoom = scene?.defaultViewZoom ?? 1;
@@ -2680,11 +2683,21 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           }
         };
 
-        // "Center on Token" and "Change Token Movement" are each their own
-        // permanent, always-visible button - not tucked behind a hold. Only
-        // the less-common camera/token actions (reset, lock, names, bars)
-        // live behind the small hold-menus next to them.
-        const cameraMoreOptions: HoldMenuOption[] = [
+        // One hold-menu per category, three stacked options each, in a
+        // fixed order that never changes. A plain click always fires
+        // options[0] (Camera: Center on Token / Token: Change Movement);
+        // holding reveals the other two below it, and picking one performs
+        // it once without ever becoming the new default. "Center on Token"
+        // stays in the stack (disabled, not excluded) when the viewer has
+        // no assigned character, so the stack's order and length never shift.
+        const cameraOptions: HoldMenuOption[] = [
+          {
+            key: 'center',
+            label: 'Center on my token (fit vision range)',
+            icon: <Target className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: handleCenterOnToken,
+            disabled: !assignedCharacterId,
+          },
           {
             key: 'reset',
             label: 'Reset camera position',
@@ -2701,7 +2714,14 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           },
         ];
 
-        const tokenMoreOptions: HoldMenuOption[] = [
+        const tokenOptions: HoldMenuOption[] = [
+          {
+            key: 'movement',
+            label: 'Change Token Movement',
+            icon: tokenMovementMode === 'path' ? <Route className="h-4 w-4 md:h-5 md:w-5" /> : <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: () => setTokenMovementMode(m => m === 'average' ? 'path' : 'average'),
+            active: tokenMovementMode === 'path',
+          },
           {
             key: 'names',
             label: showNametags ? 'Hide token names' : 'Show token names',
@@ -2738,27 +2758,13 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             className="absolute z-40 flex flex-col gap-2 pointer-events-auto"
             style={{ left: '8px', top: `${leftToolbarTop}px` }}
           >
-            <ToolbarIconButton
-              icon={<Target className="h-4 w-4 md:h-5 md:w-5" />}
-              label="Center on my token (fit vision range)"
-              onClick={handleCenterOnToken}
-              disabled={!assignedCharacterId}
-              testId="button-center-on-token"
-            />
             <HoldMenuButton
               testId="button-camera-controls"
-              options={cameraMoreOptions}
-            />
-            <ToolbarIconButton
-              icon={tokenMovementMode === 'path' ? <Route className="h-4 w-4 md:h-5 md:w-5" /> : <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />}
-              label="Change Token Movement"
-              active={tokenMovementMode === 'path'}
-              onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
-              testId="button-token-movement"
+              options={cameraOptions}
             />
             <HoldMenuButton
               testId="button-token-options"
-              options={tokenMoreOptions}
+              options={tokenOptions}
             />
             {isGM && (
               <ToolbarIconButton
