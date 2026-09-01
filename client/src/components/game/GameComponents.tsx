@@ -394,6 +394,173 @@ export interface OtherPlayerAoe {
 
 // getTokenGridSpan is imported from '@/lib/aoeHelpers'
 
+// A single icon button matching the Select/Ruler tool buttons' look, for
+// left-side toolbar actions that don't need a hold-menu of alternatives.
+function ToolbarIconButton({ icon, label, active, danger, disabled, onClick, testId }: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={disabled}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            style={{ touchAction: 'manipulation' }}
+            className={`
+              w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+              transition-all duration-200 shadow-lg backdrop-blur-sm
+              ${active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
+              ${danger ? 'hover:border-red-500 hover:text-red-400' : ''}
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}
+            `}
+            aria-label={label}
+            data-testid={testId}
+          >
+            {icon}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          <p className="font-bold">{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+interface HoldMenuOption {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  onSelect: () => void;
+  active?: boolean;
+  disabled?: boolean;
+}
+
+// A tool button whose default action fires on a normal click, but which
+// reveals its full set of alternatives to the right on a press-and-hold
+// (matching the codebase's existing 500ms long-press convention). Picking
+// one of the revealed options performs it and makes it the new default for
+// the rest of this session (reset on refresh — this is local component
+// state, nothing is persisted). Holding never fires the current default;
+// only a release before the hold threshold does.
+function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
+  options: HoldMenuOption[];
+  defaultKey: string;
+  onDefaultChange: (key: string) => void;
+  testId: string;
+}) {
+  const [holdOpen, setHoldOpen] = useState(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const defaultOption = options.find(o => o.key === defaultKey) ?? options[0];
+
+  useEffect(() => {
+    if (!holdOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setHoldOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [holdOpen]);
+
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        disabled={defaultOption.disabled}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          clearHoldTimer();
+          holdTimerRef.current = setTimeout(() => {
+            setHoldOpen(true);
+            holdTimerRef.current = null;
+          }, 500);
+        }}
+        onPointerUp={(e) => {
+          e.stopPropagation();
+          // A hold already opened the menu — releasing on the main button
+          // itself must not also fire the default action.
+          if (holdTimerRef.current) {
+            clearHoldTimer();
+            if (!defaultOption.disabled) defaultOption.onSelect();
+          }
+        }}
+        onPointerLeave={(e) => { e.stopPropagation(); clearHoldTimer(); }}
+        onPointerCancel={(e) => { e.stopPropagation(); clearHoldTimer(); }}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ touchAction: 'manipulation' }}
+        className={`
+          w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+          transition-all duration-200 shadow-lg backdrop-blur-sm
+          ${defaultOption.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
+          ${defaultOption.disabled ? 'opacity-50 cursor-not-allowed' : (holdOpen ? 'ring-2 ring-white/20' : 'hover:scale-105')}
+        `}
+        aria-label={defaultOption.label}
+        data-testid={testId}
+      >
+        {defaultOption.icon}
+      </button>
+      {holdOpen && (
+        <div className="absolute left-full top-0 ml-2 flex flex-col gap-2 z-10">
+          {options.map((opt) => (
+            <TooltipProvider key={opt.key}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={opt.disabled}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (opt.disabled) return;
+                      opt.onSelect();
+                      onDefaultChange(opt.key);
+                      setHoldOpen(false);
+                    }}
+                    style={{ touchAction: 'manipulation' }}
+                    className={`
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm
+                      ${opt.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
+                      ${opt.disabled ? 'opacity-50 cursor-not-allowed' : (opt.key === defaultKey ? 'ring-2 ring-white/20' : 'hover:scale-105')}
+                    `}
+                    aria-label={opt.label}
+                    data-testid={`${testId}-option-${opt.key}`}
+                  >
+                    {opt.icon}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-bold">{opt.label}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // 2. BattleMap
 interface BattleMapProps {
@@ -1176,7 +1343,12 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
-  
+  // Which action is the default (single-click) behavior for the left-side
+  // Camera Controls / Token Options hold-menu buttons. Session-only — reset
+  // to the original default (not persisted) on refresh.
+  const [cameraDefaultKey, setCameraDefaultKey] = useState('center');
+  const [tokenDefaultKey, setTokenDefaultKey] = useState('movement');
+
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
 
@@ -2400,215 +2572,218 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
       }}
     >
       
-      {/* Map Controls (Top Center) - shifts left when notes panel is open */}
-      <div 
-        className="absolute top-4 z-40 flex gap-1 transition-all duration-300 ease-in-out"
-        style={{ 
-          left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
-          transform: 'translateX(-50%)'
-        }}
-      >
-        <Button 
-           size="sm" 
-           variant="secondary" 
-           className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-           onClick={() => { 
-             const defaultZoom = scene?.defaultViewZoom ?? 1;
-             const viewVersion = (scene as any)?.defaultViewVersion ?? 0;
-             
-             if (viewportSize.width > 0) {
-               let pixelX: number, pixelY: number;
-               let targetZoom = defaultZoom;
-               
-               const fogActive = scene?.fogEnabled && !isGM;
-               const assignedToken = fogActive && assignedCharacterId 
-                 ? tokens.find(t => t.characterId === assignedCharacterId) 
-                 : null;
-               
-               if (assignedToken) {
-                 const tokenWorldX = assignedToken.x;
-                 const tokenWorldY = assignedToken.y;
-                 targetZoom = Math.max(defaultZoom, 1);
-                 const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
-                 pixelX = pixelOffset.x;
-                 pixelY = pixelOffset.y;
-               } else if (viewVersion === 0) {
-                 pixelX = scene?.defaultViewX ?? 0;
-                 pixelY = scene?.defaultViewY ?? 0;
-               } else {
-                 const worldX = scene?.defaultViewX ?? 0;
-                 const worldY = scene?.defaultViewY ?? 0;
-                 const pixelOffset = worldToPixelOffset(worldX, worldY, defaultZoom, viewportSize.width, viewportSize.height);
-                 pixelX = pixelOffset.x;
-                 pixelY = pixelOffset.y;
-               }
-               
-               panRef.current = { x: pixelX, y: pixelY };
-               zoomRef.current = targetZoom;
-               motionX.set(pixelX);
-               motionY.set(pixelY);
-               motionZoom.set(targetZoom);
-               notifyViewChange();
-             }
-           }}
-           data-testid="button-reset-view"
-        >
-          <RefreshCw className="h-3 w-3" />
-        </Button>
-        {assignedCharacterId && (
-          <Button 
-             size="sm" 
-             variant="secondary" 
-             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-             onClick={() => {
-               const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
-               if (!assignedToken) return;
-               
-               const targetZoom = Math.max(zoomRef.current, 1);
-               const vpW = viewportSize.width || window.innerWidth;
-               const vpH = viewportSize.height || window.innerHeight;
-               const visibleCenterX = notesPanelOpen ? (vpW - notesPanelWidth) / 2 : vpW / 2;
-               const tokenContainerX = assignedToken.x + MAP_OFFSET;
-               const tokenContainerY = assignedToken.y + MAP_OFFSET;
-               const panX = visibleCenterX + MAP_OFFSET - tokenContainerX * targetZoom;
-               const panY = vpH / 2 + MAP_OFFSET - tokenContainerY * targetZoom;
-               
-               motionX.set(panX);
-               motionY.set(panY);
-               motionZoom.set(targetZoom);
-               panRef.current = { x: panX, y: panY };
-               zoomRef.current = targetZoom;
-               forceUpdate(n => n + 1);
-               notifyViewChange();
-             }}
-             data-testid="button-center-token"
-             title="Center on my token (fit vision range)"
+      {/* Left-side toolbar: camera controls and token options, matching the
+          Select/Ruler tool buttons' position and look. Each is a hold-menu
+          button — a quick click fires whichever action is currently the
+          default, while pressing and holding (without releasing) reveals
+          all of that button's actions to the right; picking one performs it
+          and becomes the new default until switched again or the page is
+          reloaded. Holding never fires the current default itself. */}
+      {(() => {
+        const handleResetView = () => {
+          const defaultZoom = scene?.defaultViewZoom ?? 1;
+          const viewVersion = (scene as any)?.defaultViewVersion ?? 0;
+
+          if (viewportSize.width > 0) {
+            let pixelX: number, pixelY: number;
+            let targetZoom = defaultZoom;
+
+            const fogActive = scene?.fogEnabled && !isGM;
+            const assignedToken = fogActive && assignedCharacterId
+              ? tokens.find(t => t.characterId === assignedCharacterId)
+              : null;
+
+            if (assignedToken) {
+              const tokenWorldX = assignedToken.x;
+              const tokenWorldY = assignedToken.y;
+              targetZoom = Math.max(defaultZoom, 1);
+              const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
+              pixelX = pixelOffset.x;
+              pixelY = pixelOffset.y;
+            } else if (viewVersion === 0) {
+              pixelX = scene?.defaultViewX ?? 0;
+              pixelY = scene?.defaultViewY ?? 0;
+            } else {
+              const worldX = scene?.defaultViewX ?? 0;
+              const worldY = scene?.defaultViewY ?? 0;
+              const pixelOffset = worldToPixelOffset(worldX, worldY, defaultZoom, viewportSize.width, viewportSize.height);
+              pixelX = pixelOffset.x;
+              pixelY = pixelOffset.y;
+            }
+
+            panRef.current = { x: pixelX, y: pixelY };
+            zoomRef.current = targetZoom;
+            motionX.set(pixelX);
+            motionY.set(pixelY);
+            motionZoom.set(targetZoom);
+            notifyViewChange();
+          }
+        };
+
+        const handleCenterOnToken = () => {
+          const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
+          if (!assignedToken) return;
+
+          const targetZoom = Math.max(zoomRef.current, 1);
+          const vpW = viewportSize.width || window.innerWidth;
+          const vpH = viewportSize.height || window.innerHeight;
+          const visibleCenterX = notesPanelOpen ? (vpW - notesPanelWidth) / 2 : vpW / 2;
+          const tokenContainerX = assignedToken.x + MAP_OFFSET;
+          const tokenContainerY = assignedToken.y + MAP_OFFSET;
+          const panX = visibleCenterX + MAP_OFFSET - tokenContainerX * targetZoom;
+          const panY = vpH / 2 + MAP_OFFSET - tokenContainerY * targetZoom;
+
+          motionX.set(panX);
+          motionY.set(panY);
+          motionZoom.set(targetZoom);
+          panRef.current = { x: panX, y: panY };
+          zoomRef.current = targetZoom;
+          forceUpdate(n => n + 1);
+          notifyViewChange();
+        };
+
+        const handleToggleLock = () => {
+          // When the parent enforces the lock (e.g. spectator follow mode),
+          // local toggling must not be able to bypass it.
+          if (lockView === true) return;
+          const newLockState = !isMapLocked;
+          // Force reset all gesture state when toggling lock to ensure clean state
+          forceResetGestureState();
+          isMapLockedRef.current = newLockState;
+          setIsMapLocked(newLockState);
+        };
+
+        const handleClearPlacedItems = async () => {
+          if (!scene?.id) return;
+          try {
+            const response = await fetch(`/api/scenes/${scene.id}/thrown-items`, {
+              method: 'DELETE',
+              credentials: 'include',
+            });
+            if (response.ok) {
+              toast({
+                title: "Placed items cleared",
+                description: "All placed items have been removed from the battlefield.",
+              });
+              onRefetchThrownItems?.();
+            } else {
+              const data = await response.json();
+              toast({
+                title: "Error",
+                description: data.error || "Failed to clear placed items",
+                variant: "destructive",
+              });
+            }
+          } catch (error) {
+            toast({
+              title: "Error",
+              description: "Failed to clear placed items",
+              variant: "destructive",
+            });
+          }
+        };
+
+        const cameraOptions: HoldMenuOption[] = [
+          ...(assignedCharacterId ? [{
+            key: 'center',
+            label: 'Center on my token (fit vision range)',
+            icon: <Target className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: handleCenterOnToken,
+          }] : []),
+          {
+            key: 'reset',
+            label: 'Reset camera position',
+            icon: <RefreshCw className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: handleResetView,
+          },
+          {
+            key: 'lock',
+            label: lockView === true ? 'Map locked by follow mode' : (isMapLocked ? 'Unlock camera movement' : 'Lock camera movement'),
+            icon: isMapLocked ? <Lock className="h-4 w-4 md:h-5 md:w-5" /> : <Unlock className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: handleToggleLock,
+            active: isMapLocked,
+            disabled: lockView === true,
+          },
+        ];
+        const effectiveCameraDefault = cameraOptions.some(o => o.key === cameraDefaultKey) ? cameraDefaultKey : cameraOptions[0].key;
+
+        const tokenOptions: HoldMenuOption[] = [
+          {
+            key: 'movement',
+            label: 'Change Token Movement',
+            icon: tokenMovementMode === 'path' ? <Route className="h-4 w-4 md:h-5 md:w-5" /> : <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: () => setTokenMovementMode(m => m === 'average' ? 'path' : 'average'),
+            active: tokenMovementMode === 'path',
+          },
+          {
+            key: 'names',
+            label: showNametags ? 'Hide token names' : 'Show token names',
+            icon: showNametags ? <Eye className="h-4 w-4 md:h-5 md:w-5" /> : <EyeOff className="h-4 w-4 md:h-5 md:w-5" />,
+            onSelect: () => setShowNametags(!showNametags),
+            active: !showNametags,
+          },
+          ...((campaignSystem === 'aa-v3' || campaignSystem === 'ca') ? [{
+            key: 'bars',
+            label: showBars ? 'Hide resource bars' : 'Show resource bars',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 md:h-5 md:w-5">
+                <rect x="2" y="7" width="20" height="4" rx="1" />
+                <rect x="2" y="13" width="14" height="4" rx="1" opacity={showBars ? "1" : "0.3"} />
+              </svg>
+            ),
+            onSelect: () => setShowBars(!showBars),
+            active: !showBars,
+          }] : []),
+        ];
+        const effectiveTokenDefault = tokenOptions.some(o => o.key === tokenDefaultKey) ? tokenDefaultKey : tokenOptions[0].key;
+
+        return (
+          <div
+            className="absolute bottom-4 z-40 flex flex-col gap-2 pointer-events-auto"
+            style={{ left: '8px' }}
           >
-            <Target className="h-3 w-3" />
-          </Button>
-        )}
-        <Button 
-           size="sm" 
-           variant="secondary" 
-           disabled={lockView === true}
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'} ${lockView === true ? 'opacity-50 cursor-not-allowed' : ''}`}
-           onClick={() => {
-             // When the parent enforces the lock (e.g. spectator follow mode),
-             // local toggling must not be able to bypass it.
-             if (lockView === true) return;
-             const newLockState = !isMapLocked;
-             
-             // Force reset all gesture state when toggling lock to ensure clean state
-             forceResetGestureState();
-             
-             // Update ref synchronously
-             isMapLockedRef.current = newLockState;
-             setIsMapLocked(newLockState);
-           }}
-           data-testid="button-lock-map"
-           title={lockView === true ? "Map locked by follow mode" : (isMapLocked ? "Unlock map movement" : "Lock map movement")}
-        >
-          {isMapLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-        </Button>
-        <Button 
-           size="sm" 
-           variant="secondary" 
-           className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-           onClick={() => setShowNametags(!showNametags)}
-           data-testid="button-toggle-nametags"
-           title={showNametags ? "Hide token names" : "Show token names"}
-        >
-          {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-        </Button>
-        {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showBars ? 'border-white/10' : 'border-amber-500 text-amber-400'}`}
-            onClick={() => setShowBars(!showBars)}
-            data-testid="button-toggle-bars"
-            title={showBars ? "Hide resource bars" : "Show resource bars"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-              <rect x="2" y="7" width="20" height="4" rx="1" />
-              <rect x="2" y="13" width="14" height="4" rx="1" opacity={showBars ? "1" : "0.3"} />
-            </svg>
-          </Button>
-        )}
-        <Button
-           size="sm"
-           variant="secondary"
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${tokenMovementMode === 'path' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-           onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
-           data-testid="button-toggle-movement-mode"
-           title="Change Token Movement"
-        >
-          {tokenMovementMode === 'path' ? <Route className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-        </Button>
-        {isGM && (
-          <Button
-             size="sm"
-             variant="secondary"
-             className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showPlayerViewports ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-             onClick={() => setShowPlayerViewports(v => !v)}
-             data-testid="button-toggle-player-viewports"
-             title={showPlayerViewports ? "Hide player screens" : "Show player screens"}
-          >
-            <Monitor className="h-3 w-3" />
-          </Button>
-        )}
-        {onNotesClick && (
-          <Button 
-             size="sm" 
-             variant="secondary" 
-             className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${notesPanelOpen ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-             onClick={onNotesClick}
-             data-testid="button-notes-battlemap"
-             title={notesPanelOpen ? "Close notes" : "Open notes"}
-          >
-            <FileText className="h-3 w-3" />
-          </Button>
-        )}
-        {role === 'gm' && thrownItems.length > 0 && scene?.id && (
-          <Button 
-             size="sm" 
-             variant="secondary" 
-             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm hover:border-red-500 hover:text-red-400"
-             onClick={async () => {
-               try {
-                 const response = await fetch(`/api/scenes/${scene.id}/thrown-items`, {
-                   method: 'DELETE',
-                   credentials: 'include',
-                 });
-                 if (response.ok) {
-                   toast({
-                     title: "Placed items cleared",
-                     description: "All placed items have been removed from the battlefield.",
-                   });
-                   onRefetchThrownItems?.();
-                 } else {
-                   const data = await response.json();
-                   toast({
-                     title: "Error",
-                     description: data.error || "Failed to clear placed items",
-                     variant: "destructive",
-                   });
-                 }
-               } catch (error) {
-                 toast({
-                   title: "Error",
-                   description: "Failed to clear placed items",
-                   variant: "destructive",
-                 });
-               }
-             }}
-             data-testid="button-clear-placed-items"
-             title="Clear all placed items from the battlefield"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        )}
-      </div>
+            <HoldMenuButton
+              testId="button-camera-controls"
+              options={cameraOptions}
+              defaultKey={effectiveCameraDefault}
+              onDefaultChange={setCameraDefaultKey}
+            />
+            <HoldMenuButton
+              testId="button-token-options"
+              options={tokenOptions}
+              defaultKey={effectiveTokenDefault}
+              onDefaultChange={setTokenDefaultKey}
+            />
+            {isGM && (
+              <ToolbarIconButton
+                icon={<Monitor className="h-4 w-4 md:h-5 md:w-5" />}
+                label={showPlayerViewports ? "Hide player screens" : "Show player screens"}
+                active={showPlayerViewports}
+                onClick={() => setShowPlayerViewports(v => !v)}
+                testId="button-toggle-player-viewports"
+              />
+            )}
+            {onNotesClick && (
+              <ToolbarIconButton
+                icon={<FileText className="h-4 w-4 md:h-5 md:w-5" />}
+                label={notesPanelOpen ? "Close notes" : "Open notes"}
+                active={notesPanelOpen}
+                onClick={onNotesClick}
+                testId="button-notes-battlemap"
+              />
+            )}
+            {role === 'gm' && thrownItems.length > 0 && scene?.id && (
+              <ToolbarIconButton
+                icon={<Trash2 className="h-4 w-4 md:h-5 md:w-5" />}
+                label="Clear all placed items from the battlefield"
+                danger
+                onClick={handleClearPlacedItems}
+                testId="button-clear-placed-items"
+              />
+            )}
+          </div>
+        );
+      })()}
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
@@ -9511,35 +9686,6 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
           </Tooltip>
         </TooltipProvider>
         
-        {character && campaignSystem !== 'aa-v3' && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); onModeChange('target'); }}
-                  style={{ touchAction: 'manipulation' }}
-                  className={`
-                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                    transition-all duration-200 shadow-lg backdrop-blur-sm
-                    ${getColorClasses('red', selectionMode === 'target')}
-                    ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                  `}
-                  aria-label="Target mode"
-                  data-testid="selection-mode-target"
-                >
-                  <Target className="h-4 w-4 md:h-5 md:w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="font-bold">Target</p>
-                <p className="text-xs text-stone-400">Mark a token for attacks</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

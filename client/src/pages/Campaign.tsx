@@ -10227,7 +10227,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-chat"
                 >
                   <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10253,7 +10253,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-characters"
                 >
                   <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10279,7 +10279,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-initiative"
                 >
                   <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10315,7 +10315,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10351,7 +10351,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${(activeSidePanel === 'world' && !sidePanelMinimized) || floatingWorldBuilderOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'world' && !sidePanelMinimized) || floatingWorldBuilderOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-world"
                 >
                   <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10379,7 +10379,7 @@ export default function Campaign() {
                         bringToFront('my-library');
                       }
                     }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${myLibraryOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${myLibraryOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-my-library"
                   >
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10400,7 +10400,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setV3SpellManagerOpen(true)}
-                    className={`relative text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${v3SpellManagerOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                    className={`relative bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${v3SpellManagerOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-crafted-spells"
                   >
                     <Wand2 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10429,7 +10429,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => { setShowMapPinEditor(prev => !prev); bringToFront('map-pins'); }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showMapPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
+                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${showMapPinEditor ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-map-pins"
                   >
                     <MapPin className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10450,7 +10450,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setFogToolActive(!fogToolActive)}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${fogToolActive ? 'text-cyan-400 bg-white/10' : ''}`}
+                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${fogToolActive ? 'border-cyan-500 text-cyan-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-fog-of-war"
                   >
                     <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10479,7 +10479,7 @@ export default function Campaign() {
                         setSidePanelMinimized(false);
                       }
                     }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-scene"
                   >
                     <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10506,7 +10506,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-settings"
                 >
                   <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
