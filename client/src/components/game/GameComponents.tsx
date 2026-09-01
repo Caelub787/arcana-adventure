@@ -2567,12 +2567,15 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
     >
       
       {/* Left-side toolbar: camera controls and token options, matching the
-          Select/Ruler tool buttons' position and look. Each is a hold-menu
-          button — a quick click fires whichever action is currently the
-          default, while pressing and holding (without releasing) reveals
-          all of that button's actions to the right; picking one performs it
-          and becomes the new default until switched again or the page is
-          reloaded. Holding never fires the current default itself. */}
+          Select/Ruler tool buttons' position and look. Center-on-Token and
+          Change-Token-Movement are permanent, always-visible buttons - a
+          plain click fires them immediately, every time. The remaining,
+          less-common actions (reset camera, lock camera, token names,
+          resource bars) sit in a small hold-menu next to each: a quick
+          click fires whichever of those is first, while pressing and
+          holding reveals the rest to the right; picking one performs it
+          once and the menu closes back to the plain button. Holding never
+          fires the visible default itself. */}
       {(() => {
         const handleResetView = () => {
           const defaultZoom = scene?.defaultViewZoom ?? 1;
@@ -2677,13 +2680,11 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           }
         };
 
-        const cameraOptions: HoldMenuOption[] = [
-          ...(assignedCharacterId ? [{
-            key: 'center',
-            label: 'Center on my token (fit vision range)',
-            icon: <Target className="h-4 w-4 md:h-5 md:w-5" />,
-            onSelect: handleCenterOnToken,
-          }] : []),
+        // "Center on Token" and "Change Token Movement" are each their own
+        // permanent, always-visible button - not tucked behind a hold. Only
+        // the less-common camera/token actions (reset, lock, names, bars)
+        // live behind the small hold-menus next to them.
+        const cameraMoreOptions: HoldMenuOption[] = [
           {
             key: 'reset',
             label: 'Reset camera position',
@@ -2700,14 +2701,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           },
         ];
 
-        const tokenOptions: HoldMenuOption[] = [
-          {
-            key: 'movement',
-            label: 'Change Token Movement',
-            icon: tokenMovementMode === 'path' ? <Route className="h-4 w-4 md:h-5 md:w-5" /> : <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />,
-            onSelect: () => setTokenMovementMode(m => m === 'average' ? 'path' : 'average'),
-            active: tokenMovementMode === 'path',
-          },
+        const tokenMoreOptions: HoldMenuOption[] = [
           {
             key: 'names',
             label: showNametags ? 'Hide token names' : 'Show token names',
@@ -2744,13 +2738,27 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             className="absolute z-40 flex flex-col gap-2 pointer-events-auto"
             style={{ left: '8px', top: `${leftToolbarTop}px` }}
           >
+            <ToolbarIconButton
+              icon={<Target className="h-4 w-4 md:h-5 md:w-5" />}
+              label="Center on my token (fit vision range)"
+              onClick={handleCenterOnToken}
+              disabled={!assignedCharacterId}
+              testId="button-center-on-token"
+            />
             <HoldMenuButton
               testId="button-camera-controls"
-              options={cameraOptions}
+              options={cameraMoreOptions}
+            />
+            <ToolbarIconButton
+              icon={tokenMovementMode === 'path' ? <Route className="h-4 w-4 md:h-5 md:w-5" /> : <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />}
+              label="Change Token Movement"
+              active={tokenMovementMode === 'path'}
+              onClick={() => setTokenMovementMode(m => m === 'average' ? 'path' : 'average')}
+              testId="button-token-movement"
             />
             <HoldMenuButton
               testId="button-token-options"
-              options={tokenOptions}
+              options={tokenMoreOptions}
             />
             {isGM && (
               <ToolbarIconButton
