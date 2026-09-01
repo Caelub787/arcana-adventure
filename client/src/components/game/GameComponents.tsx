@@ -520,7 +520,7 @@ function HoldMenuButton({ options, testId, holdMs = 250 }: {
       </button>
       {holdOpen && (
         <div className="absolute left-full top-0 ml-2 flex flex-col gap-2 z-10">
-          {options.map((opt) => (
+          {options.slice(1).map((opt) => (
             <TooltipProvider key={opt.key}>
               <Tooltip>
                 <TooltipTrigger asChild>
