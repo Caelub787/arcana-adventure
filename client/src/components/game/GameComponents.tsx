@@ -394,6 +394,19 @@ export interface OtherPlayerAoe {
 
 // getTokenGridSpan is imported from '@/lib/aoeHelpers'
 
+// Shared thresholds for HP/wounds/Energy bar color everywhere a resource bar
+// is drawn (on-token, the bottom-left HUD, and hotbar tiles), so they all
+// read as the same green -> yellow -> red drain instead of each surface
+// having its own fixed color.
+export function vitalBarColor(percent: number | null | undefined): string {
+  const p = percent ?? 100;
+  return p > 60 ? 'bg-green-500' : p > 30 ? 'bg-yellow-500' : 'bg-red-500';
+}
+export function vitalBarGradient(percent: number | null | undefined): string {
+  const p = percent ?? 100;
+  return p > 60 ? 'from-green-700 to-green-500' : p > 30 ? 'from-yellow-700 to-yellow-500' : 'from-red-700 to-red-500';
+}
+
 // A single icon button matching the Select/Ruler tool buttons' look, for
 // left-side toolbar actions that don't need a hold-menu of alternatives.
 function ToolbarIconButton({ icon, label, active, danger, disabled, onClick, testId }: {
@@ -446,17 +459,15 @@ interface HoldMenuOption {
   disabled?: boolean;
 }
 
-// A tool button whose default action fires on a normal click, but which
-// reveals its full set of alternatives to the right on a press-and-hold
-// (matching the codebase's existing 500ms long-press convention). Picking
-// one of the revealed options performs it and makes it the new default for
-// the rest of this session (reset on refresh — this is local component
-// state, nothing is persisted). Holding never fires the current default;
+// A tool button whose default action (token movement / camera-center-on-
+// token) always fires on a normal click and never changes. A quick
+// press-and-hold reveals the other options to the right; picking one fires
+// it once and the menu closes back to the same default display — it does
+// not become the new default. Holding never fires the current default;
 // only a release before the hold threshold does.
-function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
+function HoldMenuButton({ options, defaultKey, testId }: {
   options: HoldMenuOption[];
   defaultKey: string;
-  onDefaultChange: (key: string) => void;
   testId: string;
 }) {
   const [holdOpen, setHoldOpen] = useState(false);
@@ -493,7 +504,7 @@ function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
           holdTimerRef.current = setTimeout(() => {
             setHoldOpen(true);
             holdTimerRef.current = null;
-          }, 500);
+          }, 200);
         }}
         onPointerUp={(e) => {
           e.stopPropagation();
@@ -534,7 +545,6 @@ function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
                       e.stopPropagation();
                       if (opt.disabled) return;
                       opt.onSelect();
-                      onDefaultChange(opt.key);
                       setHoldOpen(false);
                     }}
                     style={{ touchAction: 'manipulation' }}
@@ -1343,11 +1353,11 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
-  // Which action is the default (single-click) behavior for the left-side
-  // Camera Controls / Token Options hold-menu buttons. Session-only — reset
-  // to the original default (not persisted) on refresh.
-  const [cameraDefaultKey, setCameraDefaultKey] = useState('center');
-  const [tokenDefaultKey, setTokenDefaultKey] = useState('movement');
+  // Fixed single-click default for the left-side Camera Controls / Token
+  // Options hold-menu buttons — always center-on-token / token movement,
+  // regardless of which alternate option was last used from the hold-menu.
+  const cameraDefaultKey = 'center';
+  const tokenDefaultKey = 'movement';
 
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
@@ -2756,13 +2766,11 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               testId="button-camera-controls"
               options={cameraOptions}
               defaultKey={effectiveCameraDefault}
-              onDefaultChange={setCameraDefaultKey}
             />
             <HoldMenuButton
               testId="button-token-options"
               options={tokenOptions}
               defaultKey={effectiveTokenDefault}
-              onDefaultChange={setTokenDefaultKey}
             />
             {isGM && (
               <ToolbarIconButton
@@ -3669,7 +3677,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                             {showEnergy && energyPercent !== null && (
                               <>
                                 <div
-                                  className="h-full bg-cyan-500 transition-all duration-700 ease-in-out"
+                                  className={`h-full transition-all duration-700 ease-in-out ${vitalBarColor(energyPercent)}`}
                                   style={{ width: `${clamp(energyPercent!)}%` }}
                                 />
                                 {tempEnergyPercent > 0 && (
@@ -3740,8 +3748,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     )}
                     {showEnergy && (
                       <div className={`absolute ${energyPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`}>
-                        <div 
-                          className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
+                        <div
+                          className={`h-full transition-all duration-700 ease-in-out ${vitalBarColor(energyPercent)}`}
                           style={{ width: `${Math.max(0, Math.min(100, energyPercent!))}%` }}
                         />
                         {tempEnergyPercent > 0 && (
@@ -9420,8 +9428,62 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
     ? (character?.naturalArmor ?? 5)
     : (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
 
+  // Double-click-to-edit for Energy (current/temp/max, in a dialog) and
+  // Energy Pool (a bare number above it, edited in place).
+  const queryClient = useQueryClient();
+  const [energyDialogOpen, setEnergyDialogOpen] = useState(false);
+  const [energyDraft, setEnergyDraft] = useState({ energy: 0, tempEnergy: 0, maxEnergy: 0 });
+  const [savingEnergy, setSavingEnergy] = useState(false);
+  const [poolEditing, setPoolEditing] = useState(false);
+  const [poolDraft, setPoolDraft] = useState(0);
+  const [savingPool, setSavingPool] = useState(false);
+
   // Don't render if no character selected
   if (!character) return null;
+
+  const openEnergyDialog = () => {
+    setEnergyDraft({
+      energy: character.energy ?? 0,
+      tempEnergy: character.tempEnergy ?? 0,
+      maxEnergy: character.maxEnergy ?? 0,
+    });
+    setEnergyDialogOpen(true);
+  };
+
+  const saveEnergyDialog = async () => {
+    setSavingEnergy(true);
+    try {
+      await api.updateCharacter(character.id, {
+        energy: energyDraft.energy,
+        tempEnergy: energyDraft.tempEnergy,
+        maxEnergy: energyDraft.maxEnergy,
+      } as any);
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      setEnergyDialogOpen(false);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to update energy", variant: "destructive" });
+    } finally {
+      setSavingEnergy(false);
+    }
+  };
+
+  const startPoolEdit = () => {
+    setPoolDraft(character.energyPool ?? 0);
+    setPoolEditing(true);
+  };
+
+  const savePoolEdit = async () => {
+    setSavingPool(true);
+    try {
+      await api.updateCharacter(character.id, { energyPool: poolDraft } as any);
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to update energy pool", variant: "destructive" });
+    } finally {
+      setSavingPool(false);
+      setPoolEditing(false);
+    }
+  };
 
   const hotbarTypes = [
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
@@ -9463,7 +9525,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                className={`h-full bg-gradient-to-r ${vitalBarGradient(Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100))}`}
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
                 transition={{ duration: 0.8, ease: "easeInOut" }}
@@ -9485,7 +9547,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                 </div>
                 <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                    className={`h-full bg-gradient-to-r ${vitalBarGradient((remaining / CA_WOUND_MAX) * 100)}`}
                     initial={false}
                     animate={{ width: `${(remaining / CA_WOUND_MAX) * 100}%` }}
                     transition={{ duration: 0 }}
@@ -9495,21 +9557,109 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             );
           })()}
 
+          {/* Energy Pool - a bare number above Energy. Double-click swaps it
+              for an inline input; saving (blur/Enter) swaps back to display. */}
+          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-800 relative overflow-hidden w-32 md:w-44" data-testid="display-energy-pool">
+            <div className="flex justify-between items-center text-[9px] md:text-xs uppercase tracking-wider font-bold text-blue-200">
+              <span>Energy Pool</span>
+              {poolEditing ? (
+                <NumberInput
+                  value={poolDraft}
+                  fallback={0}
+                  onChange={(v) => setPoolDraft(v ?? 0)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    if (e.key === 'Escape') setPoolEditing(false);
+                  }}
+                  onBlur={savePoolEdit}
+                  autoFocus
+                  disabled={savingPool}
+                  className="w-14 h-6 text-xs bg-stone-900 border-stone-700 text-stone-200 text-right"
+                  data-testid="input-energy-pool"
+                />
+              ) : (
+                <span
+                  className="cursor-pointer hover:text-amber-400"
+                  onDoubleClick={startPoolEdit}
+                  title="Double-click to edit"
+                  data-testid="text-energy-pool"
+                >
+                  {character.energyPool ?? 0}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Energy Bar */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
               <span>Energy</span>
-              <span>{Math.min(character.energy ?? 10, effectiveMaxEnergy)}/{effectiveMaxEnergy}</span>
+              <span
+                className="cursor-pointer hover:text-amber-400"
+                onDoubleClick={openEnergyDialog}
+                title="Double-click to edit"
+                data-testid="text-energy-value"
+              >
+                {Math.min(character.energy ?? 10, effectiveMaxEnergy)}/{effectiveMaxEnergy}
+              </span>
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
+              <motion.div
+                className={`h-full bg-gradient-to-r ${vitalBarGradient(Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100))}`}
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
                 transition={{ duration: 0.8, ease: "easeInOut" }}
               />
             </div>
           </div>
+
+          <Dialog open={energyDialogOpen} onOpenChange={setEnergyDialogOpen}>
+            <DialogContent className="sm:max-w-sm bg-stone-900 border-stone-700 text-stone-200">
+              <DialogHeader>
+                <DialogTitle>Edit Energy</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-stone-300">Current Energy</Label>
+                  <NumberInput
+                    value={energyDraft.energy}
+                    fallback={0}
+                    onChange={(v) => setEnergyDraft(d => ({ ...d, energy: v ?? 0 }))}
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-edit-energy-current"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-stone-300">Temp Energy</Label>
+                  <NumberInput
+                    value={energyDraft.tempEnergy}
+                    fallback={0}
+                    onChange={(v) => setEnergyDraft(d => ({ ...d, tempEnergy: v ?? 0 }))}
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-edit-energy-temp"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-stone-300">Max Energy</Label>
+                  <NumberInput
+                    value={energyDraft.maxEnergy}
+                    fallback={0}
+                    onChange={(v) => setEnergyDraft(d => ({ ...d, maxEnergy: v ?? 0 }))}
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-edit-energy-max"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEnergyDialogOpen(false)} disabled={savingEnergy}>
+                  Cancel
+                </Button>
+                <Button onClick={saveEnergyDialog} disabled={savingEnergy} data-testid="button-save-energy">
+                  {savingEnergy ? 'Saving...' : 'Save'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Mana Bar - AA V2 / AA V3 only, when character has a mana pool */}
           {showManaBar && (

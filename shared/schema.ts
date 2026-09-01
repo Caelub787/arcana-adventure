@@ -237,6 +237,7 @@ export const characters = pgTable("characters", {
   maxHp: integer("max_hp").notNull(),
   energy: integer("energy").notNull(),
   maxEnergy: integer("max_energy").notNull(),
+  energyPool: integer("energy_pool").notNull().default(0),
   mana: integer("mana").notNull().default(0),
   maxMana: integer("max_mana").notNull().default(0),
   tempHp: integer("temp_hp").notNull().default(0),

@@ -1455,8 +1455,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateCharacter(id: string, data: Partial<Character>): Promise<Character | undefined> {
     const coerced: any = { ...data };
-    const zeroDefaultKeys = new Set(['tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana']);
-    for (const k of ['hp', 'maxHp', 'energy', 'maxEnergy', 'mana', 'maxMana', 'tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana'] as const) {
+    const zeroDefaultKeys = new Set(['tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana', 'energyPool']);
+    for (const k of ['hp', 'maxHp', 'energy', 'maxEnergy', 'mana', 'maxMana', 'tempHp', 'tempEnergy', 'tempMana', 'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana', 'energyPool'] as const) {
       if (k in coerced) {
         const v = (coerced as any)[k];
         if (v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v))) {
