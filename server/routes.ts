@@ -2892,8 +2892,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       delete updates[f];
     }
     const gmOnlyFields = [
-      'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor', 
-      'isTemplate', 'campaignId', 'userId', 'folderId',
+      'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor',
+      'isTemplate', 'campaignId', 'userId', 'folderId', 'pinned',
       // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
       'maxHp', 'maxEnergy', 'maxMana',
       'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana',

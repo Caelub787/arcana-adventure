@@ -11006,7 +11006,7 @@ function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
 }
 
 // Character Management Content - extracted for reuse in characters-only mode
-function CharacterManagementContent({ role, characters, folders, unfiledCharacters, expandedFolders, editingFolderId, editingFolderName, draggingCharacterId, newFolderName, onSetNewFolderName, onCreateFolder, createFolderPending, onToggleFolder, onSetEditingFolderId, onSetEditingFolderName, onUpdateFolder, onDeleteFolder, deleteFolderPending, onMoveCharacter, onSetDraggingCharacterId, getCharactersInFolder, onAddCharacter, onShowTemplateLibrary, onShowImportDialog, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onPlaceCharacterToken }: {
+function CharacterManagementContent({ role, characters, folders, unfiledCharacters, expandedFolders, editingFolderId, editingFolderName, draggingCharacterId, newFolderName, onSetNewFolderName, onCreateFolder, createFolderPending, onToggleFolder, onSetEditingFolderId, onSetEditingFolderName, onUpdateFolder, onDeleteFolder, deleteFolderPending, onMoveCharacter, onSetDraggingCharacterId, getCharactersInFolder, onAddCharacter, onShowTemplateLibrary, onShowImportDialog, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onPlaceCharacterToken, onTogglePin }: {
   role: Role;
   characters?: any[];
   folders: any[];
@@ -11038,6 +11038,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
   onManageAccess: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
   onPlaceCharacterToken?: (characterId: string) => void;
+  onTogglePin?: (char: any) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -11098,7 +11099,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
               {isExpanded && (
                 <div className="mt-2 space-y-2 pl-6">
                   {folderChars.length > 0 ? folderChars.map((char: any) => (
-                    <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} />
+                    <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} onTogglePin={onTogglePin} />
                   )) : (
                     <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">Drag characters here</div>
                   )}
@@ -11119,7 +11120,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
           </div>
           <div className="mt-2 space-y-2">
             {unfiledCharacters.length > 0 ? unfiledCharacters.map((char: any) => (
-              <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} />
+              <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} onTogglePin={onTogglePin} />
             )) : (
               <div className="p-4 text-center text-stone-500 text-sm">
                 {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
@@ -11132,8 +11133,8 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
   );
 }
 
-function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onSetDraggingCharacterId, onPlaceCharacterToken }: {
-  char: any; role: Role; onViewCharacter?: (char: any) => void; onAssignCharacter?: (char: any) => void; onDeleteCharacter: (char: any) => void; deleteCharacterPending: boolean; onManageAccess: (char: any) => void; myPermissions?: { permissions: Record<string, string> }; onSetDraggingCharacterId: (id: string | null) => void; onPlaceCharacterToken?: (characterId: string) => void;
+function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onSetDraggingCharacterId, onPlaceCharacterToken, onTogglePin }: {
+  char: any; role: Role; onViewCharacter?: (char: any) => void; onAssignCharacter?: (char: any) => void; onDeleteCharacter: (char: any) => void; deleteCharacterPending: boolean; onManageAccess: (char: any) => void; myPermissions?: { permissions: Record<string, string> }; onSetDraggingCharacterId: (id: string | null) => void; onPlaceCharacterToken?: (characterId: string) => void; onTogglePin?: (char: any) => void;
 }) {
   return (
     <div className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
@@ -11163,6 +11164,12 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
           )}
           {role === 'gm' && (
             <DropdownMenuItem onClick={() => onManageAccess(char)} className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"><Shield className="h-4 w-4 mr-2" />Manage Access</DropdownMenuItem>
+          )}
+          {role === 'gm' && onTogglePin && (
+            <DropdownMenuItem onClick={() => onTogglePin(char)} className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200">
+              {char.pinned ? <PinOff className="h-4 w-4 mr-2" /> : <Pin className="h-4 w-4 mr-2" />}
+              {char.pinned ? 'Unpin from top bar' : 'Pin to top bar'}
+            </DropdownMenuItem>
           )}
           {role === 'gm' && (
             <>
@@ -11224,11 +11231,18 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeedB
   campaignSystem?: string;
   rollFeedByUser: Map<string, PinnedRollFeedEntry[]>;
 }) {
-  const pinned = (members || []).filter((m: any) => m.pinned);
-  if (pinned.length === 0) return null;
+  const pinnedMembers = (members || []).filter((m: any) => m.pinned);
+  // Characters pinned directly (GM tool, mainly for NPCs with no owning
+  // player) - always rendered after every pinned player. Skip any that are
+  // already shown via a pinned member's assigned character, so nothing is
+  // duplicated.
+  const pinnedCharacters = (characters || []).filter((c: any) =>
+    c.pinned && !pinnedMembers.some((m: any) => m.assignedCharacterId === c.id)
+  );
+  if (pinnedMembers.length === 0 && pinnedCharacters.length === 0) return null;
   return (
     <div className="flex items-start gap-3 pointer-events-auto">
-      {pinned.map((member: any) => (
+      {pinnedMembers.map((member: any) => (
         <PinnedPlayerChip
           key={member.id}
           member={member}
@@ -11237,6 +11251,59 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeedB
           rolls={rollFeedByUser.get(member.userId) || []}
         />
       ))}
+      {pinnedCharacters.map((character: any) => (
+        <PinnedNpcChip key={character.id} character={character} campaignSystem={campaignSystem} />
+      ))}
+    </div>
+  );
+}
+
+// Portrait + wound/HP + energy bars only, no roll trapezium - a roll made
+// "as" an NPC is attributed to whichever user actually pressed the button
+// (usually the GM), not the NPC, so there is no reliable per-character
+// roll feed to hook into here the way there is for a pinned player.
+function PinnedNpcChip({ character, campaignSystem }: {
+  character: any;
+  campaignSystem?: string;
+}) {
+  const isCA = campaignSystem === 'ca';
+  const primaryBar = isCA
+    ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost(character.caWounds)), max: CA_WOUND_MAX }
+    : { value: character.hp ?? 0, max: character.maxHp ?? 1 };
+  const energyBar = { value: character.energy ?? 0, max: character.maxEnergy ?? 1 };
+  const displayName = character.name || 'NPC';
+
+  return (
+    <div className="relative flex flex-col items-center" data-testid={`pinned-npc-chip-${character.id}`}>
+      <div className="relative w-14 h-14 rounded-lg overflow-hidden border-2 border-stone-600 shadow-lg bg-stone-900">
+        {character.portrait ? (
+          <img src={character.portrait} alt={displayName} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-stone-800 text-stone-400 text-xs font-bold">
+            {displayName.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div
+        className="text-[10px] text-stone-200 font-medium mt-0.5 max-w-[64px] truncate text-center"
+        style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
+      >
+        {displayName}
+      </div>
+      <div className="w-14 mt-0.5 space-y-0.5">
+        <div className="h-1 bg-black/50 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+            style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+          />
+        </div>
+        <div className="h-1 bg-black/50 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-cyan-500"
+            style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -11935,6 +12002,23 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
   });
 
   // Delete character mutation
+  // Pin/unpin a character directly to the top party tracker bar - for NPCs
+  // and any other character with no pinned player already showing it.
+  const toggleCharacterPinMutation = useMutation({
+    mutationFn: ({ characterId, pinned }: { characterId: string; pinned: boolean }) =>
+      api.updateCharacter(characterId, { pinned } as any),
+    onSuccess: (_, { pinned }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      toast({
+        title: pinned ? "Character Pinned" : "Character Unpinned",
+        description: pinned ? "Now shown in the top party tracker bar" : "Removed from the top party tracker bar",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update pinned flag", variant: "destructive" });
+    },
+  });
+
   const deleteCharacterMutation = useMutation({
     mutationFn: (characterId: string) => api.deleteCharacter(characterId),
     onSuccess: () => {
@@ -12735,6 +12819,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               onManageAccess={(char) => { setSelectedCharForAccess(char); setShowAccessDialog(true); }}
               myPermissions={myPermissions}
               onPlaceCharacterToken={onPlaceCharacterToken}
+              onTogglePin={(char) => toggleCharacterPinMutation.mutate({ characterId: char.id, pinned: !char.pinned })}
             />
             </>
           ) : (

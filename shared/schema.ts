@@ -230,6 +230,7 @@ export const characters = pgTable("characters", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   worldId: varchar("world_id").references((): AnyPgColumn => worlds.id, { onDelete: "cascade" }), // World-scoped character (Task #120)
   isTemplate: boolean("is_template").notNull().default(false), // Admin character templates have this = true
+  pinned: boolean("pinned").notNull().default(false), // GM-pinned directly to the top party tracker bar (for NPCs/characters with no owning player)
   name: text("name").notNull(),
   portrait: text("portrait"),
   class: text("class").default(""), // Kept for backward compat, not used in UI
