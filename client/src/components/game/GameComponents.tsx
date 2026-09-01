@@ -11297,11 +11297,16 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSeenIdRef = useRef<string | undefined>(undefined);
   const latest = rolls[0];
+
+  // Reset the broken-image fallback if the portrait source itself changes
+  // (e.g. the assigned character or its portrait was updated).
+  useEffect(() => { setImgFailed(false); }, [portraitSrc]);
 
   useEffect(() => {
     if (!latest || latest.id === lastSeenIdRef.current) return;
@@ -11348,8 +11353,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       <div
         className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600'}`}
       >
-        {portraitSrc ? (
-          <img src={portraitSrc} alt={displayName} className="w-full h-full object-cover" />
+        {portraitSrc && !imgFailed ? (
+          <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-stone-800 text-stone-400 text-xs font-bold">
             {displayName.slice(0, 2).toUpperCase()}
