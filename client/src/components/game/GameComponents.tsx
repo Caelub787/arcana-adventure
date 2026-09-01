@@ -11356,9 +11356,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         {portraitSrc && !imgFailed ? (
           <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-stone-800 text-stone-400 text-xs font-bold">
-            {displayName.slice(0, 2).toUpperCase()}
-          </div>
+          <div className="w-full h-full bg-stone-800" />
         )}
         {/* Name and vital bars overlaid directly on the portrait, like a token label + bars. */}
         <div
