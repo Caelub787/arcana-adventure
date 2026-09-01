@@ -769,7 +769,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
   }
-  
+
+  // Symmetric to sendHostViewportToSpectator/requestGmViewportRebroadcast, but
+  // in the other direction: hydrate a newly-joined (or reconnected) GM with
+  // every player's last-known viewport immediately, so the "Show player
+  // screens" overlay isn't empty until each player happens to pan their
+  // camera again.
+  function sendAllViewportsToGm(campaignId: string, gmUserId: string, ws: any) {
+    const perUser = lastViewports.get(campaignId);
+    if (!perUser || perUser.size === 0) return;
+    const room = campaignRooms.get(campaignId);
+    const usernames = new Map<string, string>();
+    if (room) {
+      room.forEach((client) => {
+        const uid = (client as any).userId;
+        if (uid && !usernames.has(uid)) usernames.set(uid, (client as any).username || '');
+      });
+    }
+    perUser.forEach((snapshot, userId) => {
+      if (userId === gmUserId) return;
+      if (ws.readyState !== 1) return;
+      ws.send(JSON.stringify({
+        type: "viewport_update",
+        userId,
+        username: usernames.get(userId) || '',
+        ...snapshot,
+      }));
+    });
+  }
+
+  // Nudges every non-GM, non-spectator connection in the room to rebroadcast
+  // its current viewport right away, as a fallback for players who haven't
+  // panned since the GM connected (so nothing is cached yet, or the cache
+  // was lost to a server restart).
+  function requestAllPlayersViewportRebroadcast(campaignId: string, gmUserId: string) {
+    const room = campaignRooms.get(campaignId);
+    if (!room) return;
+    const requestMessage = JSON.stringify({
+      type: "request_viewport",
+      campaignId,
+    });
+    room.forEach((client) => {
+      if (client.readyState === 1
+          && (client as any).userId !== gmUserId
+          && !(client as any).spectator) {
+        client.send(requestMessage);
+      }
+    });
+  }
+
   // Set to track ALL connected WebSocket clients (for global broadcasts like site updates)
   const allConnectedClients = new Set<any>();
   
@@ -1375,6 +1423,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               campaignId,
               spectators: getSpectatorList(campaignId),
             }));
+
+            // Hydrate the "Show player screens" overlay with any cached
+            // viewports right away, and ask every connected player to
+            // rebroadcast theirs in case nothing is cached yet.
+            sendAllViewportsToGm(campaignId, authenticatedUserId, ws);
+            requestAllPlayersViewportRebroadcast(campaignId, authenticatedUserId);
           }
         }
 
@@ -6482,6 +6536,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error('Error setting trusted player:', err);
       res.status(500).json({ error: "Failed to update trusted player flag" });
+    }
+  });
+
+  // Set member pinned flag (GM/Owner only) - controls the top-of-screen party tracker bar
+  app.patch("/api/campaigns/:campaignId/members/:memberId/pinned", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, memberId } = req.params;
+      const { pinned } = req.body;
+      if (typeof pinned !== 'boolean') {
+        return res.status(400).json({ error: "'pinned' must be a boolean" });
+      }
+      const userId = req.session.userId!;
+      const isOwner = await storage.isOwner(userId, campaignId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "Only the campaign owner can pin players" });
+      }
+      const members = await storage.getCampaignMembers(campaignId);
+      const targetMember = members.find(m => m.id === memberId);
+      if (!targetMember) {
+        return res.status(404).json({ error: "Member not found" });
+      }
+      const updatedMember = await storage.setMemberPinned(campaignId, memberId, pinned);
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers,
+      });
+      res.json(updatedMember);
+    } catch (err) {
+      console.error('Error setting pinned flag:', err);
+      res.status(500).json({ error: "Failed to update pinned flag" });
     }
   });
 

@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, type SelectionMode, type RulerShape, type RulerMarker } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -7088,6 +7088,10 @@ export default function Campaign() {
     zoom: number;
     beaconColor?: string;
   }>>(new Map());
+
+  // Recent dice-roll totals per user, for the top-of-screen pinned-player bar.
+  // Populated from the same chat_message broadcasts that already feed chat.
+  const [rollFeedByUser, setRollFeedByUser] = useState<Map<string, PinnedRollFeedEntry[]>>(new Map());
   
   const enterAoeMode = (spell: any, casterTokenId: string, pendingRollEntry?: any) => {
     const casterToken = tokens.find((t: any) => t.id === casterTokenId);
@@ -9289,6 +9293,28 @@ export default function Campaign() {
               return [...oldData, data.message];
             }
           );
+
+          // Feed the pinned-player top bar. Roll chat text consistently ends
+          // with "= <total>" (dice rolls, skill/attribute checks), so the
+          // total is parsed from there rather than needing a schema change;
+          // messages without that trailing total (energy/mana adjustments,
+          // effect notices, also broadcast as type "roll") just show no number.
+          if (data.message.type === 'roll' && data.message.userId) {
+            const totalMatch = /=\s*(-?\d+)\s*$/.exec(data.message.text || '');
+            const entry: PinnedRollFeedEntry = {
+              id: data.message.id,
+              text: data.message.text,
+              total: totalMatch ? parseInt(totalMatch[1], 10) : null,
+              ts: Date.now(),
+            };
+            setRollFeedByUser(prev => {
+              const existing = prev.get(data.message.userId) || [];
+              if (existing.some(r => r.id === entry.id)) return prev;
+              const updated = new Map(prev);
+              updated.set(data.message.userId, [entry, ...existing].slice(0, 10));
+              return updated;
+            });
+          }
         }
         
         // Handle other players' AoE targeting updates
@@ -9455,6 +9481,16 @@ export default function Campaign() {
             [`/api/campaigns/${effectiveCampaignIdRef.current}/members`],
             data.members
           );
+
+          // The members list alone doesn't tell an affected player their own
+          // effective role changed (player <-> assistant GM) — that lives on
+          // the campaign query's userRole field, computed server-side. A
+          // targeted refetch (not setQueryData) keeps it correct without
+          // requiring a manual page reload, since `role` throughout this
+          // component is derived fresh from that query on every render.
+          queryClientRef.current.invalidateQueries({
+            queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}`],
+          });
         }
         
         // Handle beacon messages from all players (including self for consistency)
@@ -10205,7 +10241,17 @@ export default function Campaign() {
           </TooltipProvider>
 
         </div>
-        
+
+        {/* Center - GM-pinned party tracker (portraits, wound/energy bars, live roll totals) */}
+        <div className="flex-1 flex justify-center">
+          <PinnedRosterBar
+            members={(members as any[]) || []}
+            characters={(characters as any[]) || []}
+            campaignSystem={(campaign as any)?.system}
+            rollFeedByUser={rollFeedByUser}
+          />
+        </div>
+
         {/* Right Side - Settings menu at top, then panel tab icons */}
         <div className="pointer-events-auto flex flex-col gap-2"
           style={{ 

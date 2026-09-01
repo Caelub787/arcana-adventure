@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -9491,7 +9491,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div
-                className={`h-full ${vitalBarColor(character.energy ?? 10, effectiveMaxEnergy)}`}
+                className="h-full bg-cyan-500"
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
                 transition={{ duration: 0.8, ease: "easeInOut" }}
@@ -11195,6 +11195,175 @@ interface CampaignMenuProps {
   charactersOnly?: boolean;
 }
 
+export type PinnedRollFeedEntry = { id: string; text: string; total: number | null; ts: number };
+
+// Top-of-screen party tracker: GM-pinned members shown as small portrait
+// chips (character portrait + wound/energy bars if a character is assigned,
+// otherwise just the user's avatar), each with a roll "trapezium" that
+// slides out from under the portrait, glows briefly, and shows that user's
+// most recent dice roll total. Hovering re-reveals the trapezium; clicking
+// it opens a short history of their recent rolls. Rolls still post to chat
+// as normal - this is purely a supplemental live glance at the party.
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeedByUser }: {
+  members: any[];
+  characters: any[];
+  campaignSystem?: string;
+  rollFeedByUser: Map<string, PinnedRollFeedEntry[]>;
+}) {
+  const pinned = (members || []).filter((m: any) => m.pinned);
+  if (pinned.length === 0) return null;
+  return (
+    <div className="flex items-start gap-3 pointer-events-auto">
+      {pinned.map((member: any) => (
+        <PinnedPlayerChip
+          key={member.id}
+          member={member}
+          character={(characters || []).find((c: any) => c.id === member.assignedCharacterId)}
+          campaignSystem={campaignSystem}
+          rolls={rollFeedByUser.get(member.userId) || []}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PinnedPlayerChip({ member, character, campaignSystem, rolls }: {
+  member: any;
+  character: any;
+  campaignSystem?: string;
+  rolls: PinnedRollFeedEntry[];
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [glow, setGlow] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const hoveringRef = useRef(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSeenIdRef = useRef<string | undefined>(undefined);
+  const latest = rolls[0];
+
+  useEffect(() => {
+    if (!latest || latest.id === lastSeenIdRef.current) return;
+    lastSeenIdRef.current = latest.id;
+    setRevealed(true);
+    setGlow(true);
+    if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+    glowTimerRef.current = setTimeout(() => setGlow(false), 700);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      if (!hoveringRef.current) setRevealed(false);
+    }, 3200);
+  }, [latest?.id]);
+
+  useEffect(() => () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+  }, []);
+
+  const isCA = campaignSystem === 'ca';
+  const primaryBar = character
+    ? (isCA
+      ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost(character.caWounds)), max: CA_WOUND_MAX }
+      : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
+    : null;
+  const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
+
+  const portraitSrc = character?.portrait || member.avatarUrl;
+  const displayName = character?.name || member.username || 'Unknown';
+  const visible = revealed || historyOpen;
+
+  return (
+    <div
+      className="relative flex flex-col items-center"
+      data-testid={`pinned-chip-${member.userId}`}
+      onMouseEnter={() => {
+        hoveringRef.current = true;
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+        setRevealed(true);
+      }}
+      onMouseLeave={() => {
+        hoveringRef.current = false;
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
+      }}
+    >
+      <div
+        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600'}`}
+      >
+        {portraitSrc ? (
+          <img src={portraitSrc} alt={displayName} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-stone-800 text-stone-400 text-xs font-bold">
+            {displayName.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div
+        className="text-[10px] text-stone-200 font-medium mt-0.5 max-w-[64px] truncate text-center"
+        style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
+      >
+        {displayName}
+      </div>
+      {character && primaryBar && energyBar && (
+        <div className="w-14 mt-0.5 space-y-0.5">
+          <div className="h-1 bg-black/50 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+              style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+            />
+          </div>
+          <div className="h-1 bg-black/50 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-cyan-500"
+              style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={() => rolls.length > 0 && setHistoryOpen(true)}
+            className="absolute top-full left-1/2 -translate-x-1/2 overflow-hidden"
+            style={{
+              width: '72px',
+              height: visible ? '28px' : '0px',
+              opacity: visible ? 1 : 0,
+              transition: 'height 250ms ease, opacity 200ms ease',
+              pointerEvents: visible ? 'auto' : 'none',
+            }}
+            data-testid={`pinned-roll-${member.userId}`}
+          >
+            <div
+              className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600'}`}
+              style={{ clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)', transition: 'background-color 500ms ease, box-shadow 500ms ease' }}
+            >
+              {latest ? (latest.total ?? '') : ''}
+            </div>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="center" className="w-56 bg-stone-900 border-stone-700 p-2">
+          <div className="text-xs font-bold text-amber-400 mb-1">{displayName}'s Recent Rolls</div>
+          {rolls.length === 0 ? (
+            <div className="text-xs text-stone-500">No rolls yet</div>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {rolls.map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
+                  <span className="truncate flex-1">{r.text}</span>
+                  {r.total !== null && <span className="text-amber-400 font-mono font-bold shrink-0">{r.total}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -11735,6 +11904,22 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
     },
   });
 
+  // Pin/unpin a player to the top-of-screen party tracker bar (GM/Owner only)
+  const setPinnedMutation = useMutation({
+    mutationFn: ({ memberId, pinned }: { memberId: string; pinned: boolean }) =>
+      api.setMemberPinned(campaignId!, memberId, pinned),
+    onSuccess: (_, { pinned }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      toast({
+        title: pinned ? "Player Pinned" : "Player Unpinned",
+        description: pinned ? "Now shown in the top party tracker bar" : "Removed from the top party tracker bar",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update pinned flag", variant: "destructive" });
+    },
+  });
+
   // Delete character mutation
   const deleteCharacterMutation = useMutation({
     mutationFn: (characterId: string) => api.deleteCharacter(characterId),
@@ -12123,49 +12308,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               </div>
             )}
             
-            {/* Hotbar Slots Setting (GM Only) */}
-            {role === 'gm' && (
-              <div className="mt-4 pt-4 border-t border-stone-700">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="hotbar-slots" className="text-stone-300">Hotbar Slots</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7 border-stone-600"
-                      onClick={() => {
-                        const newValue = Math.max(1, hotbarSlots - 1);
-                        if (newValue !== hotbarSlots) {
-                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
-                        }
-                      }}
-                      disabled={hotbarSlots <= 1 || updateCampaignMutation.isPending}
-                      data-testid="button-decrease-hotbar-slots"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="text-amber-400 font-mono w-6 text-center" data-testid="text-hotbar-slots">{hotbarSlots}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7 border-stone-600"
-                      onClick={() => {
-                        const newValue = Math.min(10, hotbarSlots + 1);
-                        if (newValue !== hotbarSlots) {
-                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
-                        }
-                      }}
-                      disabled={hotbarSlots >= 10 || updateCampaignMutation.isPending}
-                      data-testid="button-increase-hotbar-slots"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
-              </div>
-            )}
-
             {/* 18+ Mature Content Setting (GM Only, AA V3 only) */}
             {role === 'gm' && system === 'aa-v3' && (
               <div className="mt-4 pt-4 border-t border-stone-700">
@@ -12180,33 +12322,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   />
                 </div>
                 <p className="text-xs text-stone-500 mt-1">When off, crafted spell names with profanity are censored for everyone in this campaign</p>
-              </div>
-            )}
-
-            {/* Default Panel Setting (All roles) */}
-            {onDefaultPanelChange && (
-              <div className="mt-4 pt-4 border-t border-stone-700">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="default-panel" className="text-stone-300">Default Panel</Label>
-                  <Select
-                    value={defaultPanel || 'none'}
-                    onValueChange={(value: string) => onDefaultPanelChange(value)}
-                  >
-                    <SelectTrigger className="w-[140px] bg-stone-900 border-stone-700 text-stone-200" data-testid="select-default-panel">
-                      <SelectValue placeholder="Select panel" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-stone-900 border-stone-700">
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="characters">Characters</SelectItem>
-                      <SelectItem value="chat">Chat</SelectItem>
-                      <SelectItem value="initiative">Initiative</SelectItem>
-                      <SelectItem value="notes">Notes</SelectItem>
-                      <SelectItem value="scene">Scene Settings</SelectItem>
-                      <SelectItem value="settings">Settings</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Panel to open by default when loading the campaign</p>
               </div>
             )}
           </div>
@@ -12269,6 +12384,25 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                         </div>
                         {role === 'gm' && member.userId !== gmUserId && campaignId && (
                           <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setPinnedMutation.mutate({ memberId: member.id, pinned: !member.pinned })}
+                                    disabled={setPinnedMutation.isPending}
+                                    className={`h-8 w-8 p-0 ${member.pinned ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-900/30' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-700/50'}`}
+                                    data-testid={`button-pin-${member.userId}`}
+                                  >
+                                    {member.pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>{member.pinned ? 'Unpin from top bar' : 'Pin to top bar'}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -12527,47 +12661,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 <p className="text-xs text-stone-500 mt-1">Color shown when you click on the map</p>
               </div>
             )}
-            {role === 'gm' && (
-              <div className="pt-4 border-t border-stone-700">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="hotbar-slots-inline" className="text-stone-300">Hotbar Slots</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7 border-stone-600"
-                      onClick={() => {
-                        const newValue = Math.max(1, hotbarSlots - 1);
-                        if (newValue !== hotbarSlots) {
-                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
-                        }
-                      }}
-                      disabled={hotbarSlots <= 1 || updateCampaignMutation.isPending}
-                      data-testid="button-decrease-hotbar-slots-inline"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="text-amber-400 font-mono w-6 text-center">{hotbarSlots}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7 border-stone-600"
-                      onClick={() => {
-                        const newValue = Math.min(10, hotbarSlots + 1);
-                        if (newValue !== hotbarSlots) {
-                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
-                        }
-                      }}
-                      disabled={hotbarSlots >= 10 || updateCampaignMutation.isPending}
-                      data-testid="button-increase-hotbar-slots-inline"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
-              </div>
-            )}
             {role === 'gm' && system === 'aa-v3' && (
               <div className="pt-4 border-t border-stone-700">
                 <div className="flex items-center justify-between">
@@ -12581,31 +12674,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   />
                 </div>
                 <p className="text-xs text-stone-500 mt-1">When off, crafted spell names with profanity are censored for everyone in this campaign</p>
-              </div>
-            )}
-            {onDefaultPanelChange && (
-              <div className="pt-4 border-t border-stone-700">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="default-panel-inline" className="text-stone-300">Default Panel</Label>
-                  <Select
-                    value={defaultPanel || 'none'}
-                    onValueChange={(value: string) => onDefaultPanelChange(value)}
-                  >
-                    <SelectTrigger className="w-[140px] bg-stone-900 border-stone-700 text-stone-200" data-testid="select-default-panel-inline">
-                      <SelectValue placeholder="Select panel" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-stone-900 border-stone-700">
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="characters">Characters</SelectItem>
-                      <SelectItem value="chat">Chat</SelectItem>
-                      <SelectItem value="initiative">Initiative</SelectItem>
-                      <SelectItem value="notes">Notes</SelectItem>
-                      <SelectItem value="scene">Scene Settings</SelectItem>
-                      <SelectItem value="settings">Settings</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Panel to open by default when loading the campaign</p>
               </div>
             )}
           </div>}
@@ -12712,6 +12780,25 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                       </div>
                       {role === 'gm' && member.userId !== gmUserId && campaignId && (
                         <div className="flex items-center gap-1">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setPinnedMutation.mutate({ memberId: member.id, pinned: !member.pinned })}
+                                  disabled={setPinnedMutation.isPending}
+                                  className={`h-8 w-8 p-0 ${member.pinned ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-900/30' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-700/50'}`}
+                                  data-testid={`button-pin-inline-${member.userId}`}
+                                >
+                                  {member.pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                <p>{member.pinned ? 'Unpin from top bar' : 'Pin to top bar'}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>

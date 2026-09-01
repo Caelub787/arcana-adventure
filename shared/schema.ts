@@ -193,6 +193,7 @@ export const campaignMembers = pgTable("campaign_members", {
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
   gmHotbar: text("gm_hotbar").array(), // Array of character IDs for GM's character hotbar
   beaconColor: text("beacon_color"), // RGB hex color for player's beacon clicks (e.g., "#FF5500")
+  pinned: boolean("pinned").default(false).notNull(), // Shown in the top-of-screen party tracker bar (GM-controlled)
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
 });
 

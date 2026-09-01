@@ -65,7 +65,7 @@ function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: b
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
         <StatBar value={remaining} max={CA_WOUND_MAX} color={vitalBarColor(remaining, CA_WOUND_MAX)} thin={thin} medium={thin} />
-        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color={vitalBarColor(char.energy ?? 0, char.maxEnergy ?? 0)} thin={thin} medium={thin} />
+        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-cyan-500" thin={thin} medium={thin} />
       </div>
     );
   }
@@ -73,7 +73,7 @@ function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: b
   return (
     <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
       <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color={vitalBarColor(char.hp ?? 0, char.maxHp ?? 0)} thin={thin} />
-      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color={vitalBarColor(char.energy ?? 0, char.maxEnergy ?? 0)} thin={thin} />
+      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-cyan-500" thin={thin} />
       <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-fuchsia-400" thin={thin} />
     </div>
   );
@@ -407,7 +407,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color={vitalBarColor(c.energy ?? 0, c.maxEnergy ?? 0)} />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-cyan-500" />
                         </div>
                       </>
                     ) : (
@@ -424,7 +424,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color={vitalBarColor(c.energy ?? 0, c.maxEnergy ?? 0)} />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-cyan-500" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

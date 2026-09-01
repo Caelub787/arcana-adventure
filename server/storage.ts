@@ -172,6 +172,7 @@ export interface IStorage {
   isOwner(userId: string, campaignId: string): Promise<boolean>;
   setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
   setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined>;
+  setMemberPinned(campaignId: string, memberId: string, pinned: boolean): Promise<CampaignMember | undefined>;
   updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined>;
 
   // Character operations
@@ -1412,6 +1413,17 @@ export class DatabaseStorage implements IStorage {
   async setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined> {
     const [member] = await db.update(campaignMembers)
       .set({ trustedPlayer: trusted })
+      .where(and(
+        eq(campaignMembers.id, memberId),
+        eq(campaignMembers.campaignId, campaignId)
+      ))
+      .returning();
+    return member;
+  }
+
+  async setMemberPinned(campaignId: string, memberId: string, pinned: boolean): Promise<CampaignMember | undefined> {
+    const [member] = await db.update(campaignMembers)
+      .set({ pinned })
       .where(and(
         eq(campaignMembers.id, memberId),
         eq(campaignMembers.campaignId, campaignId)
