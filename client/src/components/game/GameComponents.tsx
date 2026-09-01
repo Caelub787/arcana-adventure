@@ -25862,9 +25862,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         open={showImageBrowser}
         onOpenChange={setShowImageBrowser}
         onSelect={(imageBase64) => {
-          if (onUpdate) {
-            onUpdate({ portrait: imageBase64 });
-          }
+          // Route through the same crop step as a fresh upload, rather than
+          // applying the library image as-is.
+          setUploadedImage(imageBase64);
+          setShowPortraitCrop(true);
         }}
         title="Select Character Portrait"
       />
@@ -25922,13 +25923,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     };
                     
                     const handleUp = (upEvent: PointerEvent) => {
-                      (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId);
+                      try { (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId); } catch {}
                       document.removeEventListener('pointermove', handleMove);
                       document.removeEventListener('pointerup', handleUp);
+                      document.removeEventListener('pointercancel', handleUp);
                     };
-                    
+
                     document.addEventListener('pointermove', handleMove);
                     document.addEventListener('pointerup', handleUp);
+                    // Some trackpads/gesture handling deliver pointercancel instead
+                    // of pointerup - without this, the box keeps following the
+                    // cursor forever since the move listener never gets removed.
+                    document.addEventListener('pointercancel', handleUp);
                   }}
                 />
               </div>
@@ -28305,29 +28311,38 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     if (!cropImageRef.current) return;
     const container = e.currentTarget.parentElement;
     if (!container) return;
-    
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+
     const rect = container.getBoundingClientRect();
     const img = cropImageRef.current;
     const scaleX = img.naturalWidth / img.clientWidth;
     const scaleY = img.naturalHeight / img.clientHeight;
-    
+
     const handleMove = (moveEvent: PointerEvent) => {
       const relX = (moveEvent.clientX - rect.left) * scaleX;
       const relY = (moveEvent.clientY - rect.top) * scaleY;
-      
+
       const newX = Math.max(0, Math.min(relX - cropPosition.size / 2, img.naturalWidth - cropPosition.size));
       const newY = Math.max(0, Math.min(relY - cropPosition.size / 2, img.naturalHeight - cropPosition.size));
-      
+
       setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
     };
-    
-    const handleUp = () => {
+
+    const handleUp = (upEvent: PointerEvent) => {
+      try { (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId); } catch {}
       document.removeEventListener('pointermove', handleMove);
       document.removeEventListener('pointerup', handleUp);
+      document.removeEventListener('pointercancel', handleUp);
     };
-    
+
     document.addEventListener('pointermove', handleMove);
     document.addEventListener('pointerup', handleUp);
+    // Some trackpads/gesture handling deliver pointercancel instead of
+    // pointerup - without this, the box keeps following the cursor forever
+    // since the move listener never gets removed.
+    document.addEventListener('pointercancel', handleUp);
   };
 
   const handleCropConfirm = () => {

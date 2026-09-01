@@ -302,20 +302,26 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 data-testid={`free-hotbar-slot-${slotIndex}`}
               >
                 {entry ? (
-                  entry.character ? (
+                  entry.character ? (() => {
+                    // Merge in live character data (not just the snapshot the
+                    // slot was assigned with) so a portrait change shows up
+                    // here immediately, same as the stat bars already do.
+                    const liveEntryChar = mergeLive(entry.character);
+                    return (
                     <div className="relative w-full h-full pointer-events-none">
-                      {entry.character.portrait ? (
-                        <img src={entry.character.portrait} alt={entry.character.name} className="w-full h-full object-cover" />
+                      {liveEntryChar.portrait ? (
+                        <img src={liveEntryChar.portrait} alt={liveEntryChar.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <User className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500" />
                         </div>
                       )}
                       <div className="absolute bottom-0 left-0 right-0" data-testid={`free-hotbar-slot-${slotIndex}-bars`}>
-                        <CharStatBars char={mergeLive(entry.character)} thin isCA={isCA} />
+                        <CharStatBars char={liveEntryChar} thin isCA={isCA} />
                       </div>
                     </div>
-                  ) : entry.item ? (
+                    );
+                  })() : entry.item ? (
                     entry.item.image ? (
                       <img src={entry.item.image} alt={entry.item.name} className="w-full h-full object-cover pointer-events-none" />
                     ) : (
@@ -335,8 +341,8 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 w-4 h-4 sm:w-5 sm:h-5 rounded-full border border-amber-600 bg-stone-900 overflow-hidden flex items-center justify-center"
                         data-testid={`free-hotbar-slot-${slotIndex}-source-badge`}
                       >
-                        {entry.sourceCharacter.portrait ? (
-                          <img src={entry.sourceCharacter.portrait} alt={entry.sourceCharacter.name} className="w-full h-full object-cover" />
+                        {(liveCharMap.get(entry.sourceCharacter.id)?.portrait || entry.sourceCharacter.portrait) ? (
+                          <img src={liveCharMap.get(entry.sourceCharacter.id)?.portrait || entry.sourceCharacter.portrait} alt={entry.sourceCharacter.name} className="w-full h-full object-cover" />
                         ) : (
                           <User className="h-3 w-3 text-amber-500" />
                         )}

@@ -1093,6 +1093,10 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/chat`, { method: 'DELETE' });
   }
 
+  async getRollFeed(campaignId: string): Promise<any[]> {
+    return this.request(`/campaigns/${campaignId}/roll-feed`);
+  }
+
   // Scenes
   async getScenes(campaignId: string): Promise<Scene[]> {
     return this.request(`/campaigns/${campaignId}/scenes`);

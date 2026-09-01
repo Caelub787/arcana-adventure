@@ -476,6 +476,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
 
+  // Recent dice-roll notifications per campaign, so the pinned-roster
+  // player tracker's roll memory survives a page reload instead of only
+  // living in whichever browser tab produced it — cleared alongside chat
+  // (same GM "Clear" action) rather than persisted to the database, since
+  // these are a live-session cache, not a durable record like chat history.
+  const campaignRollFeeds = new Map<string, any[]>();
+  const ROLL_FEED_LIMIT = 50;
+
   // Map to track world rooms (for standalone /worldbuilder collaboration with
   // no linked campaign — gives world-scoped broadcasts a place to land).
   const worldRooms = new Map<string, Set<any>>();
@@ -2448,18 +2456,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const userCampaign = (ws as any).campaigns.get(campaignId);
           if (!userCampaign) return;
           
+          // Record it in this campaign's recent-rolls cache so the pinned
+          // roster tracker can rehydrate on reload/reconnect.
+          const storedNotification = {
+            ...notification,
+            userId: authenticatedUserId,
+            username,
+            id: crypto.randomUUID(),
+            ts: Date.now(),
+          };
+          const feed = campaignRollFeeds.get(campaignId) || [];
+          feed.unshift(storedNotification);
+          if (feed.length > ROLL_FEED_LIMIT) feed.length = ROLL_FEED_LIMIT;
+          campaignRollFeeds.set(campaignId, feed);
+
           // Broadcast roll notification to all OTHER campaign members
           const room = campaignRooms.get(campaignId);
           if (room) {
             const rollMessage = JSON.stringify({
               type: "roll_notification",
-              notification: {
-                ...notification,
-                userId: authenticatedUserId,
-                username
-              }
+              notification: storedNotification
             });
-            
+
             room.forEach((client) => {
               // Send to all clients except the sender (sender already sees it locally)
               if (client !== ws && client.readyState === 1) {
@@ -3459,22 +3477,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaignId = req.params.id;
       const userId = req.session.userId!;
-      
+
       // Check if user is GM of this campaign
       const members = await storage.getCampaignMembers(campaignId);
       const member = members.find(m => m.userId === userId);
-      
+
       if (!member || (member.role !== 'gm' && member.role !== 'assistant_gm')) {
         return res.status(403).json({ error: "Only the GM can clear chat" });
       }
-      
+
       await storage.clearChatMessages(campaignId);
+      campaignRollFeeds.delete(campaignId);
       broadcastToCampaign(campaignId, { type: 'chat_cleared' });
       res.json({ success: true });
     } catch (err) {
       console.error('Error clearing chat messages:', err);
       res.status(500).json({ error: "Failed to clear chat messages" });
     }
+  });
+
+  // Recent dice-roll notifications for the pinned-roster player tracker,
+  // so its memory survives a reload — cleared together with chat above.
+  app.get("/api/campaigns/:id/roll-feed", requireAuth, async (req, res) => {
+    res.json(campaignRollFeeds.get(req.params.id) || []);
   });
 
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {

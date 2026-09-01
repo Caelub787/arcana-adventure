@@ -5406,9 +5406,14 @@ function SandboxSheetEditor({
                         const onUp = () => {
                           el.removeEventListener('pointermove', onMove);
                           el.removeEventListener('pointerup', onUp);
+                          el.removeEventListener('pointercancel', onUp);
                         };
                         el.addEventListener('pointermove', onMove);
                         el.addEventListener('pointerup', onUp);
+                        // Some trackpads/gesture handling deliver pointercancel
+                        // instead of pointerup - without this, the box keeps
+                        // following the cursor forever since onMove never gets removed.
+                        el.addEventListener('pointercancel', onUp);
                       }}
                     >
                       {[
@@ -5452,9 +5457,11 @@ function SandboxSheetEditor({
                             const onUp = () => {
                               handle.removeEventListener('pointermove', onMove);
                               handle.removeEventListener('pointerup', onUp);
+                              handle.removeEventListener('pointercancel', onUp);
                             };
                             handle.addEventListener('pointermove', onMove);
                             handle.addEventListener('pointerup', onUp);
+                            handle.addEventListener('pointercancel', onUp);
                           }}
                         />
                       ))}
@@ -7103,16 +7110,38 @@ export default function Campaign() {
   // a clean username and (when the roll was made as a specific character,
   // player or NPC alike) characterName straight from the source.
   const [rollFeed, setRollFeed] = useState<PinnedRollFeedEntry[]>([]);
+
+  // Hydrate from the server's per-campaign roll cache on load/reconnect so
+  // the tracker's memory survives a reload instead of starting empty every
+  // time - it only resets when the GM clears chat (below).
+  useEffect(() => {
+    if (!campaignId) return;
+    api.getRollFeed(campaignId).then((stored) => {
+      if (!Array.isArray(stored) || stored.length === 0) return;
+      const hydrated: PinnedRollFeedEntry[] = stored
+        .filter((n: any) => n && typeof n.username === 'string')
+        .map((n: any) => ({
+          id: n.id || crypto.randomUUID(),
+          username: n.username,
+          characterName: n.characterName || undefined,
+          text: n.label || '',
+          total: typeof n.total === 'number' ? n.total : null,
+          ts: typeof n.ts === 'number' ? n.ts : Date.now(),
+        }));
+      setRollFeed(hydrated.slice(0, 50));
+    }).catch(() => {});
+  }, [campaignId]);
+
   useEffect(() => {
     const addEntry = (n: any) => {
       if (!n || typeof n.username !== 'string') return;
       const entry: PinnedRollFeedEntry = {
-        id: crypto.randomUUID(),
+        id: n.id || crypto.randomUUID(),
         username: n.username,
         characterName: n.characterName || undefined,
         text: n.label || '',
         total: typeof n.total === 'number' ? n.total : null,
-        ts: Date.now(),
+        ts: typeof n.ts === 'number' ? n.ts : Date.now(),
       };
       setRollFeed(prev => [entry, ...prev].slice(0, 50));
     };
@@ -7120,6 +7149,8 @@ export default function Campaign() {
     window.addEventListener('roll-notification', handleLocal);
     const unsubscribe = gameWs.onMessage((data: any) => {
       if (data.type === 'roll_notification' && data.notification) addEntry(data.notification);
+      // GM cleared chat - the pinned tracker's roll memory clears with it.
+      if (data.type === 'chat_cleared') setRollFeed([]);
     });
     return () => {
       window.removeEventListener('roll-notification', handleLocal);
