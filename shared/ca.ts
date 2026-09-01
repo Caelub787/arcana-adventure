@@ -7,9 +7,11 @@
 // ---------------------------------------------------------------------------
 // Wounds — replaces HP entirely for C.A. A freeform pin on a body diagram,
 // not a fixed grid of slots: click "Add Wound", click a spot on the body,
-// and that becomes a wound with its own name, location, severity, a
-// description, and a list of narrative effect lines — purely GM/player
-// narrative content, no auto-derived mechanical stat penalties.
+// and that becomes a wound with its own name, severity, and description.
+// A wound can carry multiple effects, each a description plus an optional
+// skill/stat target + numeric amount — when a target is set it's applied
+// automatically to that skill's rolls or that movement stat while the
+// wound is active (untreated).
 // ---------------------------------------------------------------------------
 
 export type CAWoundSeverity = "minor" | "moderate" | "serious";
@@ -37,15 +39,39 @@ export const CA_WOUND_SEVERITY_RANK: Record<CAWoundSeverity, number> = {
   minor: 1,
 };
 
+// Movement stats a wound's effect can target besides a skill.
+export const CA_FIXED_STAT_TARGETS = ["speed", "flySpeed", "swimSpeed"] as const;
+export type CAFixedStatTarget = typeof CA_FIXED_STAT_TARGETS[number];
+export const CA_FIXED_STAT_LABELS: Record<CAFixedStatTarget, string> = {
+  speed: "Speed",
+  flySpeed: "Fly Speed",
+  swimSpeed: "Swim Speed",
+};
+
+export function caWoundEffectTargetLabel(target: string): string {
+  if ((CA_FIXED_STAT_TARGETS as readonly string[]).includes(target)) return CA_FIXED_STAT_LABELS[target as CAFixedStatTarget];
+  const skill = CA_SKILLS.find(s => s.key === target);
+  if (skill) return skill.name;
+  return target;
+}
+
+export interface CAWoundEffect {
+  id: string;
+  description: string;
+  // A CA_SKILLS key or a CAFixedStatTarget, or null for a purely narrative
+  // effect with no automatic mechanical application.
+  target: string | null;
+  amount: number; // meaningful only when target is set
+}
+
 export interface CAWound {
   id: string;
   x: number; // 0-100, percent position on the body diagram
   y: number; // 0-100
   name: string;
-  location: string;
   severity: CAWoundSeverity;
   description: string;
-  effects: string[];
+  effects: CAWoundEffect[];
   treated: boolean;
 }
 
@@ -53,6 +79,10 @@ let caWoundIdCounter = 0;
 function makeCAWoundId(): string {
   caWoundIdCounter += 1;
   return `w${Date.now().toString(36)}${caWoundIdCounter}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function makeCAWoundEffect(): CAWoundEffect {
+  return { id: makeCAWoundId(), description: "", target: null, amount: 0 };
 }
 
 // A fresh wound pinned at (x, y) — percent coordinates on the body diagram,
@@ -64,11 +94,27 @@ export function makeCAWound(x: number, y: number): CAWound {
     x: Math.max(0, Math.min(100, x)),
     y: Math.max(0, Math.min(100, y)),
     name: "",
-    location: "",
     severity: "minor",
     description: "",
     effects: [],
     treated: false,
+  };
+}
+
+function normalizeCAWoundEffect(raw: unknown): CAWoundEffect | null {
+  // Tolerates the earlier plain-string effect-line shape by keeping the
+  // text as the description with no mechanical target.
+  if (typeof raw === "string") {
+    return raw ? { id: makeCAWoundId(), description: raw, target: null, amount: 0 } : null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const anyE = raw as any;
+  const target = typeof anyE.target === "string" && anyE.target ? anyE.target : null;
+  return {
+    id: typeof anyE.id === "string" && anyE.id ? anyE.id : makeCAWoundId(),
+    description: typeof anyE.description === "string" ? anyE.description : "",
+    target,
+    amount: target && Number.isFinite(Number(anyE.amount)) ? Math.trunc(Number(anyE.amount)) : 0,
   };
 }
 
@@ -89,14 +135,32 @@ export function normalizeCAWounds(raw: unknown): CAWound[] {
       x: Number.isFinite(Number(anyW.x)) ? Math.max(0, Math.min(100, Number(anyW.x))) : 50,
       y: Number.isFinite(Number(anyW.y)) ? Math.max(0, Math.min(100, Number(anyW.y))) : 50,
       name: typeof anyW.name === "string" ? anyW.name : "",
-      location: typeof anyW.location === "string" ? anyW.location : "",
       severity,
       description: typeof anyW.description === "string" ? anyW.description : "",
-      effects: Array.isArray(anyW.effects) ? anyW.effects.filter((e: any) => typeof e === "string") : [],
+      effects: Array.isArray(anyW.effects)
+        ? anyW.effects.map(normalizeCAWoundEffect).filter((e: CAWoundEffect | null): e is CAWoundEffect => e !== null)
+        : [],
       treated: !!anyW.treated,
     });
   }
   return out;
+}
+
+// Sums every active (untreated) wound's effects targeting `target` (a
+// CA_SKILLS key or a CAFixedStatTarget). Treating a wound, or removing an
+// effect, removes its contribution immediately — this is always computed
+// fresh from the wounds array, never a separately stored total.
+export function caWoundStatEffectTotal(wounds: unknown, target: string): number {
+  if (!target) return 0;
+  const normalized = normalizeCAWounds(wounds);
+  let total = 0;
+  for (const w of normalized) {
+    if (w.treated) continue;
+    for (const eff of w.effects) {
+      if (eff.target === target) total += eff.amount;
+    }
+  }
+  return total;
 }
 
 // Total active Wound Capacity spent — treated wounds don't count unless

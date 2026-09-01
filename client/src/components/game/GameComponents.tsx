@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, makeCAWound, makeCAWoundEffect, caWoundTotalCost, caActiveWoundCount, caWoundStatEffectTotal, caWoundEffectTargetLabel, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAWound, type CAWoundSeverity, type CAWoundEffect, type CAFixedStatTarget, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -17710,11 +17710,15 @@ function CAAttrsAndSkillsTab({
               const dieType = `d${caAttrValueToDieSides(attrVal)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
+              const skillWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.key);
               const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost);
+              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect);
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = editing ? 0 : skillScrollBoost;
-              const skillTempSources = skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : '';
+              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect);
+              const skillTempSources = [
+                skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
+                skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
+              ].filter(Boolean).join(', ');
               return (
                 <div
                   key={skill.key}
@@ -18331,6 +18335,38 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     queueCharacterUpdate((cur: any) => {
       const wounds = normalizeCAWounds(cur?.caWounds);
       const updated = wounds.map((w) => (w.id === id ? { ...w, treated: !w.treated } : w));
+      return { caWounds: updated };
+    });
+  };
+
+  // Add/Edit Effect dialog — a wound can carry several effects, each a
+  // description plus an optional skill/stat target + numeric amount that's
+  // applied automatically (see caWoundStatEffectTotal) while the wound is
+  // untreated. Adding and editing share one floating panel; which wound and
+  // which effect (a fresh one from makeCAWoundEffect() for "Add") it's
+  // editing lives in this state until Save/Cancel.
+  const [editingCAWoundEffect, setEditingCAWoundEffect] = useState<{ woundId: string; effect: CAWoundEffect } | null>(null);
+
+  const saveCAWoundEffect = () => {
+    if (!editingCAWoundEffect) return;
+    const { woundId, effect } = editingCAWoundEffect;
+    queueCharacterUpdate((cur: any) => {
+      const wounds = normalizeCAWounds(cur?.caWounds);
+      const updated = wounds.map((w) => {
+        if (w.id !== woundId) return w;
+        const idx = w.effects.findIndex((e) => e.id === effect.id);
+        const effects = idx >= 0 ? w.effects.map((e, i) => (i === idx ? effect : e)) : [...w.effects, effect];
+        return { ...w, effects };
+      });
+      return { caWounds: updated };
+    });
+    setEditingCAWoundEffect(null);
+  };
+
+  const removeCAWoundEffect = (woundId: string, effectId: string) => {
+    queueCharacterUpdate((cur: any) => {
+      const wounds = normalizeCAWounds(cur?.caWounds);
+      const updated = wounds.map((w) => (w.id === woundId ? { ...w, effects: w.effects.filter((e) => e.id !== effectId) } : w));
       return { caWounds: updated };
     });
   };
@@ -20975,8 +21011,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               />
                             ) : (() => {
                               const baseVal = liveCharacter[key] || 0;
+                              const woundEffect = caWoundStatEffectTotal(liveCharacter.caWounds, key);
+                              const woundAdjusted = Math.max(0, baseVal + woundEffect);
                               const exh = liveCharacter.exhaustion || 0;
-                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseVal / 2) : baseVal;
+                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
                               const isReduced = effectiveVal < baseVal;
                               return (
                                 <p className="text-stone-200 text-sm" data-testid={`text-ca-${testid}`}>
@@ -20987,6 +21025,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     </>
                                   ) : (
                                     <>{effectiveVal} ft</>
+                                  )}
+                                  {woundEffect !== 0 && (
+                                    <span className="ml-1 text-[10px] text-stone-500" data-testid={`text-ca-${testid}-wound-effect`}>
+                                      ({woundEffect > 0 ? '+' : ''}{woundEffect} wounds)
+                                    </span>
                                   )}
                                 </p>
                               );
@@ -21167,8 +21210,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       {CA_WOUND_SEVERITY_LABELS[w.severity].toUpperCase()} {CA_WOUND_SEVERITY_COST[w.severity]}
                                     </span>
                                   </button>
-                                  {!expanded && w.location && (
-                                    <p className="text-[10px] text-stone-500 pl-4">{w.location}</p>
+                                  {!expanded && w.description && (
+                                    <p className="text-[10px] text-stone-500 pl-4 truncate">{w.description}</p>
                                   )}
                                   {expanded && (
                                     <div className="space-y-1.5 pl-4">
@@ -21180,58 +21223,59 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                         className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
                                         data-testid={`input-ca-wound-${w.id}-name`}
                                       />
-                                      <div className="flex items-center gap-1.5">
-                                        <Select
-                                          value={w.severity}
-                                          onValueChange={(v) => updateCAWound(w.id, { severity: v as CAWoundSeverity })}
-                                          disabled={!canEditWounds}
-                                        >
-                                          <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700 flex-1" data-testid={`select-ca-wound-${w.id}-severity`}>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {CA_WOUND_SEVERITIES.map((sev) => (
-                                              <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                        <Input
-                                          defaultValue={w.location}
-                                          onBlur={(e) => updateCAWound(w.id, { location: e.target.value })}
-                                          disabled={!canEditWounds}
-                                          placeholder="Location..."
-                                          className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200 flex-1"
-                                          data-testid={`input-ca-wound-${w.id}-location`}
-                                        />
-                                      </div>
+                                      <Select
+                                        value={w.severity}
+                                        onValueChange={(v) => updateCAWound(w.id, { severity: v as CAWoundSeverity })}
+                                        disabled={!canEditWounds}
+                                      >
+                                        <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700" data-testid={`select-ca-wound-${w.id}-severity`}>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {CA_WOUND_SEVERITIES.map((sev) => (
+                                            <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                       <Textarea
                                         defaultValue={w.description}
                                         onBlur={(e) => updateCAWound(w.id, { description: e.target.value })}
                                         disabled={!canEditWounds}
-                                        placeholder="Description..."
+                                        placeholder="Injury description..."
                                         className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
                                         data-testid={`textarea-ca-wound-${w.id}-description`}
                                       />
                                       <div className="space-y-1">
-                                        {w.effects.map((eff, i) => (
-                                          <div key={i} className="flex items-center gap-1">
-                                            <Input
-                                              defaultValue={eff}
-                                              onBlur={(e) => updateCAWound(w.id, { effects: w.effects.map((x, j) => j === i ? e.target.value : x) })}
-                                              disabled={!canEditWounds}
-                                              placeholder="Effect..."
-                                              className="h-6 text-xs bg-stone-800 border-stone-700 text-stone-200 flex-1"
-                                              data-testid={`input-ca-wound-${w.id}-effect-${i}`}
-                                            />
+                                        {w.effects.map((eff) => (
+                                          <div key={eff.id} className="flex items-start gap-1 text-xs text-stone-300">
+                                            <span className="text-stone-500 shrink-0">•</span>
+                                            <span className="flex-1">
+                                              {eff.description || <span className="text-stone-600 italic">No description</span>}
+                                              {eff.target && (
+                                                <span className="text-stone-500 ml-1">
+                                                  ({caWoundEffectTargetLabel(eff.target)} {eff.amount >= 0 ? '+' : ''}{eff.amount})
+                                                </span>
+                                              )}
+                                            </span>
                                             {canEditWounds && (
-                                              <button
-                                                type="button"
-                                                onClick={() => updateCAWound(w.id, { effects: w.effects.filter((_, j) => j !== i) })}
-                                                className="text-stone-500 hover:text-red-400"
-                                                data-testid={`button-remove-ca-wound-${w.id}-effect-${i}`}
-                                              >
-                                                <X className="h-3 w-3" />
-                                              </button>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setEditingCAWoundEffect({ woundId: w.id, effect: eff })}
+                                                  className="text-stone-500 hover:text-amber-400"
+                                                  data-testid={`button-edit-ca-wound-${w.id}-effect-${eff.id}`}
+                                                >
+                                                  <Pencil className="h-3 w-3" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => removeCAWoundEffect(w.id, eff.id)}
+                                                  className="text-stone-500 hover:text-red-400"
+                                                  data-testid={`button-remove-ca-wound-${w.id}-effect-${eff.id}`}
+                                                >
+                                                  <X className="h-3 w-3" />
+                                                </button>
+                                              </div>
                                             )}
                                           </div>
                                         ))}
@@ -21239,10 +21283,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                           <button
                                             type="button"
                                             className="text-[10px] text-amber-500 hover:text-amber-400"
-                                            onClick={() => updateCAWound(w.id, { effects: [...w.effects, ''] })}
+                                            onClick={() => setEditingCAWoundEffect({ woundId: w.id, effect: makeCAWoundEffect() })}
                                             data-testid={`button-add-ca-wound-${w.id}-effect`}
                                           >
-                                            + Add effect line
+                                            + Add Effect
                                           </button>
                                         )}
                                       </div>
@@ -21280,6 +21324,70 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </CardContent>
               </Card>
+
+              {editingCAWoundEffect && (
+                <FloatingPanel
+                  open={!!editingCAWoundEffect}
+                  onClose={() => setEditingCAWoundEffect(null)}
+                  title={<span className="text-red-400">Wound Effect</span>}
+                  panelKey={`ca-wound-effect${charPanelSuffix}`}
+                  zIndex={floatingZIndices?.[`ca-wound-effect${charPanelSuffix}`] || 10200}
+                  onBringToFront={() => bringToFront?.(`ca-wound-effect${charPanelSuffix}`)}
+                  defaultSize={{ width: 420, height: 420 }}
+                  minWidth={320}
+                  minHeight={340}
+                >
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <Label className="text-xs text-stone-400">Description</Label>
+                      <Textarea
+                        value={editingCAWoundEffect.effect.description}
+                        onChange={(e) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, description: e.target.value } } : prev)}
+                        placeholder="Describe the effect..."
+                        className="bg-stone-800 border-stone-700 text-stone-200 text-sm min-h-[70px]"
+                        data-testid="textarea-ca-wound-effect-description"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Apply to Skill/Stat (optional)</Label>
+                      <Select
+                        value={editingCAWoundEffect.effect.target ?? '_none'}
+                        onValueChange={(v) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, target: v === '_none' ? null : v, amount: v === '_none' ? 0 : prev.effect.amount } } : prev)}
+                      >
+                        <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-ca-wound-effect-target">
+                          <SelectValue placeholder="No stat effect" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">No stat effect</SelectItem>
+                          <SelectGroup>
+                            <SelectLabel>Movement</SelectLabel>
+                            {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
+                          </SelectGroup>
+                          <SelectGroup>
+                            <SelectLabel>Skills</SelectLabel>
+                            {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {editingCAWoundEffect.effect.target && (
+                      <div>
+                        <Label className="text-xs text-stone-400">Amount</Label>
+                        <NumberInput
+                          value={editingCAWoundEffect.effect.amount}
+                          onChange={(v) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, amount: v ?? 0 } } : prev)}
+                          className="bg-stone-800 border-stone-700 text-stone-200"
+                          data-testid="input-ca-wound-effect-amount"
+                        />
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingCAWoundEffect(null)} data-testid="button-cancel-ca-wound-effect">Cancel</Button>
+                      <Button type="button" size="sm" onClick={saveCAWoundEffect} data-testid="button-save-ca-wound-effect">Save</Button>
+                    </div>
+                  </div>
+                </FloatingPanel>
+              )}
 
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader className="pb-2">
