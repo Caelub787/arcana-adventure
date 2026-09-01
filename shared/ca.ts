@@ -25,9 +25,9 @@ export const CA_WOUND_SEVERITY_LABELS: Record<CAWoundSeverity, string> = {
 // How many points of Wound Capacity an active (untreated) wound of this
 // severity costs.
 export const CA_WOUND_SEVERITY_COST: Record<CAWoundSeverity, number> = {
-  minor: 0.5,
-  moderate: 1,
-  serious: 2,
+  minor: 1,
+  moderate: 2,
+  serious: 3,
 };
 
 // Sort weight for "most severe first" — higher sorts first.
@@ -115,19 +115,9 @@ export function caActiveWoundCount(wounds: unknown): number {
   return normalizeCAWounds(wounds).filter((w) => !w.treated).length;
 }
 
-// Wound Capacity = Constitution + Level — how many points of wounds a
-// character can carry before being fully overwhelmed.
-export function caWoundCapacity(character: { constitution?: number | null; level?: number | null } | null | undefined): number {
-  const con = Math.max(0, Math.floor(Number(character?.constitution) || 0));
-  const level = Math.max(1, Math.floor(Number(character?.level) || 1));
-  return con + level;
-}
-
-// A conservative reference cap for compact displays (hotbar/roster peeks)
-// that don't have the full character record (Constitution/Level) on hand
-// to compute a real caWoundCapacity — a stand-in denominator only, never
-// used where the real character record is available.
-export const CA_WOUND_DEFAULT_CAP = 10;
+// Every C.A. character has the same flat Wound Capacity — a full "HP" bar
+// of 20, drained by the point cost of each active (untreated) wound.
+export const CA_WOUND_MAX = 20;
 
 // Which body diagram renders behind the wound markers. Defaults to male.
 export type CABodySex = "male" | "female";

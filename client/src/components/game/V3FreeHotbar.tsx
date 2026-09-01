@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
-import { caWoundTotalCost, CA_WOUND_DEFAULT_CAP } from "@shared/ca";
+import { caWoundTotalCost, CA_WOUND_MAX } from "@shared/ca";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -59,14 +59,11 @@ function StatBar({ value, max, color, thin, medium }: { value: number; max: numb
 
 function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: boolean; isCA?: boolean }) {
   // C.A. has no HP/mana — show Wound Capacity remaining + Energy instead.
-  // This compact view doesn't carry the character's Constitution/Level, so
-  // it reads against CA_WOUND_DEFAULT_CAP rather than the real formula-based
-  // capacity the Overview tab shows.
   if (isCA) {
-    const remaining = Math.max(0, CA_WOUND_DEFAULT_CAP - caWoundTotalCost(char.caWounds));
+    const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost(char.caWounds));
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={CA_WOUND_DEFAULT_CAP} color="bg-red-600" thin={thin} medium={thin} />
+        <StatBar value={remaining} max={CA_WOUND_MAX} color="bg-red-600" thin={thin} medium={thin} />
         <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-blue-500" thin={thin} medium={thin} />
       </div>
     );
@@ -400,9 +397,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Wounds</span>
-                            <span data-testid="text-peek-wounds">{Math.max(0, CA_WOUND_DEFAULT_CAP - caWoundTotalCost(c.caWounds))} / {CA_WOUND_DEFAULT_CAP}</span>
+                            <span data-testid="text-peek-wounds">{Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} / {CA_WOUND_MAX}</span>
                           </div>
-                          <StatBar value={Math.max(0, CA_WOUND_DEFAULT_CAP - caWoundTotalCost(c.caWounds))} max={CA_WOUND_DEFAULT_CAP} color="bg-red-600" />
+                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} color="bg-red-600" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

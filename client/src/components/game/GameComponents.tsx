@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, caWoundCapacity, CA_WOUND_DEFAULT_CAP, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, makeCAWound, caWoundTotalCost, caActiveWoundCount, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, type CAWound, type CAWoundSeverity, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -3021,9 +3021,9 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
-          // C.A. tracks remaining Wound Capacity (CON + Level) minus the
+          // C.A. tracks remaining Wound Capacity (a flat 20) minus the
           // point cost of active (untreated) wounds.
-          const woundPercent = (character && campaignSystem === 'ca') ? Math.max(0, 100 - (caWoundTotalCost((character as any).caWounds) / Math.max(1, caWoundCapacity(character))) * 100) : null;
+          const woundPercent = (character && campaignSystem === 'ca') ? Math.max(0, 100 - (caWoundTotalCost((character as any).caWounds) / CA_WOUND_MAX) * 100) : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -9288,22 +9288,21 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           )}
 
           {/* Wounds Bar - C.A. only, replaces HP entirely. Reads like an HP
-              bar: full with no active wounds, draining as wound point cost
-              eats into Wound Capacity (CON + Level). */}
+              bar: full 20/20 with no active wounds, draining as wound point
+              cost accumulates. */}
           {campaignSystem === 'ca' && (() => {
-            const capacity = Math.max(1, caWoundCapacity(character));
-            const remaining = Math.max(0, capacity - caWoundTotalCost((character as any).caWounds));
+            const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost((character as any).caWounds));
             return (
               <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
                 <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
                   <span>Wounds</span>
-                  <span>{remaining}/{capacity}</span>
+                  <span>{remaining}/{CA_WOUND_MAX}</span>
                 </div>
                 <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                   <motion.div
                     className="h-full bg-gradient-to-r from-red-700 to-red-500"
                     initial={false}
-                    animate={{ width: `${(remaining / capacity) * 100}%` }}
+                    animate={{ width: `${(remaining / CA_WOUND_MAX) * 100}%` }}
                     transition={{ duration: 0 }}
                   />
                 </div>
@@ -21047,9 +21046,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <Label className="text-sm text-stone-300">Wounds</Label>
                       <span className="text-xs text-stone-500" data-testid="text-ca-wound-count">
                         {(() => {
-                          const cap = caWoundCapacity(liveCharacter);
-                          const used = caWoundTotalCost((liveCharacter as any).caWounds);
-                          return `${used} / ${cap}`;
+                          const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost((liveCharacter as any).caWounds));
+                          return `${remaining} / ${CA_WOUND_MAX}`;
                         })()}
                       </span>
                     </div>
@@ -21062,13 +21060,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       });
                       const severityDot: Record<CAWoundSeverity, string> = {
                         minor: 'bg-stone-400',
-                        moderate: 'bg-amber-500',
-                        serious: 'bg-red-600',
+                        moderate: 'bg-orange-700',
+                        serious: 'bg-red-800',
                       };
                       const severityBorder: Record<CAWoundSeverity, string> = {
                         minor: 'border-stone-500',
-                        moderate: 'border-amber-500',
-                        serious: 'border-red-600',
+                        moderate: 'border-orange-700',
+                        serious: 'border-red-800',
                       };
                       const placeWound = (e: React.MouseEvent<HTMLDivElement>) => {
                         if (!isPlacingCAWound || !canEditWounds) return;
@@ -21086,7 +21084,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           {/* Left: body diagram + legend + capacity */}
                           <div className="space-y-2">
                             <div
-                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-black overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-stone-800 overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
                               onClick={placeWound}
                               data-testid="area-ca-wound-diagram"
                             >
