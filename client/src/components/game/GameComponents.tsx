@@ -21469,7 +21469,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       </span>
                     </div>
                     {quickEditPanel('energy')}
-                    <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-ca-energy" />
+                    <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2 [&>div]:bg-cyan-500" data-testid="progress-ca-energy" />
                   </div>
 
                   {/* Wounds — replaces HP entirely for C.A. Freeform: "Add
@@ -22149,7 +22149,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       {quickEditPanel('energy')}
                       {!editingOverview && (
                         <div className="relative">
-                          <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-energy" />
+                          <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2 [&>div]:bg-cyan-500" data-testid="progress-energy" />
                           {(liveCharacter.tempEnergy ?? 0) > 0 && effectiveMaxEnergy > 0 && (
                             <div
                               className="absolute top-0 h-2 bg-violet-400/80 rounded-r-full border-l border-stone-900/40"
