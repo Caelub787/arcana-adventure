@@ -18532,11 +18532,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // Image browser state
   const [showImageBrowser, setShowImageBrowser] = useState(false);
 
-  // V3 overview long-press editing (portrait source picker + name/nickname editor)
+  // V3 overview long-press editing (portrait source picker)
   const [v3PortraitMenuOpen, setV3PortraitMenuOpen] = useState(false);
-  const [v3NameEditOpen, setV3NameEditOpen] = useState(false);
-  const [v3NameDraft, setV3NameDraft] = useState('');
-  const [v3NicknameDraft, setV3NicknameDraft] = useState('');
   const v3OverviewLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Long-press must NOT open the (modal) dialog while the finger is still down:
   // opening a modal mid-touch sets body pointer-events:none during the active
@@ -18590,7 +18587,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // while editing auto-fills the rest of the fundamentals draft from the
   // species (mirrors applyRaceChange).
   const [caEditingOverview, setCaEditingOverview] = useState(false);
-  const [caNameDraft, setCaNameDraft] = useState('');
   const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
     race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
   });
@@ -21189,18 +21185,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader>
                   <CardTitle className="text-amber-500 flex items-center justify-between">
-                    {caEditingOverview ? (
-                      <div className="flex-1 mr-4">
-                        <Input
-                          value={caNameDraft}
-                          onChange={(e) => setCaNameDraft(e.target.value)}
-                          className="bg-stone-900 border-stone-700 text-amber-500"
-                          data-testid="input-ca-edit-name"
-                        />
-                      </div>
-                    ) : (
-                      <span data-testid="text-character-name">{liveCharacter.name}</span>
-                    )}
+                    <span>Overview</span>
                     {(isOwner || isGM) && onUpdate && (
                       caEditingOverview ? (
                         <div className="flex gap-1.5 shrink-0">
@@ -21208,7 +21193,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             size="sm"
                             onClick={() => {
                               onUpdate?.({
-                                name: caNameDraft.trim() || liveCharacter.name,
                                 race: caFundamentalsDraft.race,
                                 size: caFundamentalsDraft.size,
                                 naturalArmor: caFundamentalsDraft.dc,
@@ -21232,7 +21216,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           variant="ghost"
                           className="h-7 w-7 p-0 shrink-0"
                           onClick={() => {
-                            setCaNameDraft(liveCharacter.name || '');
                             setCaFundamentalsDraft({
                               race: liveCharacter.race || '',
                               size: liveCharacter.size || '',
@@ -21801,36 +21784,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
                 <CardTitle className="text-amber-500 flex items-center justify-between">
-                  {editingOverview ? (
-                    <div className="flex-1 mr-4">
-                      <Label className="text-xs text-stone-400 mb-1 block">Name</Label>
-                      <Input
-                        value={overviewData.name}
-                        onChange={(e) => setOverviewData({ ...overviewData, name: e.target.value })}
-                        className="bg-stone-900 border-stone-700 text-amber-500"
-                        data-testid="input-edit-name"
-                      />
-                    </div>
-                  ) : (
-                    <span
-                      data-testid="text-character-name"
-                      className={isAAV3 && canEdit && onUpdate ? 'cursor-pointer select-none' : undefined}
-                      onPointerDown={isAAV3 && canEdit && onUpdate ? () => {
-                        startV3OverviewLongPress(() => {
-                          setV3NameDraft(liveCharacter.name || '');
-                          setV3NicknameDraft(liveCharacter.nickname || '');
-                          setV3NameEditOpen(true);
-                        });
-                      } : undefined}
-                      onPointerUp={isAAV3 ? releaseV3OverviewLongPress : undefined}
-                      onPointerLeave={isAAV3 ? cancelV3OverviewLongPress : undefined}
-                      onPointerCancel={isAAV3 ? cancelV3OverviewLongPress : undefined}
-                      onContextMenu={isAAV3 && canEdit && onUpdate ? (e) => e.preventDefault() : undefined}
-                      style={isAAV3 && canEdit && onUpdate ? { WebkitTouchCallout: 'none' } as React.CSSProperties : undefined}
-                    >
-                      {liveCharacter.name}
-                    </span>
-                  )}
+                  <span>Overview</span>
                   {!editingOverview ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       {(isOwner || isGM) && (
@@ -25852,57 +25806,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 <FolderOpen className="h-4 w-4 mr-2" />
                 Library
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* V3: long-press character name → edit name / nickname */}
-      {isAAV3 && (
-        <Dialog open={v3NameEditOpen} onOpenChange={setV3NameEditOpen}>
-          <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="text-amber-500">Edit Name</DialogTitle>
-              <DialogDescription className="text-stone-400">
-                The nickname, if set, is shown on the token instead of the name.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-xs text-stone-400 mb-1 block">Name</Label>
-                <Input
-                  value={v3NameDraft}
-                  onChange={(e) => setV3NameDraft(e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-v3-edit-name"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-stone-400 mb-1 block">Nickname</Label>
-                <Input
-                  value={v3NicknameDraft}
-                  onChange={(e) => setV3NicknameDraft(e.target.value)}
-                  placeholder="Leave blank to use character name"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-v3-edit-nickname"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setV3NameEditOpen(false)} data-testid="button-v3-name-cancel">
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-amber-600 hover:bg-amber-700"
-                  disabled={!v3NameDraft.trim()}
-                  onClick={() => {
-                    onUpdate?.({ name: v3NameDraft.trim(), nickname: v3NicknameDraft.trim() || null });
-                    setV3NameEditOpen(false);
-                  }}
-                  data-testid="button-v3-name-save"
-                >
-                  Save
-                </Button>
-              </div>
             </div>
           </DialogContent>
         </Dialog>

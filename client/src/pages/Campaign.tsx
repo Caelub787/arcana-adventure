@@ -6666,6 +6666,12 @@ export default function Campaign() {
   // kept manually in sync as tabs grow — switching tabs later just scrolls.
   const [charSheetActiveTabs, setCharSheetActiveTabs] = useState<Record<string, string>>({});
 
+  // Double-click the character sheet panel's title to rename it inline -
+  // the only place the name is still editable now that it's gone from the
+  // Overview tab. Keyed by character id so at most one sheet is mid-edit.
+  const [editingSheetNameId, setEditingSheetNameId] = useState<string | null>(null);
+  const [sheetNameDraft, setSheetNameDraft] = useState('');
+
   // Helper functions for managing multiple open character sheets
   const openCharacterSheet = (char: any, tab: string = "overview") => {
     setOpenCharacterSheets(prev => {
@@ -12965,12 +12971,38 @@ export default function Campaign() {
           </DialogContent>
         </Dialog>
       ) : (
-        openCharacterSheets.map((sheet, index) => (
+        openCharacterSheets.map((sheet, index) => {
+          const canEditSheetName = sheet.userId === user?.id
+            || myPermissions?.permissions?.[sheet.id] === 'edit'
+            || role === 'gm';
+          return (
           <FloatingPanel
             key={sheet.id}
             open={true}
             onClose={() => closeCharacterSheet(sheet.id)}
-            title={sheet.name}
+            title={editingSheetNameId === sheet.id ? (
+              <input
+                autoFocus
+                data-no-drag
+                value={sheetNameDraft}
+                onChange={(e) => setSheetNameDraft(e.target.value)}
+                onBlur={() => {
+                  const trimmed = sheetNameDraft.trim();
+                  if (trimmed && trimmed !== sheet.name) handleUpdateCharacterById(sheet.id, { name: trimmed });
+                  setEditingSheetNameId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  else if (e.key === 'Escape') setEditingSheetNameId(null);
+                }}
+                className="bg-stone-900 border border-amber-600 rounded px-1 py-0.5 text-lg text-amber-500 font-display w-full outline-none"
+                data-testid={`input-edit-sheet-name-${sheet.id}`}
+              />
+            ) : sheet.name}
+            onTitleDoubleClick={canEditSheetName ? () => {
+              setSheetNameDraft(sheet.name);
+              setEditingSheetNameId(sheet.id);
+            } : undefined}
             defaultSize={{ width: 652, height: Math.min(window.innerHeight - 70, 480) }}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
@@ -13011,7 +13043,8 @@ export default function Campaign() {
               })()}
             />
           </FloatingPanel>
-        ))
+          );
+        })
       ))}
 
       {/* Detached item-detail panels (hosted here so they survive closing the character sheet).

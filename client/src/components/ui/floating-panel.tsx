@@ -127,6 +127,13 @@ interface FloatingPanelProps {
   open: boolean;
   onClose: () => void;
   title?: React.ReactNode;
+  /**
+   * Fires on a double-click of the title text specifically (not the rest of
+   * the header, which still double-click-minimizes as usual). Ignored while
+   * the panel is minimized - a double-click there restores it instead, same
+   * as anywhere else on the header.
+   */
+  onTitleDoubleClick?: () => void;
   children: React.ReactNode;
   defaultPosition?: { x: number; y: number };
   defaultSize?: { width: number; height: number };
@@ -163,6 +170,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   open,
   onClose,
   title,
+  onTitleDoubleClick,
   children,
   defaultPosition,
   defaultSize,
@@ -185,6 +193,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
       <MobileFloatingPanel
         onClose={onClose}
         title={title}
+        onTitleDoubleClick={onTitleDoubleClick}
         className={className}
         zIndex={zIndex}
         panelKey={panelKey}
@@ -198,6 +207,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     open={open}
     onClose={onClose}
     title={title}
+    onTitleDoubleClick={onTitleDoubleClick}
     defaultPosition={defaultPosition}
     defaultSize={defaultSize}
     minWidth={minWidth}
@@ -222,6 +232,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
 const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
   onClose,
   title,
+  onTitleDoubleClick,
   children,
   className,
   zIndex = 10500,
@@ -229,6 +240,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
 }: {
   onClose: () => void;
   title?: React.ReactNode;
+  onTitleDoubleClick?: () => void;
   children: React.ReactNode;
   className?: string;
   zIndex?: number;
@@ -252,7 +264,12 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
     >
       <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
         <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
-          <span className="truncate">{title}</span>
+          <span
+            className="truncate"
+            onDoubleClick={onTitleDoubleClick}
+          >
+            {title}
+          </span>
         </div>
         <button
           onClick={onClose}
@@ -278,6 +295,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   open,
   onClose,
   title,
+  onTitleDoubleClick,
   children,
   defaultPosition,
   defaultSize,
@@ -720,7 +738,20 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           isMinimized ? "gap-0.5 text-xs pr-0.5" : "gap-2 text-lg pr-4"
         )}>
           {!isMinimized && <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />}
-          <span className="truncate">{title}</span>
+          <span
+            className="truncate"
+            onDoubleClick={onTitleDoubleClick ? (e) => {
+              // Minimized: let the double-click bubble to the header's own
+              // handler, which restores the panel - same as clicking
+              // anywhere else on it. Only intercept (and edit instead of
+              // minimize) while expanded.
+              if (isMinimized) return;
+              e.stopPropagation();
+              onTitleDoubleClick();
+            } : undefined}
+          >
+            {title}
+          </span>
         </div>
         <div className={cn("flex items-center shrink-0", isMinimized ? "gap-0" : "gap-1")}>
           <button
