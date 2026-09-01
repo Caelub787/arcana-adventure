@@ -6749,7 +6749,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             triggerRollNotification({
               type: saved ? 'system' : 'attack',
               dieType: 'd20' as any,
-              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc}) — ${saved ? 'SAVED!' : 'FAILED!'}`,
+              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc}): ${saved ? 'SAVED!' : 'FAILED!'}`,
               result: saveResult.roll,
               total: saveResult.total,
               username: targetChar.name,
@@ -7181,7 +7181,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             if (isAssignedToMe && onRequestSaveRoll) {
               triggerRollNotification({
                 type: 'system',
-                label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
+                label: `${targetChar.name}: Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
                 result: 0, total: 0,
                 username: targetChar.name, characterName: targetChar.name,
                 calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
@@ -7205,7 +7205,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 triggerRollNotification({
                   type: result.saved ? 'system' : 'attack',
                   dieType: 'd20',
-                  label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${result.saved ? 'SAVED!' : 'FAILED!'}`,
+                  label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save: ${result.saved ? 'SAVED!' : 'FAILED!'}`,
                   result: result.roll,
                   total: result.total,
                   username: targetChar.name, characterName: targetChar.name,
@@ -7225,7 +7225,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               saveResults.push({ token, targetChar, saved: false, isPlayer: true, isRemote: true });
               triggerRollNotification({
                 type: 'system',
-                label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
+                label: `${targetChar.name}: Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
                 result: 0, total: 0,
                 username: targetChar.name, characterName: targetChar.name,
                 calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
@@ -7257,7 +7257,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             triggerRollNotification({
               type: saveSuccess ? 'system' : 'attack',
               dieType: 'd20',
-              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name} — ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
+              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
               result: saveRoll.result,
               modifier: attrMod,
               total: saveTotal,
@@ -7434,7 +7434,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         if (isAssignedToMe && onRequestSaveRoll) {
           triggerRollNotification({
             type: 'system',
-            label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
+            label: `${targetChar.name}: Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
             result: 0, total: 0,
             username: targetChar.name, characterName: targetChar.name,
             calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
@@ -7461,7 +7461,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           triggerRollNotification({
             type: saveResult.saved ? 'system' : 'attack',
             dieType: 'd20',
-            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
+            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save: ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
             result: saveResult.roll,
             total: saveResult.total,
             username: targetChar.name, characterName: targetChar.name,
@@ -7523,7 +7523,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         if (isAssignedToOther && onRequestSaveRoll) {
           triggerRollNotification({
             type: 'system',
-            label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
+            label: `${targetChar.name}: Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
             result: 0, total: 0,
             username: targetChar.name, characterName: targetChar.name,
             calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
@@ -7550,7 +7550,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           triggerRollNotification({
             type: saveResult.saved ? 'system' : 'attack',
             dieType: 'd20',
-            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
+            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save: ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
             result: saveResult.roll,
             total: saveResult.total,
             username: targetChar.name, characterName: targetChar.name,
@@ -7617,7 +7617,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         triggerRollNotification({
           type: saveSuccess ? 'system' : 'attack',
           dieType: 'd20',
-          label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name} — ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
+          label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
           result: saveRoll.result,
           modifier: attrMod,
           total: saveTotal,
@@ -8024,7 +8024,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
             });
 
-            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${result.saved ? 'SAVED!' : 'FAILED!'}`;
+            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}): ${result.saved ? 'SAVED!' : 'FAILED!'}`;
             const saveBrkdown = `d20 = ${result.roll} → Total: ${result.total} vs DC ${effectiveDc}`;
             triggerRollNotification({
               type: result.saved ? 'system' : 'attack',
@@ -8063,7 +8063,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
             });
 
-            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${autoSaved ? 'SAVED!' : 'FAILED!'}`;
+            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}): ${autoSaved ? 'SAVED!' : 'FAILED!'}`;
             const autoSaveBrkdown = `d20 = ${autoRoll} + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${autoTotal} vs DC ${effectiveDc}`;
             triggerRollNotification({
               type: autoSaved ? 'system' : 'attack',
@@ -10743,7 +10743,7 @@ function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
               data-testid="text-spectator-expiration"
             >
               {isExpired
-                ? `Expired ${expiresAtDate.toLocaleString()} — generate a new link to keep sharing.`
+                ? `Expired ${expiresAtDate.toLocaleString()}. Generate a new link to keep sharing.`
                 : `Expires ${expiresAtDate.toLocaleString()}`}
             </div>
           ) : (
@@ -12319,7 +12319,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 <Eye className="h-3 w-3 text-blue-400" /> Spectator Mode
               </h3>
               <p className="text-xs text-stone-500">
-                Open a read-only player view of the battlemap in a new tab — perfect for sharing on Discord, streaming, or letting an absent player watch along. Hidden tokens and GM-only data are never shown.
+                Open a read-only player view of the battlemap in a new tab, perfect for sharing on Discord, streaming, or letting an absent player watch along. Hidden tokens and GM-only data are never shown.
               </p>
               <Button
                 variant="secondary"
@@ -17869,7 +17869,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
       total: 0,
       username: characterName,
       characterName,
-      calculationBreakdown: desc ? `${characterName} uses ${tokenName} — ${desc}` : `${characterName} uses ${tokenName}!`,
+      calculationBreakdown: desc ? `${characterName} uses ${tokenName}: ${desc}` : `${characterName} uses ${tokenName}!`,
     });
     if (campaignId) {
       gameWs.sendChatMessage(characterUserId, characterName, chatMsg, 'system');
@@ -18313,6 +18313,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // read-only summary (name, description, effect bullets).
   const [editingCAWoundId, setEditingCAWoundId] = useState<string | null>(null);
   const [caWoundDraft, setCaWoundDraft] = useState<CAWound | null>(null);
+  // Clicking anywhere outside the diagram+list clears the highlight, same
+  // as clicking the already-highlighted marker/card again.
+  const caWoundsSectionRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selectedCAWoundId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (caWoundsSectionRef.current && !caWoundsSectionRef.current.contains(e.target as Node)) {
+        setSelectedCAWoundId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selectedCAWoundId]);
 
   const startEditingCAWound = (w: CAWound) => {
     setEditingCAWoundId(w.id);
@@ -21124,7 +21137,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         serious: 'border-red-800',
                       };
                       const placeWound = (e: React.MouseEvent<HTMLDivElement>) => {
-                        if (!isPlacingCAWound || !canEditWounds) return;
+                        if (!isPlacingCAWound || !canEditWounds) {
+                          setSelectedCAWoundId(null);
+                          return;
+                        }
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = ((e.clientX - rect.left) / rect.width) * 100;
                         const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -21135,7 +21151,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         queueCharacterUpdate((cur: any) => ({ caBodySex: caBodySexOf(cur) === 'female' ? 'male' : 'female' }));
                       };
                       return (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" ref={caWoundsSectionRef}>
                           {/* Left: body diagram + legend + capacity */}
                           <div className="space-y-2">
                             <div
@@ -21170,7 +21186,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   type="button"
                                   className={`absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 ${severityDot[w.severity]} ${selectedCAWoundId === w.id ? 'ring-2 ring-offset-1 ring-yellow-300' : ''}`}
                                   style={{ left: `${w.x}%`, top: `${w.y}%` }}
-                                  onClick={(e) => { e.stopPropagation(); setSelectedCAWoundId(w.id); }}
+                                  onClick={(e) => { e.stopPropagation(); setSelectedCAWoundId((prev) => (prev === w.id ? null : w.id)); }}
                                   data-testid={`marker-ca-wound-${w.id}`}
                                   title={w.name || 'Unnamed wound'}
                                 />
@@ -21202,7 +21218,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               being clipped by the scroll container's edges. */}
                           <div className="space-y-2 max-h-[420px] overflow-y-auto p-1 -m-1">
                             {sortedWounds.length === 0 ? (
-                              <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds — press Add Wound and click the body to place one.</p>
+                              <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds yet. Press Add Wound and click the body to place one.</p>
                             ) : sortedWounds.map((w) => {
                               const isEditing = editingCAWoundId === w.id;
                               const isSelected = selectedCAWoundId === w.id;
@@ -21323,7 +21339,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 <div
                                   key={w.id}
                                   className={`rounded border p-2 space-y-1 bg-stone-900/50 cursor-pointer ${severityBorder[w.severity]} ${isSelected ? 'ring-2 ring-yellow-300 ring-offset-2 ring-offset-stone-800' : ''}`}
-                                  onClick={() => setSelectedCAWoundId(w.id)}
+                                  onClick={() => setSelectedCAWoundId((prev) => (prev === w.id ? null : w.id))}
                                   data-testid={`card-ca-wound-${w.id}`}
                                 >
                                   <div className="flex items-center gap-1.5">
@@ -21387,7 +21403,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       Treat Wound
                     </AlertDialogTitle>
                     <AlertDialogDescription className="text-stone-300">
-                      Treat <span className="font-bold text-amber-400">"{normalizeCAWounds((liveCharacter as any).caWounds).find((w) => w.id === treatingCAWoundId)?.name || 'this wound'}"</span>? This heals it and removes it from the character entirely — this can't be undone.
+                      Treat <span className="font-bold text-amber-400">"{normalizeCAWounds((liveCharacter as any).caWounds).find((w) => w.id === treatingCAWoundId)?.name || 'this wound'}"</span>? This heals it and removes it from the character entirely. This can't be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -26129,7 +26145,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
                         {classLocked && (
                           <p className="text-[10px] text-amber-500/80 mt-0.5">
-                            {cls.visibilityMode === 'item' ? 'Requires a specific item — progression locked (read-only).' : 'Requires specific knowledge — progression locked (read-only).'}
+                            {cls.visibilityMode === 'item' ? 'Requires a specific item. Progression locked (read-only).' : 'Requires specific knowledge. Progression locked (read-only).'}
                           </p>
                         )}
                         {hasClass && (
@@ -26194,7 +26210,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               ) : (
                 <Layers className="h-4 w-4" />
               )}
-              {availableClasses.find((c: any) => c.id === showClassSkillTree)?.name || 'Class'} — Skill Tree
+              {availableClasses.find((c: any) => c.id === showClassSkillTree)?.name || 'Class'} Skill Tree
             </span>
           }
           defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
@@ -29353,7 +29369,7 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
     try {
       const hostId = resolveLiveOwnedItemId(item, items);
       if (!hostId) {
-        toast({ title: 'Could not socket rune', description: 'This item is no longer in your inventory — refresh and try again.', variant: 'destructive' });
+        toast({ title: 'Could not socket rune', description: 'This item is no longer in your inventory. Refresh and try again.', variant: 'destructive' });
         return;
       }
       await api.socketRune(character.id, hostId, runeItemId);
@@ -29368,12 +29384,12 @@ function V3RuneSocketPanel({ item, character, items, canEdit }: { item: any; cha
   };
 
   const handleRemove = async (slotIndex: number) => {
-    if (!window.confirm('Removing this rune is permanent — it will be destroyed. Continue?')) return;
+    if (!window.confirm('Removing this rune is permanent, it will be destroyed. Continue?')) return;
     setBusy(true);
     try {
       const hostId = resolveLiveOwnedItemId(item, items);
       if (!hostId) {
-        toast({ title: 'Could not remove rune', description: 'This item is no longer in your inventory — refresh and try again.', variant: 'destructive' });
+        toast({ title: 'Could not remove rune', description: 'This item is no longer in your inventory. Refresh and try again.', variant: 'destructive' });
         return;
       }
       await api.removeRune(character.id, hostId, slotIndex);
@@ -29931,13 +29947,13 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
       <p className="text-xs text-stone-400" data-testid="text-v3-weapon-energy">
         Energy cost: <span className="text-yellow-300">{effectiveEnergy}</span>
         {weaponExMult > 1 && (
-          <span className="text-red-400/90"> (doubled from {baseEnergy} — Exhaustion)</span>
+          <span className="text-red-400/90"> (doubled from {baseEnergy}, Exhaustion)</span>
         )}
       </p>
       {weaponNeedsAmmo && (
         <p className={`text-xs ${ammoBlocked ? 'text-red-400' : 'text-stone-400'}`} data-testid="text-v3-weapon-ammo-status">
           {ammoBlocked
-            ? 'No matching ammunition equipped — equip ammo to attack.'
+            ? 'No matching ammunition equipped. Equip ammo to attack.'
             : 'Ammunition equipped.'}
         </p>
       )}
@@ -29995,7 +30011,7 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm truncate ${t.isUnlocked ? 'text-stone-200' : 'text-stone-400'}`}>{t.name}</p>
                   <p className="text-[11px] text-stone-500 truncate">
-                    {(t.energyCost ?? 0) * weaponExMult} energy{weaponExMult > 1 ? <span className="text-red-400/90"> (doubled — Exhaustion)</span> : ''} · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
+                    {(t.energyCost ?? 0) * weaponExMult} energy{weaponExMult > 1 ? <span className="text-red-400/90"> (doubled, Exhaustion)</span> : ''} · {t.rollMode === 'skill_check' ? `Skill: ${skill?.name ?? t.skillKey ?? '?'}` : 'Base damage'}
                   </p>
                   {t.description && <p className="text-[11px] text-stone-500 truncate">{t.description}</p>}
                   {!t.isUnlocked && !t.eligible && (
@@ -30067,12 +30083,12 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
                       if (!weaponId) {
                         triggerRollNotification({
                           type: 'system',
-                          label: 'This weapon is no longer in your inventory — refresh and try again.',
+                          label: 'This weapon is no longer in your inventory. Refresh and try again.',
                           result: 0,
                           total: 0,
                           username: castChar.name || 'Unknown',
                           characterName: castChar.name || 'Unknown',
-                          calculationBreakdown: 'This weapon is no longer in your inventory — refresh and try again.',
+                          calculationBreakdown: 'This weapon is no longer in your inventory. Refresh and try again.',
                         });
                         return;
                       }
@@ -30419,7 +30435,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                         {st.selectedTarget ? (
                           <>Restores <span className="text-sky-300 font-semibold">+{st.repairAmount} durability</span> to <span className="text-sky-300 font-semibold">{st.selectedTarget.name}</span> <span className="text-stone-500">(capped at the item's max)</span></>
                         ) : (
-                          <>Repairs <span className="text-sky-300 font-semibold">{repairTypeIds(r).map(advancedTypeName).join(', ') || 'item'}</span> items — pick one below.</>
+                          <>Repairs <span className="text-sky-300 font-semibold">{repairTypeIds(r).map(advancedTypeName).join(', ') || 'item'}</span> items. Pick one below.</>
                         )}
                       </div>
                     ) : r.outputItemName && (
@@ -30446,7 +30462,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                     )}
                     {st.skillRequired && (
                       <div className={st.skillOk ? 'text-green-400' : 'text-red-400'} data-testid={`skill-req-${r.id}`}>
-                        Requires: {r.requiredSkillName} {st.skillMin}+ <span className="text-stone-500">— have {st.skillHave == null ? 'none' : st.skillHave}</span>
+                        Requires: {r.requiredSkillName} {st.skillMin}+ <span className="text-stone-500">(have {st.skillHave == null ? 'none' : st.skillHave})</span>
                       </div>
                     )}
                     {!st.isRepair && (r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
@@ -30455,17 +30471,17 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                         <ul className="ml-3 space-y-0.5">
                           {r.costEnergyEnabled && (
                             <li className={st.energyOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-energy-${r.id}`}>
-                              • {r.costEnergy ?? 0} Energy <span className="text-stone-500">— have {st.charE}</span>
+                              • {r.costEnergy ?? 0} Energy <span className="text-stone-500">(have {st.charE})</span>
                             </li>
                           )}
                           {r.costManaEnabled && (
                             <li className={st.manaOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-mana-${r.id}`}>
-                              • {r.costMana ?? 0} Mana <span className="text-stone-500">— have {st.charM}</span>
+                              • {r.costMana ?? 0} Mana <span className="text-stone-500">(have {st.charM})</span>
                             </li>
                           )}
                           {r.costHpEnabled && (
                             <li className={st.hpOk ? 'text-green-400' : 'text-red-400'} data-testid={`cost-hp-${r.id}`}>
-                              • {r.costHp ?? 0} HP <span className="text-stone-500">— have {st.charH}</span>
+                              • {r.costHp ?? 0} HP <span className="text-stone-500">(have {st.charH})</span>
                             </li>
                           )}
                         </ul>
@@ -30483,7 +30499,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
                                 className={have >= 1 ? 'text-green-400' : 'text-red-400'}
                                 data-testid={`tool-req-${r.id}-${ti}`}
                               >
-                                • {t.name || 'Item'}{t.consumed ? ' (consumed)' : ' (not consumed)'} <span className="text-stone-500">— have {have}</span>
+                                • {t.name || 'Item'}{t.consumed ? ' (consumed)' : ' (not consumed)'} <span className="text-stone-500">(have {have})</span>
                               </li>
                             );
                           })}

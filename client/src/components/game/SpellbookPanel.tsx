@@ -238,7 +238,7 @@ export function V3SpellDetailDialog({
             </p>
             {manaMult > 1 && (
               <p className="text-xs text-red-400/90" data-testid="text-v3-exhaustion-mana">
-                Mana: {totalMana} (doubled from {preExhaustionMana} — Exhaustion)
+                Mana: {totalMana} (doubled from {preExhaustionMana}, Exhaustion)
               </p>
             )}
             <Button

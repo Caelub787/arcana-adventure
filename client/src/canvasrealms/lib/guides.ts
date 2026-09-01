@@ -54,7 +54,7 @@ export const GUIDES: Record<string, Guide> = {
         selectors: [
           '[data-guide="library-panel"]',
         ],
-        caption: "This is your library — every realm and node lives here.",
+        caption: "This is your library, every realm and node lives here.",
       },
       {
         selectors: [
@@ -66,7 +66,7 @@ export const GUIDES: Record<string, Guide> = {
       },
       {
         selectors: ['[data-guide="node-row"]'],
-        caption: "Inside the open realm, every node shows up under it — tap to open one.",
+        caption: "Inside the open realm, every node shows up under it. Tap to open one.",
         optional: true,
       },
     ],

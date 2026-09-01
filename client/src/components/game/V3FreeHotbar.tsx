@@ -436,7 +436,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-stone-500">View only — you can't open this character's sheet.</p>
+                <p className="text-xs text-stone-500">View only. You can't open this character's sheet.</p>
               </>
             );
           })()}

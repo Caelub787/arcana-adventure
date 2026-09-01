@@ -289,7 +289,7 @@ function ItemSearchPicker({ value, systemItems, onChange, placeholder = 'Select 
             className="w-full text-left px-3 py-1.5 text-xs text-stone-400 hover:bg-stone-800"
             data-testid="button-item-picker-none"
           >
-            — none —
+            None
           </button>
           {filtered.map(s => (
             <button
@@ -368,7 +368,7 @@ function KnowledgeSearchPicker({ value, systemSkills, onChange }: {
             className="w-full text-left px-3 py-1.5 text-xs text-stone-400 hover:bg-stone-800"
             data-testid="button-knowledge-picker-none"
           >
-            — none —
+            None
           </button>
           {/* Allow free-typed Knowledge names — V3 may have no predefined Knowledge list yet. */}
           {search.trim() && !filtered.some(s => (s.name || '').toLowerCase() === search.trim().toLowerCase()) && (
@@ -437,7 +437,7 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
         setOpen(false);
         reset();
       } else {
-        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected — try again.', variant: 'destructive' });
+        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected. Try again.', variant: 'destructive' });
         setSelected(new Set(failed));
       }
     },
@@ -630,7 +630,7 @@ function RecipeRow({
         <SelectValue placeholder="Select item…" />
       </SelectTrigger>
       <SelectContent className="max-h-60">
-        <SelectItem value="__none__">— none —</SelectItem>
+        <SelectItem value="__none__">None</SelectItem>
         {systemItems.map(s => (
           <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
         ))}
@@ -719,7 +719,7 @@ function RecipeRow({
                         })}
                       </div>
                     ) : (
-                      <p className="text-[11px] text-amber-400/80 mb-1">No item types yet — add at least one.</p>
+                      <p className="text-[11px] text-amber-400/80 mb-1">No item types yet. Add at least one.</p>
                     )}
                     <ItemSearchPicker
                       value={null}
@@ -923,7 +923,7 @@ function RecipeRow({
                   </div>
                 </div>
               ))}
-              {draft.outcomes.length === 0 && <p className="text-xs text-stone-500 italic">No outcomes — default success will be used</p>}
+              {draft.outcomes.length === 0 && <p className="text-xs text-stone-500 italic">No outcomes, default success will be used</p>}
             </div>
           </div>
           )}

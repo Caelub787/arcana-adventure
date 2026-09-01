@@ -505,7 +505,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                     data-testid={`input-annotation-quote-${field.id}`}
                   />
                   {pendingQuote.trim() && !body.includes(pendingQuote.trim()) && (
-                    <div className="text-[9px] text-amber-500 mt-0.5">Doesn't match the text above exactly — it'll still save, just won't highlight anything until it does.</div>
+                    <div className="text-[9px] text-amber-500 mt-0.5">Doesn't match the text above exactly. It'll still save, just won't highlight anything until it does.</div>
                   )}
                 </div>
                 <Textarea
@@ -549,7 +549,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                 {orphaned.map((a) => (
                   <div key={a.id} className="flex items-start justify-between gap-2">
                     <div className="text-[10px] text-stone-400">
-                      <span className="italic">"{truncate(a.quote, 40)}"</span> — <span className="text-violet-200">{a.note}</span>
+                      <span className="italic">"{truncate(a.quote, 40)}"</span>: <span className="text-violet-200">{a.note}</span>
                     </div>
                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => handleDeleteAnnotation(a.id)} data-testid={`button-delete-annotation-${a.id}`}>
                       <Trash2 className="h-3 w-3 text-red-400" />

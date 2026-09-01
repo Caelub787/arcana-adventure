@@ -62,7 +62,7 @@ export function castV3Spell(
   const currentMana = character.mana ?? 0;
   const charName = character.name || "Unknown";
   const spellName = spell.name || "Spell";
-  const exhaustionNote = exMult > 1 ? ` (doubled from ${preExhaustionMana} — Exhaustion)` : "";
+  const exhaustionNote = exMult > 1 ? ` (doubled from ${preExhaustionMana}, Exhaustion)` : "";
 
   if (totalMana > 0 && currentMana < totalMana) {
     triggerRollNotification({

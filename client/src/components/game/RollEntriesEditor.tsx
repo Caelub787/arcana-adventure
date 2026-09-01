@@ -584,7 +584,7 @@ function ItemCostSection({
               ))}
             </div>
           ) : (
-            <p className="text-[10px] text-stone-500 italic">No items required yet — search above to add one.</p>
+            <p className="text-[10px] text-stone-500 italic">No items required yet. Search above to add one.</p>
           )}
         </div>
       )}
@@ -1679,12 +1679,12 @@ const RollCard = React.memo(function RollCard({
           }
           if (roll.requiresEnergy && (roll.energyCost ?? 0) > 0 && characterEnergy !== undefined) {
             if (characterEnergy < (roll.energyCost ?? 0)) {
-              lockReasons.push(`Needs ${roll.energyCost} energy — have ${characterEnergy}`);
+              lockReasons.push(`Needs ${roll.energyCost} energy (have ${characterEnergy})`);
             }
           }
           if ((campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.requiresMana && (roll.manaCost ?? 0) > 0 && characterMana !== undefined) {
             if (characterMana < (roll.manaCost ?? 0)) {
-              lockReasons.push(`Needs ${roll.manaCost} mana — have ${characterMana}`);
+              lockReasons.push(`Needs ${roll.manaCost} mana (have ${characterMana})`);
             }
           }
           if (roll.hasItemCost && Array.isArray(roll.itemCosts) && characterItems !== undefined) {
@@ -1741,7 +1741,7 @@ const RollCard = React.memo(function RollCard({
                         }`}
                         title={
                           (roll as any).isOverridden
-                            ? `Overridden — your edits to this roll will not be replaced when the template "${roll.templateName ?? 'source'}" updates`
+                            ? `Overridden: your edits to this roll will not be replaced when the template "${roll.templateName ?? 'source'}" updates`
                             : (roll.templateName ? `From template: ${roll.templateName}` : 'Inherited from a linked template')
                         }
                         data-testid={`badge-template-roll-${roll.id}`}

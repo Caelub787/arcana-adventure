@@ -3016,7 +3016,7 @@ function NodeRefBlock({
                   onChange={(e) => onChange({ nodeId: e.target.value })}
                   className="flex-1 min-w-40 h-8 bg-background/60 border border-border rounded px-2 text-sm"
                 >
-                  <option value="">— Pick a {label.toLowerCase()} —</option>
+                  <option value="">Pick a {label.toLowerCase()}</option>
                   {candidates.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}
@@ -3293,7 +3293,7 @@ function CompassStrip({
           cur.slice(end);
       } else {
         setError(
-          "The highlighted text changed since Compass started — discard and try again.",
+          "The highlighted text changed since Compass started. Discard and try again.",
         );
         return;
       }

@@ -1826,7 +1826,7 @@ export function MapNodeView({ node, paneId, onClosePane }: Props) {
           )}
           <div className="text-[11px] opacity-70 max-w-xs text-center">
             PNG, JPG, WebP. After uploading you can draw polygon regions
-            with the region tool — click to add vertices, click the first
+            with the region tool: click to add vertices, click the first
             vertex (or press Enter) to close.
           </div>
         </div>
@@ -2555,7 +2555,7 @@ export function MapNodeView({ node, paneId, onClosePane }: Props) {
           {/* Hint banner */}
           {doc.annotations.length === 0 && tool === "select" && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-card/90 border border-border text-[11px] text-muted-foreground shadow backdrop-blur-sm pointer-events-none">
-              Pick the region tool to draw a polygon — click to add vertices, click the first point to close
+              Pick the region tool to draw a polygon: click to add vertices, click the first point to close
             </div>
           )}
         </div>

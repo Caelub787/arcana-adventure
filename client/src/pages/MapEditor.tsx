@@ -1195,7 +1195,7 @@ export default function MapEditor() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-stone-400 gap-3 px-4 text-center">
         <p className="text-red-400">Couldn't load this map.</p>
-        <p className="text-xs text-stone-500 max-w-sm">{(mapQuery.error as any)?.message || "The server didn't respond as expected — it may still be deploying, or the map may not exist."}</p>
+        <p className="text-xs text-stone-500 max-w-sm">{(mapQuery.error as any)?.message || "The server didn't respond as expected. It may still be deploying, or the map may not exist."}</p>
         <div className="flex gap-2">
           <Button variant="outline" className="border-stone-700" onClick={() => mapQuery.refetch()} data-testid="button-retry-load-map">
             Try Again
@@ -1278,8 +1278,8 @@ export default function MapEditor() {
         <>
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Roughness</p>
           <Slider min={0} max={100} step={5} value={[shapeJitter]} onValueChange={([v]) => setShapeJitter(v)} data-testid="slider-shape-jitter" />
-          <p className="text-xs text-stone-500 mt-1 mb-2">{shapeJitter === 0 ? "Smooth, rounded edge" : `${shapeJitter}% — organic, hand-drawn-looking edge`}</p>
-          <p className="text-xs text-stone-500 mb-2">Drag to paint a rough landmass — release and it's traced into a proper coastline, textured and feathered, in whatever shape you painted.</p>
+          <p className="text-xs text-stone-500 mt-1 mb-2">{shapeJitter === 0 ? "Smooth, rounded edge" : `${shapeJitter}% organic, hand-drawn-looking edge`}</p>
+          <p className="text-xs text-stone-500 mb-2">Drag to paint a rough landmass. Release and it's traced into a proper coastline, textured and feathered, in whatever shape you painted.</p>
         </>
       )}
       {terrainMode === 'path' && (
@@ -1294,7 +1294,7 @@ export default function MapEditor() {
           <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Edge Softness</p>
           <Slider min={0} max={100} step={5} value={[softness]} onValueChange={([v]) => setSoftness(v)} data-testid="slider-softness" />
           <p className="text-xs text-stone-500 mt-1 mb-2">{softness}%</p>
-          <p className="text-xs text-stone-500 mb-2">Tap to place points along the {pathKind}. Press Finish when done — it won't auto-close like a land shape.</p>
+          <p className="text-xs text-stone-500 mb-2">Tap to place points along the {pathKind}. Press Finish when done; it won't auto-close like a land shape.</p>
           {shapePoints.length > 0 && (
             <div className="flex gap-1.5">
               <Button size="sm" className="flex-1 bg-emerald-800 hover:bg-emerald-700" onClick={finishTerrainPoints} disabled={shapePoints.length < 2} data-testid="button-finish-path">
@@ -1308,7 +1308,7 @@ export default function MapEditor() {
         </>
       )}
       {terrainMode === 'bucket' && (
-        <p className="text-xs text-stone-500">Tap anywhere on the terrain to flood-fill that connected region with the selected texture — it stops at the edge of whatever's already painted there, so it respects land shapes, rivers, and other fills already on the map.</p>
+        <p className="text-xs text-stone-500">Tap anywhere on the terrain to flood-fill that connected region with the selected texture. It stops at the edge of whatever's already painted there, so it respects land shapes, rivers, and other fills already on the map.</p>
       )}
     </>
   );
@@ -1477,7 +1477,7 @@ export default function MapEditor() {
             e.target.value = String(next);
             if (next !== map.gridSize) updateMapMutation.mutate({ gridSize: next });
           }}
-          title="Grid cell size in pixels — carried over exactly when you import this map as a Scene, so tokens line up"
+          title="Grid cell size in pixels, carried over exactly when you import this map as a Scene, so tokens line up"
           className="h-8 w-16 bg-stone-900 border-stone-700 text-xs px-1.5 shrink-0"
           data-testid="input-grid-size"
         />
@@ -1753,7 +1753,7 @@ function GenerateTerrainDialog({
           <DialogTitle className="text-stone-200">Generate Terrain</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-stone-500">Replaces the active paint layer ({targetLayerName || 'none'}) with one freshly generated landmass in the currently selected texture — exactly like finishing a hand-drawn Land Shape. Generating again clears this layer and starts over rather than stacking on top; one Ctrl/Cmd+Z undoes it.</p>
+          <p className="text-xs text-stone-500">Replaces the active paint layer ({targetLayerName || 'none'}) with one freshly generated landmass in the currently selected texture, exactly like finishing a hand-drawn Land Shape. Generating again clears this layer and starts over rather than stacking on top; one Ctrl/Cmd+Z undoes it.</p>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1.5">Map Scale</p>
@@ -1774,25 +1774,25 @@ function GenerateTerrainDialog({
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Feature Size</p>
             <Slider min={50} max={4000} step={25} value={[featureSize]} onValueChange={([v]) => onFeatureSizeChange(v)} data-testid="slider-gen-feature-size" />
-            <p className="text-xs text-stone-500 mt-1">{featureSize}px — roughly how big this one landmass will be, independent of the preset above</p>
+            <p className="text-xs text-stone-500 mt-1">{featureSize}px, roughly how big this one landmass will be, independent of the preset above</p>
           </div>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Landmass Size</p>
             <Slider min={5} max={95} step={5} value={[landAmount]} onValueChange={([v]) => onLandAmountChange(v)} data-testid="slider-gen-land-amount" />
-            <p className="text-xs text-stone-500 mt-1">{landAmount}% — how far out the coastline extends before it's water</p>
+            <p className="text-xs text-stone-500 mt-1">{landAmount}%, how far out the coastline extends before it's water</p>
           </div>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Coastline Complexity</p>
             <Slider min={0} max={100} step={5} value={[fragmentation]} onValueChange={([v]) => onFragmentationChange(v)} data-testid="slider-gen-fragmentation" />
-            <p className="text-xs text-stone-500 mt-1">{fragmentation === 0 ? "A simple, rounded coastline" : `${fragmentation}% — more coves, peninsulas, and inlets`}</p>
+            <p className="text-xs text-stone-500 mt-1">{fragmentation === 0 ? "A simple, rounded coastline" : `${fragmentation}% more coves, peninsulas, and inlets`}</p>
           </div>
 
           <div>
             <p className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Coastline Roughness</p>
             <Slider min={0} max={100} step={5} value={[roughness]} onValueChange={([v]) => onRoughnessChange(v)} data-testid="slider-gen-roughness" />
-            <p className="text-xs text-stone-500 mt-1">{roughness}% — how jagged vs. smooth the coastline is</p>
+            <p className="text-xs text-stone-500 mt-1">{roughness}%, how jagged vs. smooth the coastline is</p>
           </div>
 
           <Button className="w-full bg-amber-700 hover:bg-amber-600" onClick={onGenerate} data-testid="button-run-generate-terrain">

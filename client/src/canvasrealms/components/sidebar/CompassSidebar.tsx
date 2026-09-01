@@ -1228,10 +1228,10 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
     const summary = parts.length > 0 ? parts.join(" and ") : "nothing";
     if (failed > 0) {
       toast(
-        `Undid batch — removed ${summary} (${failed} couldn't be removed; click Undo batch again to retry)`,
+        `Undid batch: removed ${summary} (${failed} couldn't be removed; click Undo batch again to retry)`,
       );
     } else {
-      toast(`Undid batch — removed ${summary}`);
+      toast(`Undid batch: removed ${summary}`);
     }
   };
 
@@ -1952,10 +1952,10 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
                 pending.msgIdx,
                 pending.suggestions,
               );
-              assistantReply = "Done — I added them to the realm.";
+              assistantReply = "Done. I added them to the realm.";
             } catch {
               assistantReply =
-                "I couldn't add them — there was an error on my side. You can try the Add all button on the card.";
+                "I couldn't add them, there was an error on my side. You can try the Add all button on the card.";
             }
             appendVoiceTurn(transcript, assistantReply);
             await speakAndResumeRef.current(assistantReply);
@@ -1964,7 +1964,7 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
           if (verdict === "no") {
             pendingBatchConfirmRef.current = null;
             const assistantReply =
-              "Got it — I'll leave them as suggestions. What's next?";
+              "Got it, I'll leave them as suggestions. What's next?";
             appendVoiceTurn(transcript, assistantReply);
             await speakAndResumeRef.current(assistantReply);
             return;
@@ -2299,7 +2299,7 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
               </h3>
               <p className="text-xs text-muted-foreground max-w-[14rem]">
                 {isGlobal
-                  ? "Ask me anything about Canvas Realms — I can show you around or spin up a new realm."
+                  ? "Ask me anything about Canvas Realms. I can show you around or spin up a new realm."
                   : "Ask Compass to brainstorm characters, lore, or connections in this realm."}
               </p>
             </div>
@@ -3059,10 +3059,10 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
                 )}
               />
               <span>
-                {voice.status === "listening" && "Listening — go ahead."}
+                {voice.status === "listening" && "Listening, go ahead."}
                 {voice.status === "thinking" && "Thinking..."}
                 {voice.status === "speaking" &&
-                  "Speaking — talk to interrupt."}
+                  "Speaking, talk to interrupt."}
                 {voice.status === "idle" && "Voice mode starting..."}
                 {voice.status === "error" &&
                   (voice.errorMessage ?? "Voice error")}
@@ -3084,7 +3084,7 @@ export function CompassSidebar({ embedded = false }: { embedded?: boolean } = {}
               rows={1}
               placeholder={
                 voiceMode
-                  ? "Voice mode is on — just talk, or type to send a message"
+                  ? "Voice mode is on, just talk, or type to send a message"
                   : isGlobal
                     ? "Ask Compass anything..."
                     : "Ask Compass..."

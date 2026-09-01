@@ -23,7 +23,7 @@ const FEATURES = [
   {
     icon: Sparkles,
     title: "Compass AI",
-    body: "Ask the Compass for help — propose edits, weave new threads, or discover gaps in your worldbuilding.",
+    body: "Ask the Compass for help: propose edits, weave new threads, or discover gaps in your worldbuilding.",
   },
   {
     icon: Users,
@@ -79,7 +79,7 @@ export function LandingPage() {
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
             Canvas Realms turns your lore, characters, and places into a living spatial
-            workspace — one canvas for every realm you create. Drag a node onto
+            workspace, one canvas for every realm you create. Drag a node onto
             the screen and start writing the world into existence.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -118,7 +118,7 @@ export function LandingPage() {
       </main>
 
       <footer className="relative z-10 max-w-6xl mx-auto px-6 sm:px-10 py-8 border-t border-border/40 text-xs text-muted-foreground flex items-center justify-between">
-        <span>Canvas Realms — the worldbuilding OS</span>
+        <span>Canvas Realms: the worldbuilding OS</span>
         <span>v0.1</span>
       </footer>
     </div>

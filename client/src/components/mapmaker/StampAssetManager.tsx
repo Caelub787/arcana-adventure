@@ -121,7 +121,7 @@ export function StampAssetManager({ open, onOpenChange }: StampAssetManagerProps
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-stone-500"><LoadingLogo className="h-5 w-5" /></div>
           ) : assets.length === 0 ? (
-            <p className="text-sm text-stone-500 text-center py-6">No stamp assets yet — add one above.</p>
+            <p className="text-sm text-stone-500 text-center py-6">No stamp assets yet. Add one above.</p>
           ) : (
             Object.entries(grouped).map(([category, list]) => (
               <div key={category}>

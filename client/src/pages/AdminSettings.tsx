@@ -2303,7 +2303,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
           <DialogHeader>
             <DialogTitle>Duplicate Recipe</DialogTitle>
             <DialogDescription>
-              Another official spell already exists for this exact recipe. Only one can be the official version. Compare them below and choose which one to keep — spells already used in campaigns are never changed.
+              Another official spell already exists for this exact recipe. Only one can be the official version. Compare them below and choose which one to keep. Spells already used in campaigns are never changed.
             </DialogDescription>
           </DialogHeader>
           {conflict && (
@@ -3661,7 +3661,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               testId="card-element-requirements"
               icon={Lock}
               title="Element Requirements"
-              description="Gate which spell elements players may craft with — require a Knowledge or item (optionally consumed) per element"
+              description="Gate which spell elements players may craft with, requiring a Knowledge or item (optionally consumed) per element"
               hoverBorder="hover:border-violet-600"
               iconBg="bg-violet-700/20"
               iconColor="text-violet-500"
@@ -3675,7 +3675,7 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               testId="card-techniques"
               icon={Sword}
               title="Techniques"
-              description="Define weapon techniques — energy cost, unlock requirements, and a base-damage or skill-check roll"
+              description="Define weapon techniques: energy cost, unlock requirements, and a base-damage or skill-check roll"
               hoverBorder="hover:border-rose-600"
               iconBg="bg-rose-700/20"
               iconColor="text-rose-500"
@@ -10637,7 +10637,7 @@ function ClassesView({ systemSlug: parentSystemSlug, personal }: { systemSlug?: 
         <Button variant="ghost" size="sm" onClick={() => setSelectedClassId(null)} data-testid="button-back-classes">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
-        <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} — Skill Tree</h3>
+        <h3 className="text-lg font-medium text-fuchsia-400">{selectedClass?.name} Skill Tree</h3>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center shrink-0">
@@ -12020,7 +12020,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
         toast({ title: `Added ${succeeded} recipe${succeeded === 1 ? '' : 's'} to template` });
         setSelected(new Set());
       } else {
-        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected — try again.', variant: 'destructive' });
+        toast({ title: `Added ${succeeded}, ${failed.length} failed`, description: 'Failed items stay selected. Try again.', variant: 'destructive' });
         setSelected(new Set(failed));
       }
     },

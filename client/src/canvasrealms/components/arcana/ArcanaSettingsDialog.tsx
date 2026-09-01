@@ -61,7 +61,7 @@ export function ArcanaSettingsDialog({ realmId, open, onOpenChange }: Props) {
           queryClient.invalidateQueries({ queryKey: getListRealmsQueryKey() });
           toast.success("System updated");
         },
-        onError: () => toast.error("Couldn't update system — try again."),
+        onError: () => toast.error("Couldn't update system. Try again."),
       },
     );
   };
@@ -108,7 +108,7 @@ export function ArcanaSettingsDialog({ realmId, open, onOpenChange }: Props) {
           queryClient.invalidateQueries({ queryKey: getListRealmsQueryKey() });
           toast.success("Arcana Adventure unlinked");
         },
-        onError: () => toast.error("Couldn't unlink — try again."),
+        onError: () => toast.error("Couldn't unlink. Try again."),
       },
     );
   };

@@ -280,7 +280,7 @@ function ApplyAllAutoLinksButton({ realmId }: { realmId: string }) {
     setRunning(false);
 
     if (totalEdits === 0) {
-      toast.info("No new links to add — every mention is already linked.");
+      toast.info("No new links to add. Every mention is already linked.");
     } else if (apiFailures > 0) {
       toast.warning(
         `Linked ${totalEdits} mention(s) across ${touchedNodes} node(s), but ${apiFailures} failed to save.`,

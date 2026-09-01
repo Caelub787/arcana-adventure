@@ -470,7 +470,7 @@ export function WikiEditor() {
           </div>
           {draft.sections.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              No sections yet — entries will appear in a single ungrouped list.
+              No sections yet. Entries will appear in a single ungrouped list.
             </p>
           ) : (
             <div className="space-y-2">

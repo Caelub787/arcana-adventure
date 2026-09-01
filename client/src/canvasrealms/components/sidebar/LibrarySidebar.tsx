@@ -2144,7 +2144,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                         .campaignShared && (
                         <span
                           data-testid={`badge-shared-realm-${realm.id}`}
-                          title="Shared by your GM — view only"
+                          title="Shared by your GM, view only"
                           className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-500 ring-1 ring-amber-500/30 flex-shrink-0"
                         >
                           <Lock className="w-2.5 h-2.5" />
@@ -2791,7 +2791,7 @@ export function LibrarySidebar({ embedded = false }: { embedded?: boolean } = {}
                     <li>
                       {selectionCounts.foldersSelf} folder
                       {selectionCounts.foldersSelf === 1 ? "" : "s"} (folder
-                      only — non-selected children move up one level)
+                      only; non-selected children move up one level)
                     </li>
                   )}
                   {selectionCounts.foldersWithContents > 0 && (

@@ -261,7 +261,7 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Maintain your private A.A. V2 / V3 library — items, spells, species, classes, and more.
+                    Maintain your private A.A. V2 / V3 library: items, spells, species, classes, and more.
                   </p>
                 </CardContent>
               </Card>

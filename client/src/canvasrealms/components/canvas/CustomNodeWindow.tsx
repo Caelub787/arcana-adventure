@@ -83,7 +83,7 @@ const DiffView = memo(({ base, proposed }: DiffViewProps) => {
   if (!hasChanges) {
     return (
       <div className="text-[11px] italic text-muted-foreground">
-        No changes — Compass returned the same content.
+        No changes. Compass returned the same content.
       </div>
     );
   }
@@ -386,7 +386,7 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
           content.slice(end);
       } else {
         setCompassError(
-          "The highlighted text changed since Compass started — discard and try again.",
+          "The highlighted text changed since Compass started. Discard and try again.",
         );
         return;
       }
@@ -777,7 +777,7 @@ export const CustomNodeWindow = memo(({ id, data, selected }: NodeProps) => {
               className="h-6 w-6"
               onClick={() => togglePrivacy.mutate()}
               disabled={togglePrivacy.isPending}
-              title={isPrivate ? "Private — click to make visible" : "Visible — click to make private"}
+              title={isPrivate ? "Private, click to make visible" : "Visible, click to make private"}
               aria-label={isPrivate ? "Make node visible" : "Make node private"}
             >
               {isPrivate ? (

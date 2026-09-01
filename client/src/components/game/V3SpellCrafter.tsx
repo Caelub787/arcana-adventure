@@ -223,7 +223,7 @@ export function V3CompositionEditor({
                     onClick={() => setRevealedLocked((cur) => (cur === el.key ? null : el.key))}
                     aria-disabled
                     aria-expanded={revealed}
-                    title="Locked — tap to see how to unlock"
+                    title="Locked, tap to see how to unlock"
                     className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors flex items-center justify-center gap-1 cursor-help ${
                       revealed
                         ? "bg-amber-500/10 border-amber-500/50 text-amber-300"
@@ -505,7 +505,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
         toast({
           title: "Spell crafted!",
           description: result.autoFilled
-            ? "This composition is already known — its details were filled in automatically."
+            ? "This composition is already known. Its details were filled in automatically."
             : "Your GM has been asked to name and describe it.",
         });
         setComp(DEFAULT_COMP);
@@ -513,7 +513,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
       } else {
         toast({
           title: "Crafting failed",
-          description: "Something went wrong — your token was not consumed. Try again.",
+          description: "Something went wrong, your token was not consumed. Try again.",
           variant: "destructive",
         });
         onCrafted?.(undefined, false);
@@ -560,7 +560,7 @@ export function V3SpellCrafter({ character, onCrafted, spellbookItemId, atCapaci
           data-testid="text-crafter-capacity"
         >
           {atCapacity
-            ? `Spellbook full — ${spellsUsed ?? maxSpells} of ${maxSpells} spells used. Remove a spell to craft a new one.`
+            ? `Spellbook full: ${spellsUsed ?? maxSpells} of ${maxSpells} spells used. Remove a spell to craft a new one.`
             : `${spellsUsed ?? 0} of ${maxSpells} spells used.`}
         </p>
       )}
