@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
+import { vitalBarColor } from "@/lib/vitalBarColor";
 import { caWoundTotalCost, CA_WOUND_MAX } from "@shared/ca";
 
 const NUM_LOADOUTS = 9;
@@ -63,16 +64,16 @@ function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: b
     const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost(char.caWounds));
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={CA_WOUND_MAX} color="bg-red-600" thin={thin} medium={thin} />
-        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-blue-500" thin={thin} medium={thin} />
+        <StatBar value={remaining} max={CA_WOUND_MAX} color={vitalBarColor(remaining, CA_WOUND_MAX)} thin={thin} medium={thin} />
+        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color={vitalBarColor(char.energy ?? 0, char.maxEnergy ?? 0)} thin={thin} medium={thin} />
       </div>
     );
   }
   if (char.maxHp == null) return null;
   return (
     <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
-      <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color="bg-red-500" thin={thin} />
-      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
+      <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color={vitalBarColor(char.hp ?? 0, char.maxHp ?? 0)} thin={thin} />
+      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color={vitalBarColor(char.energy ?? 0, char.maxEnergy ?? 0)} thin={thin} />
       <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-fuchsia-400" thin={thin} />
     </div>
   );
@@ -399,14 +400,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>Wounds</span>
                             <span data-testid="text-peek-wounds">{Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} / {CA_WOUND_MAX}</span>
                           </div>
-                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} color="bg-red-600" />
+                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} color={vitalBarColor(Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds)), CA_WOUND_MAX)} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-blue-500" />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color={vitalBarColor(c.energy ?? 0, c.maxEnergy ?? 0)} />
                         </div>
                       </>
                     ) : (
@@ -416,14 +417,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>HP</span>
                             <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
                           </div>
-                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color="bg-red-500" />
+                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color={vitalBarColor(c.hp ?? 0, c.maxHp ?? 0)} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color={vitalBarColor(c.energy ?? 0, c.maxEnergy ?? 0)} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

@@ -293,6 +293,10 @@ export const characters = pgTable("characters", {
   // to male; toggled from a subtle control shown only while editing the
   // Overview tab, never a prominent switch.
   caBodySex: text("ca_body_sex").notNull().default("male"),
+  // C.A. only: a standalone numeric resource pool shown above the Energy
+  // bar on the Overview tab. Just a bare number a player sets directly —
+  // no current/max/temp split like Energy has.
+  caEnergyPool: integer("ca_energy_pool").notNull().default(0),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
   spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
   // AA V3 weapon techniques: technique ids this character has unlocked by

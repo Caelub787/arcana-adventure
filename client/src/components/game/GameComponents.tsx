@@ -60,6 +60,7 @@ import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTok
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
+import { vitalBarColor } from '@/lib/vitalBarColor';
 
 // Resolves a roll entry's DC check: figures out the value being checked
 // (main roll's total, or a fresh d20 + optional attribute mod) and the DC
@@ -446,23 +447,21 @@ interface HoldMenuOption {
   disabled?: boolean;
 }
 
-// A tool button whose default action fires on a normal click, but which
-// reveals its full set of alternatives to the right on a press-and-hold
-// (matching the codebase's existing 500ms long-press convention). Picking
-// one of the revealed options performs it and makes it the new default for
-// the rest of this session (reset on refresh — this is local component
-// state, nothing is persisted). Holding never fires the current default;
-// only a release before the hold threshold does.
-function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
+// A tool button whose first option is a fixed default that always fires on
+// a normal click. Pressing and holding (without releasing) reveals every
+// option to the right; picking one performs it once, and the menu closes
+// back to the plain default button — nothing about the default itself ever
+// changes. Holding never fires the default; only a release before the hold
+// threshold does.
+function HoldMenuButton({ options, testId, holdMs = 250 }: {
   options: HoldMenuOption[];
-  defaultKey: string;
-  onDefaultChange: (key: string) => void;
   testId: string;
+  holdMs?: number;
 }) {
   const [holdOpen, setHoldOpen] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const defaultOption = options.find(o => o.key === defaultKey) ?? options[0];
+  const defaultOption = options[0];
 
   useEffect(() => {
     if (!holdOpen) return;
@@ -493,7 +492,7 @@ function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
           holdTimerRef.current = setTimeout(() => {
             setHoldOpen(true);
             holdTimerRef.current = null;
-          }, 500);
+          }, holdMs);
         }}
         onPointerUp={(e) => {
           e.stopPropagation();
@@ -534,7 +533,7 @@ function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
                       e.stopPropagation();
                       if (opt.disabled) return;
                       opt.onSelect();
-                      onDefaultChange(opt.key);
+                      // One-time use — back to the plain default button.
                       setHoldOpen(false);
                     }}
                     style={{ touchAction: 'manipulation' }}
@@ -542,7 +541,7 @@ function HoldMenuButton({ options, defaultKey, onDefaultChange, testId }: {
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                       transition-all duration-200 shadow-lg backdrop-blur-sm
                       ${opt.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
-                      ${opt.disabled ? 'opacity-50 cursor-not-allowed' : (opt.key === defaultKey ? 'ring-2 ring-white/20' : 'hover:scale-105')}
+                      ${opt.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}
                     `}
                     aria-label={opt.label}
                     data-testid={`${testId}-option-${opt.key}`}
@@ -1343,11 +1342,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
-  // Which action is the default (single-click) behavior for the left-side
-  // Camera Controls / Token Options hold-menu buttons. Session-only — reset
-  // to the original default (not persisted) on refresh.
-  const [cameraDefaultKey, setCameraDefaultKey] = useState('center');
-  const [tokenDefaultKey, setTokenDefaultKey] = useState('movement');
 
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
@@ -2705,7 +2699,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             disabled: lockView === true,
           },
         ];
-        const effectiveCameraDefault = cameraOptions.some(o => o.key === cameraDefaultKey) ? cameraDefaultKey : cameraOptions[0].key;
 
         const tokenOptions: HoldMenuOption[] = [
           {
@@ -2735,7 +2728,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             active: !showBars,
           }] : []),
         ];
-        const effectiveTokenDefault = tokenOptions.some(o => o.key === tokenDefaultKey) ? tokenDefaultKey : tokenOptions[0].key;
 
         // Sits directly under the Select/Ruler buttons (which start at
         // top-44 = 176px and are ~88px tall together). When Ruler mode is
@@ -2755,14 +2747,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             <HoldMenuButton
               testId="button-camera-controls"
               options={cameraOptions}
-              defaultKey={effectiveCameraDefault}
-              onDefaultChange={setCameraDefaultKey}
             />
             <HoldMenuButton
               testId="button-token-options"
               options={tokenOptions}
-              defaultKey={effectiveTokenDefault}
-              onDefaultChange={setTokenDefaultKey}
             />
             {isGM && (
               <ToolbarIconButton
@@ -9463,7 +9451,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                className={`h-full ${vitalBarColor(character.hp ?? 10, effectiveMaxHp)}`}
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
                 transition={{ duration: 0.8, ease: "easeInOut" }}
@@ -9485,7 +9473,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                 </div>
                 <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                    className={`h-full ${vitalBarColor(remaining, CA_WOUND_MAX)}`}
                     initial={false}
                     animate={{ width: `${(remaining / CA_WOUND_MAX) * 100}%` }}
                     transition={{ duration: 0 }}
@@ -9502,8 +9490,8 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               <span>{Math.min(character.energy ?? 10, effectiveMaxEnergy)}/{effectiveMaxEnergy}</span>
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
+              <motion.div
+                className={`h-full ${vitalBarColor(character.energy ?? 10, effectiveMaxEnergy)}`}
                 initial={false}
                 animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
                 transition={{ duration: 0.8, ease: "easeInOut" }}
@@ -18440,6 +18428,23 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
   });
 
+  // Energy Pool — a standalone number above the Energy bar, just a closed
+  // display until double-clicked (matches the desktop double-click /
+  // mobile long-press convention quickPressHandlers uses), which opens an
+  // inline editor; Save writes it back and returns to the plain display.
+  const [caEditingEnergyPool, setCaEditingEnergyPool] = useState(false);
+  const [caEnergyPoolDraft, setCaEnergyPoolDraft] = useState(0);
+  const caEnergyPoolPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openCAEnergyPoolEdit = () => {
+    if (!canQuickEdit) return;
+    setCaEnergyPoolDraft((liveCharacter as any)?.caEnergyPool ?? 0);
+    setCaEditingEnergyPool(true);
+  };
+  const saveCAEnergyPool = () => {
+    onUpdate?.({ caEnergyPool: Math.max(0, caEnergyPoolDraft) } as any);
+    setCaEditingEnergyPool(false);
+  };
+
   // Portrait's Library/Upload controls live in a popup over the image itself
   // (double-click on desktop, long-press on touch) instead of a permanent
   // button row, to keep the Overview tab down to just the character's info.
@@ -18833,7 +18838,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const quickPressFiredRef = useRef(false);
 
   // Inlined permission check (canEdit/canEditSheet are declared later in this component; avoid TDZ)
-  const canQuickEdit = isAAV2 && (isOwner || isGM || accessLevel === 'edit');
+  const canQuickEdit = (isAAV2 || isCA) && (isOwner || isGM || accessLevel === 'edit');
   // AA V3 only: long-press / double-click the level value to quick-edit it
   // (V3 has no overview Edit button, so this is the level's edit path).
   const canQuickEditLevel = isAAV3 && (isOwner || isGM || accessLevel === 'edit');
@@ -21234,6 +21239,42 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Energy Pool — a standalone number, closed until
+                      double-clicked (or long-pressed on mobile). */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs text-stone-300">Energy Pool</Label>
+                      {caEditingEnergyPool ? (
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <NumberInput
+                            min={0}
+                            value={caEnergyPoolDraft}
+                            onChange={(v) => setCaEnergyPoolDraft(v ?? 0)}
+                            className="w-20 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                            data-testid="input-ca-energy-pool"
+                          />
+                          <Button size="sm" className="h-7 text-xs bg-emerald-700 hover:bg-emerald-600 text-white" onClick={saveCAEnergyPool} data-testid="button-save-ca-energy-pool">Save</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs border-stone-700 text-stone-300" onClick={() => setCaEditingEnergyPool(false)} data-testid="button-cancel-ca-energy-pool">Cancel</Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="text-xs font-bold cursor-pointer select-none"
+                          data-testid="text-ca-energy-pool"
+                          onDoubleClick={(e) => { e.stopPropagation(); openCAEnergyPoolEdit(); }}
+                          onTouchStart={() => {
+                            if (caEnergyPoolPressTimerRef.current) clearTimeout(caEnergyPoolPressTimerRef.current);
+                            caEnergyPoolPressTimerRef.current = setTimeout(() => openCAEnergyPoolEdit(), 500);
+                          }}
+                          onTouchEnd={() => { if (caEnergyPoolPressTimerRef.current) { clearTimeout(caEnergyPoolPressTimerRef.current); caEnergyPoolPressTimerRef.current = null; } }}
+                          onTouchMove={() => { if (caEnergyPoolPressTimerRef.current) { clearTimeout(caEnergyPoolPressTimerRef.current); caEnergyPoolPressTimerRef.current = null; } }}
+                          title="Double-click (PC) or long-press (mobile) to edit"
+                        >
+                          {(liveCharacter as any).caEnergyPool ?? 0}
+                        </span>
+                      )}
                     </div>
                   </div>
 
