@@ -44,15 +44,27 @@ export interface FreeHotbarEntryView {
   sourceCharacter: { id: string; name: string; portrait: string | null } | null;
 }
 
+// Same green -> yellow -> red thresholds as the on-token bars (see
+// vitalBarColor in GameComponents.tsx) — duplicated locally rather than
+// imported so this file's GameComponents dependency stays limited to
+// LazyItemImage (see the mock note below).
+function vitalBarColor(percent: number): string {
+  return percent > 60 ? 'bg-green-500' : percent > 30 ? 'bg-yellow-500' : 'bg-red-500';
+}
+
 // Compact stacked HP/Energy/Mana bars for character slot tiles + peek panel.
 // `medium` is a touch taller than `thin` — used for C.A.'s 2-bar tile display,
 // which has the vertical room to be a bit more noticeable than V3's 3-bar one.
-function StatBar({ value, max, color, thin, medium }: { value: number; max: number; color: string; thin?: boolean; medium?: boolean }) {
+// HP/Wounds/Energy omit `color` so they pick up the same green -> yellow ->
+// red drain as the on-token bars (vitalBarColor); Mana keeps a fixed color
+// since the token's mana bar isn't dynamic either.
+function StatBar({ value, max, color, thin, medium }: { value: number; max: number; color?: string; thin?: boolean; medium?: boolean }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   const heightClass = medium ? 'h-[5px]' : thin ? 'h-[3px]' : 'h-2';
+  const fillColor = color ?? vitalBarColor(pct);
   return (
     <div className={`w-full ${heightClass} bg-black/60 ${medium || !thin ? 'rounded-sm' : ''} overflow-hidden`}>
-      <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+      <div className={`h-full ${fillColor}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -63,16 +75,16 @@ function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: b
     const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost(char.caWounds));
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={CA_WOUND_MAX} color="bg-red-600" thin={thin} medium={thin} />
-        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-blue-500" thin={thin} medium={thin} />
+        <StatBar value={remaining} max={CA_WOUND_MAX} thin={thin} medium={thin} />
+        <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} thin={thin} medium={thin} />
       </div>
     );
   }
   if (char.maxHp == null) return null;
   return (
     <div className={thin ? 'space-y-px' : 'space-y-1.5'}>
-      <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color="bg-red-500" thin={thin} />
-      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-green-500" thin={thin} />
+      <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} thin={thin} />
+      <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} thin={thin} />
       <StatBar value={char.mana ?? 0} max={char.maxMana ?? 0} color="bg-fuchsia-400" thin={thin} />
     </div>
   );
@@ -399,14 +411,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>Wounds</span>
                             <span data-testid="text-peek-wounds">{Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} / {CA_WOUND_MAX}</span>
                           </div>
-                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} color="bg-red-600" />
+                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-blue-500" />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} />
                         </div>
                       </>
                     ) : (
@@ -416,14 +428,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                             <span>HP</span>
                             <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
                           </div>
-                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color="bg-red-500" />
+                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Energy</span>
                             <span data-testid="text-peek-energy">{c.energy ?? 0} / {c.maxEnergy ?? 0}</span>
                           </div>
-                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} color="bg-green-500" />
+                          <StatBar value={c.energy ?? 0} max={c.maxEnergy ?? 0} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
