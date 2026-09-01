@@ -7100,6 +7100,9 @@ export default function Campaign() {
     viewportHeight: number;
     zoom: number;
     beaconColor?: string;
+    // Tab hidden for 5+ minutes - the GM overlay hides this entry rather
+    // than showing a stale, no-longer-current view.
+    hidden?: boolean;
   }>>(new Map());
 
   // Recent rolls campaign-wide, for the top-of-screen pinned-player bar.
@@ -7266,6 +7269,49 @@ export default function Campaign() {
       });
     }
   }, [currentView]);
+
+  // Tab-visibility tracking for the GM's "Show player screens" overlay: a
+  // tab hidden for 5+ straight minutes is reported as hidden (GM stops
+  // showing a stale view for someone who's stepped away); coming back at
+  // any point clears it immediately and forces a fresh viewport broadcast
+  // so the GM's overlay reflects where this tab actually is right away.
+  useEffect(() => {
+    let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
+    const HIDDEN_AFTER_MS = 5 * 60 * 1000;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (hiddenTimer) clearTimeout(hiddenTimer);
+        hiddenTimer = setTimeout(() => {
+          gameWs.sendViewportVisibility(false);
+        }, HIDDEN_AFTER_MS);
+      } else {
+        if (hiddenTimer) {
+          clearTimeout(hiddenTimer);
+          hiddenTimer = null;
+        }
+        gameWs.sendViewportVisibility(true);
+        // Reset the broadcast debounce gate so the next viewport goes out
+        // immediately rather than waiting for the usual 500ms window.
+        lastViewportBroadcastRef.current = 0;
+        const vpWidth = viewportSizeRef.current.width / currentViewRef.current.zoom;
+        const vpHeight = viewportSizeRef.current.height / currentViewRef.current.zoom;
+        gameWs.sendViewport({
+          viewportX: currentViewRef.current.x,
+          viewportY: currentViewRef.current.y,
+          viewportWidth: vpWidth,
+          viewportHeight: vpHeight,
+          zoom: currentViewRef.current.zoom,
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (hiddenTimer) clearTimeout(hiddenTimer);
+    };
+  }, []);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -9489,6 +9535,9 @@ export default function Campaign() {
               viewportHeight,
               zoom,
               beaconColor,
+              // A fresh broadcast means they're actively viewing - clears any
+              // earlier tabbed-away-for-5-minutes hidden state.
+              hidden: false,
             });
             return updated;
           });
@@ -9512,6 +9561,21 @@ export default function Campaign() {
               setCameraTarget({ x: viewportX, y: viewportY, zoom });
             }
           }
+        }
+
+        // A player's tab has been hidden/tabbed-away for 5+ minutes (or has
+        // come back) - toggle whether their entry shows on the "Show player
+        // screens" overlay without touching their last-known position.
+        if (data.type === 'viewport_visibility') {
+          const { userId, visible } = data;
+          if (userId === user?.id) return;
+          setOtherPlayersViewports(prev => {
+            if (!prev.has(userId)) return prev;
+            const updated = new Map(prev);
+            const entry = updated.get(userId)!;
+            updated.set(userId, { ...entry, hidden: !visible });
+            return updated;
+          });
         }
 
         // Server is asking us (the GM) to rebroadcast our current viewport so a

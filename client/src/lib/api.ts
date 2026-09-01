@@ -3866,7 +3866,29 @@ export class GameWebSocket {
     
     this.send(message);
   }
-  
+
+  // Tell other campaign members whether this client's tab is actually being
+  // looked at, so the GM's "Show player screens" overlay can hide a player
+  // who has been tabbed away for a while instead of showing a stale view.
+  sendViewportVisibility(visible: boolean) {
+    if (!this.campaignId) {
+      return;
+    }
+
+    const message = {
+      type: 'viewport_visibility',
+      campaignId: this.campaignId,
+      visible,
+    };
+
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+
+    this.send(message);
+  }
+
   // Send beacon - broadcasts a temporary pulsating ring to all campaign members
   // Used to draw attention to a specific grid location
   sendBeacon(beaconState: {

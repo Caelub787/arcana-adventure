@@ -2412,7 +2412,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
         }
-        
+
+        // Handle viewport visibility - a player's tab going hidden/visible,
+        // so the GM's "Show player screens" overlay can hide a player who's
+        // been tabbed away for a while instead of showing a stale view.
+        if (message.type === "viewport_visibility") {
+          const { campaignId, visible } = message;
+
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            return;
+          }
+
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const visibilityMessage = JSON.stringify({
+              type: "viewport_visibility",
+              userId: authenticatedUserId,
+              visible,
+            });
+
+            room.forEach((client) => {
+              if (client !== ws && client.readyState === 1) {
+                client.send(visibilityMessage);
+              }
+            });
+          }
+        }
+
         // Handle grid highlight - broadcast to all campaign members
         if (message.type === "grid_highlight") {
           const { campaignId, cellKey, highlighted } = message;

@@ -619,6 +619,7 @@ interface BattleMapProps {
     viewportHeight: number;
     zoom: number;
     beaconColor?: string;
+    hidden?: boolean;
   }>;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
@@ -4820,67 +4821,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           );
         })()}
         
-        {/* Other Players' Viewport Rectangles - GM visibility only */}
-        {role === 'gm' && showPlayerViewports && otherPlayersViewports && otherPlayersViewports.size > 0 && (
-          <svg
-            className="absolute pointer-events-none"
-            style={{
-              left: 0,
-              top: 0,
-              width: '20000px',
-              height: '20000px',
-              overflow: 'visible',
-              zIndex: 22,
-            }}
-          >
-            {Array.from(otherPlayersViewports.values()).map((viewport, index) => {
-              const MAP_OFFSET = 9000;
-              const worldX = viewport.viewportX + MAP_OFFSET;
-              const worldY = viewport.viewportY + MAP_OFFSET;
-              const halfWidth = viewport.viewportWidth / 2;
-              const halfHeight = viewport.viewportHeight / 2;
-
-              // Prefer the player's own beacon color (same one used for their
-              // map ping) so the GM can match a viewport to a person at a
-              // glance; fall back to a cycling palette for anyone without one.
-              const fallbackPalette = [
-                '#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#fbbf24', '#f87171',
-              ];
-              const hex = viewport.beaconColor || fallbackPalette[index % fallbackPalette.length];
-              const rgb = (() => {
-                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
-              })();
-              const color = { stroke: `rgba(${rgb}, 0.9)`, fill: `rgba(${rgb}, 0.1)` };
-
-              return (
-                <g key={viewport.userId}>
-                  <rect
-                    x={worldX - halfWidth}
-                    y={worldY - halfHeight}
-                    width={viewport.viewportWidth}
-                    height={viewport.viewportHeight}
-                    fill={color.fill}
-                    stroke={color.stroke}
-                    strokeWidth={3}
-                    strokeDasharray="12 6"
-                  />
-                  <text
-                    x={worldX - halfWidth + 8}
-                    y={worldY - halfHeight + 18}
-                    fill={color.stroke}
-                    fontSize="14"
-                    fontWeight="bold"
-                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
-                  >
-                    {viewport.username}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        )}
-        
         {/* Fog of War Overlay - walls, doors, windows, lights, fog */}
         {scene?.id && (
           <FogOfWarOverlay
@@ -4939,6 +4879,69 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           />
         )}
       </motion.div>
+
+      {/* Other Players' Viewport Rectangles - GM visibility only. Rendered as
+          a screen-space sibling of the pannable motion.div (not nested inside
+          it) and positioned by directly converting each reported world
+          coordinate to a screen pixel relative to this client's own camera,
+          rather than re-entering the shared world<->pixel-offset conversion
+          (which round-trips correctly for a single client's own camera but
+          is not meant to translate one client's world coordinate through a
+          *different* client's transform - doing so left every rectangle
+          rendered many thousands of pixels off-screen). */}
+      {role === 'gm' && showPlayerViewports && otherPlayersViewports && Array.from(otherPlayersViewports.values()).some(v => !v.hidden) && (() => {
+        const zoom = zoomRef.current;
+        const myCenter = pixelOffsetToWorld(panRef.current.x, panRef.current.y, zoom, viewportSize.width, viewportSize.height);
+        const fallbackPalette = ['#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#fbbf24', '#f87171'];
+        return (
+          <svg
+            className="absolute pointer-events-none"
+            style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 22 }}
+          >
+            {Array.from(otherPlayersViewports.values()).filter(v => !v.hidden).map((viewport, index) => {
+              const screenX = viewportSize.width / 2 + zoom * (viewport.viewportX - myCenter.x) - (viewport.viewportWidth * zoom) / 2;
+              const screenY = viewportSize.height / 2 + zoom * (viewport.viewportY - myCenter.y) - (viewport.viewportHeight * zoom) / 2;
+              const screenW = viewport.viewportWidth * zoom;
+              const screenH = viewport.viewportHeight * zoom;
+
+              // Prefer the player's own beacon color (same one used for their
+              // map ping) so the GM can match a viewport to a person at a
+              // glance; fall back to a cycling palette for anyone without one.
+              const hex = viewport.beaconColor || fallbackPalette[index % fallbackPalette.length];
+              const rgb = (() => {
+                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
+              })();
+              const color = { stroke: `rgba(${rgb}, 0.9)`, fill: `rgba(${rgb}, 0.1)` };
+
+              return (
+                <g key={viewport.userId}>
+                  <rect
+                    x={screenX}
+                    y={screenY}
+                    width={screenW}
+                    height={screenH}
+                    fill={color.fill}
+                    stroke={color.stroke}
+                    strokeWidth={3}
+                    strokeDasharray="12 6"
+                  />
+                  <text
+                    x={screenX + 8}
+                    y={screenY + 18}
+                    fill={color.stroke}
+                    fontSize="14"
+                    fontWeight="bold"
+                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+                  >
+                    {viewport.username}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        );
+      })()}
 
       <FogCanvasOverlay
         fogEnabled={scene?.fogEnabled ?? false}
