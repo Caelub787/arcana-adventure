@@ -2484,7 +2484,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!userCampaign) return;
           
           // Record it in this campaign's recent-rolls cache so the pinned
-          // roster tracker can rehydrate on reload/reconnect.
+          // roster tracker can rehydrate on reload/reconnect. Also persisted
+          // to the campaign row (not just kept in memory) so it survives a
+          // server restart/redeploy too - it's cleared only when the GM
+          // clears chat.
           const storedNotification = {
             ...notification,
             userId: authenticatedUserId,
@@ -2492,10 +2495,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: crypto.randomUUID(),
             ts: Date.now(),
           };
-          const feed = campaignRollFeeds.get(campaignId) || [];
+          let feed = campaignRollFeeds.get(campaignId);
+          if (!feed) {
+            // Cache miss (e.g. right after a server restart) - hydrate from
+            // the durable column first so older history isn't dropped.
+            const existingCampaign = await storage.getCampaign(campaignId);
+            feed = Array.isArray(existingCampaign?.rollFeed) ? [...existingCampaign.rollFeed] : [];
+          }
           feed.unshift(storedNotification);
           if (feed.length > ROLL_FEED_LIMIT) feed.length = ROLL_FEED_LIMIT;
           campaignRollFeeds.set(campaignId, feed);
+          storage.updateCampaign(campaignId, { rollFeed: feed }).catch((err) => {
+            console.error('Failed to persist roll feed:', err);
+          });
 
           // Broadcast roll notification to all OTHER campaign members
           const room = campaignRooms.get(campaignId);
@@ -3514,7 +3526,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.clearChatMessages(campaignId);
-      campaignRollFeeds.delete(campaignId);
+      campaignRollFeeds.set(campaignId, []);
+      await storage.updateCampaign(campaignId, { rollFeed: [] });
       broadcastToCampaign(campaignId, { type: 'chat_cleared' });
       res.json({ success: true });
     } catch (err) {
@@ -3523,10 +3536,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Recent dice-roll notifications for the pinned-roster player tracker,
-  // so its memory survives a reload — cleared together with chat above.
+  // Recent dice-roll notifications for the pinned-roster player tracker, so
+  // its memory survives a reload or server restart — cleared together with
+  // chat above. Serves from the in-memory cache when warm, falling back to
+  // the durable column (and warming the cache from it) otherwise.
   app.get("/api/campaigns/:id/roll-feed", requireAuth, async (req, res) => {
-    res.json(campaignRollFeeds.get(req.params.id) || []);
+    const cached = campaignRollFeeds.get(req.params.id);
+    if (cached) {
+      return res.json(cached);
+    }
+    const campaign = await storage.getCampaign(req.params.id);
+    const feed = Array.isArray(campaign?.rollFeed) ? campaign.rollFeed : [];
+    campaignRollFeeds.set(req.params.id, feed);
+    res.json(feed);
   });
 
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {

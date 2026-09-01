@@ -11310,7 +11310,12 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSeenIdRef = useRef<string | undefined>(undefined);
+  // Seeded with whatever roll is already latest on mount (e.g. hydrated
+  // history after a reload) so it's treated as already-seen - only a roll
+  // that arrives *after* mount should trigger the glow/reveal-then-fade
+  // "new roll" animation. Without this, restored history looked like a
+  // fresh roll that flashed once and vanished.
+  const lastSeenIdRef = useRef<string | undefined>(rolls[0]?.id);
   const latest = rolls[0];
 
   useEffect(() => {

@@ -105,6 +105,11 @@ export const campaigns = pgTable("campaigns", {
   is18Plus: boolean("is_18_plus").default(false).notNull(), // AA V3 mature-content gate; when off, profane spell names are censored
   inCombat: boolean("in_combat").default(false).notNull(),
   currentTurnCharacterId: varchar("current_turn_character_id"),
+  // Recent dice-roll notifications for the pinned-roster player tracker
+  // (most-recent-first, capped at 50). Persisted so the tracker's memory
+  // survives a server restart/redeploy, not just a live in-memory cache -
+  // it's cleared only when the GM clears chat.
+  rollFeed: jsonb("roll_feed").$type<any[]>().notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
