@@ -656,9 +656,19 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     });
   }, []);
 
-  const handleDoubleClick = React.useCallback(() => {
+  // A single handler on the header (rather than a second one on the title
+  // span relying on stopPropagation to keep it from also reaching this one)
+  // - checks what was actually double-clicked. Editing the title takes over
+  // only while expanded; minimized always restores, from the title or
+  // anywhere else on the header, same as before.
+  const handleDoubleClick = React.useCallback((e: React.MouseEvent) => {
+    const hitTitle = (e.target as HTMLElement).closest('[data-panel-title]');
+    if (hitTitle && onTitleDoubleClick && !isMinimized) {
+      onTitleDoubleClick();
+      return;
+    }
     toggleMinimize();
-  }, [toggleMinimize]);
+  }, [toggleMinimize, onTitleDoubleClick, isMinimized]);
 
   React.useEffect(() => {
     return () => {
@@ -738,18 +748,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           isMinimized ? "gap-0.5 text-xs pr-0.5" : "gap-2 text-lg pr-4"
         )}>
           {!isMinimized && <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />}
-          <span
-            className="truncate"
-            onDoubleClick={onTitleDoubleClick ? (e) => {
-              // Minimized: let the double-click bubble to the header's own
-              // handler, which restores the panel - same as clicking
-              // anywhere else on it. Only intercept (and edit instead of
-              // minimize) while expanded.
-              if (isMinimized) return;
-              e.stopPropagation();
-              onTitleDoubleClick();
-            } : undefined}
-          >
+          <span className="truncate" data-panel-title>
             {title}
           </span>
         </div>

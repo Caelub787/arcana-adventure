@@ -3435,7 +3435,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                   onTokenClick && onTokenClick(token);
                 }
               }}
-              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 cursor-grabbing' : ''}`}
+              className={`absolute top-0 left-0 rounded-xl shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 cursor-grabbing' : ''}`}
               style={{ 
                 width: tokenSize, 
                 height: tokenSize,
@@ -3449,34 +3449,34 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               role="button"
               tabIndex={0}
             >
-              <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" decoding="sync" loading="eager" style={{ imageRendering: 'auto' }} />
+              <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-xl" decoding="sync" loading="eager" style={{ imageRendering: 'auto' }} />
               
               {/* Initiative Turn Border - yellow border for current turn character (z-index 1 to sit under HP/energy bars) */}
               {character && currentTurnCharacterId === character.id && (
-                <div 
-                  className="absolute inset-0 rounded-full pointer-events-none"
+                <div
+                  className="absolute inset-0 rounded-xl pointer-events-none"
                   style={{
                     border: '3px solid rgba(251, 191, 36, 1)',
                     zIndex: 1
                   }}
                 />
               )}
-              
+
               {/* Token border - shows targeting (red), multi-selection (cyan), single selection (white), or default (blue/red based on type) */}
-              <div className={`absolute inset-0 rounded-full ${
-                targetedTokenId === token.id 
-                  ? 'border-4 border-red-500 ring-2 ring-red-500/50 glow-red' 
+              <div className={`absolute inset-0 rounded-xl ${
+                targetedTokenId === token.id
+                  ? 'border-4 border-red-500 ring-2 ring-red-500/50 glow-red'
                   : selectedTokenIds.has(token.id)
                     ? 'border-3 border-cyan-400 ring-2 ring-cyan-400/50'
                     : selectedTokenId === token.id
                       ? 'border-3 border-white ring-2 ring-white/30'
                       : `border-2 ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`
               }`} />
-              
+
               {/* Multi-selection glow effect */}
               {selectedTokenIds.has(token.id) && (
-                <div 
-                  className="absolute -inset-1 rounded-full pointer-events-none"
+                <div
+                  className="absolute -inset-1 rounded-xl pointer-events-none"
                   style={{
                     boxShadow: '0 0 12px 3px rgba(34, 211, 238, 0.5), 0 0 20px 6px rgba(34, 211, 238, 0.3)',
                   }}
@@ -11265,6 +11265,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed 
             character={character}
             campaignSystem={campaignSystem}
             rolls={rolls}
+            accentColor={member.beaconColor}
           />
         );
       })}
@@ -11286,23 +11287,47 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed 
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
   character: any;
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
+  accentColor?: string;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
+  // Mobile: a tap locks the last-roll strip visible (no hover on touch), and
+  // stays that way until the next tap anywhere outside the chip.
+  const [tapLocked, setTapLocked] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSeenIdRef = useRef<string | undefined>(undefined);
   const latest = rolls[0];
+
+  useEffect(() => {
+    if (!tapLocked) return;
+    const handleOutside = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setTapLocked(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutside);
+    return () => document.removeEventListener('pointerdown', handleOutside);
+  }, [tapLocked]);
+
+  // Beacon color, when set, drives both the resting outline and the roll
+  // glow; with no player assigned we fall back to the existing amber classes
+  // (which render as the app's default purple under the current theme).
+  const accentRgb = accentColor ? (() => {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(accentColor);
+    return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : null;
+  })() : null;
 
   // Reset the broken-image fallback if the portrait source itself changes
   // (e.g. the assigned character or its portrait was updated).
@@ -11333,10 +11358,11 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
-  const visible = revealed || historyOpen;
+  const visible = revealed || historyOpen || tapLocked;
 
   return (
     <div
+      ref={containerRef}
       className="relative flex flex-col items-center"
       data-testid={testId}
       onMouseEnter={() => {
@@ -11349,9 +11375,14 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
       }}
+      onClick={() => setTapLocked(true)}
     >
       <div
-        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600'}`}
+        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${accentRgb ? '' : (glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600')}`}
+        style={accentRgb ? {
+          borderColor: accentColor,
+          boxShadow: glow ? `0 0 0 4px rgba(${accentRgb}, 0.8)` : undefined,
+        } : undefined}
       >
         {portraitSrc && !imgFailed ? (
           <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
@@ -11399,8 +11430,16 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
             data-testid={`pinned-roll-${testId}`}
           >
             <div
-              className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600'}`}
-              style={{ clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)', transition: 'background-color 500ms ease, box-shadow 500ms ease' }}
+              className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${accentRgb ? '' : (glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600')}`}
+              style={{
+                clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
+                transition: 'background-color 500ms ease, box-shadow 500ms ease, border-color 500ms ease',
+                ...(accentRgb ? {
+                  backgroundColor: glow ? accentColor : 'rgba(28, 25, 23, 0.95)',
+                  border: `1px solid ${accentColor}`,
+                  boxShadow: glow ? `0 0 12px 4px rgba(${accentRgb}, 0.7)` : undefined,
+                } : {}),
+              }}
             >
               {latest ? (latest.total ?? '') : ''}
             </div>
@@ -21183,58 +21222,56 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             {isCA ? (
               <>
               <Card className="bg-stone-800 border-stone-700">
-                <CardHeader>
-                  <CardTitle className="text-amber-500 flex items-center justify-between">
-                    <span>Overview</span>
-                    {(isOwner || isGM) && onUpdate && (
-                      caEditingOverview ? (
-                        <div className="flex gap-1.5 shrink-0">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              onUpdate?.({
-                                race: caFundamentalsDraft.race,
-                                size: caFundamentalsDraft.size,
-                                naturalArmor: caFundamentalsDraft.dc,
-                                speed: caFundamentalsDraft.speed,
-                                flySpeed: caFundamentalsDraft.flySpeed,
-                                swimSpeed: caFundamentalsDraft.swimSpeed,
-                              });
-                              setCaEditingOverview(false);
-                            }}
-                            data-testid="button-ca-save-overview"
-                          >
-                            Save
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setCaEditingOverview(false)} data-testid="button-ca-cancel-overview">
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
+                <CardContent className="pt-6 space-y-4 relative">
+                  {/* Edit control sits level with the Race/DC row instead of
+                      its own header bar above the portrait - the portrait
+                      is the first thing in the card now. */}
+                  {(isOwner || isGM) && onUpdate && (
+                    caEditingOverview ? (
+                      <div className="absolute top-4 right-4 z-10 flex gap-1.5 shrink-0">
                         <Button
                           size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 shrink-0"
                           onClick={() => {
-                            setCaFundamentalsDraft({
-                              race: liveCharacter.race || '',
-                              size: liveCharacter.size || '',
-                              dc: liveCharacter.naturalArmor ?? 5,
-                              speed: liveCharacter.speed || 0,
-                              flySpeed: liveCharacter.flySpeed || 0,
-                              swimSpeed: liveCharacter.swimSpeed || 0,
+                            onUpdate?.({
+                              race: caFundamentalsDraft.race,
+                              size: caFundamentalsDraft.size,
+                              naturalArmor: caFundamentalsDraft.dc,
+                              speed: caFundamentalsDraft.speed,
+                              flySpeed: caFundamentalsDraft.flySpeed,
+                              swimSpeed: caFundamentalsDraft.swimSpeed,
                             });
-                            setCaEditingOverview(true);
+                            setCaEditingOverview(false);
                           }}
-                          data-testid="button-ca-edit-overview"
+                          data-testid="button-ca-save-overview"
                         >
-                          <Pencil className="h-4 w-4 text-stone-400" />
+                          Save
                         </Button>
-                      )
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                        <Button size="sm" variant="outline" onClick={() => setCaEditingOverview(false)} data-testid="button-ca-cancel-overview">
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="absolute top-4 right-4 z-10 h-7 w-7 p-0 shrink-0"
+                        onClick={() => {
+                          setCaFundamentalsDraft({
+                            race: liveCharacter.race || '',
+                            size: liveCharacter.size || '',
+                            dc: liveCharacter.naturalArmor ?? 5,
+                            speed: liveCharacter.speed || 0,
+                            flySpeed: liveCharacter.flySpeed || 0,
+                            swimSpeed: liveCharacter.swimSpeed || 0,
+                          });
+                          setCaEditingOverview(true);
+                        }}
+                        data-testid="button-ca-edit-overview"
+                      >
+                        <Pencil className="h-4 w-4 text-stone-400" />
+                      </Button>
+                    )
+                  )}
                   <div className="flex flex-row gap-3 sm:gap-4">
                     {/* Portrait — a fixed-width column so it stays beside the
                         info at any screen width instead of stacking on
