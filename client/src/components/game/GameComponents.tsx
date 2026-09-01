@@ -2737,10 +2737,20 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         ];
         const effectiveTokenDefault = tokenOptions.some(o => o.key === tokenDefaultKey) ? tokenDefaultKey : tokenOptions[0].key;
 
+        // Sits directly under the Select/Ruler buttons (which start at
+        // top-44 = 176px and are ~88px tall together). When Ruler mode is
+        // active it also shows up to 4 shape buttons below it, so this
+        // shifts further down to clear those instead of overlapping them.
+        // Anchored from the top, not the bottom: this container's own
+        // height stretches with the 20000px scrollable map behind it, so a
+        // `bottom` offset would resolve thousands of pixels below the
+        // visible screen instead of near the actual bottom of the viewport.
+        const leftToolbarTop = selectionMode === 'ruler' ? 472 : 272;
+
         return (
           <div
-            className="absolute bottom-4 z-40 flex flex-col gap-2 pointer-events-auto"
-            style={{ left: '8px' }}
+            className="absolute z-40 flex flex-col gap-2 pointer-events-auto"
+            style={{ left: '8px', top: `${leftToolbarTop}px` }}
           >
             <HoldMenuButton
               testId="button-camera-controls"
