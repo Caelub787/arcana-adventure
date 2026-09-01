@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, Check, AlertCircle, Download, Settings, Palette } from "lucide-react";
+import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, AlertCircle, Download } from "lucide-react";
 import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { applyTheme, getStoredTheme, normalizeTheme, THEME_META, type AppTheme } from "@/lib/theme";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -43,36 +42,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
-  const [activeTheme, setActiveTheme] = useState<AppTheme>(() =>
-    user?.theme ? normalizeTheme(user.theme) : getStoredTheme()
-  );
-
-  React.useEffect(() => {
-    if (user?.theme) setActiveTheme(normalizeTheme(user.theme));
-  }, [user?.theme]);
-
-  const updateThemeMutation = useMutation({
-    mutationFn: async (theme: AppTheme) => api.updateTheme(theme),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
-      refetchUser();
-    },
-    onError: () => {
-      toast({
-        title: "Theme saved on this device only",
-        description: "Couldn't sync the theme to your account. It will still apply here.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleThemeSelect = (theme: AppTheme) => {
-    if (theme === activeTheme) return;
-    setActiveTheme(theme);
-    applyTheme(theme, { animate: true });
-    updateThemeMutation.mutate(theme);
-  };
 
   const handleInstallClick = async () => {
     if (canInstall) {
@@ -240,14 +209,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
             <Users className="mr-2 h-4 w-4 text-stone-400" />
             <span>Friends</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setSettingsDialogOpen(true)}
-            className="cursor-pointer hover:bg-stone-800 focus:bg-stone-800"
-            data-testid="menu-item-settings"
-          >
-            <Settings className="mr-2 h-4 w-4 text-stone-400" />
-            <span>Settings</span>
-          </DropdownMenuItem>
           {!isInstalled && (
             <DropdownMenuItem
               onClick={handleInstallClick}
@@ -282,75 +243,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-        <DialogContent
-          className="border-stone-800 bg-stone-950 text-stone-200 sm:max-w-lg max-h-[85vh] overflow-y-auto"
-          data-testid="dialog-settings"
-        >
-          <DialogHeader>
-            <DialogTitle className="text-amber-500 flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Settings
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-stone-200 flex items-center gap-2">
-                <Palette className="h-4 w-4 text-amber-500" />
-                Appearance
-              </h3>
-              <p className="text-xs text-stone-500">
-                Pick a theme for the whole app. It applies instantly and is saved to your account.
-              </p>
-            </div>
-            <div
-              role="radiogroup"
-              aria-label="App theme"
-              className="space-y-3"
-            >
-              {THEME_META.map((meta) => {
-                const selected = activeTheme === meta.id;
-                return (
-                  <button
-                    key={meta.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => handleThemeSelect(meta.id)}
-                    className={`w-full rounded-lg border p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
-                      selected
-                        ? "border-amber-500 bg-stone-900"
-                        : "border-stone-700 bg-stone-900/60 hover:border-stone-500"
-                    }`}
-                    data-testid={`theme-card-${meta.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-stone-100">{meta.name}</span>
-                      {selected && (
-                        <span className="flex items-center gap-1 text-xs font-medium text-amber-400">
-                          <Check className="h-4 w-4" />
-                          Active
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-stone-400">{meta.description}</p>
-                    <div className="mt-2 flex gap-1.5" aria-hidden="true">
-                      {meta.swatches.map((c, i) => (
-                        <span
-                          key={i}
-                          className="h-5 w-8 rounded border border-black/40"
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent

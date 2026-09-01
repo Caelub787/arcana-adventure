@@ -24,7 +24,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   avatarUrl: text("avatar_url"), // User profile picture
   bio: text("bio"), // Optional user bio
-  theme: text("theme"), // App theme preference (cartographers-study | arcane-library | sagebound-workshop)
+  theme: text("theme"), // Unused - the app now has a single fixed theme (Arcane Library), kept for backward compat
   isAdmin: boolean("is_admin").default(false), // Site administrator
   bannedAt: timestamp("banned_at"), // When user was banned (null = not banned)
   banExpiresAt: timestamp("ban_expires_at"), // When ban expires (null = permanent)

@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, globalWs, type User, type BanDetails } from './api';
 import { queryClient } from './queryClient';
-import { applyTheme, isAppTheme } from './theme';
 
 interface AuthContextType {
   user: User | null;
@@ -33,14 +32,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.setBanCallback(null);
     };
   }, []);
-
-  // Sync the account-saved theme to this device whenever the user loads.
-  // Local storage is only a fallback for logged-out/unsynced states.
-  useEffect(() => {
-    if (user && isAppTheme(user.theme)) {
-      applyTheme(user.theme);
-    }
-  }, [user?.theme]);
 
   useEffect(() => {
     if (user) {
