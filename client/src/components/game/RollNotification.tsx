@@ -194,7 +194,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
   
   return (
     <motion.div
-      initial={{ opacity: 0, y: -50, scale: 0.9 }}
+      initial={{ opacity: 0, y: 50, scale: 0.9 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 100, scale: 0.95 }}
       transition={{ type: 'spring', damping: 20, stiffness: 300 }}
@@ -301,12 +301,25 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
   );
 }
 
-export function RollNotificationContainer() {
+export function RollNotificationContainer({ pinnedUsernames, pinnedCharacterNames }: {
+  // A roll already showing live in the top-of-screen pinned-player bar
+  // (matched by username, or by character name for a roll made as a
+  // specific character) is skipped here so it isn't shown twice.
+  pinnedUsernames?: Set<string>;
+  pinnedCharacterNames?: Set<string>;
+} = {}) {
   const [notifications, setNotifications] = useState<RollNotification[]>([]);
   const [style, setStyle] = useState<NotificationStyle>(getNotificationStyle);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+  const pinnedUsernamesRef = useRef(pinnedUsernames);
+  const pinnedCharacterNamesRef = useRef(pinnedCharacterNames);
+  pinnedUsernamesRef.current = pinnedUsernames;
+  pinnedCharacterNamesRef.current = pinnedCharacterNames;
+
   const addNotification = useCallback((notification: RollNotification) => {
+    const isPinned = !!pinnedUsernamesRef.current?.has(notification.username)
+      || !!(notification.characterName && pinnedCharacterNamesRef.current?.has(notification.characterName));
+    if (isPinned) return;
     setNotifications(prev => {
       const maxNotifications = style === 'compact' ? 6 : 4;
       const filtered = prev.slice(-maxNotifications);
@@ -358,8 +371,9 @@ export function RollNotificationContainer() {
     return () => { unsubscribe(); };
   }, [addNotification]);
   
-  // Full notifications: top center of screen
-  // Compact notifications: bottom right, above HP/DC display
+  // Both styles anchor bottom-left, stacked upward from just above the
+  // character sheet button / HP-DC display in the bottom-left hotbar
+  // cluster, so nothing ever sits over the top-center pinned-player bar.
   if (style === 'compact') {
     return (
       <div
@@ -379,11 +393,11 @@ export function RollNotificationContainer() {
       </div>
     );
   }
-  
+
   return (
     <div
       ref={containerRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[200000] flex flex-col gap-2 pointer-events-none w-[calc(100vw-2rem)] max-w-sm"
+      className="fixed bottom-44 left-2 md:left-4 z-[200000] flex flex-col-reverse gap-2 pointer-events-none w-[calc(100vw-2rem)] max-w-sm"
     >
       <AnimatePresence mode="popLayout">
         {notifications.map(notification => (

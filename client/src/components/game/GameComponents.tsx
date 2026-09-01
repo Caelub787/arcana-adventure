@@ -11216,20 +11216,29 @@ interface CampaignMenuProps {
   charactersOnly?: boolean;
 }
 
-export type PinnedRollFeedEntry = { id: string; text: string; total: number | null; ts: number };
+export type PinnedRollFeedEntry = {
+  id: string;
+  username: string;
+  characterName?: string;
+  text: string;
+  total: number | null;
+  ts: number;
+};
 
 // Top-of-screen party tracker: GM-pinned members shown as small portrait
-// chips (character portrait + wound/energy bars if a character is assigned,
-// otherwise just the user's avatar), each with a roll "trapezium" that
-// slides out from under the portrait, glows briefly, and shows that user's
-// most recent dice roll total. Hovering re-reveals the trapezium; clicking
-// it opens a short history of their recent rolls. Rolls still post to chat
-// as normal - this is purely a supplemental live glance at the party.
-export function PinnedRosterBar({ members, characters, campaignSystem, rollFeedByUser }: {
+// chips (character portrait if one's assigned, otherwise the user's
+// avatar), name and wound/HP + energy bars overlaid directly on the
+// portrait like a token, each with a roll "trapezium" below it that
+// slides out, glows briefly, and shows the most recent roll total made by
+// that user or (for a pinned NPC) as that character. Hovering re-reveals
+// the trapezium; clicking it opens a short history of recent rolls.
+// Rolls still post to chat as normal - this is purely a supplemental live
+// glance at the party.
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed }: {
   members: any[];
   characters: any[];
   campaignSystem?: string;
-  rollFeedByUser: Map<string, PinnedRollFeedEntry[]>;
+  rollFeed: PinnedRollFeedEntry[];
 }) {
   const pinnedMembers = (members || []).filter((m: any) => m.pinned);
   // Characters pinned directly (GM tool, mainly for NPCs with no owning
@@ -11242,74 +11251,45 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeedB
   if (pinnedMembers.length === 0 && pinnedCharacters.length === 0) return null;
   return (
     <div className="flex items-start gap-3 pointer-events-auto">
-      {pinnedMembers.map((member: any) => (
-        <PinnedPlayerChip
-          key={member.id}
-          member={member}
-          character={(characters || []).find((c: any) => c.id === member.assignedCharacterId)}
-          campaignSystem={campaignSystem}
-          rolls={rollFeedByUser.get(member.userId) || []}
-        />
-      ))}
-      {pinnedCharacters.map((character: any) => (
-        <PinnedNpcChip key={character.id} character={character} campaignSystem={campaignSystem} />
-      ))}
+      {pinnedMembers.map((member: any) => {
+        const character = (characters || []).find((c: any) => c.id === member.assignedCharacterId);
+        const rolls = rollFeed.filter((r) =>
+          r.username === member.username || (character && r.characterName === character.name)
+        );
+        return (
+          <PinnedRosterChip
+            key={member.id}
+            testId={`pinned-chip-${member.userId}`}
+            portraitSrc={character?.portrait || member.avatarUrl}
+            displayName={character?.name || member.username || 'Unknown'}
+            character={character}
+            campaignSystem={campaignSystem}
+            rolls={rolls}
+          />
+        );
+      })}
+      {pinnedCharacters.map((character: any) => {
+        const rolls = rollFeed.filter((r) => r.characterName === character.name);
+        return (
+          <PinnedRosterChip
+            key={character.id}
+            testId={`pinned-npc-chip-${character.id}`}
+            portraitSrc={character.portrait}
+            displayName={character.name || 'NPC'}
+            character={character}
+            campaignSystem={campaignSystem}
+            rolls={rolls}
+          />
+        );
+      })}
     </div>
   );
 }
 
-// Portrait + wound/HP + energy bars only, no roll trapezium - a roll made
-// "as" an NPC is attributed to whichever user actually pressed the button
-// (usually the GM), not the NPC, so there is no reliable per-character
-// roll feed to hook into here the way there is for a pinned player.
-function PinnedNpcChip({ character, campaignSystem }: {
-  character: any;
-  campaignSystem?: string;
-}) {
-  const isCA = campaignSystem === 'ca';
-  const primaryBar = isCA
-    ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost(character.caWounds)), max: CA_WOUND_MAX }
-    : { value: character.hp ?? 0, max: character.maxHp ?? 1 };
-  const energyBar = { value: character.energy ?? 0, max: character.maxEnergy ?? 1 };
-  const displayName = character.name || 'NPC';
-
-  return (
-    <div className="relative flex flex-col items-center" data-testid={`pinned-npc-chip-${character.id}`}>
-      <div className="relative w-14 h-14 rounded-lg overflow-hidden border-2 border-stone-600 shadow-lg bg-stone-900">
-        {character.portrait ? (
-          <img src={character.portrait} alt={displayName} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-stone-800 text-stone-400 text-xs font-bold">
-            {displayName.slice(0, 2).toUpperCase()}
-          </div>
-        )}
-      </div>
-      <div
-        className="text-[10px] text-stone-200 font-medium mt-0.5 max-w-[64px] truncate text-center"
-        style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
-      >
-        {displayName}
-      </div>
-      <div className="w-14 mt-0.5 space-y-0.5">
-        <div className="h-1 bg-black/50 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-            style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
-          />
-        </div>
-        <div className="h-1 bg-black/50 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-cyan-500"
-            style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PinnedPlayerChip({ member, character, campaignSystem, rolls }: {
-  member: any;
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls }: {
+  testId: string;
+  portraitSrc?: string;
+  displayName: string;
   character: any;
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
@@ -11348,15 +11328,12 @@ function PinnedPlayerChip({ member, character, campaignSystem, rolls }: {
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
-
-  const portraitSrc = character?.portrait || member.avatarUrl;
-  const displayName = character?.name || member.username || 'Unknown';
   const visible = revealed || historyOpen;
 
   return (
     <div
       className="relative flex flex-col items-center"
-      data-testid={`pinned-chip-${member.userId}`}
+      data-testid={testId}
       onMouseEnter={() => {
         hoveringRef.current = true;
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -11378,36 +11355,37 @@ function PinnedPlayerChip({ member, character, campaignSystem, rolls }: {
             {displayName.slice(0, 2).toUpperCase()}
           </div>
         )}
-      </div>
-      <div
-        className="text-[10px] text-stone-200 font-medium mt-0.5 max-w-[64px] truncate text-center"
-        style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
-      >
-        {displayName}
-      </div>
-      {character && primaryBar && energyBar && (
-        <div className="w-14 mt-0.5 space-y-0.5">
-          <div className="h-1 bg-black/50 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-              style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
-            />
-          </div>
-          <div className="h-1 bg-black/50 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-cyan-500"
-              style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
-            />
-          </div>
+        {/* Name and vital bars overlaid directly on the portrait, like a token label + bars. */}
+        <div
+          className="absolute top-0 left-0 right-0 px-0.5 pt-0.5 text-[9px] leading-tight font-bold text-white truncate text-center pointer-events-none"
+          style={{ textShadow: '0 0 3px #000, 0 0 3px #000, 0 0 3px #000' }}
+        >
+          {displayName}
         </div>
-      )}
+        {character && primaryBar && energyBar && (
+          <div className="absolute bottom-0 left-0 right-0 px-0.5 pb-0.5 space-y-0.5 pointer-events-none">
+            <div className="h-1 bg-black/60 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-500"
+                style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+              />
+            </div>
+            <div className="h-1 bg-black/60 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             onClick={() => rolls.length > 0 && setHistoryOpen(true)}
-            className="absolute top-full left-1/2 -translate-x-1/2 overflow-hidden"
+            className="mt-0.5 overflow-hidden"
             style={{
               width: '72px',
               height: visible ? '28px' : '0px',
@@ -11415,7 +11393,7 @@ function PinnedPlayerChip({ member, character, campaignSystem, rolls }: {
               transition: 'height 250ms ease, opacity 200ms ease',
               pointerEvents: visible ? 'auto' : 'none',
             }}
-            data-testid={`pinned-roll-${member.userId}`}
+            data-testid={`pinned-roll-${testId}`}
           >
             <div
               className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600'}`}
@@ -12493,7 +12471,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                                     className={`h-8 w-8 p-0 ${member.pinned ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-900/30' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-700/50'}`}
                                     data-testid={`button-pin-${member.userId}`}
                                   >
-                                    {member.pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                                    {member.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="bg-stone-800 border-stone-700">
@@ -12890,7 +12868,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                                   className={`h-8 w-8 p-0 ${member.pinned ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-900/30' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-700/50'}`}
                                   data-testid={`button-pin-inline-${member.userId}`}
                                 >
-                                  {member.pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                                  {member.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="top" className="bg-stone-800 border-stone-700">

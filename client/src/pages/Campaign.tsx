@@ -7089,10 +7089,38 @@ export default function Campaign() {
     beaconColor?: string;
   }>>(new Map());
 
-  // Recent dice-roll totals per user, for the top-of-screen pinned-player bar.
-  // Populated from the same chat_message broadcasts that already feed chat.
-  const [rollFeedByUser, setRollFeedByUser] = useState<Map<string, PinnedRollFeedEntry[]>>(new Map());
-  
+  // Recent rolls campaign-wide, for the top-of-screen pinned-player bar.
+  // Built from the same roll-notification events that already drive the
+  // corner toast cards (local 'roll-notification' DOM event for the
+  // acting user's own rolls, 'roll_notification' websocket broadcasts for
+  // everyone else's) rather than parsing chat text, so each entry carries
+  // a clean username and (when the roll was made as a specific character,
+  // player or NPC alike) characterName straight from the source.
+  const [rollFeed, setRollFeed] = useState<PinnedRollFeedEntry[]>([]);
+  useEffect(() => {
+    const addEntry = (n: any) => {
+      if (!n || typeof n.username !== 'string') return;
+      const entry: PinnedRollFeedEntry = {
+        id: crypto.randomUUID(),
+        username: n.username,
+        characterName: n.characterName || undefined,
+        text: n.label || '',
+        total: typeof n.total === 'number' ? n.total : null,
+        ts: Date.now(),
+      };
+      setRollFeed(prev => [entry, ...prev].slice(0, 50));
+    };
+    const handleLocal = (e: any) => addEntry(e.detail);
+    window.addEventListener('roll-notification', handleLocal);
+    const unsubscribe = gameWs.onMessage((data: any) => {
+      if (data.type === 'roll_notification' && data.notification) addEntry(data.notification);
+    });
+    return () => {
+      window.removeEventListener('roll-notification', handleLocal);
+      unsubscribe();
+    };
+  }, []);
+
   const enterAoeMode = (spell: any, casterTokenId: string, pendingRollEntry?: any) => {
     const casterToken = tokens.find((t: any) => t.id === casterTokenId);
     const casterChar = characters ? (characters as any[]).find((c: any) => c.id === casterToken?.characterId) : null;
@@ -7450,6 +7478,25 @@ export default function Campaign() {
 
   // Current user's membership (for beacon color)
   const myMembership = (members as any[] | undefined)?.find((m: any) => m.userId === user?.id);
+
+  // Who's currently shown live in the pinned-player bar, so the corner
+  // roll-notification toasts can skip anyone already covered there.
+  const pinnedUsernames = useMemo(() => new Set(
+    ((members as any[]) || []).filter((m: any) => m.pinned).map((m: any) => m.username).filter(Boolean)
+  ), [members]);
+  const pinnedCharacterNames = useMemo(() => {
+    const memberList = (members as any[]) || [];
+    const characterList = (characters as any[]) || [];
+    const names = new Set<string>();
+    memberList.filter((m: any) => m.pinned).forEach((m: any) => {
+      const assigned = characterList.find((c: any) => c.id === m.assignedCharacterId);
+      if (assigned?.name) names.add(assigned.name);
+    });
+    characterList.filter((c: any) => c.pinned).forEach((c: any) => {
+      if (c.name) names.add(c.name);
+    });
+    return names;
+  }, [members, characters]);
 
   // If the chosen spectator-follow target leaves the campaign (kicked / left),
   // gracefully reset the selector to the host so the UI doesn't show a stale name.
@@ -9293,28 +9340,6 @@ export default function Campaign() {
               return [...oldData, data.message];
             }
           );
-
-          // Feed the pinned-player top bar. Roll chat text consistently ends
-          // with "= <total>" (dice rolls, skill/attribute checks), so the
-          // total is parsed from there rather than needing a schema change;
-          // messages without that trailing total (energy/mana adjustments,
-          // effect notices, also broadcast as type "roll") just show no number.
-          if (data.message.type === 'roll' && data.message.userId) {
-            const totalMatch = /=\s*(-?\d+)\s*$/.exec(data.message.text || '');
-            const entry: PinnedRollFeedEntry = {
-              id: data.message.id,
-              text: data.message.text,
-              total: totalMatch ? parseInt(totalMatch[1], 10) : null,
-              ts: Date.now(),
-            };
-            setRollFeedByUser(prev => {
-              const existing = prev.get(data.message.userId) || [];
-              if (existing.some(r => r.id === entry.id)) return prev;
-              const updated = new Map(prev);
-              updated.set(data.message.userId, [entry, ...existing].slice(0, 10));
-              return updated;
-            });
-          }
         }
         
         // Handle other players' AoE targeting updates
@@ -10037,7 +10062,7 @@ export default function Campaign() {
     <div data-section="campaign" className="relative h-dvh w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
       {/* Roll Notification Container */}
-      <RollNotificationContainer />
+      <RollNotificationContainer pinnedUsernames={pinnedUsernames} pinnedCharacterNames={pinnedCharacterNames} />
 
       {/* AA V3: GM spell authoring pop-up (listens for craft requests) */}
       {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (
@@ -10248,7 +10273,7 @@ export default function Campaign() {
             members={(members as any[]) || []}
             characters={(characters as any[]) || []}
             campaignSystem={(campaign as any)?.system}
-            rollFeedByUser={rollFeedByUser}
+            rollFeed={rollFeed}
           />
         </div>
 
