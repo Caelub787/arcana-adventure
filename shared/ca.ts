@@ -68,7 +68,6 @@ export interface CAWound {
   severity: CAWoundSeverity;
   description: string;
   effects: CAWoundEffect[];
-  treated: boolean;
 }
 
 let caWoundIdCounter = 0;
@@ -93,7 +92,6 @@ export function makeCAWound(x: number, y: number): CAWound {
     severity: "minor",
     description: "",
     effects: [],
-    treated: false,
   };
 }
 
@@ -133,22 +131,21 @@ export function normalizeCAWounds(raw: unknown): CAWound[] {
       effects: Array.isArray(anyW.effects)
         ? anyW.effects.map(normalizeCAWoundEffect).filter((e: CAWoundEffect | null): e is CAWoundEffect => e !== null)
         : [],
-      treated: !!anyW.treated,
     });
   }
   return out;
 }
 
-// Sums every active (untreated) wound's effects targeting `target` (a
-// CA_SKILLS key or a CAFixedStatTarget). Treating a wound, or removing an
-// effect, removes its contribution immediately — this is always computed
-// fresh from the wounds array, never a separately stored total.
+// Sums every wound's effects targeting `target` (a CA_SKILLS key or a
+// CAFixedStatTarget). Treating a wound removes it (and its effects)
+// entirely — see caWoundEffectTargetLabel's callers — so every wound in
+// the array is by definition active; this is always computed fresh from
+// the wounds array, never a separately stored total.
 export function caWoundStatEffectTotal(wounds: unknown, target: string): number {
   if (!target) return 0;
   const normalized = normalizeCAWounds(wounds);
   let total = 0;
   for (const w of normalized) {
-    if (w.treated) continue;
     for (const eff of w.effects) {
       if (eff.target === target) total += eff.amount;
     }
@@ -156,20 +153,16 @@ export function caWoundStatEffectTotal(wounds: unknown, target: string): number 
   return total;
 }
 
-// Total active Wound Capacity spent — treated wounds don't count unless
-// asked for explicitly (e.g. a "wound history" view).
-export function caWoundTotalCost(wounds: unknown, includeTreated = false): number {
+// Total Wound Capacity spent by every wound currently on the character —
+// treating a wound removes it from this array entirely, so there's no
+// separate "treated but still present" state to exclude.
+export function caWoundTotalCost(wounds: unknown): number {
   const normalized = normalizeCAWounds(wounds);
   let total = 0;
   for (const w of normalized) {
-    if (!includeTreated && w.treated) continue;
     total += CA_WOUND_SEVERITY_COST[w.severity];
   }
   return total;
-}
-
-export function caActiveWoundCount(wounds: unknown): number {
-  return normalizeCAWounds(wounds).filter((w) => !w.treated).length;
 }
 
 // Every C.A. character has the same flat Wound Capacity — a full "HP" bar

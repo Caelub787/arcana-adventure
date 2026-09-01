@@ -8,7 +8,7 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, makeCAWound, makeCAWoundEffect, caWoundTotalCost, caActiveWoundCount, caWoundStatEffectTotal, caWoundEffectTargetLabel, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAWound, type CAWoundSeverity, type CAWoundEffect, type CAFixedStatTarget, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { normalizeCAWounds, makeCAWound, makeCAWoundEffect, caWoundTotalCost, caWoundStatEffectTotal, caWoundEffectTargetLabel, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAWound, type CAWoundSeverity, type CAWoundEffect, type CAFixedStatTarget, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -18376,12 +18376,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     if (editingCAWoundId === id) cancelEditingCAWound();
   };
 
-  const toggleCAWoundTreated = (id: string) => {
-    queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
-      const updated = wounds.map((w) => (w.id === id ? { ...w, treated: !w.treated } : w));
-      return { caWounds: updated };
-    });
+  // Treating a wound heals it — there's no "treated but still listed" state,
+  // it just removes the wound entirely. That's a one-way action, so it goes
+  // through a confirmation dialog (below) rather than firing immediately;
+  // this tracks which wound the confirmation is pending for.
+  const [treatingCAWoundId, setTreatingCAWoundId] = useState<string | null>(null);
+  const confirmTreatCAWound = () => {
+    if (treatingCAWoundId) removeCAWound(treatingCAWoundId);
+    setTreatingCAWoundId(null);
   };
 
 
@@ -21110,10 +21112,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     {(() => {
                       const allWounds = normalizeCAWounds((liveCharacter as any).caWounds);
                       const canEditWounds = !!canEdit && !!onUpdate;
-                      const sortedWounds = [...allWounds].sort((a, b) => {
-                        if (a.treated !== b.treated) return a.treated ? 1 : -1;
-                        return CA_WOUND_SEVERITY_RANK[b.severity] - CA_WOUND_SEVERITY_RANK[a.severity];
-                      });
+                      const sortedWounds = [...allWounds].sort((a, b) => CA_WOUND_SEVERITY_RANK[b.severity] - CA_WOUND_SEVERITY_RANK[a.severity]);
                       const severityDot: Record<CAWoundSeverity, string> = {
                         minor: 'bg-stone-400',
                         moderate: 'bg-orange-700',
@@ -21169,7 +21168,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 <button
                                   key={w.id}
                                   type="button"
-                                  className={`absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 ${severityDot[w.severity]} ${w.treated ? 'opacity-35' : ''} ${selectedCAWoundId === w.id ? 'ring-2 ring-offset-1 ring-white' : ''}`}
+                                  className={`absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 ${severityDot[w.severity]} ${selectedCAWoundId === w.id ? 'ring-2 ring-offset-1 ring-yellow-300' : ''}`}
                                   style={{ left: `${w.x}%`, top: `${w.y}%` }}
                                   onClick={(e) => { e.stopPropagation(); setSelectedCAWoundId(w.id); }}
                                   data-testid={`marker-ca-wound-${w.id}`}
@@ -21198,8 +21197,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               ))}
                             </div>
                           </div>
-                          {/* Right: severity-sorted wound list */}
-                          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
+                          {/* Right: severity-sorted wound list. p-1 -m-1 gives the
+                              selection ring room to render on every side without
+                              being clipped by the scroll container's edges. */}
+                          <div className="space-y-2 max-h-[420px] overflow-y-auto p-1 -m-1">
                             {sortedWounds.length === 0 ? (
                               <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds — press Add Wound and click the body to place one.</p>
                             ) : sortedWounds.map((w) => {
@@ -21293,10 +21294,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                         size="sm"
                                         variant="outline"
                                         className="h-6 text-[10px] flex-1"
-                                        onClick={() => toggleCAWoundTreated(w.id)}
+                                        onClick={() => setTreatingCAWoundId(w.id)}
                                         data-testid={`button-treat-ca-wound-${w.id}`}
                                       >
-                                        {w.treated ? 'Mark Untreated' : 'Treat Wound'}
+                                        <Heart className="h-3 w-3 mr-1" />
+                                        Treat Wound
                                       </Button>
                                       <button
                                         type="button"
@@ -21320,7 +21322,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               return (
                                 <div
                                   key={w.id}
-                                  className={`rounded border p-2 space-y-1 bg-stone-900/50 cursor-pointer ${severityBorder[w.severity]} ${w.treated ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-amber-400' : ''}`}
+                                  className={`rounded border p-2 space-y-1 bg-stone-900/50 cursor-pointer ${severityBorder[w.severity]} ${isSelected ? 'ring-2 ring-yellow-300 ring-offset-2 ring-offset-stone-800' : ''}`}
                                   onClick={() => setSelectedCAWoundId(w.id)}
                                   data-testid={`card-ca-wound-${w.id}`}
                                 >
@@ -21331,14 +21333,26 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       {CA_WOUND_SEVERITY_LABELS[w.severity].toUpperCase()} {CA_WOUND_SEVERITY_COST[w.severity]}
                                     </span>
                                     {canEditWounds && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); startEditingCAWound(w); }}
-                                        className="text-stone-500 hover:text-amber-400 shrink-0"
-                                        data-testid={`button-edit-ca-wound-${w.id}`}
-                                      >
-                                        <Pencil className="h-3 w-3" />
-                                      </button>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); setTreatingCAWoundId(w.id); }}
+                                          className="text-stone-500 hover:text-emerald-400"
+                                          title="Treat Wound"
+                                          data-testid={`button-treat-ca-wound-${w.id}`}
+                                        >
+                                          <Heart className="h-3 w-3" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); startEditingCAWound(w); }}
+                                          className="text-stone-500 hover:text-amber-400"
+                                          title="Edit Wound"
+                                          data-testid={`button-edit-ca-wound-${w.id}`}
+                                        >
+                                          <Pencil className="h-3 w-3" />
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
                                   {w.description && (
@@ -21364,6 +21378,35 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </CardContent>
               </Card>
+
+              <AlertDialog open={!!treatingCAWoundId} onOpenChange={(open) => !open && setTreatingCAWoundId(null)}>
+                <AlertDialogContent className="bg-stone-900 border-stone-700">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-emerald-400 flex items-center gap-2">
+                      <Heart className="h-5 w-5" />
+                      Treat Wound
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-stone-300">
+                      Treat <span className="font-bold text-amber-400">"{normalizeCAWounds((liveCharacter as any).caWounds).find((w) => w.id === treatingCAWoundId)?.name || 'this wound'}"</span>? This heals it and removes it from the character entirely — this can't be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel
+                      className="bg-stone-800 border-stone-700 hover:bg-stone-700"
+                      data-testid="button-cancel-treat-ca-wound"
+                    >
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={confirmTreatCAWound}
+                      data-testid="button-confirm-treat-ca-wound"
+                    >
+                      Treat Wound
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
 
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader className="pb-2">
