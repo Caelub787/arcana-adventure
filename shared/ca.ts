@@ -8,10 +8,9 @@
 // Wounds — replaces HP entirely for C.A. A freeform pin on a body diagram,
 // not a fixed grid of slots: click "Add Wound", click a spot on the body,
 // and that becomes a wound with its own name, severity, and description.
-// A wound can carry multiple effects, each a description plus an optional
-// skill/stat target + numeric amount — when a target is set it's applied
-// automatically to that skill's rolls or that movement stat while the
-// wound is active (untreated).
+// A wound can carry multiple effects, each just a skill/stat target plus a
+// numeric amount (no free text per effect) — applied automatically to that
+// skill's rolls or that movement stat while the wound is active (untreated).
 // ---------------------------------------------------------------------------
 
 export type CAWoundSeverity = "minor" | "moderate" | "serious";
@@ -57,11 +56,8 @@ export function caWoundEffectTargetLabel(target: string): string {
 
 export interface CAWoundEffect {
   id: string;
-  description: string;
-  // A CA_SKILLS key or a CAFixedStatTarget, or null for a purely narrative
-  // effect with no automatic mechanical application.
-  target: string | null;
-  amount: number; // meaningful only when target is set
+  target: string; // a CA_SKILLS key or a CAFixedStatTarget — always set, no free-text per effect
+  amount: number;
 }
 
 export interface CAWound {
@@ -82,7 +78,7 @@ function makeCAWoundId(): string {
 }
 
 export function makeCAWoundEffect(): CAWoundEffect {
-  return { id: makeCAWoundId(), description: "", target: null, amount: 0 };
+  return { id: makeCAWoundId(), target: CA_FIXED_STAT_TARGETS[0], amount: 0 };
 }
 
 // A fresh wound pinned at (x, y) — percent coordinates on the body diagram,
@@ -101,20 +97,17 @@ export function makeCAWound(x: number, y: number): CAWound {
   };
 }
 
+// A target is required now — an effect with no target (an old free-text
+// effect line, or an old optional-target shape) can't be represented in
+// this model, so it's dropped rather than kept as a meaningless bullet.
 function normalizeCAWoundEffect(raw: unknown): CAWoundEffect | null {
-  // Tolerates the earlier plain-string effect-line shape by keeping the
-  // text as the description with no mechanical target.
-  if (typeof raw === "string") {
-    return raw ? { id: makeCAWoundId(), description: raw, target: null, amount: 0 } : null;
-  }
   if (!raw || typeof raw !== "object") return null;
   const anyE = raw as any;
-  const target = typeof anyE.target === "string" && anyE.target ? anyE.target : null;
+  if (typeof anyE.target !== "string" || !anyE.target) return null;
   return {
     id: typeof anyE.id === "string" && anyE.id ? anyE.id : makeCAWoundId(),
-    description: typeof anyE.description === "string" ? anyE.description : "",
-    target,
-    amount: target && Number.isFinite(Number(anyE.amount)) ? Math.trunc(Number(anyE.amount)) : 0,
+    target: anyE.target,
+    amount: Number.isFinite(Number(anyE.amount)) ? Math.trunc(Number(anyE.amount)) : 0,
   };
 }
 

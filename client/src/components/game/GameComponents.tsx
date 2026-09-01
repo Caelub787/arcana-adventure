@@ -18303,7 +18303,27 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // computing its "updated wounds" array from a stale pre-click snapshot
   // and clobbering the others.
   const [isPlacingCAWound, setIsPlacingCAWound] = useState(false);
+  // Which wound's marker/card is highlighted — set by clicking either a
+  // marker on the body diagram or a wound's card in the list, purely
+  // cosmetic (a ring on both), independent of edit state.
   const [selectedCAWoundId, setSelectedCAWoundId] = useState<string | null>(null);
+  // Which wound is currently open for editing, and a local draft of its
+  // fields — nothing is written back to the character until Save. Only one
+  // wound can be in edit mode at a time; the rest render as a compact,
+  // read-only summary (name, description, effect bullets).
+  const [editingCAWoundId, setEditingCAWoundId] = useState<string | null>(null);
+  const [caWoundDraft, setCaWoundDraft] = useState<CAWound | null>(null);
+
+  const startEditingCAWound = (w: CAWound) => {
+    setEditingCAWoundId(w.id);
+    setCaWoundDraft({ ...w, effects: w.effects.map((e) => ({ ...e })) });
+    setSelectedCAWoundId(w.id);
+  };
+
+  const cancelEditingCAWound = () => {
+    setEditingCAWoundId(null);
+    setCaWoundDraft(null);
+  };
 
   const addCAWound = (x: number, y: number) => {
     const wound = makeCAWound(x, y);
@@ -18312,7 +18332,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       return { caWounds: [...wounds, wound] };
     });
     setIsPlacingCAWound(false);
-    setSelectedCAWoundId(wound.id);
+    startEditingCAWound(wound);
   };
 
   const updateCAWound = (id: string, patch: Partial<CAWound>) => {
@@ -18323,50 +18343,43 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     });
   };
 
+  const saveCAWoundDraft = () => {
+    if (!editingCAWoundId || !caWoundDraft) return;
+    updateCAWound(editingCAWoundId, {
+      name: caWoundDraft.name,
+      severity: caWoundDraft.severity,
+      description: caWoundDraft.description,
+      effects: caWoundDraft.effects,
+    });
+    setEditingCAWoundId(null);
+    setCaWoundDraft(null);
+  };
+
+  const addDraftCAWoundEffect = () => {
+    setCaWoundDraft((prev) => (prev ? { ...prev, effects: [...prev.effects, makeCAWoundEffect()] } : prev));
+  };
+
+  const updateDraftCAWoundEffect = (effectId: string, patch: Partial<CAWoundEffect>) => {
+    setCaWoundDraft((prev) => (prev ? { ...prev, effects: prev.effects.map((e) => (e.id === effectId ? { ...e, ...patch } : e)) } : prev));
+  };
+
+  const removeDraftCAWoundEffect = (effectId: string) => {
+    setCaWoundDraft((prev) => (prev ? { ...prev, effects: prev.effects.filter((e) => e.id !== effectId) } : prev));
+  };
+
   const removeCAWound = (id: string) => {
     queueCharacterUpdate((cur: any) => {
       const wounds = normalizeCAWounds(cur?.caWounds);
       return { caWounds: wounds.filter((w) => w.id !== id) };
     });
     setSelectedCAWoundId((prev) => (prev === id ? null : prev));
+    if (editingCAWoundId === id) cancelEditingCAWound();
   };
 
   const toggleCAWoundTreated = (id: string) => {
     queueCharacterUpdate((cur: any) => {
       const wounds = normalizeCAWounds(cur?.caWounds);
       const updated = wounds.map((w) => (w.id === id ? { ...w, treated: !w.treated } : w));
-      return { caWounds: updated };
-    });
-  };
-
-  // Add/Edit Effect dialog — a wound can carry several effects, each a
-  // description plus an optional skill/stat target + numeric amount that's
-  // applied automatically (see caWoundStatEffectTotal) while the wound is
-  // untreated. Adding and editing share one floating panel; which wound and
-  // which effect (a fresh one from makeCAWoundEffect() for "Add") it's
-  // editing lives in this state until Save/Cancel.
-  const [editingCAWoundEffect, setEditingCAWoundEffect] = useState<{ woundId: string; effect: CAWoundEffect } | null>(null);
-
-  const saveCAWoundEffect = () => {
-    if (!editingCAWoundEffect) return;
-    const { woundId, effect } = editingCAWoundEffect;
-    queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
-      const updated = wounds.map((w) => {
-        if (w.id !== woundId) return w;
-        const idx = w.effects.findIndex((e) => e.id === effect.id);
-        const effects = idx >= 0 ? w.effects.map((e, i) => (i === idx ? effect : e)) : [...w.effects, effect];
-        return { ...w, effects };
-      });
-      return { caWounds: updated };
-    });
-    setEditingCAWoundEffect(null);
-  };
-
-  const removeCAWoundEffect = (woundId: string, effectId: string) => {
-    queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
-      const updated = wounds.map((w) => (w.id === woundId ? { ...w, effects: w.effects.filter((e) => e.id !== effectId) } : w));
       return { caWounds: updated };
     });
   };
@@ -21190,129 +21203,156 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             {sortedWounds.length === 0 ? (
                               <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds — press Add Wound and click the body to place one.</p>
                             ) : sortedWounds.map((w) => {
-                              const expanded = selectedCAWoundId === w.id;
+                              const isEditing = editingCAWoundId === w.id;
+                              const isSelected = selectedCAWoundId === w.id;
+                              // Editing reads/writes the local draft only — nothing hits the
+                              // character until Save.
+                              if (isEditing && caWoundDraft) {
+                                return (
+                                  <div
+                                    key={w.id}
+                                    className={`rounded border p-2 space-y-1.5 bg-stone-900/50 ${severityBorder[caWoundDraft.severity]}`}
+                                    data-testid={`card-ca-wound-${w.id}`}
+                                  >
+                                    <Input
+                                      value={caWoundDraft.name}
+                                      onChange={(e) => setCaWoundDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                                      placeholder="Wound name..."
+                                      className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
+                                      data-testid={`input-ca-wound-${w.id}-name`}
+                                    />
+                                    <Select
+                                      value={caWoundDraft.severity}
+                                      onValueChange={(v) => setCaWoundDraft((prev) => (prev ? { ...prev, severity: v as CAWoundSeverity } : prev))}
+                                    >
+                                      <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700" data-testid={`select-ca-wound-${w.id}-severity`}>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {CA_WOUND_SEVERITIES.map((sev) => (
+                                          <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Textarea
+                                      value={caWoundDraft.description}
+                                      onChange={(e) => setCaWoundDraft((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
+                                      placeholder="Injury description..."
+                                      className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
+                                      data-testid={`textarea-ca-wound-${w.id}-description`}
+                                    />
+                                    <div className="space-y-1">
+                                      {caWoundDraft.effects.map((eff) => (
+                                        <div key={eff.id} className="flex items-center gap-1">
+                                          <Select
+                                            value={eff.target}
+                                            onValueChange={(v) => updateDraftCAWoundEffect(eff.id, { target: v })}
+                                          >
+                                            <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700 flex-1" data-testid={`select-ca-wound-${w.id}-effect-${eff.id}-target`}>
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectGroup>
+                                                <SelectLabel>Movement</SelectLabel>
+                                                {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
+                                              </SelectGroup>
+                                              <SelectGroup>
+                                                <SelectLabel>Skills</SelectLabel>
+                                                {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                                              </SelectGroup>
+                                            </SelectContent>
+                                          </Select>
+                                          <NumberInput
+                                            value={eff.amount}
+                                            onChange={(v) => updateDraftCAWoundEffect(eff.id, { amount: v ?? 0 })}
+                                            className="w-16 h-7 text-xs bg-stone-800 border-stone-700 shrink-0"
+                                            data-testid={`input-ca-wound-${w.id}-effect-${eff.id}-amount`}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => removeDraftCAWoundEffect(eff.id)}
+                                            className="text-stone-500 hover:text-red-400 shrink-0"
+                                            data-testid={`button-remove-ca-wound-${w.id}-effect-${eff.id}`}
+                                          >
+                                            <X className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                      <button
+                                        type="button"
+                                        className="text-[10px] text-amber-500 hover:text-amber-400"
+                                        onClick={addDraftCAWoundEffect}
+                                        data-testid={`button-add-ca-wound-${w.id}-effect`}
+                                      >
+                                        + Add Effect
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-1">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 text-[10px] flex-1"
+                                        onClick={() => toggleCAWoundTreated(w.id)}
+                                        data-testid={`button-treat-ca-wound-${w.id}`}
+                                      >
+                                        {w.treated ? 'Mark Untreated' : 'Treat Wound'}
+                                      </Button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCAWound(w.id)}
+                                        className="text-stone-500 hover:text-red-400"
+                                        data-testid={`button-delete-ca-wound-${w.id}`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-1">
+                                      <Button type="button" variant="outline" size="sm" className="h-6 text-[10px]" onClick={cancelEditingCAWound} data-testid={`button-cancel-ca-wound-${w.id}`}>Cancel</Button>
+                                      <Button type="button" size="sm" className="h-6 text-[10px]" onClick={saveCAWoundDraft} data-testid={`button-save-ca-wound-${w.id}`}>Save</Button>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              // Read-only summary — the resting state for every wound: name,
+                              // description, and effect bullets, no editable fields until
+                              // Edit is pressed.
                               return (
                                 <div
                                   key={w.id}
-                                  className={`rounded border p-2 space-y-1.5 bg-stone-900/50 ${severityBorder[w.severity]} ${w.treated ? 'opacity-60' : ''}`}
+                                  className={`rounded border p-2 space-y-1 bg-stone-900/50 cursor-pointer ${severityBorder[w.severity]} ${w.treated ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-amber-400' : ''}`}
+                                  onClick={() => setSelectedCAWoundId(w.id)}
                                   data-testid={`card-ca-wound-${w.id}`}
                                 >
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1.5 w-full text-left"
-                                    onClick={() => setSelectedCAWoundId(expanded ? null : w.id)}
-                                    data-testid={`button-toggle-ca-wound-${w.id}`}
-                                  >
-                                    {expanded ? <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" /> : <ChevronRight className="h-3 w-3 text-stone-500 shrink-0" />}
+                                  <div className="flex items-center gap-1.5">
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${severityDot[w.severity]}`} />
-                                    <span className="text-xs font-semibold text-stone-200 truncate">{w.name || 'Unnamed Wound'}</span>
-                                    <span className="text-[10px] text-stone-500 ml-auto shrink-0">
+                                    <span className="text-xs font-semibold text-stone-200 truncate flex-1">{w.name || 'Unnamed Wound'}</span>
+                                    <span className="text-[10px] text-stone-500 shrink-0">
                                       {CA_WOUND_SEVERITY_LABELS[w.severity].toUpperCase()} {CA_WOUND_SEVERITY_COST[w.severity]}
                                     </span>
-                                  </button>
-                                  {!expanded && w.description && (
-                                    <p className="text-[10px] text-stone-500 pl-4 truncate">{w.description}</p>
-                                  )}
-                                  {expanded && (
-                                    <div className="space-y-1.5 pl-4">
-                                      <Input
-                                        defaultValue={w.name}
-                                        onBlur={(e) => updateCAWound(w.id, { name: e.target.value })}
-                                        disabled={!canEditWounds}
-                                        placeholder="Wound name..."
-                                        className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
-                                        data-testid={`input-ca-wound-${w.id}-name`}
-                                      />
-                                      <Select
-                                        value={w.severity}
-                                        onValueChange={(v) => updateCAWound(w.id, { severity: v as CAWoundSeverity })}
-                                        disabled={!canEditWounds}
+                                    {canEditWounds && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); startEditingCAWound(w); }}
+                                        className="text-stone-500 hover:text-amber-400 shrink-0"
+                                        data-testid={`button-edit-ca-wound-${w.id}`}
                                       >
-                                        <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700" data-testid={`select-ca-wound-${w.id}-severity`}>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {CA_WOUND_SEVERITIES.map((sev) => (
-                                            <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      <Textarea
-                                        defaultValue={w.description}
-                                        onBlur={(e) => updateCAWound(w.id, { description: e.target.value })}
-                                        disabled={!canEditWounds}
-                                        placeholder="Injury description..."
-                                        className="bg-stone-800 border-stone-700 text-stone-200 text-xs min-h-[36px]"
-                                        data-testid={`textarea-ca-wound-${w.id}-description`}
-                                      />
-                                      <div className="space-y-1">
-                                        {w.effects.map((eff) => (
-                                          <div key={eff.id} className="flex items-start gap-1 text-xs text-stone-300">
-                                            <span className="text-stone-500 shrink-0">•</span>
-                                            <span className="flex-1">
-                                              {eff.description || <span className="text-stone-600 italic">No description</span>}
-                                              {eff.target && (
-                                                <span className="text-stone-500 ml-1">
-                                                  ({caWoundEffectTargetLabel(eff.target)} {eff.amount >= 0 ? '+' : ''}{eff.amount})
-                                                </span>
-                                              )}
-                                            </span>
-                                            {canEditWounds && (
-                                              <div className="flex items-center gap-1 shrink-0">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setEditingCAWoundEffect({ woundId: w.id, effect: eff })}
-                                                  className="text-stone-500 hover:text-amber-400"
-                                                  data-testid={`button-edit-ca-wound-${w.id}-effect-${eff.id}`}
-                                                >
-                                                  <Pencil className="h-3 w-3" />
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => removeCAWoundEffect(w.id, eff.id)}
-                                                  className="text-stone-500 hover:text-red-400"
-                                                  data-testid={`button-remove-ca-wound-${w.id}-effect-${eff.id}`}
-                                                >
-                                                  <X className="h-3 w-3" />
-                                                </button>
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
-                                        {canEditWounds && (
-                                          <button
-                                            type="button"
-                                            className="text-[10px] text-amber-500 hover:text-amber-400"
-                                            onClick={() => setEditingCAWoundEffect({ woundId: w.id, effect: makeCAWoundEffect() })}
-                                            data-testid={`button-add-ca-wound-${w.id}-effect`}
-                                          >
-                                            + Add Effect
-                                          </button>
-                                        )}
-                                      </div>
-                                      {canEditWounds && (
-                                        <div className="flex items-center gap-2 pt-1">
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-6 text-[10px] flex-1"
-                                            onClick={() => toggleCAWoundTreated(w.id)}
-                                            data-testid={`button-treat-ca-wound-${w.id}`}
-                                          >
-                                            {w.treated ? 'Mark Untreated' : 'Treat Wound'}
-                                          </Button>
-                                          <button
-                                            type="button"
-                                            onClick={() => removeCAWound(w.id)}
-                                            className="text-stone-500 hover:text-red-400"
-                                            data-testid={`button-delete-ca-wound-${w.id}`}
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {w.description && (
+                                    <p className="text-[11px] text-stone-400 pl-3.5">{w.description}</p>
+                                  )}
+                                  {w.effects.length > 0 && (
+                                    <ul className="pl-3.5 space-y-0.5">
+                                      {w.effects.map((eff) => (
+                                        <li key={eff.id} className="text-[11px] text-stone-300 flex items-center gap-1">
+                                          <span className="text-stone-600">•</span>
+                                          <span>{caWoundEffectTargetLabel(eff.target)} {eff.amount >= 0 ? '+' : ''}{eff.amount}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
                                   )}
                                 </div>
                               );
@@ -21324,70 +21364,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 </CardContent>
               </Card>
-
-              {editingCAWoundEffect && (
-                <FloatingPanel
-                  open={!!editingCAWoundEffect}
-                  onClose={() => setEditingCAWoundEffect(null)}
-                  title={<span className="text-red-400">Wound Effect</span>}
-                  panelKey={`ca-wound-effect${charPanelSuffix}`}
-                  zIndex={floatingZIndices?.[`ca-wound-effect${charPanelSuffix}`] || 10200}
-                  onBringToFront={() => bringToFront?.(`ca-wound-effect${charPanelSuffix}`)}
-                  defaultSize={{ width: 420, height: 420 }}
-                  minWidth={320}
-                  minHeight={340}
-                >
-                  <div className="p-4 space-y-3">
-                    <div>
-                      <Label className="text-xs text-stone-400">Description</Label>
-                      <Textarea
-                        value={editingCAWoundEffect.effect.description}
-                        onChange={(e) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, description: e.target.value } } : prev)}
-                        placeholder="Describe the effect..."
-                        className="bg-stone-800 border-stone-700 text-stone-200 text-sm min-h-[70px]"
-                        data-testid="textarea-ca-wound-effect-description"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-400">Apply to Skill/Stat (optional)</Label>
-                      <Select
-                        value={editingCAWoundEffect.effect.target ?? '_none'}
-                        onValueChange={(v) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, target: v === '_none' ? null : v, amount: v === '_none' ? 0 : prev.effect.amount } } : prev)}
-                      >
-                        <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-ca-wound-effect-target">
-                          <SelectValue placeholder="No stat effect" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_none">No stat effect</SelectItem>
-                          <SelectGroup>
-                            <SelectLabel>Movement</SelectLabel>
-                            {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
-                          </SelectGroup>
-                          <SelectGroup>
-                            <SelectLabel>Skills</SelectLabel>
-                            {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {editingCAWoundEffect.effect.target && (
-                      <div>
-                        <Label className="text-xs text-stone-400">Amount</Label>
-                        <NumberInput
-                          value={editingCAWoundEffect.effect.amount}
-                          onChange={(v) => setEditingCAWoundEffect((prev) => prev ? { ...prev, effect: { ...prev.effect, amount: v ?? 0 } } : prev)}
-                          className="bg-stone-800 border-stone-700 text-stone-200"
-                          data-testid="input-ca-wound-effect-amount"
-                        />
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingCAWoundEffect(null)} data-testid="button-cancel-ca-wound-effect">Cancel</Button>
-                      <Button type="button" size="sm" onClick={saveCAWoundEffect} data-testid="button-save-ca-wound-effect">Save</Button>
-                    </div>
-                  </div>
-                </FloatingPanel>
-              )}
 
               <Card className="bg-stone-800 border-stone-700">
                 <CardHeader className="pb-2">
