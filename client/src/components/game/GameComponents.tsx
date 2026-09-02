@@ -9702,9 +9702,9 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   const getColorClasses = (color: string, isActive: boolean) => {
     const colorClasses: Record<string, string> = {
       stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
-      red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
-      purple: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
-      amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
+      red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-red-900/50 hover:text-red-400',
+      purple: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-amber-900/50 hover:text-amber-400',
+      amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-amber-900/50 hover:text-amber-400',
     };
     return colorClasses[color] || colorClasses.stone;
   };
