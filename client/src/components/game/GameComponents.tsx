@@ -11250,10 +11250,16 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // Mobile: a tap locks the last-roll strip visible (no hover on touch), and
   // stays that way until the next tap anywhere outside the chip.
   const [tapLocked, setTapLocked] = useState(false);
+  // A new roll cycles a fake random number in the total's place for a beat
+  // before settling on the real total, like a die still tumbling.
+  const [rolling, setRolling] = useState(false);
+  const [rollDisplay, setRollDisplay] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rollAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Seeded with whatever roll is already latest on mount (e.g. hydrated
   // history after a reload) so it's treated as already-seen - only a roll
   // that arrives *after* mount should trigger the glow/reveal-then-fade
@@ -11296,11 +11302,31 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     hideTimerRef.current = setTimeout(() => {
       if (!hoveringRef.current) setRevealed(false);
     }, 3200);
+
+    // Tumble a fake number in the total's spot for a beat before settling
+    // on the real one, so the reveal feels like an actual roll landing.
+    if (latest.total !== null) {
+      setRolling(true);
+      setRollDisplay(1 + Math.floor(Math.random() * 20));
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      rollIntervalRef.current = setInterval(() => {
+        setRollDisplay(1 + Math.floor(Math.random() * 20));
+      }, 80);
+      if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
+      rollAnimTimeoutRef.current = setTimeout(() => {
+        if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+        setRolling(false);
+      }, 1000);
+    } else {
+      setRolling(false);
+    }
   }, [latest?.id]);
 
   useEffect(() => () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+    if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
   }, []);
 
   const isCA = campaignSystem === 'ca';
@@ -11416,7 +11442,9 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
                   } : {}),
                 }}
               >
-                {latest ? (latest.total ?? '') : ''}
+                <span className={rolling ? 'animate-pulse' : ''}>
+                  {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}
+                </span>
               </div>
             </button>
           </PopoverTrigger>
@@ -11510,27 +11538,39 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         </button>
       </div>
 
-      <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-[70px] h-[70px] rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-0.5 px-1 transition-[opacity,box-shadow] duration-200"
-            style={{
-              backgroundColor: 'rgba(19, 20, 28, 0.95)',
-              borderColor,
-              boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
-              opacity: visible ? 1 : 0,
-              pointerEvents: visible ? 'auto' : 'none',
-            }}
-            data-testid={`pinned-roll-${testId}`}
-          >
-            <div className="text-[8px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
-            <div className="text-lg font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
-          </button>
-        </PopoverTrigger>
-        {historyPopoverContent}
-      </Popover>
+      {/* Clipped to the revealed height so the card looks like it's sliding
+          out from underneath the tracker card above, instead of fading in
+          in place. */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 top-full overflow-hidden z-10 transition-[height] duration-300 ease-out"
+        style={{
+          width: '185px',
+          height: visible ? '78px' : '0px',
+          pointerEvents: visible ? 'auto' : 'none',
+        }}
+      >
+        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
+              className="mt-2 w-[185px] h-[70px] rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
+              style={{
+                backgroundColor: 'rgba(19, 20, 28, 0.95)',
+                borderColor,
+                boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
+              }}
+              data-testid={`pinned-roll-${testId}`}
+            >
+              <div className="text-[9px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
+              <div className={`text-xl font-bold leading-tight ${rolling ? 'animate-pulse' : ''}`} style={{ color: borderColor }}>
+                {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}
+              </div>
+            </button>
+          </PopoverTrigger>
+          {historyPopoverContent}
+        </Popover>
+      </div>
     </div>
   );
 }
