@@ -54,7 +54,7 @@ const TYPE_ICONS: Record<GlobalSearchResultType, any> = {
 const TYPE_COLORS: Record<GlobalSearchResultType, string> = {
   note: "text-blue-400",
   item: "text-emerald-400",
-  spell: "text-violet-400",
+  spell: "text-amber-400",
   character: "text-amber-400",
   article: "text-cyan-400",
 };

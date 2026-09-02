@@ -125,7 +125,7 @@ export function V3SpellDetailDialog({
       open={open}
       onClose={handleClose}
       title={
-        <span className="flex items-center gap-2 text-purple-300">
+        <span className="flex items-center gap-2 text-amber-300">
           <Sparkles className="h-4 w-4 shrink-0" />
           <span className="truncate">{spell.name || (awaiting ? "Unnamed spell" : "Spell")}</span>
         </span>
@@ -155,7 +155,7 @@ export function V3SpellDetailDialog({
         {comp && (
           <div className="space-y-1 border-t border-stone-700 pt-2">
             {comp.core && (
-              <p className="text-xs"><span className="text-stone-500">Core:</span> <span className="text-purple-300">{V3_ELEMENT_MAP[comp.core]?.name ?? comp.core}</span></p>
+              <p className="text-xs"><span className="text-stone-500">Core:</span> <span className="text-amber-300">{V3_ELEMENT_MAP[comp.core]?.name ?? comp.core}</span></p>
             )}
             {comp.secondaries && comp.secondaries.length > 0 && (
               <p className="text-xs">
@@ -197,7 +197,7 @@ export function V3SpellDetailDialog({
             )}
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase tracking-wide text-stone-500">Cast Level</span>
-              <span className="flex items-center gap-1 text-purple-300 font-semibold" data-testid="text-v3-dice-readout">
+              <span className="flex items-center gap-1 text-amber-300 font-semibold" data-testid="text-v3-dice-readout">
                 <Dices className="h-4 w-4" /> {diceLabel}
               </span>
             </div>
@@ -243,7 +243,7 @@ export function V3SpellDetailDialog({
             )}
             <Button
               type="button"
-              className="w-full bg-purple-700 hover:bg-purple-600 text-white"
+              className="w-full bg-amber-700 hover:bg-amber-600 text-white"
               onClick={handleCast}
               data-testid="button-v3-roll-spell"
             >
@@ -325,13 +325,13 @@ export function SpellbookPanel({
     >
       <Tabs defaultValue="spells" className="flex flex-col h-full">
         <TabsList className="grid grid-cols-3 bg-stone-950 border-b border-stone-700 shrink-0 rounded-none">
-          <TabsTrigger value="spells" data-testid="tab-spellbook-spells" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
+          <TabsTrigger value="spells" data-testid="tab-spellbook-spells" className="data-[state=active]:bg-amber-900/60 data-[state=active]:text-amber-200">
             <BookOpen className="h-4 w-4 mr-2" /> Spells
           </TabsTrigger>
-          <TabsTrigger value="builder" data-testid="tab-spellbook-builder" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
+          <TabsTrigger value="builder" data-testid="tab-spellbook-builder" className="data-[state=active]:bg-amber-900/60 data-[state=active]:text-amber-200">
             <Wand2 className="h-4 w-4 mr-2" /> Builder
           </TabsTrigger>
-          <TabsTrigger value="info" data-testid="tab-spellbook-info" className="data-[state=active]:bg-purple-900/60 data-[state=active]:text-purple-200">
+          <TabsTrigger value="info" data-testid="tab-spellbook-info" className="data-[state=active]:bg-amber-900/60 data-[state=active]:text-amber-200">
             <Info className="h-4 w-4 mr-2" /> Item Info
           </TabsTrigger>
         </TabsList>
@@ -352,7 +352,7 @@ export function SpellbookPanel({
                 return (
                   <div
                     key={spell.id}
-                    className="bg-stone-900 rounded-lg p-3 border border-stone-700 cursor-pointer hover:border-purple-600 hover:bg-stone-800/60 transition-colors"
+                    className="bg-stone-900 rounded-lg p-3 border border-stone-700 cursor-pointer hover:border-amber-600 hover:bg-stone-800/60 transition-colors"
                     onClick={() => setDetailSpellId(spell.id)}
                     data-testid={`spellbook-spell-${spell.id}`}
                   >
@@ -361,7 +361,7 @@ export function SpellbookPanel({
                         {spell.image ? (
                           <img src={spell.image} alt={spell.name} className="w-full h-full object-cover rounded" />
                         ) : (
-                          <Sparkles className="h-6 w-6 text-purple-400" />
+                          <Sparkles className="h-6 w-6 text-amber-400" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -433,7 +433,7 @@ export function SpellbookPanel({
                   <span className="text-xs text-stone-400 block">Rarity</span>
                   <p className={`capitalize font-medium ${
                     item.rarity === 'legendary' ? 'text-amber-400' :
-                    item.rarity === 'epic' ? 'text-purple-400' :
+                    item.rarity === 'epic' ? 'text-amber-400' :
                     item.rarity === 'rare' ? 'text-blue-400' :
                     item.rarity === 'uncommon' ? 'text-green-400' :
                     'text-stone-300'

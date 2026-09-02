@@ -30,7 +30,7 @@ const rarityColors: Record<string, string> = {
   common: "text-stone-400",
   uncommon: "text-green-400",
   rare: "text-blue-400",
-  epic: "text-purple-400",
+  epic: "text-amber-400",
   legendary: "text-amber-400",
 };
 
@@ -192,8 +192,8 @@ export function TemplateManager({ campaignId, campaignSystem }: TemplateManagerP
                 <div key={spell.id} className="bg-stone-800/50 border border-stone-700 rounded p-2" data-testid={`template-spell-${spell.id}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-6 h-6 rounded bg-purple-900/30 flex items-center justify-center shrink-0">
-                        <Sparkles className="w-3 h-3 text-purple-400" />
+                      <div className="w-6 h-6 rounded bg-amber-900/30 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
                       </div>
                       <div className="min-w-0">
                         <span className="text-xs font-medium truncate block text-stone-200">{spell.name}</span>

@@ -12,7 +12,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-display: 'LeagueSpartan', 'Cinzel', serif;
+  --font-display: 'Source Sans 3', 'LeagueSpartan', sans-serif;
   --font-medieval: 'MedievalSharp', cursive;
   --font-sans: 'Source Sans 3', sans-serif;
 
@@ -67,66 +67,66 @@
 }
 
 :root {
-  /* Arcane Library — the app's single fixed theme (deep indigo surfaces,
-     restrained violet magic, cool blue highlights, aged gold). */
-  --background: 235 19% 11%;
-  --foreground: 220 27% 96%;
-  --card: 234 20% 19%;
-  --card-foreground: 220 27% 96%;
-  --popover: 234 20% 19%;
-  --popover-foreground: 220 27% 96%;
-  --primary: 247 86% 69%;
+  /* Field Table — the app's single fixed theme (near-black slate surfaces,
+     a clean blue accent, per-player color instead of a decorative palette). */
+  --background: 227 24% 8%;
+  --foreground: 220 20% 95%;
+  --card: 226 22% 13%;
+  --card-foreground: 220 20% 95%;
+  --popover: 226 22% 13%;
+  --popover-foreground: 220 20% 95%;
+  --primary: 217 91% 60%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 246 33% 18%;
-  --secondary-foreground: 246 100% 87%;
-  --muted: 234 20% 19%;
-  --muted-foreground: 226 9% 50%;
-  --accent: 246 35% 35%;
-  --accent-foreground: 247 100% 91%;
-  --destructive: 352 44% 56%;
+  --secondary: 222 20% 16%;
+  --secondary-foreground: 217 91% 85%;
+  --muted: 226 22% 13%;
+  --muted-foreground: 222 10% 58%;
+  --accent: 217 40% 28%;
+  --accent-foreground: 217 91% 90%;
+  --destructive: 352 60% 52%;
   --destructive-foreground: 0 0% 98%;
-  --border: 231 17% 33%;
-  --input: 231 19% 14%;
-  --ring: 247 100% 77%;
+  --border: 222 16% 24%;
+  --input: 224 20% 11%;
+  --ring: 217 91% 65%;
 
-  --radius: 0.5rem;
+  --radius: 0.6rem;
 
-  --t-stone-50: #FAFBFD;
-  --t-stone-100: #F6F7FA;
-  --t-stone-200: #F1F3F7;
-  --t-stone-300: #C6CAD6;
-  --t-stone-400: #AEB3C2;
-  --t-stone-500: #74798A;
-  --t-stone-600: #5A5E78;
-  --t-stone-700: #454961;
-  --t-stone-800: #27293A;
-  --t-stone-900: #171822;
-  --t-stone-950: #10111A;
-  --t-amber-50: #F5F3FF;
-  --t-amber-100: #EAE7FF;
-  --t-amber-200: #D8D3FF;
-  --t-amber-300: #C2BBFF;
-  --t-amber-400: #ACA2FF;
-  --t-amber-500: #9588FF;
-  --t-amber-600: #877AF7;
-  --t-amber-700: #7C6CF4;
-  --t-amber-800: #4F4898;
-  --t-amber-900: #403A78;
-  --t-amber-950: #221F3D;
-  --theme-background: #171822;
-  --theme-background-secondary: #1D1F2B;
-  --theme-surface: #27293A;
-  --theme-surface-raised: #303348;
-  --theme-border: #454961;
-  --theme-primary: #7C6CF4;
-  --theme-primary-hover: #9588FF;
-  --theme-primary-muted: #403A78;
-  --theme-text-primary: #F1F3F7;
-  --theme-text-secondary: #AEB3C2;
-  --theme-text-disabled: #74798A;
-  --theme-success: #61A77A;
+  --t-stone-50: #F8F9FB;
+  --t-stone-100: #F1F3F6;
+  --t-stone-200: #E4E7ED;
+  --t-stone-300: #C4C9D4;
+  --t-stone-400: #9AA1B2;
+  --t-stone-500: #6C7386;
+  --t-stone-600: #4C5265;
+  --t-stone-700: #363B4C;
+  --t-stone-800: #1F2230;
+  --t-stone-900: #13141C;
+  --t-stone-950: #0B0C11;
+  --t-amber-50: #EAF2FF;
+  --t-amber-100: #D6E4FF;
+  --t-amber-200: #B0CBFF;
+  --t-amber-300: #86AEFF;
+  --t-amber-400: #5C90FA;
+  --t-amber-500: #3D77F0;
+  --t-amber-600: #2F63D6;
+  --t-amber-700: #2851B3;
+  --t-amber-800: #1E3E8C;
+  --t-amber-900: #1A3270;
+  --t-amber-950: #0F1E48;
+  --theme-background: #13141C;
+  --theme-background-secondary: #1A1C27;
+  --theme-surface: #1F2230;
+  --theme-surface-raised: #272B3C;
+  --theme-border: #363B4C;
+  --theme-primary: #3D77F0;
+  --theme-primary-hover: #5C90FA;
+  --theme-primary-muted: #1A3270;
+  --theme-text-primary: #E4E7ED;
+  --theme-text-secondary: #9AA1B2;
+  --theme-text-disabled: #6C7386;
+  --theme-success: #4CAF7D;
   --theme-warning: #D6A04C;
-  --theme-danger: #C05C69;
+  --theme-danger: #E0566B;
   --theme-info: #5EC3FF;
 }
 
@@ -186,7 +186,7 @@
   
   body {
     @apply font-sans antialiased bg-background text-foreground selection:bg-primary/30;
-    background-image: radial-gradient(circle at center, hsl(24 10% 12%), hsl(24 12% 7%));
+    background-image: radial-gradient(circle at center, hsl(227 22% 10%), hsl(227 26% 6%));
     min-height: 100%;
     /* Prevent overscroll bounce on iOS */
     overscroll-behavior: none;

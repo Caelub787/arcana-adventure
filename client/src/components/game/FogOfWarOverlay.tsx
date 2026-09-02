@@ -2489,7 +2489,7 @@ function VisionZonesList({ sceneId }: { sceneId: string }) {
         <div key={zone.id} className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1 min-w-0">
             {zone.mode === 'indoor' ? (
-              <Moon className="h-3 w-3 text-purple-400 flex-shrink-0" />
+              <Moon className="h-3 w-3 text-amber-400 flex-shrink-0" />
             ) : (
               <Sun className="h-3 w-3 text-amber-400 flex-shrink-0" />
             )}
@@ -2829,7 +2829,7 @@ export function FogToolsPanel({
           <Button
             variant="outline"
             size="sm"
-            className={`h-7 w-full text-xs ${gmSeeAllVision ? 'bg-purple-900/50 border-purple-600 text-purple-300' : 'border-stone-600 text-stone-400'}`}
+            className={`h-7 w-full text-xs ${gmSeeAllVision ? 'bg-amber-900/50 border-amber-600 text-amber-300' : 'border-stone-600 text-stone-400'}`}
             onClick={() => onGmSeeAllVisionChange?.(!gmSeeAllVision)}
             data-testid="toggle-gm-see-all-vision"
           >
@@ -2861,7 +2861,7 @@ export function FogToolsPanel({
             size="sm"
             className={isDayTime
               ? 'h-7 border-amber-600 text-amber-300 text-xs'
-              : 'h-7 border-purple-600 text-purple-300 text-xs'}
+              : 'h-7 border-amber-600 text-amber-300 text-xs'}
             onClick={() => updateSceneMutation.mutate({ isDayTime: !isDayTime })}
             data-testid="toggle-day-night"
           >
@@ -3130,7 +3130,7 @@ export function FogToolsPanel({
                   variant={selectedZoneMode === 'indoor' ? 'default' : 'ghost'}
                   size="sm"
                   className={selectedZoneMode === 'indoor'
-                    ? 'h-6 text-[10px] bg-purple-600 text-white'
+                    ? 'h-6 text-[10px] bg-amber-600 text-white'
                     : 'h-6 text-[10px] text-stone-400 hover:text-white'}
                   onClick={() => setSelectedZoneMode?.('indoor')}
                   data-testid="zone-mode-indoor"

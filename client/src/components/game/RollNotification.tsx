@@ -59,7 +59,7 @@ const ROLL_COLORS = {
   initiative: 'from-amber-500 to-orange-600',
   attack: 'from-red-500 to-rose-600',
   skill: 'from-green-500 to-emerald-600',
-  save: 'from-purple-500 to-violet-600',
+  save: 'from-amber-500 to-amber-600',
   custom: 'from-pink-500 to-fuchsia-600',
   system: 'from-stone-500 to-stone-600',
   effect: 'from-orange-500 to-red-600',
@@ -69,7 +69,7 @@ const DIE_COLORS: Partial<Record<DieType, string>> = {
   d4: 'from-red-500 to-red-700',
   d6: 'from-blue-500 to-blue-700',
   d8: 'from-green-500 to-green-700',
-  d10: 'from-purple-500 to-purple-700',
+  d10: 'from-amber-500 to-amber-700',
   d12: 'from-orange-500 to-orange-700',
   d20: 'from-cyan-500 to-cyan-700',
 };

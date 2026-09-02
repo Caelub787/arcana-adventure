@@ -60,7 +60,7 @@ function getEntityIcon(type: string) {
 function getEntityColor(type: string) {
   switch (type) {
     case "spell":
-      return "bg-purple-900/50 text-purple-300 border-purple-700";
+      return "bg-amber-900/50 text-amber-300 border-amber-700";
     case "item":
       return "bg-amber-900/50 text-amber-300 border-amber-700";
     case "trait":

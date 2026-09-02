@@ -958,9 +958,9 @@ function RollForm({
           />
           {form.requiresMana && (
             <div className="mt-2">
-              <Label className="text-xs text-violet-400">Mana Cost</Label>
+              <Label className="text-xs text-amber-400">Mana Cost</Label>
               <NumberInput
-                className="bg-stone-900 border-violet-700 h-7 text-xs"
+                className="bg-stone-900 border-amber-700 h-7 text-xs"
                 value={form.manaCost ?? undefined}
                 onChange={(v) => setForm((f) => ({ ...f, manaCost: v }))}
                 optional
@@ -1736,7 +1736,7 @@ const RollCard = React.memo(function RollCard({
                       <span
                         className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
                           (roll as any).isOverridden
-                            ? 'bg-violet-900/60 text-violet-200 border border-violet-700/50'
+                            ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50'
                             : 'bg-amber-900/60 text-amber-300 border border-amber-700/50'
                         }`}
                         title={
@@ -1760,7 +1760,7 @@ const RollCard = React.memo(function RollCard({
                       <span className="text-[10px] text-cyan-400 shrink-0">{roll.energyCost}E</span>
                     )}
                     {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.requiresMana && roll.manaCost > 0 && (
-                      <span className="text-[10px] text-violet-400 shrink-0">{roll.manaCost}M</span>
+                      <span className="text-[10px] text-amber-400 shrink-0">{roll.manaCost}M</span>
                     )}
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
@@ -1870,12 +1870,12 @@ const RollCard = React.memo(function RollCard({
                     {roll.isAttack && <p className="text-[10px] text-stone-400">Attack roll</p>}
                     {roll.gainEnergy && <p className="text-[10px] text-stone-400">Gains energy</p>}
                     {roll.passesThroughWalls && <p className="text-[10px] text-stone-400">Passes through walls</p>}
-                    {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
+                    {roll.noRoll && <span className="text-[10px] text-amber-400">No Roll</span>}
                     {roll.energyCost > 0 && <span className="text-[10px] text-cyan-400">Energy Cost: {roll.energyCost}</span>}
-                    {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.manaCost > 0 && <span className="text-[10px] text-violet-400">Mana Cost: {roll.manaCost}</span>}
+                    {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.manaCost > 0 && <span className="text-[10px] text-amber-400">Mana Cost: {roll.manaCost}</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">Chat Message</span>}
                     {roll.applyTokenEffects && (
-                      <p className="text-[10px] text-violet-400">
+                      <p className="text-[10px] text-amber-400">
                         Applies effects ({roll.effectTriggerCondition || 'always'})
                       </p>
                     )}

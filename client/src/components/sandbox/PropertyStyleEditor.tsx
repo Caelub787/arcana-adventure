@@ -172,7 +172,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-full py-1.5 px-1 text-xs font-semibold text-purple-300 hover:text-purple-200 transition-colors"
+        className="flex items-center gap-1.5 w-full py-1.5 px-1 text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors"
         data-testid={`section-toggle-${title.toLowerCase().replace(/\s+/g, "-")}`}
       >
         {open ? (
@@ -308,7 +308,7 @@ function GradientEditor({
             onChange={(e) =>
               onChange({ ...gradient, angle: parseInt(e.target.value) })
             }
-            className="w-full accent-purple-500 h-1.5"
+            className="w-full accent-amber-500 h-1.5"
             data-testid={`${testIdPrefix}-angle`}
           />
         </div>
@@ -333,7 +333,7 @@ function GradientEditor({
               onChange={(e) =>
                 updateStop(index, { position: parseInt(e.target.value) })
               }
-              className="flex-1 accent-purple-500 h-1.5"
+              className="flex-1 accent-amber-500 h-1.5"
               data-testid={`${testIdPrefix}-stop-${index}-position`}
             />
             <span className="text-xs text-stone-500 w-8 text-right shrink-0">
@@ -504,7 +504,7 @@ export function PropertyStyleEditor({
               };
               update({ border: { ...current, enabled: e.target.checked } });
             }}
-            className="h-4 w-4 rounded border-stone-600 accent-purple-500"
+            className="h-4 w-4 rounded border-stone-600 accent-amber-500"
             data-testid="border-enable"
           />
           <Label className="text-stone-400 text-xs">Enable Border</Label>
@@ -660,7 +660,7 @@ export function PropertyStyleEditor({
             onChange={(e) =>
               update({ opacity: parseInt(e.target.value) / 100 })
             }
-            className="w-full accent-purple-500 h-1.5"
+            className="w-full accent-amber-500 h-1.5"
             data-testid="opacity-slider"
           />
         </div>

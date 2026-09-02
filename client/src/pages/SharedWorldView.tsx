@@ -198,7 +198,7 @@ function SharedArticlePreview({ content, entities, onEntityClick }: { content: s
       map: "text-emerald-400 hover:text-emerald-300",
       character: "text-blue-400 hover:text-blue-300",
       item: "text-orange-400 hover:text-orange-300",
-      spell: "text-purple-400 hover:text-purple-300",
+      spell: "text-amber-400 hover:text-amber-300",
     };
     const linkedEntity = entities.find(e => e.id === refId);
     parts.push(
@@ -1196,7 +1196,7 @@ export default function SharedWorldView() {
                   )}
                   {timelineEvents.length > 0 && (
                     <div className="flex items-center gap-2 text-stone-400">
-                      <Clock className="h-3.5 w-3.5 text-purple-500/70" />
+                      <Clock className="h-3.5 w-3.5 text-amber-500/70" />
                       <span className="text-xs font-medium">{timelineEvents.length} Events</span>
                     </div>
                   )}
@@ -1289,23 +1289,23 @@ export default function SharedWorldView() {
                       {timelineEvents.length > 0 && (
                         <button
                           onClick={() => { setActiveSection("timeline"); setSelectedEntityId(null); }}
-                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-purple-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-purple-500/5"
+                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-amber-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-amber-500/5"
                           data-testid="home-card-timeline"
                         >
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-purple-500/5 to-transparent rounded-bl-full" />
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-amber-500/5 to-transparent rounded-bl-full" />
                           <div className="relative z-10">
                             <div className="flex items-center gap-3 mb-3">
-                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/10 flex items-center justify-center border border-purple-500/20">
-                                <Clock className="h-5 w-5 text-purple-400" />
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
+                                <Clock className="h-5 w-5 text-amber-400" />
                               </div>
                               <div>
-                                <div className="text-base font-semibold text-stone-100 group-hover:text-purple-300 transition-colors">Timeline</div>
+                                <div className="text-base font-semibold text-stone-100 group-hover:text-amber-300 transition-colors">Timeline</div>
                                 <div className="text-xs text-stone-500">{timelineEvents.length} {timelineEvents.length === 1 ? 'event' : 'events'} recorded</div>
                               </div>
                             </div>
                             <p className="text-xs text-stone-500 leading-relaxed">Trace the history of this world through ages, eras, and defining moments.</p>
                           </div>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
                         </button>
                       )}
                     </div>

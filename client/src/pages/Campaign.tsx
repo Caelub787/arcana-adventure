@@ -1074,13 +1074,13 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
             const rollTotal = isRoll ? parseRollTotal(msg.text) : null;
             const isMe = msg.userId === user?.id;
             return (
-              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''} ${isWhisper ? 'bg-purple-900/20 border border-purple-800/30 rounded-lg p-2' : ''}`}>
+              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''} ${isWhisper ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''}`}>
                 <div className="flex items-start gap-2">
-                  <span className={`text-xs font-bold shrink-0 ${isWhisper ? 'text-purple-400' : isMe ? 'text-amber-400' : 'text-stone-400'}`}>
+                  <span className={`text-xs font-bold shrink-0 ${isWhisper ? 'text-amber-400' : isMe ? 'text-amber-400' : 'text-stone-400'}`}>
                     {msg.sender}
                   </span>
                   {isWhisper && (
-                    <span className="text-[10px] text-purple-400/70 shrink-0">
+                    <span className="text-[10px] text-amber-400/70 shrink-0">
                       {isMe ? `to ${msg.recipientName || 'someone'}` : 'whispers'}
                     </span>
                   )}
@@ -1088,7 +1088,7 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : isWhisper ? 'text-purple-200 italic' : 'text-stone-300'}`}>
+                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : isWhisper ? 'text-amber-200 italic' : 'text-stone-300'}`}>
                   {msg.text}
                   {rollTotal !== null && (
                     <span className="ml-2 text-amber-400 font-bold">({rollTotal})</span>
@@ -1117,7 +1117,7 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
             ))}
           </select>
           {chatTarget !== 'all' && (
-            <span className="text-[10px] text-purple-400">Private</span>
+            <span className="text-[10px] text-amber-400">Private</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -1125,7 +1125,7 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder={chatTarget !== 'all' ? "Private message..." : "Type a message or /roll 1d20..."}
-            className={`h-9 text-sm ${chatTarget !== 'all' ? 'bg-purple-900/20 border-purple-700 text-purple-200' : 'bg-stone-800 border-stone-700 text-stone-200'}`}
+            className={`h-9 text-sm ${chatTarget !== 'all' ? 'bg-amber-900/20 border-amber-700 text-amber-200' : 'bg-stone-800 border-stone-700 text-stone-200'}`}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             data-testid="input-chat-message"
           />
@@ -1133,7 +1133,7 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
             size="sm"
             onClick={handleSend}
             disabled={!message.trim()}
-            className={`h-9 ${chatTarget !== 'all' ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
+            className={`h-9 ${chatTarget !== 'all' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
             data-testid="button-send-chat"
           >
             <Send className="h-4 w-4" />
@@ -2125,14 +2125,14 @@ function SandboxSheetEditor({
     return (
       <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
-          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+          <span className="text-amber-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
             {prop.label}
             {prop.calculationExpression && <span className="ml-1 text-amber-500 text-[8px] font-mono bg-amber-900/30 px-0.5 rounded">fx</span>}
           </span>
         )}
         <div className="flex-1 min-w-0">
           {prop.type === 'boolean' ? (
-            <div className="flex items-center"><input type="checkbox" disabled className="h-4 w-4 accent-purple-600" /></div>
+            <div className="flex items-center"><input type="checkbox" disabled className="h-4 w-4 accent-amber-600" /></div>
           ) : prop.type === 'list' ? (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>Select ▾</div>
           ) : prop.type === 'resource' ? (
@@ -2210,15 +2210,15 @@ function SandboxSheetEditor({
           >
             <div
               className={`w-full h-full rounded cursor-grab active:cursor-grabbing transition-colors ${
-                isSelected ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-900/20' : ''
-              } ${!prop.style?.backgroundColor && !prop.style?.backgroundGradient?.enabled ? (isSelected ? 'bg-purple-900/20 border border-purple-400' : 'border border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70') : (isSelected ? 'border border-purple-400' : '')}`}
+                isSelected ? 'ring-2 ring-amber-400 shadow-lg shadow-amber-900/20' : ''
+              } ${!prop.style?.backgroundColor && !prop.style?.backgroundGradient?.enabled ? (isSelected ? 'bg-amber-900/20 border border-amber-400' : 'border border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70') : (isSelected ? 'border border-amber-400' : '')}`}
               style={getPropertyCssStyle(prop.style)}
               data-testid={`button-select-property-${prop.key}`}
             >
               {renderFieldPreview(prop)}
             </div>
             <div
-              className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
+              className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-amber-500/40 hover:bg-amber-400/60 rounded-tl-sm"
               onPointerDown={(e) => handlePropResizeDown(e, prop)}
               data-testid={`resize-property-${prop.key}`}
             />
@@ -2276,7 +2276,7 @@ function SandboxSheetEditor({
               {sectionProps.map((prop: any) => renderCanvasProperty(prop))}
               {childNodes.map((child: any) => renderLayoutNode(child))}
               <button
-                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                className="absolute w-5 h-5 rounded bg-amber-700/60 hover:bg-amber-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2352,7 +2352,7 @@ function SandboxSheetEditor({
                     />
                   ) : (
                     <button
-                      className={`${tabSizeClass} ${isVerticalTabs ? 'rounded-l w-full text-left' : 'rounded-t'} transition-colors ${isVerticalTabs ? 'border-r-2' : 'border-b-2'} ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
+                      className={`${tabSizeClass} ${isVerticalTabs ? 'rounded-l w-full text-left' : 'rounded-t'} transition-colors ${isVerticalTabs ? 'border-r-2' : 'border-b-2'} ${activeChildId === child.id ? 'bg-amber-700/30 text-amber-300 border-amber-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
                       onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
                       onDoubleClick={() => setEditingSectionName(child.id)}
                       onContextMenu={(e) => {
@@ -2414,7 +2414,7 @@ function SandboxSheetEditor({
                     {activeChildChildren.map((child: any) => renderLayoutNode(child))}
                   <div className="absolute top-1 right-1 flex items-center gap-1 z-30">
                     <button
-                      className="w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100"
+                      className="w-5 h-5 rounded bg-amber-700/60 hover:bg-amber-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100"
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2476,7 +2476,7 @@ function SandboxSheetEditor({
                 {statProps.map((prop: any) => (
                   <div
                     key={prop.id}
-                    className={`flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded cursor-pointer border ${selectedPropertyId === prop.id ? 'border-purple-400 ring-1 ring-purple-400' : 'border-transparent hover:border-stone-600'}`}
+                    className={`flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded cursor-pointer border ${selectedPropertyId === prop.id ? 'border-amber-400 ring-1 ring-amber-400' : 'border-transparent hover:border-stone-600'}`}
                     onClick={(e) => { e.stopPropagation(); setSelectedPropertyId(prop.id); }}
                     onDoubleClick={(e) => {
                       e.preventDefault(); e.stopPropagation();
@@ -2498,7 +2498,7 @@ function SandboxSheetEditor({
               </div>
               {childNodes.map((child: any) => renderLayoutNode(child))}
               <button
-                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                className="absolute w-5 h-5 rounded bg-amber-700/60 hover:bg-amber-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2566,7 +2566,7 @@ function SandboxSheetEditor({
                 </div>
               )}
               <button
-                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                className="absolute w-5 h-5 rounded bg-amber-700/60 hover:bg-amber-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2631,7 +2631,7 @@ function SandboxSheetEditor({
               <Plus className="h-3 w-3" /> Add Layout Node
             </button>
             <button
-              className="text-xs bg-purple-700/60 hover:bg-purple-600 text-stone-300 px-2 py-1 rounded flex items-center gap-1"
+              className="text-xs bg-amber-700/60 hover:bg-amber-600 text-stone-300 px-2 py-1 rounded flex items-center gap-1"
               onClick={() => {
                 setContainerAddTarget(null);
                 resetNewPropState();
@@ -2747,7 +2747,7 @@ function SandboxSheetEditor({
 
                       {isTabNode && (
                         <>
-                          <button className="w-full text-left px-3 py-1.5 text-xs text-purple-400 hover:bg-stone-700" onClick={() => {
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-amber-400 hover:bg-stone-700" onClick={() => {
                             const tabChildren = layoutNodesList.filter((n: any) => n.parentId === ctxNode.id).sort((a: any, b: any) => a.order - b.order);
                             const newChildId = crypto.randomUUID();
                             const newChild: any = {
@@ -4286,12 +4286,12 @@ function SandboxSheetEditor({
             {item.type === 'actor' ? (
               <User className="h-5 w-5 text-amber-500" />
             ) : (
-              <ScrollText className="h-5 w-5 text-purple-400" />
+              <ScrollText className="h-5 w-5 text-amber-400" />
             )}
-            <h2 className={`font-bold text-lg ${item.type === 'actor' ? 'text-amber-400' : 'text-purple-400'}`}>
+            <h2 className={`font-bold text-lg ${item.type === 'actor' ? 'text-amber-400' : 'text-amber-400'}`}>
               {item.name}
             </h2>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-amber-400/60 bg-amber-900/20'}`}>
               {item.type === 'actor' ? 'Actor' : 'Template'}
             </span>
           </div>
@@ -4374,9 +4374,9 @@ function SandboxSheetEditor({
       style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex }}
       onMouseDown={onBringToFront}
     >
-      <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col h-full ${item.type === 'actor' ? 'border-amber-800/50' : 'border-purple-800/50'}`}>
+      <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col h-full ${item.type === 'actor' ? 'border-amber-800/50' : 'border-amber-800/50'}`}>
         <div 
-          className={`flex items-center justify-between px-3 py-2 cursor-move select-none shrink-0 ${item.type === 'actor' ? 'bg-amber-900/30 border-b border-amber-800/30' : 'bg-purple-900/30 border-b border-purple-800/30'}`}
+          className={`flex items-center justify-between px-3 py-2 cursor-move select-none shrink-0 ${item.type === 'actor' ? 'bg-amber-900/30 border-b border-amber-800/30' : 'bg-amber-900/30 border-b border-amber-800/30'}`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -4386,12 +4386,12 @@ function SandboxSheetEditor({
             {item.type === 'actor' ? (
               <User className="h-4 w-4 text-amber-500 shrink-0" />
             ) : (
-              <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
+              <ScrollText className="h-4 w-4 text-amber-400 shrink-0" />
             )}
-            <span className={`font-medium text-sm truncate ${item.type === 'actor' ? 'text-amber-300' : 'text-purple-300'}`}>
+            <span className={`font-medium text-sm truncate ${item.type === 'actor' ? 'text-amber-300' : 'text-amber-300'}`}>
               {item.type === 'actor' ? (actorValues.name || item.name) : item.name}
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-amber-400/60 bg-amber-900/20'}`}>
               {item.type === 'actor' ? 'Actor' : 'Template'}
             </span>
           </div>
@@ -4443,7 +4443,7 @@ function SandboxSheetEditor({
                 variant="ghost" 
                 size="icon" 
                 onClick={() => setShowTemplateSettings(!showTemplateSettings)} 
-                className={`h-6 w-6 text-stone-400 hover:text-white ${showTemplateSettings ? 'text-purple-400' : ''}`}
+                className={`h-6 w-6 text-stone-400 hover:text-white ${showTemplateSettings ? 'text-amber-400' : ''}`}
                 data-testid="button-template-settings"
               >
                 <Settings className="h-3.5 w-3.5" />
@@ -4497,7 +4497,7 @@ function SandboxSheetEditor({
             toast({ title: "Template settings saved" });
           };
           return (
-            <div className="px-4 py-3 border-b border-purple-800/30 bg-purple-900/10 space-y-2" data-testid="template-settings-panel">
+            <div className="px-4 py-3 border-b border-amber-800/30 bg-amber-900/10 space-y-2" data-testid="template-settings-panel">
               <div className="space-y-1.5">
                 <Label className="text-stone-400 text-xs">Default Width (280-900)</Label>
                 <Input
@@ -4535,7 +4535,7 @@ function SandboxSheetEditor({
                   onChange={(e) => {
                     saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 450, defaultHeight: currentSettings.defaultHeight || 550, allowResize: e.target.checked });
                   }}
-                  className="h-4 w-4 accent-purple-600"
+                  className="h-4 w-4 accent-amber-600"
                   data-testid="checkbox-template-allow-resize"
                 />
                 <Label className="text-stone-400 text-xs">Allow resize</Label>
@@ -4571,20 +4571,20 @@ function SandboxSheetEditor({
           onContextMenu={(e) => { e.preventDefault(); setPropContextMenu(null); }}
         >
           <div
-            className="fixed bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 py-1 min-w-[160px]"
+            className="fixed bg-stone-900 border border-amber-700/60 rounded-lg shadow-2xl shadow-black/50 py-1 min-w-[160px]"
             style={{ left: propContextMenu.x, top: propContextMenu.y }}
             onClick={(e) => e.stopPropagation()}
             data-testid="property-context-menu"
           >
             <button
-              className="w-full px-3 py-1.5 text-left text-xs text-stone-200 hover:bg-purple-800/30 flex items-center gap-2"
+              className="w-full px-3 py-1.5 text-left text-xs text-stone-200 hover:bg-amber-800/30 flex items-center gap-2"
               onClick={() => {
                 handleDuplicateProperty(propContextMenu.propId);
                 setPropContextMenu(null);
               }}
               data-testid="context-menu-duplicate"
             >
-              <Copy className="h-3 w-3 text-purple-400" /> Duplicate Property
+              <Copy className="h-3 w-3 text-amber-400" /> Duplicate Property
             </button>
             <button
               className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-red-900/20 flex items-center gap-2"
@@ -4607,14 +4607,14 @@ function SandboxSheetEditor({
           style={{ left: propSettingsPanelPos.x, top: propSettingsPanelPos.y, width: propSettingsPanelSize.width, height: propSettingsPanelSize.height }}
           data-testid="floating-property-settings"
         >
-          <div className="w-full h-full bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 flex flex-col overflow-hidden relative">
+          <div className="w-full h-full bg-stone-900 border border-amber-700/60 rounded-lg shadow-2xl shadow-black/50 flex flex-col overflow-hidden relative">
             <div
-              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-purple-800/40 cursor-grab active:cursor-grabbing shrink-0"
+              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-amber-800/40 cursor-grab active:cursor-grabbing shrink-0"
               onPointerDown={handleSettingsDragDown}
               onPointerMove={handleSettingsDragMove}
               onPointerUp={handleSettingsDragUp}
             >
-              <span className="text-xs font-medium text-purple-300">Property Settings</span>
+              <span className="text-xs font-medium text-amber-300">Property Settings</span>
               <Button variant="ghost" size="icon" onClick={() => { setPropSettingsOpen(false); setSelectedPropertyId(null); }} className="h-5 w-5 text-stone-500 hover:text-white" data-testid="button-close-property-settings">
                 <X className="h-3 w-3" />
               </Button>
@@ -4871,7 +4871,7 @@ function SandboxSheetEditor({
                       type="checkbox"
                       checked={selectedProperty.showBar ?? false}
                       onChange={(e) => updatePropertyLayout(selectedProperty.id, { showBar: e.target.checked })}
-                      className="h-3 w-3 accent-purple-600"
+                      className="h-3 w-3 accent-amber-600"
                       data-testid="checkbox-prop-showbar"
                     />
                     <Label className="text-stone-500 text-[10px]">Show Progress Bar</Label>
@@ -4881,7 +4881,7 @@ function SandboxSheetEditor({
                       type="checkbox"
                       checked={selectedProperty.allowOverMax ?? false}
                       onChange={(e) => updatePropertyLayout(selectedProperty.id, { allowOverMax: e.target.checked })}
-                      className="h-3 w-3 accent-purple-600"
+                      className="h-3 w-3 accent-amber-600"
                       data-testid="checkbox-prop-allowovermax"
                     />
                     <Label className="text-stone-500 text-[10px]">Allow Current to Exceed Max</Label>
@@ -4903,7 +4903,7 @@ function SandboxSheetEditor({
                       type="checkbox"
                       checked={selectedProperty.useGradient ?? false}
                       onChange={(e) => updatePropertyLayout(selectedProperty.id, { useGradient: e.target.checked })}
-                      className="h-3 w-3 accent-purple-600"
+                      className="h-3 w-3 accent-amber-600"
                       data-testid="checkbox-prop-usegradient"
                     />
                     <Label className="text-stone-500 text-[10px]">Gradient Color (Low → High)</Label>
@@ -4918,7 +4918,7 @@ function SandboxSheetEditor({
                             const current = selectedProperty.colorThresholds || [];
                             updatePropertyLayout(selectedProperty.id, { colorThresholds: [...current, { percent: 50, color: '#f59e0b' }] });
                           }}
-                          className="text-[9px] text-purple-400 hover:text-purple-300 px-1"
+                          className="text-[9px] text-amber-400 hover:text-amber-300 px-1"
                           data-testid="button-add-threshold"
                         >
                           + Add Threshold
@@ -5311,9 +5311,9 @@ function SandboxSheetEditor({
           data-testid="pfp-editor-panel"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 overflow-hidden">
+          <div className="bg-stone-900 border border-amber-700/60 rounded-lg shadow-2xl shadow-black/50 overflow-hidden">
             <div
-              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-purple-800/40 cursor-grab active:cursor-grabbing"
+              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-amber-800/40 cursor-grab active:cursor-grabbing"
               onPointerDown={(e) => {
                 e.preventDefault();
                 const el = e.currentTarget as HTMLElement;
@@ -5334,7 +5334,7 @@ function SandboxSheetEditor({
                 if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
               }}
             >
-              <span className="text-xs font-medium text-purple-300">Profile Picture</span>
+              <span className="text-xs font-medium text-amber-300">Profile Picture</span>
               <button
                 onClick={(e) => { e.stopPropagation(); setPfpEditorOpen(null); setPfpCropImage(null); }}
                 className="relative z-10 h-6 w-6 flex items-center justify-center rounded text-stone-400 hover:text-white hover:bg-stone-700 transition-colors"
@@ -5532,7 +5532,7 @@ function SandboxSheetEditor({
                     <Button
                       size="sm"
                       onClick={(e) => { e.stopPropagation(); pfpFileInputRef.current?.click(); }}
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs"
+                      className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-7 text-xs"
                       data-testid="button-pfp-upload"
                     >
                       <Upload className="h-3 w-3 mr-1" /> Upload
@@ -5541,7 +5541,7 @@ function SandboxSheetEditor({
                       size="sm"
                       variant="outline"
                       onClick={(e) => { e.stopPropagation(); setPfpImageBrowserOpen(true); }}
-                      className="flex-1 border-purple-700/50 text-purple-300 hover:bg-purple-900/20 h-7 text-xs"
+                      className="flex-1 border-amber-700/50 text-amber-300 hover:bg-amber-900/20 h-7 text-xs"
                       data-testid="button-pfp-library"
                     >
                       <Folder className="h-3 w-3 mr-1" /> Library
@@ -5581,13 +5581,13 @@ function SandboxSheetEditor({
 
       {addingProperty && createPortal(
         <div
-          className="fixed bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30 overflow-hidden"
+          className="fixed bg-stone-900 border border-amber-700/50 rounded-lg shadow-2xl shadow-amber-900/30 overflow-hidden"
           style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '380px', maxHeight: '85vh', zIndex: 9999 }}
           onMouseDown={(e) => e.stopPropagation()}
           data-testid="add-property-form"
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg">
-            <span className="text-xs font-semibold text-purple-300">
+            <span className="text-xs font-semibold text-amber-300">
               {containerAddTarget ? 'Add Property to Container' : 'Add New Property'}
             </span>
             <button onClick={() => { setAddingProperty(false); resetNewPropState(); }} className="text-stone-400 hover:text-stone-200">
@@ -5733,7 +5733,7 @@ function SandboxSheetEditor({
               <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); resetNewPropState(); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs" data-testid="button-save-property">
+              <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-7 text-xs" data-testid="button-save-property">
                 Create Property
               </Button>
             </div>
@@ -5983,7 +5983,7 @@ function SandboxCharactersContent({
           {type === 'actor' ? (
             <User className="h-4 w-4 text-amber-500 shrink-0" />
           ) : (
-            <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
+            <ScrollText className="h-4 w-4 text-amber-400 shrink-0" />
           )}
           <span className="text-stone-200 text-sm font-medium truncate">{item.name}</span>
           {type === 'actor' && item.templateId && (
@@ -5991,7 +5991,7 @@ function SandboxCharactersContent({
               {templates.find((t: any) => t.id === item.templateId)?.name || 'Template'}
             </span>
           )}
-          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-amber-400/60 bg-amber-900/20'}`}>
             {type === 'actor' ? 'Actor' : 'Template'}
           </span>
         </div>
@@ -6023,7 +6023,7 @@ function SandboxCharactersContent({
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <div 
-              className={`flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors ${isDragOver ? 'bg-purple-900/30 ring-1 ring-purple-500/50' : ''}`}
+              className={`flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors ${isDragOver ? 'bg-amber-900/30 ring-1 ring-amber-500/50' : ''}`}
               style={{ paddingLeft: `${depth * 16 + 12}px` }}
               onClick={() => toggleFolder(folder.id)}
               onDragOver={(e) => {
@@ -6166,7 +6166,7 @@ function SandboxCharactersContent({
                 onClick={() => setNewType('template')}
                 className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-colors ${
                   newType === 'template' 
-                    ? 'bg-purple-700 text-white' 
+                    ? 'bg-amber-700 text-white' 
                     : 'bg-stone-700 text-stone-400 hover:text-stone-200'
                 }`}
                 data-testid="toggle-type-template"
@@ -6209,7 +6209,7 @@ function SandboxCharactersContent({
       </div>
 
       <div
-        className={`flex-1 overflow-y-auto space-y-1 custom-scrollbar ${dragOverFolderId === 'root' ? 'ring-1 ring-purple-500/30 rounded-lg' : ''}`}
+        className={`flex-1 overflow-y-auto space-y-1 custom-scrollbar ${dragOverFolderId === 'root' ? 'ring-1 ring-amber-500/30 rounded-lg' : ''}`}
         onDragOver={(e) => {
           if (isSandboxDrag(e)) {
             e.preventDefault();
@@ -10189,9 +10189,9 @@ export default function Campaign() {
           className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none"
           data-testid="incognito-badge"
         >
-          <div className="bg-purple-900/80 border border-purple-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm">
-            <Eye className="h-3.5 w-3.5 text-purple-300" />
-            <span className="text-xs font-medium text-purple-200">Incognito Mode</span>
+          <div className="bg-amber-900/80 border border-amber-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm">
+            <Eye className="h-3.5 w-3.5 text-amber-300" />
+            <span className="text-xs font-medium text-amber-200">Incognito Mode</span>
           </div>
         </div>
       )}
@@ -10739,7 +10739,7 @@ export default function Campaign() {
                 <div className="pb-2 border-b border-stone-700">
                   <Button 
                     variant="secondary" 
-                    className="w-full bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700" 
+                    className="w-full bg-amber-900/50 hover:bg-amber-800/50 border border-amber-700" 
                     onClick={() => setAddTokenDialogOpen(true)} 
                     data-testid="button-add-token-scenes"
                   >
@@ -11838,7 +11838,7 @@ export default function Campaign() {
                       .map((t: any) => {
                         const isSelected = selectedTemplateIds.has(t.id);
                         const rar = t.rarity || 'common';
-                        const rarityColor = rar === 'legendary' ? 'text-yellow-400' : rar === 'epic' ? 'text-purple-400' : rar === 'rare' ? 'text-blue-400' : rar === 'uncommon' ? 'text-green-400' : 'text-stone-400';
+                        const rarityColor = rar === 'legendary' ? 'text-yellow-400' : rar === 'epic' ? 'text-amber-400' : rar === 'rare' ? 'text-blue-400' : rar === 'uncommon' ? 'text-green-400' : 'text-stone-400';
                         return (
                           <div
                             key={t.id}
@@ -12108,7 +12108,7 @@ export default function Campaign() {
                       ) : (
                         <Button
                           size="sm"
-                          className="bg-purple-700 hover:bg-purple-600 h-8"
+                          className="bg-amber-700 hover:bg-amber-600 h-8"
                           onClick={handleHaggleRoll}
                           data-testid="button-haggle-roll"
                         >

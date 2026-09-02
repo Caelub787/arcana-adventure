@@ -2383,7 +2383,7 @@ export function CanvasEditor({
                     onClick={() => handleConnectionDropMenuSelect("entity")}
                     data-testid="drop-menu-entity"
                   >
-                    <Sparkles className="h-4 w-4 text-purple-400" />
+                    <Sparkles className="h-4 w-4 text-amber-400" />
                     <span className="text-sm text-stone-200">Entity Reference</span>
                   </button>
                   <div className="border-t border-stone-700 mt-1 pt-1">

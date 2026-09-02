@@ -91,7 +91,7 @@ function getFolderColorClass(color: string | null | undefined): string {
     case "green":
       return "text-green-500";
     case "purple":
-      return "text-purple-500";
+      return "text-amber-500";
     case "red":
       return "text-red-500";
     default:

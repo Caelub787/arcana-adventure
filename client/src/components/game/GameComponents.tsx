@@ -3511,7 +3511,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     e.stopPropagation();
                     setEffectsDialogToken(token.id);
                   }}
-                  className="absolute -top-3 -right-3 w-7 h-7 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border-2 border-violet-400 z-30 pointer-events-auto touch-auto"
+                  className="absolute -top-3 -right-3 w-7 h-7 bg-amber-600 hover:bg-amber-700 rounded-full flex items-center justify-center shadow-lg border-2 border-amber-400 z-30 pointer-events-auto touch-auto"
                   data-testid={`button-effects-${token.id}`}
                 >
                   <Flame className="w-4 h-4 text-white" />
@@ -3610,12 +3610,12 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                   {showHp && (
                     <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex" data-testid={`bar-hp-${token.id}`}>
                       <div className={`h-full transition-all duration-700 ease-in-out ${hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${clamp(hpPercent!)}%` }} />
-                      {tempHpPercent > 0 && <div className="h-full bg-violet-400/90" style={{ width: `${Math.max(0, Math.min(100 - clamp(hpPercent!), tempHpPercent))}%` }} />}
+                      {tempHpPercent > 0 && <div className="h-full bg-amber-400/90" style={{ width: `${Math.max(0, Math.min(100 - clamp(hpPercent!), tempHpPercent))}%` }} />}
                     </div>
                   )}
                   {showEnergy && (
                     <div className="absolute left-0.5 top-0.5 bottom-2.5 w-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex flex-col justify-end" data-testid={`bar-energy-${token.id}`}>
-                      {tempEnergyPercent > 0 && <div className="w-full bg-violet-400/90" style={{ height: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }} />}
+                      {tempEnergyPercent > 0 && <div className="w-full bg-amber-400/90" style={{ height: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }} />}
                       <div className="w-full transition-all duration-700 ease-in-out bg-cyan-500" style={{ height: `${clamp(energyPercent!)}%` }} />
                     </div>
                   )}
@@ -3653,7 +3653,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                           />
                           {tempHpPercent > 0 && (
                             <div
-                              className="h-full bg-violet-400/90"
+                              className="h-full bg-amber-400/90"
                               style={{ width: `${Math.max(0, Math.min(100 - clamp(hpPercent!), tempHpPercent))}%` }}
                             />
                           )}
@@ -3677,7 +3677,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                                 />
                                 {tempEnergyPercent > 0 && (
                                   <div
-                                    className="h-full bg-violet-400/90"
+                                    className="h-full bg-amber-400/90"
                                     style={{ width: `${Math.max(0, Math.min(100 - clamp(energyPercent!), tempEnergyPercent))}%` }}
                                   />
                                 )}
@@ -3725,7 +3725,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                         />
                         {tempHpPercent > 0 && (
                           <div
-                            className="h-full bg-violet-400/90"
+                            className="h-full bg-amber-400/90"
                             style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, hpPercent!)), tempHpPercent))}%` }}
                           />
                         )}
@@ -3749,7 +3749,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                         />
                         {tempEnergyPercent > 0 && (
                           <div
-                            className="h-full bg-violet-400/90"
+                            className="h-full bg-amber-400/90"
                             style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, energyPercent!)), tempEnergyPercent))}%` }}
                           />
                         )}
@@ -3787,14 +3787,14 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                       <button
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden relative flex-shrink-0"
+                        className="rounded-sm bg-black/60 border border-amber-500/70 shadow-sm flex items-center justify-center overflow-hidden relative flex-shrink-0"
                         style={{ width: iconSize, height: iconSize }}
                         title={ae.effect.name}
                       >
                         {ae.effect.imageUrl ? (
                           <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
                         ) : (
-                          <Flame className="w-2 h-2 text-violet-400" />
+                          <Flame className="w-2 h-2 text-amber-400" />
                         )}
                         {!isV3Effects && ae.duration !== null && ae.duration > 0 && (
                           <div
@@ -5033,7 +5033,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         <DialogContent className="bg-stone-900 border-stone-700 max-w-xs">
           <DialogHeader>
             <DialogTitle className="text-stone-200 flex items-center gap-2">
-              <Flame className="w-5 h-5 text-violet-400" />
+              <Flame className="w-5 h-5 text-amber-400" />
               Token Effects
             </DialogTitle>
             <DialogDescription className="text-stone-400">
@@ -5060,7 +5060,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                   }}
                   className={`w-full flex items-center gap-3 p-2 rounded border transition-colors ${
                     isActive 
-                      ? 'bg-violet-600/20 border-violet-500 hover:bg-violet-600/30' 
+                      ? 'bg-amber-600/20 border-amber-500 hover:bg-amber-600/30' 
                       : 'bg-stone-800 border-stone-700 hover:bg-stone-700'
                   }`}
                 >
@@ -5068,7 +5068,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     {effect.imageUrl ? (
                       <img src={effect.imageUrl} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-violet-600 flex items-center justify-center">
+                      <div className="w-full h-full bg-amber-600 flex items-center justify-center">
                         <Flame className="w-4 h-4 text-white" />
                       </div>
                     )}
@@ -5080,7 +5080,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     )}
                   </div>
                   {isActive && (
-                    <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center flex-shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
                       <Check className="w-4 h-4 text-white" />
                     </div>
                   )}
@@ -5196,7 +5196,7 @@ const HUDInner = function HUD({ character, onOpenChat }: HUDProps) {
                   {character.inventory.map((item, i) => (
                     <div key={i} className="p-3 bg-stone-800 rounded border border-stone-700 flex items-center gap-3">
                       <div className="w-10 h-10 bg-black/50 rounded flex items-center justify-center">
-                        <Sparkles className="w-5 h-5 text-purple-400" />
+                        <Sparkles className="w-5 h-5 text-amber-400" />
                       </div>
                       <span>{item}</span>
                     </div>
@@ -5499,7 +5499,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const getSpellLevelColor = (level: number) => {
     if (level === 0) return 'text-gray-400';
     if (level <= 3) return 'text-blue-400';
-    if (level <= 6) return 'text-purple-400';
+    if (level <= 6) return 'text-amber-400';
     return 'text-amber-400';
   };
 
@@ -8621,7 +8621,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       </div>
     ) : (
       <>
-        <div className="font-bold truncate text-purple-400">
+        <div className="font-bold truncate text-amber-400">
           {spellData.name.substring(0, 3)}
         </div>
       </>
@@ -8649,7 +8649,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         />
       </div>
     ) : (
-      <div className="font-bold truncate text-purple-400">
+      <div className="font-bold truncate text-amber-400">
         {(v3SpellData.name || 'Spell').substring(0, 3)}
       </div>
     );
@@ -9212,8 +9212,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             {spellData && !traitData && !hotbar?.skillName && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-400" />
-                  <span className="text-sm text-purple-400 font-medium">Spell</span>
+                  <Sparkles className="h-4 w-4 text-amber-400" />
+                  <span className="text-sm text-amber-400 font-medium">Spell</span>
                 </div>
                 {spellData.description && (
                   <p className="text-sm text-stone-300 leading-relaxed">{spellData.description}</p>
@@ -9451,8 +9451,8 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           {overviewButton}
           {/* DC Display - hidden in AA V3 */}
           {campaignSystem !== 'aa-v3' && (
-            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">
-              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-purple-200">
+            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-amber-600 relative overflow-hidden w-32 md:w-44">
+              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-amber-200">
                 <span>DC</span>
                 <span>{totalDC}</span>
               </div>
@@ -9551,7 +9551,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               const colorClasses: Record<string, string> = {
                 amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
                 cyan: isActive ? 'bg-cyan-600 border-cyan-400 text-cyan-100' : 'bg-stone-800/80 border-stone-600 text-cyan-400 hover:bg-cyan-900/50',
-                purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
+                purple: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
                 blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
                 green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
                 stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
@@ -9662,7 +9662,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
     const colorClasses: Record<string, string> = {
       stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
       red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
-      purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
+      purple: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
       amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
     };
     return colorClasses[color] || colorClasses.stone;
@@ -11166,7 +11166,7 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
             <DropdownMenuItem onClick={() => onAssignCharacter(char)} className="text-green-200 focus:bg-green-900/30 focus:text-green-200"><UserCheck className="h-4 w-4 mr-2" />Assign Character</DropdownMenuItem>
           )}
           {role === 'gm' && (
-            <DropdownMenuItem onClick={() => onManageAccess(char)} className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"><Shield className="h-4 w-4 mr-2" />Manage Access</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onManageAccess(char)} className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"><Shield className="h-4 w-4 mr-2" />Manage Access</DropdownMenuItem>
           )}
           {role === 'gm' && onTogglePin && (
             <DropdownMenuItem onClick={() => onTogglePin(char)} className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200">
@@ -12377,7 +12377,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           {role === 'gm' && onOpenCampaignSpecies && (
             <Button
               variant="secondary"
-              className="w-full mb-4 bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700"
+              className="w-full mb-4 bg-amber-900/50 hover:bg-amber-800/50 border border-amber-700"
               onClick={onOpenCampaignSpecies}
               data-testid="button-campaign-species-settings"
             >
@@ -12497,13 +12497,13 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                               <label className="flex items-center gap-1 mt-1 text-[10px] text-stone-400 cursor-pointer select-none" data-testid={`label-trusted-${member.id}`}>
                                 <input
                                   type="checkbox"
-                                  className="h-3 w-3 accent-violet-500"
+                                  className="h-3 w-3 accent-amber-500"
                                   checked={!!member.trustedPlayer}
                                   disabled={setTrustedPlayerMutation.isPending}
                                   onChange={(e) => setTrustedPlayerMutation.mutate({ memberId: member.id, trusted: e.target.checked })}
                                   data-testid={`checkbox-trusted-${member.id}`}
                                 />
-                                <span className="text-violet-300">Trusted Player</span>
+                                <span className="text-amber-300">Trusted Player</span>
                               </label>
                             )}
                           </div>
@@ -12582,13 +12582,13 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           {/* GM Only Section */}
           {role === 'gm' && (
             <div className="mt-8 border-t border-stone-800 pt-6">
-              <h3 className="text-sm font-bold text-purple-400 uppercase mb-4">GM Tools</h3>
+              <h3 className="text-sm font-bold text-amber-400 uppercase mb-4">GM Tools</h3>
               
               {inspectedChar && (
-                <div className="mb-4 p-3 bg-purple-900/10 border border-purple-900/30 rounded">
+                <div className="mb-4 p-3 bg-amber-900/10 border border-amber-900/30 rounded">
                    <div className="flex justify-between items-center mb-2">
-                     <span className="text-sm font-bold text-purple-200">Inspecting: {inspectedChar.name}</span>
-                     <Button size="sm" variant="ghost" onClick={() => onInspectChar && onInspectChar(null)} className="h-6 w-6 p-0 hover:bg-purple-900/50">
+                     <span className="text-sm font-bold text-amber-200">Inspecting: {inspectedChar.name}</span>
+                     <Button size="sm" variant="ghost" onClick={() => onInspectChar && onInspectChar(null)} className="h-6 w-6 p-0 hover:bg-amber-900/50">
                        <LogOut className="h-3 w-3" />
                      </Button>
                    </div>
@@ -12894,13 +12894,13 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                             <label className="flex items-center gap-1 mt-1 text-[10px] text-stone-400 cursor-pointer select-none" data-testid={`label-trusted-inline-${member.id}`}>
                               <input
                                 type="checkbox"
-                                className="h-3 w-3 accent-violet-500"
+                                className="h-3 w-3 accent-amber-500"
                                 checked={!!member.trustedPlayer}
                                 disabled={setTrustedPlayerMutation.isPending}
                                 onChange={(e) => setTrustedPlayerMutation.mutate({ memberId: member.id, trusted: e.target.checked })}
                                 data-testid={`checkbox-trusted-inline-${member.id}`}
                               />
-                              <span className="text-violet-300">Trusted Player</span>
+                              <span className="text-amber-300">Trusted Player</span>
                             </label>
                           )}
                         </div>
@@ -14257,11 +14257,11 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                     draggable
                     onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
                     onClick={() => openEquipPicker('weapons', { type: 'item', item, itemId: item.id }, item.name)}
-                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target"
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-amber-500 hover:bg-stone-800 active:bg-amber-900/30 transition-all text-xs touch-target"
                     data-testid={`drag-weapons-spellbook-${item.id}`}
                   >
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-purple-400 truncate">{item.name}</span>
+                      <span className="font-medium text-amber-400 truncate">{item.name}</span>
                       <span className="text-stone-500 text-[10px] uppercase">Book</span>
                     </div>
                   </div>
@@ -14314,7 +14314,7 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
       <Card className="bg-stone-800 border-stone-700">
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle className="text-purple-500 flex items-center gap-2">
+            <CardTitle className="text-amber-500 flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
               Magic Hotbar (5 slots)
             </CardTitle>
@@ -14368,11 +14368,11 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                       draggable
                       onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
                       onClick={() => openEquipPicker('magic', { type: 'item', item, itemId: item.id }, item.name)}
-                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target"
+                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-amber-500 hover:bg-stone-800 active:bg-amber-900/30 transition-all text-xs touch-target"
                       data-testid={`drag-magic-item-${item.id}`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-purple-400 truncate">{item.name}</span>
+                        <span className="font-medium text-amber-400 truncate">{item.name}</span>
                         <span className="text-stone-500 text-[10px] uppercase">{item.itemType === 'scroll' ? 'Scroll' : 'Book'}</span>
                       </div>
                     </div>
@@ -14391,11 +14391,11 @@ function HotbarsTabContent({ character, isGM, isOwner, campaignSystem, onOpenIte
                       draggable
                       onDragStart={(e) => handleDragStart(e, { type: 'spell', id: spell.id, name: spell.name })}
                       onClick={() => openEquipPicker('magic', { type: 'spell', id: spell.id, name: spell.name }, spell.name)}
-                      className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
+                      className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer hover:border-amber-500 hover:bg-stone-800 active:bg-amber-900/30 transition-all text-xs touch-target ${spell.isEquipped ? 'border-amber-500 opacity-60' : 'border-stone-700'}`}
                       data-testid={`drag-spell-${spell.id}`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-purple-400 truncate">{spell.name}</span>
+                        <span className="font-medium text-amber-400 truncate">{spell.name}</span>
                         {spell.manaCost > 0 && <span className="text-fuchsia-400 text-[10px]">{spell.manaCost}M</span>}
                       </div>
                     </div>
@@ -15334,8 +15334,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                   </div>
                 ) : (
                   <div className="relative w-full h-full flex items-center justify-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
-                      <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-amber-900/30 flex items-center justify-center">
+                      <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-400" />
                     </div>
                     {/* Damage badge if spell has damage */}
                     {(spellData.damageDice || spellData.damage) && (
@@ -15561,8 +15561,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                     />
                   </div>
                 ) : (
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-amber-900/30 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-400" />
                   </div>
                 )}
               </div>
@@ -16053,7 +16053,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     common: 'text-stone-400 border-stone-600',
     uncommon: 'text-green-400 border-green-600',
     rare: 'text-blue-400 border-blue-600',
-    epic: 'text-purple-400 border-purple-600',
+    epic: 'text-amber-400 border-amber-600',
     legendary: 'text-orange-400 border-orange-600'
   };
   
@@ -16224,7 +16224,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                   </Badge>
                 )}
                 {item.isContainer && (
-                  <Badge className="bg-purple-600 text-xs">{childCount} items | {item.carryCapacity || 0}lb cap</Badge>
+                  <Badge className="bg-amber-600 text-xs">{childCount} items | {item.carryCapacity || 0}lb cap</Badge>
                 )}
                 {item.containerId && depth === 0 && (
                   <Badge className="bg-stone-600 text-xs">In Container</Badge>
@@ -16253,7 +16253,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                       </span>
                     ) : (
                       <span className={
-                        item.currency === 'platinum' ? 'text-purple-400' :
+                        item.currency === 'platinum' ? 'text-amber-400' :
                         item.currency === 'gold' ? 'text-yellow-500' :
                         item.currency === 'silver' ? 'text-gray-400' :
                         'text-orange-600'
@@ -16264,7 +16264,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                   }
                   return (
                     <span className={
-                      item.currency === 'platinum' ? 'text-purple-400' :
+                      item.currency === 'platinum' ? 'text-amber-400' :
                       item.currency === 'gold' ? 'text-yellow-500' :
                       item.currency === 'silver' ? 'text-gray-400' :
                       'text-orange-600'
@@ -19247,11 +19247,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {!canEditAsGM && <Lock className="h-3 w-3 text-amber-600" />}
         </div>
         <div className="flex items-center gap-2">
-          <Label className="text-[10px] text-violet-400 w-16">Temp Bonus</Label>
+          <Label className="text-[10px] text-amber-400 w-16">Temp Bonus</Label>
           <NumberInput
             min={0} value={quickEditData.bonus} fallback={0}
             onChange={(v) => handleQuickEditBonusChange(String(v ?? 0))}
-            className="h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+            className="h-7 text-xs bg-stone-900 border-amber-700 text-amber-200"
             data-testid={`input-quick-${bar}-bonus`}
           />
         </div>
@@ -20751,14 +20751,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const getSpellLevelColor = (level: number): string => {
     if (level === 0) return 'text-gray-400';
     if (level <= 3) return 'text-blue-400';
-    if (level <= 6) return 'text-purple-400';
+    if (level <= 6) return 'text-amber-400';
     return 'text-amber-400';
   };
 
   const getSpellLevelBgColor = (level: number): string => {
     if (level === 0) return 'bg-gray-700';
     if (level <= 3) return 'bg-blue-700';
-    if (level <= 6) return 'bg-purple-700';
+    if (level <= 6) return 'bg-amber-700';
     return 'bg-amber-700';
   };
 
@@ -20767,7 +20767,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       case 'evocation': return 'bg-red-700 text-red-100';
       case 'abjuration': return 'bg-blue-700 text-blue-100';
       case 'conjuration': return 'bg-green-700 text-green-100';
-      case 'divination': return 'bg-purple-700 text-purple-100';
+      case 'divination': return 'bg-amber-700 text-amber-100';
       case 'enchantment': return 'bg-pink-700 text-pink-100';
       case 'illusion': return 'bg-cyan-700 text-cyan-100';
       case 'necromancy': return 'bg-stone-900 text-stone-100';
@@ -21117,8 +21117,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         active: 'data-[state=active]:bg-amber-900/80 data-[state=active]:text-amber-200 data-[state=active]:border-amber-500'
       },
       purple: { 
-        base: 'text-purple-400/70 hover:text-purple-300 hover:bg-purple-900/30',
-        active: 'data-[state=active]:bg-purple-900/80 data-[state=active]:text-purple-200 data-[state=active]:border-purple-500'
+        base: 'text-amber-400/70 hover:text-amber-300 hover:bg-amber-900/30',
+        active: 'data-[state=active]:bg-amber-900/80 data-[state=active]:text-amber-200 data-[state=active]:border-amber-500'
       },
       red: { 
         base: 'text-red-400/70 hover:text-red-300 hover:bg-red-900/30',
@@ -21197,7 +21197,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           </Button>
           <span className="text-amber-500 font-medium">{liveCharacter.name}</span>
           {isTemplate && (
-            <Badge className="bg-purple-600/30 text-purple-300 text-xs">Template</Badge>
+            <Badge className="bg-amber-600/30 text-amber-300 text-xs">Template</Badge>
           )}
         </div>
       )}
@@ -21490,7 +21490,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <span className="ml-1 text-emerald-300" data-testid="text-ca-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
                         )}
                         {(liveCharacter.tempEnergy ?? 0) > 0 && (
-                          <span className="ml-1 text-violet-300" data-testid="text-ca-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
+                          <span className="ml-1 text-amber-300" data-testid="text-ca-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
                         )}
                       </span>
                     </div>
@@ -22002,11 +22002,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
-                            <span className="text-xs text-violet-400">+T</span>
+                            <span className="text-xs text-amber-400">+T</span>
                             <NumberInput
                               min={0} value={typeof overviewData.tempHp === 'number' ? overviewData.tempHp : undefined} fallback={0}
                               onChange={(v) => setOverviewData({ ...overviewData, tempHp: v ?? 0 })}
-                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              className="w-14 h-7 text-xs bg-stone-900 border-amber-700 text-amber-200"
                               data-testid="input-edit-temp-hp"
                             />
                           </div>
@@ -22021,7 +22021,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               <span className="ml-1 text-emerald-300" data-testid="text-bonus-hp">(+{bonusMaxHp} bonus)</span>
                             )}
                             {(liveCharacter.tempHp ?? 0) > 0 && (
-                              <span className="ml-1 text-violet-300" data-testid="text-temp-hp">(+{liveCharacter.tempHp} temp)</span>
+                              <span className="ml-1 text-amber-300" data-testid="text-temp-hp">(+{liveCharacter.tempHp} temp)</span>
                             )}
                             {(liveCharacter.exhaustion || 0) >= (isAAV3 ? 7 : 6) && (
                               <span className="absolute inset-0 flex items-center">
@@ -22040,7 +22040,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />
                           {(liveCharacter.tempHp ?? 0) > 0 && effectiveMaxHp > 0 && (
                             <div
-                              className="absolute top-0 h-2 bg-violet-400/80 rounded-r-full border-l border-stone-900/40"
+                              className="absolute top-0 h-2 bg-amber-400/80 rounded-r-full border-l border-stone-900/40"
                               style={{
                                 left: `${Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))}%`,
                                 width: `${Math.min(100 - Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100)), Math.round((liveCharacter.tempHp / effectiveMaxHp) * 100))}%`,
@@ -22056,7 +22056,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
                             <span>
                               Base: {currentSpecies?.startingMaxHp || 10} | +{liveCharacter.bonusHpFromLevelUps || 0}
-                              {featBonuses.hp > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.hp}</span>}
+                              {featBonuses.hp > 0 && <span className="text-amber-400"> | Feats: +{featBonuses.hp}</span>}
                             </span>
                             <span className="text-stone-400">
                               ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel})
@@ -22119,11 +22119,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
-                            <span className="text-xs text-violet-400">+T</span>
+                            <span className="text-xs text-amber-400">+T</span>
                             <NumberInput
                               min={0} value={typeof overviewData.tempEnergy === 'number' ? overviewData.tempEnergy : undefined} fallback={0}
                               onChange={(v) => setOverviewData({ ...overviewData, tempEnergy: v ?? 0 })}
-                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              className="w-14 h-7 text-xs bg-stone-900 border-amber-700 text-amber-200"
                               data-testid="input-edit-temp-energy"
                             />
                           </div>
@@ -22138,7 +22138,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               <span className="ml-1 text-emerald-300" data-testid="text-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
                             )}
                             {(liveCharacter.tempEnergy ?? 0) > 0 && (
-                              <span className="ml-1 text-violet-300" data-testid="text-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
+                              <span className="ml-1 text-amber-300" data-testid="text-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
                             )}
                           </span>
                         )}
@@ -22149,7 +22149,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2 [&>div]:bg-cyan-500" data-testid="progress-energy" />
                           {(liveCharacter.tempEnergy ?? 0) > 0 && effectiveMaxEnergy > 0 && (
                             <div
-                              className="absolute top-0 h-2 bg-violet-400/80 rounded-r-full border-l border-stone-900/40"
+                              className="absolute top-0 h-2 bg-amber-400/80 rounded-r-full border-l border-stone-900/40"
                               style={{
                                 left: `${Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))}%`,
                                 width: `${Math.min(100 - Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100)), Math.round((liveCharacter.tempEnergy / effectiveMaxEnergy) * 100))}%`,
@@ -22165,7 +22165,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <span>
                               Base: {currentSpecies?.startingMaxEnergy || 10}
                               {!isAAV2 && <> | +{liveCharacter.bonusEnergyFromLevelUps || 0}</>}
-                              {featBonuses.energy > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>}
+                              {featBonuses.energy > 0 && <span className="text-amber-400"> | Feats: +{featBonuses.energy}</span>}
                             </span>
                             {!isAAV2 && (
                               <span className="text-stone-400">
@@ -22196,7 +22196,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <Label className="text-xs text-stone-300 flex items-center gap-1">
-                          <Sparkles className="h-3 w-3 text-violet-400" />
+                          <Sparkles className="h-3 w-3 text-amber-400" />
                           Mana
                         </Label>
                         {editingOverview && !isAAV2 ? (
@@ -22229,11 +22229,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 </TooltipProvider>
                               )}
                             </div>
-                            <span className="text-xs text-violet-400">+T</span>
+                            <span className="text-xs text-amber-400">+T</span>
                             <NumberInput
                               min={0} value={typeof overviewData.tempMana === 'number' ? overviewData.tempMana : undefined} fallback={0}
                               onChange={(v) => setOverviewData({ ...overviewData, tempMana: v ?? 0 })}
-                              className="w-14 h-7 text-xs bg-stone-900 border-violet-700 text-violet-200"
+                              className="w-14 h-7 text-xs bg-stone-900 border-amber-700 text-amber-200"
                               data-testid="input-edit-temp-mana"
                             />
                           </div>
@@ -22248,7 +22248,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               <span className="ml-1 text-emerald-300" data-testid="text-bonus-mana">(+{bonusMaxMana} bonus)</span>
                             )}
                             {(liveCharacter.tempMana ?? 0) > 0 && (
-                              <span className="ml-1 text-violet-300" data-testid="text-temp-mana">(+{liveCharacter.tempMana} temp)</span>
+                              <span className="ml-1 text-amber-300" data-testid="text-temp-mana">(+{liveCharacter.tempMana} temp)</span>
                             )}
                           </span>
                         )}
@@ -22304,7 +22304,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <span>Size: {liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus}</span>
                       <span>Natural: +{liveCharacter.naturalArmor || 5}</span>
                       <span>Armor: +{equippedArmorBonus}</span>
-                      {featBonuses.dc > 0 && <span className="text-purple-400">Feats: +{featBonuses.dc}</span>}
+                      {featBonuses.dc > 0 && <span className="text-amber-400">Feats: +{featBonuses.dc}</span>}
                     </div>
                   </div>
                 )}
@@ -22716,10 +22716,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 )}
 
                 {featTreeId && (
-                  <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
+                  <div className="bg-gradient-to-r from-amber-900/30 to-indigo-900/30 rounded-lg p-3 border border-amber-700/50">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-sm text-purple-300 flex items-center gap-2">
-                        <GitBranch className="h-4 w-4 text-purple-400" />
+                      <Label className="text-sm text-amber-300 flex items-center gap-2">
+                        <GitBranch className="h-4 w-4 text-amber-400" />
                         {isAAV2 ? 'Skill Tree' : 'Feat Tree'}
                       </Label>
                       {(() => {
@@ -22741,7 +22741,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
+                      className="w-full text-amber-400 border-amber-600 hover:bg-amber-900/30"
                       onClick={() => { setShowFeatTreeViewer(true); bringToFront?.(`feat-tree-viewer${charPanelSuffix}`); }}
                       data-testid="button-view-feat-tree"
                     >
@@ -23013,7 +23013,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 {numericValue >= 0 ? `+${numericValue}` : numericValue}
                               </span>
                               {featBonus > 0 && (
-                                <span className="text-xs text-purple-400 ml-1">(+{featBonus})</span>
+                                <span className="text-xs text-amber-400 ml-1">(+{featBonus})</span>
                               )}
                             </div>
                           )}
@@ -23321,7 +23321,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <span className="text-xs">{skill.name} <span className="text-stone-500">({skill.attr})</span></span>
                             <span className="font-bold ml-2">
                               {numericValue >= 0 ? `+${numericValue}` : numericValue}
-                              {skillFeatBonus > 0 && <span className="text-purple-400 text-[10px]"> (+{skillFeatBonus})</span>}
+                              {skillFeatBonus > 0 && <span className="text-amber-400 text-[10px]"> (+{skillFeatBonus})</span>}
                               <span className="text-amber-400 text-[10px] ml-1">= {totalStr}</span>
                             </span>
                           </Badge>
@@ -23938,7 +23938,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <div>
                     <Label className="text-xs text-stone-400">Currency</Label>
                     <div className="text-sm text-stone-200 flex gap-2" data-testid="text-currency">
-                      {totalCurrency.platinum > 0 && <span className="text-purple-400">{totalCurrency.platinum}p</span>}
+                      {totalCurrency.platinum > 0 && <span className="text-amber-400">{totalCurrency.platinum}p</span>}
                       {totalCurrency.gold > 0 && <span className="text-yellow-500">{totalCurrency.gold}g</span>}
                       {totalCurrency.silver > 0 && <span className="text-gray-400">{totalCurrency.silver}s</span>}
                       {totalCurrency.copper > 0 && <span className="text-orange-600">{totalCurrency.copper}c</span>}
@@ -24278,7 +24278,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         setShowAddSpell(true);
                       }}
                       data-testid="button-add-spell"
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="bg-amber-600 hover:bg-amber-700"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Add Magic
@@ -24289,7 +24289,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-stone-900 p-3 rounded">
                     <Label className="text-xs text-stone-400">Total Spells</Label>
-                    <p className="text-2xl font-bold text-purple-400" data-testid="text-spells-known">{spells.length}</p>
+                    <p className="text-2xl font-bold text-amber-400" data-testid="text-spells-known">{spells.length}</p>
                   </div>
                   <div className="bg-stone-900 p-3 rounded">
                     <Label className="text-xs text-stone-400">Equipped</Label>
@@ -24372,7 +24372,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 damage: spell.damage
                               }));
                             }}
-                            className="bg-stone-900 rounded-lg p-3 border border-stone-700 hover:border-purple-500 cursor-pointer transition-all"
+                            className="bg-stone-900 rounded-lg p-3 border border-stone-700 hover:border-amber-500 cursor-pointer transition-all"
                             onClick={() => {
                               setSelectedSpell(spell);
                               setShowSpellDetail(true); bringToFront?.(`spell-detail${charPanelSuffix}`);
@@ -24436,7 +24436,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 setShowAddSpell(false);
                 setSpellDialogTab('library');
               }}
-              title={<span className="text-purple-400">{editSpellData ? 'Edit Spell' : 'Add Magic'}</span>}
+              title={<span className="text-amber-400">{editSpellData ? 'Edit Spell' : 'Add Magic'}</span>}
               defaultSize={{ width: Math.min(650, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
               minWidth={350}
               minHeight={300}
@@ -24454,7 +24454,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       onClick={() => setSpellDialogTab('library')}
                       className={`px-4 py-2 font-medium transition-colors ${
                         spellDialogTab === 'library' 
-                          ? 'text-purple-500 border-b-2 border-purple-500' 
+                          ? 'text-amber-500 border-b-2 border-amber-500' 
                           : 'text-stone-400 hover:text-stone-200'
                       }`}
                       data-testid="tab-spell-library"
@@ -24466,7 +24466,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       onClick={() => setSpellDialogTab('create')}
                       className={`px-4 py-2 font-medium transition-colors ${
                         spellDialogTab === 'create' 
-                          ? 'text-purple-500 border-b-2 border-purple-500' 
+                          ? 'text-amber-500 border-b-2 border-amber-500' 
                           : 'text-stone-400 hover:text-stone-200'
                       }`}
                       data-testid="tab-spell-create"
@@ -24496,11 +24496,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <Button 
                               variant="outline" 
                               size="icon" 
-                              className={`bg-stone-800 border-stone-700 ${hasActiveSpellLibraryFilters ? 'border-purple-500 text-purple-400' : ''}`}
+                              className={`bg-stone-800 border-stone-700 ${hasActiveSpellLibraryFilters ? 'border-amber-500 text-amber-400' : ''}`}
                               data-testid="button-spell-library-filter"
                             >
                               <Filter className="h-4 w-4" />
-                              {hasActiveSpellLibraryFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full" />}
+                              {hasActiveSpellLibraryFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-72 bg-stone-900 border-stone-700 p-4" align="end">
@@ -24607,7 +24607,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           .map((spell: any) => (
                             <div
                               key={spell.id}
-                              className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
+                              className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-amber-500 cursor-pointer"
                               onClick={() => {
                                 // Generate the aoe field from aoeShape:aoeRange if isAoe is true
                                 // This is needed because spells table only has "aoe" field, not separate isAoe/aoeShape/aoeRange
@@ -24662,7 +24662,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     <p className="text-xs text-stone-500 mt-1 line-clamp-1">{spell.description}</p>
                                   )}
                                 </div>
-                                <Plus className="h-5 w-5 text-purple-400" />
+                                <Plus className="h-5 w-5 text-amber-400" />
                               </div>
                             </div>
                           ))}
@@ -24957,7 +24957,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <NumberInput
                               min={0} value={spellFormData.manaCost || 0} fallback={0}
                               onChange={(v) => handleSpellNumericChange('manaCost', String(v ?? 0))}
-                              className={`bg-stone-800 ${isGM ? 'border-violet-700' : 'border-stone-700'}`}
+                              className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                               disabled={!canEditAsGM}
                               data-testid="input-spell-mana-cost"
                             />
@@ -25196,7 +25196,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         <Button 
                           type="button" 
                           onClick={handleSpellFormSubmit}
-                          className="bg-purple-600 hover:bg-purple-700"
+                          className="bg-amber-600 hover:bg-amber-700"
                           data-testid="button-save-spell"
                         >
                           {editSpellData ? 'Update Spell' : 'Add Spell'}
@@ -25214,7 +25214,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             <Dialog open={false} onOpenChange={setShowSpellLibrary}>
               <DialogContent className="max-w-2xl bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
                 <DialogHeader>
-                  <DialogTitle className="text-purple-400 flex items-center gap-2">
+                  <DialogTitle className="text-amber-400 flex items-center gap-2">
                     <BookOpen className="h-5 w-5" />
                     Spell Library
                   </DialogTitle>
@@ -25238,7 +25238,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       .map((spell: any) => (
                         <div
                           key={spell.id}
-                          className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
+                          className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-amber-500 cursor-pointer"
                           onClick={() => {
                             // Generate the aoe field from aoeShape:aoeRange if isAoe is true
                             let aoeValue = spell.aoe;
@@ -25284,7 +25284,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               {spell.icon ? (
                                 <img src={spell.icon} alt={spell.name} className="w-full h-full object-cover" />
                               ) : (
-                                <Sparkles className="h-5 w-5 text-purple-400" />
+                                <Sparkles className="h-5 w-5 text-amber-400" />
                               )}
                             </div>
                             <div className="flex-1">
@@ -25302,7 +25302,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 <p className="text-xs text-stone-500 mt-1 line-clamp-1">{spell.description}</p>
                               )}
                             </div>
-                            <Plus className="h-5 w-5 text-purple-400" />
+                            <Plus className="h-5 w-5 text-amber-400" />
                           </div>
                         </div>
                       ))}
@@ -25704,7 +25704,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 {isGM && (
                   <div className="pt-4 border-t border-stone-700">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-sm text-purple-400">GM Notes</Label>
+                      <Label className="text-sm text-amber-400">GM Notes</Label>
                       {!isEditingGmNotes && (
                         <Button 
                           size="sm" 
@@ -25721,7 +25721,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         <Textarea
                           value={gmNotes}
                           onChange={(e) => setGmNotes(e.target.value)}
-                          className="min-h-[150px] bg-purple-950/20 border-purple-900/50"
+                          className="min-h-[150px] bg-amber-950/20 border-amber-900/50"
                           placeholder="Private notes about this character (only visible to GM)..."
                           data-testid="textarea-gm-notes"
                         />
@@ -25748,7 +25748,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       </div>
                     ) : (
                       <div 
-                        className="p-3 bg-purple-950/20 rounded border border-purple-900/50 min-h-[100px] text-purple-200"
+                        className="p-3 bg-amber-950/20 rounded border border-amber-900/50 min-h-[100px] text-amber-200"
                         data-testid="text-gm-notes"
                       >
                         {character.gmNotes || "No GM notes yet."}
@@ -26562,7 +26562,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           open={showFeatTreeViewer}
           onClose={() => setShowFeatTreeViewer(false)}
           title={
-            <span className="text-purple-400 flex items-center gap-2">
+            <span className="text-amber-400 flex items-center gap-2">
               <GitBranch className="h-4 w-4" />
               {featTreeData?.tree?.name || (isAAV2 ? 'Skill Tree' : 'Feat Tree')}
             </span>
@@ -27068,13 +27068,13 @@ function FeatTreeViewerGrid({
   return (
     <div className="flex flex-col h-full min-h-0 relative">
       {/* Points display */}
-      <div className="flex items-center justify-between mb-2 p-2 bg-purple-900/30 rounded-lg border border-purple-700/50 shrink-0">
+      <div className="flex items-center justify-between mb-2 p-2 bg-amber-900/30 rounded-lg border border-amber-700/50 shrink-0">
         <div className="flex items-center gap-2">
-          <Star className="h-4 w-4 text-purple-400" />
-          <span className="text-sm text-purple-300">Feat Points</span>
+          <Star className="h-4 w-4 text-amber-400" />
+          <span className="text-sm text-amber-300">Feat Points</span>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="bg-purple-600">{availablePoints} available</Badge>
+          <Badge className="bg-amber-600">{availablePoints} available</Badge>
           <span className="text-xs text-stone-400">({spentPoints} / {totalFeatPoints} spent)</span>
         </div>
       </div>
@@ -27082,7 +27082,7 @@ function FeatTreeViewerGrid({
       {/* Pan/zoom canvas - fills available space */}
       <div 
         ref={containerRef}
-        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing flex-1 min-h-0"
+        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-amber-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing flex-1 min-h-0"
         style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -27160,7 +27160,7 @@ function FeatTreeViewerGrid({
               borderColor = 'border-green-500';
               ringStyle = 'ring-2 ring-green-400/60 shadow-[0_0_12px_rgba(34,197,94,0.4)]';
             } else if (canUnlock) {
-              borderColor = 'border-purple-500';
+              borderColor = 'border-amber-500';
               ringStyle = 'hover:ring-2 hover:ring-amber-400 shadow-[0_0_8px_rgba(168,85,247,0.3)]';
             } else {
               opacityStyle = 'opacity-50';
@@ -27197,7 +27197,7 @@ function FeatTreeViewerGrid({
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center text-center p-1 ${
                       isUnlocked ? 'bg-gradient-to-br from-green-900/90 to-emerald-800/80' :
-                      canUnlock ? 'bg-gradient-to-br from-purple-900/80 to-violet-800/70' :
+                      canUnlock ? 'bg-gradient-to-br from-amber-900/80 to-amber-800/70' :
                       'bg-gradient-to-br from-stone-800/80 to-stone-900/90'
                     }`}>
                       <span className="text-[10px] font-bold text-white leading-tight">{feat.name}</span>
@@ -27210,7 +27210,7 @@ function FeatTreeViewerGrid({
                   )}
                 </div>
                 <div className={`text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate ${
-                  isUnlocked ? 'text-green-300' : canUnlock ? 'text-purple-300' : 'text-stone-500'
+                  isUnlocked ? 'text-green-300' : canUnlock ? 'text-amber-300' : 'text-stone-500'
                 }`}>
                   {feat.name}
                 </div>
@@ -27256,8 +27256,8 @@ function FeatTreeViewerGrid({
               <Label className="text-xs text-stone-400">Effects:</Label>
               <div className="flex flex-wrap gap-1 mt-1">
                 {(selectedFeat.effects as any[]).map((effect, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs border-purple-500/50 text-purple-300">
-                    <Star className="h-3 w-3 mr-1 text-purple-400" />
+                  <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-300">
+                    <Star className="h-3 w-3 mr-1 text-amber-400" />
                     {effect.type}: +{effect.value}{effect.target ? ` ${effect.target}` : ''}
                   </Badge>
                 ))}
@@ -27269,7 +27269,7 @@ function FeatTreeViewerGrid({
             <Button
               onClick={() => unlockFeatMutation.mutate(selectedFeat.id)}
               disabled={!canUnlockFeat(selectedFeat) || unlockFeatMutation.isPending}
-              className={canUnlockFeat(selectedFeat) ? "w-full bg-purple-600 hover:bg-purple-500" : "w-full bg-stone-700"}
+              className={canUnlockFeat(selectedFeat) ? "w-full bg-amber-600 hover:bg-amber-500" : "w-full bg-stone-700"}
               data-testid="button-unlock-feat"
             >
               {unlockFeatMutation.isPending ? 'Unlocking...' : 
@@ -27328,7 +27328,7 @@ export function LazySystemSpellIcon({ spellId }: { spellId: string }) {
       {data?.icon ? (
         <img src={data.icon} alt="" className="w-full h-full object-cover" />
       ) : (
-        <Sparkles className="h-5 w-5 text-purple-400" />
+        <Sparkles className="h-5 w-5 text-amber-400" />
       )}
     </div>
   );
@@ -27396,7 +27396,7 @@ const CLASS_VIEWER_WORLD_OFFSET = 10000;
 
 const classViewerTierStyles: Record<number, { border: string; bg: string; glow: string; unlocked: string }> = {
   1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-fuchsia-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
-  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-violet-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
+  2: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-amber-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-amber-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
 };
 
@@ -28285,7 +28285,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     common: 'bg-stone-600',
     uncommon: 'bg-green-600',
     rare: 'bg-blue-600',
-    epic: 'bg-purple-600',
+    epic: 'bg-amber-600',
     legendary: 'bg-amber-600',
   };
 
@@ -28975,7 +28975,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       data-testid="checkbox-can-apply-effects"
                     />
                     <Label htmlFor="canApplyEffects" className="cursor-pointer flex items-center gap-2">
-                      <Flame className="h-4 w-4 text-violet-400" />
+                      <Flame className="h-4 w-4 text-amber-400" />
                       Can Apply Effects on Hit
                     </Label>
                   </div>
@@ -29312,7 +29312,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
     common: 'bg-stone-600',
     uncommon: 'bg-green-600',
     rare: 'bg-blue-600',
-    epic: 'bg-purple-600',
+    epic: 'bg-amber-600',
     legendary: 'bg-amber-600',
   };
 
@@ -30316,7 +30316,7 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
         <div className="space-y-2 pt-2">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-stone-300 uppercase tracking-wide">Techniques</h4>
-            <span className="text-[11px] text-violet-300" data-testid="text-v3-skill-points">
+            <span className="text-[11px] text-amber-300" data-testid="text-v3-skill-points">
               Level Up Points: {skillPoints}
             </span>
           </div>
@@ -30352,7 +30352,7 @@ function V3WeaponUsePanel({ item, character, items, hideSyncButton = false, canM
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="border-violet-700 text-violet-300 hover:bg-violet-950/50 flex-shrink-0"
+                    className="border-amber-700 text-amber-300 hover:bg-amber-950/50 flex-shrink-0"
                     disabled={!t.eligible || skillPoints < 1 || unlockingId === t.id}
                     onClick={() => handleUnlockTechnique(t)}
                     data-testid={`button-v3-technique-unlock-${t.id}`}
@@ -31440,7 +31440,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                   ) : (
                     <p className={`capitalize font-medium ${
                       currentData.rarity === 'legendary' ? 'text-amber-400' :
-                      currentData.rarity === 'epic' ? 'text-purple-400' :
+                      currentData.rarity === 'epic' ? 'text-amber-400' :
                       currentData.rarity === 'rare' ? 'text-blue-400' :
                       currentData.rarity === 'uncommon' ? 'text-green-400' :
                       'text-stone-300'
@@ -31758,7 +31758,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                           data-testid="checkbox-edit-can-apply-effects"
                         />
                         <Label htmlFor="editCanApplyEffects" className="cursor-pointer flex items-center gap-2">
-                          <Flame className="h-4 w-4 text-violet-400" />
+                          <Flame className="h-4 w-4 text-amber-400" />
                           Can Apply Effects on Hit
                         </Label>
                       </div>

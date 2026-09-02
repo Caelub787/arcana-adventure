@@ -805,7 +805,7 @@ export function V3GmSpellManager({
             {spell.image ? (
               <img src={spell.image} alt={spell.name} className="h-full w-full object-cover" />
             ) : (
-              <Sparkles className="h-5 w-5 text-purple-400" />
+              <Sparkles className="h-5 w-5 text-amber-400" />
             )}
           </div>
           <div className="flex-1 min-w-0">
@@ -817,7 +817,7 @@ export function V3GmSpellManager({
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
               )}
               {spell.isCanonical && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-700">Canonical</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-700">Canonical</span>
               )}
               {spell.flagged && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300 border border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Flagged</span>

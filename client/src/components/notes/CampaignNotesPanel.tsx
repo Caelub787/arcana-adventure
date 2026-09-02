@@ -93,7 +93,7 @@ function getFolderColorClass(color: string | null | undefined): string {
     case "green":
       return "text-green-500";
     case "purple":
-      return "text-purple-500";
+      return "text-amber-500";
     case "red":
       return "text-red-500";
     default:
@@ -403,7 +403,7 @@ function FolderTreeItem({
         )}
         {isOtherCampaign && (
           <span title="Other campaign">
-            <EyeOff className="h-2.5 w-2.5 text-purple-400" />
+            <EyeOff className="h-2.5 w-2.5 text-amber-400" />
           </span>
         )}
           </div>
@@ -2081,7 +2081,7 @@ export function CampaignNotesPanel({
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
             showHiddenFolders
-              ? "bg-purple-900/30 text-purple-400"
+              ? "bg-amber-900/30 text-amber-400"
               : "hover:bg-stone-800/50 text-stone-400"
           }`}
           onClick={() => setShowHiddenFolders(!showHiddenFolders)}

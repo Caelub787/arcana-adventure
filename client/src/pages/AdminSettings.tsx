@@ -162,7 +162,7 @@ const rarityColors: Record<string, string> = {
   common: 'bg-stone-600',
   uncommon: 'bg-green-600',
   rare: 'bg-blue-600',
-  epic: 'bg-purple-600',
+  epic: 'bg-amber-600',
   legendary: 'bg-amber-600',
 };
 
@@ -2133,7 +2133,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
             <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
-        <Button size="sm" className="bg-violet-700 hover:bg-violet-600 text-stone-50" onClick={openCreate} data-testid="button-create-v3-spell">
+        <Button size="sm" className="bg-amber-700 hover:bg-amber-600 text-stone-50" onClick={openCreate} data-testid="button-create-v3-spell">
           <Plus className="h-4 w-4 mr-1" /> Create Spell
         </Button>
       </div>
@@ -2159,7 +2159,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
                     {spell.name || <span className="italic text-stone-500">Unnamed</span>}
                   </CardTitle>
                   {statusBadge(spell.status)}
-                  {spell.isCanonical && <Badge variant="outline" className="bg-violet-900/40 text-violet-300 border-violet-700">Canonical</Badge>}
+                  {spell.isCanonical && <Badge variant="outline" className="bg-amber-900/40 text-amber-300 border-amber-700">Canonical</Badge>}
                   {spell.flagged && <Badge variant="outline" className="bg-orange-900/40 text-orange-300 border-orange-700" data-testid={`badge-flagged-${spell.id}`}>Profane</Badge>}
                 </div>
                 <div className="mt-1.5">{formula(spell.composition)}</div>
@@ -2286,7 +2286,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
             <Button
               onClick={() => createMutation.mutate({ composition, name: name.trim(), description, image })}
               disabled={!createValid || createMutation.isPending}
-              className="bg-violet-700 hover:bg-violet-600 text-stone-50"
+              className="bg-amber-700 hover:bg-amber-600 text-stone-50"
               data-testid="button-save-create-v3-spell"
             >
               Create
@@ -2319,7 +2319,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
-                  { label: 'Current official', spell: conflict.existing, accent: 'border-violet-700 bg-violet-900/20', tag: 'text-violet-300', testid: 'conflict-existing' },
+                  { label: 'Current official', spell: conflict.existing, accent: 'border-amber-700 bg-amber-900/20', tag: 'text-amber-300', testid: 'conflict-existing' },
                   { label: 'This spell', spell: conflict.candidate, accent: 'border-stone-700 bg-stone-900/60', tag: 'text-stone-400', testid: 'conflict-candidate' },
                 ] as const).map(({ label, spell, accent, tag, testid }) => (
                   <div key={testid} className={`rounded-lg border ${accent} p-3 space-y-2`} data-testid={testid}>
@@ -2346,7 +2346,7 @@ function V3SpellsApprovalView({ personal }: { personal?: boolean }) {
           )}
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
             <Button
-              className="w-full bg-violet-700 hover:bg-violet-600 text-stone-50"
+              className="w-full bg-amber-700 hover:bg-amber-600 text-stone-50"
               disabled={resolveMutation.isPending}
               onClick={() => conflict && resolveMutation.mutate({ id: conflict.candidate.id, resolution: 'keep_this' })}
               data-testid="button-conflict-keep-this"
@@ -2681,7 +2681,7 @@ function V3ElementRequirementsView({ systemSlug, personal }: { systemSlug: strin
                       <div key={r.id} className="flex items-center justify-between gap-2 rounded border border-stone-700 bg-stone-950/40 px-2 py-1.5" data-testid={`row-requirement-${r.id}`}>
                         <div className="min-w-0 text-xs">
                           {r.conditionType === 'knowledge' ? (
-                            <span className="text-violet-300">Knowledge: {r.knowledgeName}</span>
+                            <span className="text-amber-300">Knowledge: {r.knowledgeName}</span>
                           ) : (
                             <span className="text-emerald-300">
                               Item: {r.itemName}
@@ -2873,7 +2873,7 @@ function V3TechniquesView({ systemSlug, personal }: { systemSlug: string; person
                 {Array.isArray(t.requirements) && t.requirements.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {t.requirements.map((r, i) => (
-                      <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded ${r.conditionType === 'knowledge' ? 'bg-violet-900/40 text-violet-300' : 'bg-emerald-900/40 text-emerald-300'}`}>
+                      <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded ${r.conditionType === 'knowledge' ? 'bg-amber-900/40 text-amber-300' : 'bg-emerald-900/40 text-emerald-300'}`}>
                         {r.conditionType === 'knowledge' ? r.knowledgeName : r.itemName}
                       </span>
                     ))}
@@ -2960,7 +2960,7 @@ function V3TechniquesView({ systemSlug, personal }: { systemSlug: string; person
                 <div className="space-y-1">
                   {draft.requirements.map((r, i) => (
                     <div key={i} className="flex items-center justify-between gap-2 rounded bg-stone-950/40 px-2 py-1 text-xs">
-                      <span className={r.conditionType === 'knowledge' ? 'text-violet-300' : 'text-emerald-300'}>
+                      <span className={r.conditionType === 'knowledge' ? 'text-amber-300' : 'text-emerald-300'}>
                         {r.conditionType === 'knowledge' ? `Knowledge: ${r.knowledgeName}` : `Item: ${r.itemName}${r.consumed ? ' (consumed)' : ''}`}
                       </span>
                       <Button size="icon" variant="ghost" className="h-5 w-5 text-stone-400 hover:text-red-400" onClick={() => removeCondition(i)}>
@@ -3644,17 +3644,17 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
           />
         </DashSection>
 
-        <DashSection title="Spells & Magic" icon={Wand2} color="text-violet-400">
+        <DashSection title="Spells & Magic" icon={Wand2} color="text-amber-400">
             <DashCard
               onClick={() => onNavigate('v3-spells')}
               testId="card-v3-spells"
               icon={Wand2}
               title="Crafted Spells"
               description="Review player-crafted V3 spells and approve a canonical name, description, and image per composition"
-              hoverBorder="hover:border-violet-600"
-              iconBg="bg-violet-700/20"
-              iconColor="text-violet-500"
-              titleColor="text-violet-500"
+              hoverBorder="hover:border-amber-600"
+              iconBg="bg-amber-700/20"
+              iconColor="text-amber-500"
+              titleColor="text-amber-500"
             />
             <DashCard
               onClick={() => onNavigate('element-requirements')}
@@ -3662,10 +3662,10 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Lock}
               title="Element Requirements"
               description="Gate which spell elements players may craft with, requiring a Knowledge or item (optionally consumed) per element"
-              hoverBorder="hover:border-violet-600"
-              iconBg="bg-violet-700/20"
-              iconColor="text-violet-500"
-              titleColor="text-violet-500"
+              hoverBorder="hover:border-amber-600"
+              iconBg="bg-amber-700/20"
+              iconColor="text-amber-500"
+              titleColor="text-amber-500"
             />
           </DashSection>
 
@@ -3969,10 +3969,10 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
         data-testid="card-token-effects"
       >
         <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-violet-700/20 flex items-center justify-center mb-2">
-            <Flame className="h-6 w-6 text-violet-500" />
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <Flame className="h-6 w-6 text-amber-500" />
           </div>
-          <CardTitle className="text-violet-500">Token Effects</CardTitle>
+          <CardTitle className="text-amber-500">Token Effects</CardTitle>
           <CardDescription className="text-stone-400">
             Define status effects like poison, burning, or stun that can be applied to tokens in combat
           </CardDescription>
@@ -4003,10 +4003,10 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
         data-testid="card-feat-trees"
       >
         <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
-            <GitBranch className="h-6 w-6 text-purple-500" />
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <GitBranch className="h-6 w-6 text-amber-500" />
           </div>
-          <CardTitle className="text-purple-500">{isPersonalLibSystem ? 'Skill Trees' : 'Feat Trees'}</CardTitle>
+          <CardTitle className="text-amber-500">{isPersonalLibSystem ? 'Skill Trees' : 'Feat Trees'}</CardTitle>
           <CardDescription className="text-stone-400">
             {isPersonalLibSystem 
               ? 'Create and manage skill trees for species and classes'
@@ -4853,7 +4853,7 @@ const parentAttributeColors: Record<string, string> = {
   might: 'text-red-400',
   finesse: 'text-green-400',
   wit: 'text-blue-400',
-  presence: 'text-purple-400',
+  presence: 'text-amber-400',
   will: 'text-yellow-400',
   craft: 'text-orange-400',
 };
@@ -5436,10 +5436,10 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
-        <CardTitle className="text-violet-500">Token Effects</CardTitle>
+        <CardTitle className="text-amber-500">Token Effects</CardTitle>
         <Button
           onClick={onAddEffect}
-          className="bg-violet-700 hover:bg-violet-600"
+          className="bg-amber-700 hover:bg-amber-600"
           data-testid="button-add-effect"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -5481,7 +5481,7 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
                     {effect.imageUrl ? (
                       <img src={effect.imageUrl} alt={effect.name} className="h-full w-full object-cover" />
                     ) : (
-                      <Flame className="h-5 w-5 sm:h-6 sm:w-6 text-violet-400" />
+                      <Flame className="h-5 w-5 sm:h-6 sm:w-6 text-amber-400" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -5505,7 +5505,7 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
                       variant="ghost"
                       size="icon"
                       onClick={() => onEditEffect(effect)}
-                      className="text-stone-400 hover:text-violet-500 h-8 w-8 sm:h-10 sm:w-10"
+                      className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-edit-effect-${effect.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -5641,7 +5641,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-violet-500">
+            <DialogTitle className="text-amber-500">
               {initialData ? 'Edit Token Effect' : 'Create Token Effect'}
             </DialogTitle>
           </DialogHeader>
@@ -5854,7 +5854,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
             <Button
               onClick={handleSave}
               disabled={isLoading}
-              className="bg-violet-700 hover:bg-violet-600"
+              className="bg-amber-700 hover:bg-amber-600"
               data-testid="button-save-effect"
             >
               {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
@@ -6445,8 +6445,8 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
 
 // Feat node styling (cost-based tiers: 1=purple, 2=violet, 3+=amber)
 const featTierStyles: Record<number, { border: string; bg: string; glow: string }> = {
-  1: { border: 'border-purple-600', bg: 'bg-gradient-to-br from-purple-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(147,51,234,0.3)]' },
-  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
+  1: { border: 'border-amber-600', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(147,51,234,0.3)]' },
+  2: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
 };
 
@@ -7328,7 +7328,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
           <Button 
             size="sm" 
             onClick={handleAddFeat}
-            className="bg-purple-600 hover:bg-purple-700 text-xs"
+            className="bg-amber-600 hover:bg-amber-700 text-xs"
             data-testid="add-feat-canvas-button"
           >
             <Plus className="h-3 w-3 mr-1" />
@@ -7342,7 +7342,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
               if (!connectionMode) setConnectingFrom(null);
             }}
             className={connectionMode 
-              ? "bg-purple-600 hover:bg-purple-700 text-xs animate-pulse" 
+              ? "bg-amber-600 hover:bg-amber-700 text-xs animate-pulse" 
               : "bg-stone-700 hover:bg-stone-600 text-xs border border-stone-600"
             }
           >
@@ -7389,13 +7389,13 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
           
           {/* Connection mode indicator */}
           {connectionMode && (
-            <div className="flex items-center gap-2 bg-purple-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
+            <div className="flex items-center gap-2 bg-amber-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
               <span>{connectingFrom ? 'Click target feat to connect' : 'Click source feat to start'}</span>
               <Button 
                 size="sm" 
                 variant="ghost" 
-                className="h-6 w-6 p-0 hover:bg-purple-500"
+                className="h-6 w-6 p-0 hover:bg-amber-500"
                 onClick={() => {
                   setConnectionMode(false);
                   setConnectingFrom(null);
@@ -7603,7 +7603,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
                   className={`rounded-full border-[3px] overflow-hidden transition-all shrink-0
                     ${featStyle.border} ${featStyle.glow}
                     ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
-                    ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
+                    ${isConnectSource ? 'animate-pulse ring-2 ring-amber-400' : ''}
                     ${longPressId === feat.id ? 'ring-2 ring-amber-400 scale-110' : ''}
                     ${!isDragging ? 'hover:scale-105' : ''}
                   `}
@@ -7617,7 +7617,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
                     </div>
                   )}
                 </div>
-                <div className="text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate text-purple-300">
+                <div className="text-[10px] font-semibold text-center mt-1 max-w-[90px] truncate text-amber-300">
                   {feat.name}
                 </div>
               </div>
@@ -7626,7 +7626,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
           
           {/* Origin marker */}
           <div 
-            className="absolute w-4 h-4 bg-purple-500/50 rounded-full border-2 border-purple-400"
+            className="absolute w-4 h-4 bg-amber-500/50 rounded-full border-2 border-amber-400"
             style={{
               left: WORLD_OFFSET - 8,
               top: WORLD_OFFSET - 8
@@ -7661,7 +7661,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
               
               <div className="space-y-2">
                 <button
-                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-purple-700 transition-colors flex items-center gap-3 text-stone-200"
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-amber-700 transition-colors flex items-center gap-3 text-stone-200"
                   onClick={() => {
                     const feat = featById.get(featActionMenu);
                     if (feat) {
@@ -7671,7 +7671,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
                     setFeatActionMenu(null);
                   }}
                 >
-                  <Pencil className="h-5 w-5 text-purple-400" />
+                  <Pencil className="h-5 w-5 text-amber-400" />
                   <span>Edit Feat</span>
                 </button>
                 
@@ -7732,8 +7732,8 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
     return (
       <Card className="bg-stone-900 border-stone-700">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-purple-500">{treeLabelPlural}</CardTitle>
-          <Button onClick={() => setShowAddTree(true)} className="bg-purple-600 hover:bg-purple-700">
+          <CardTitle className="text-amber-500">{treeLabelPlural}</CardTitle>
+          <Button onClick={() => setShowAddTree(true)} className="bg-amber-600 hover:bg-amber-700">
             <Plus className="h-4 w-4 mr-2" />
             New Tree
           </Button>
@@ -7752,12 +7752,12 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
               {featTrees.map((tree: FeatTree) => (
                 <div
                   key={tree.id}
-                  className="flex items-center gap-4 p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-purple-500 cursor-pointer transition-colors"
+                  className="flex items-center gap-4 p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-500 cursor-pointer transition-colors"
                   onClick={() => setSelectedTreeId(tree.id)}
                   data-testid={`tree-row-${tree.id}`}
                 >
-                  <div className="h-10 w-10 rounded bg-purple-700/30 flex items-center justify-center">
-                    <GitBranch className="h-5 w-5 text-purple-400" />
+                  <div className="h-10 w-10 rounded bg-amber-700/30 flex items-center justify-center">
+                    <GitBranch className="h-5 w-5 text-amber-400" />
                   </div>
                   <div className="flex-1">
                     <div className="font-medium">{tree.name}</div>
@@ -7829,7 +7829,7 @@ function FeatTreesView({ systemSlug, personal }: { systemSlug: string; personal?
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1">
-          <CardTitle className="text-purple-500">
+          <CardTitle className="text-amber-500">
             {treeData?.tree.name || 'Loading...'}
           </CardTitle>
           <CardDescription>{treeData?.tree.description}</CardDescription>
@@ -7946,7 +7946,7 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-purple-500">
+          <DialogTitle className="text-amber-500">
             {initialData ? `Edit ${isAAV2 ? 'Skill Tree' : 'Feat Tree'}` : `Create ${isAAV2 ? 'Skill Tree' : 'Feat Tree'}`}
           </DialogTitle>
         </DialogHeader>
@@ -7977,7 +7977,7 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-amber-600 hover:bg-amber-700"
           >
             {isLoading ? 'Saving...' : initialData ? 'Update' : 'Create'}
           </Button>
@@ -7992,11 +7992,11 @@ const EFFECT_TYPE_ICONS: Record<string, { icon: React.ComponentType<{ className?
   energy_bonus: { icon: Zap, color: 'text-blue-400' },
   dc_bonus: { icon: ShieldCheck, color: 'text-amber-400' },
   skill_bonus: { icon: Star, color: 'text-green-400' },
-  attribute_bonus: { icon: Star, color: 'text-purple-400' },
+  attribute_bonus: { icon: Star, color: 'text-amber-400' },
   spell_grant: { icon: BookOpen, color: 'text-cyan-400' },
   item_grant: { icon: Package, color: 'text-orange-400' },
   skill_grant: { icon: Sparkles, color: 'text-pink-400' },
-  trait_grant: { icon: Wand2, color: 'text-violet-400' },
+  trait_grant: { icon: Wand2, color: 'text-amber-400' },
   mana_increase: { icon: Sparkles, color: 'text-fuchsia-400' },
 };
 
@@ -8031,10 +8031,10 @@ function TemplateSelector({ templates, onSelect }: TemplateSelectorProps) {
   };
 
   return (
-    <div className="p-3 bg-purple-900/30 border-2 border-purple-500 rounded-lg mb-2 shadow-lg shadow-purple-900/20">
+    <div className="p-3 bg-amber-900/30 border-2 border-amber-500 rounded-lg mb-2 shadow-lg shadow-amber-900/20">
       <div className="flex items-center gap-2 mb-2">
-        <Library className="h-4 w-4 text-purple-400" />
-        <Label className="text-sm font-medium text-purple-300">Feat Library</Label>
+        <Library className="h-4 w-4 text-amber-400" />
+        <Label className="text-sm font-medium text-amber-300">Feat Library</Label>
         <Badge variant="secondary" className="ml-auto text-xs">{templates.length} templates</Badge>
       </div>
       <div className="relative mb-2">
@@ -8058,7 +8058,7 @@ function TemplateSelector({ templates, onSelect }: TemplateSelectorProps) {
               <Button
                 key={template.id}
                 variant="ghost"
-                className="w-full justify-start text-left h-auto py-2 px-2 hover:bg-purple-800/30"
+                className="w-full justify-start text-left h-auto py-2 px-2 hover:bg-amber-800/30"
                 onClick={() => onSelect(template)}
               >
                 <div className="flex items-center gap-2 w-full">
@@ -8278,7 +8278,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-purple-500 flex items-center gap-2">
+          <DialogTitle className="text-amber-500 flex items-center gap-2">
             {initialData?.id ? 'Edit Feat' : 'Create Feat'}
             {featTemplates.length > 0 && !initialData?.id && (
               <Button
@@ -8338,7 +8338,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
             <div className="flex items-center gap-3 mt-1">
               {formData.image ? (
                 <div className="relative">
-                  <img src={formData.image} alt="" className="h-14 w-14 rounded-full object-cover border-2 border-purple-500" />
+                  <img src={formData.image} alt="" className="h-14 w-14 rounded-full object-cover border-2 border-amber-500" />
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, image: '' })}
@@ -8818,7 +8818,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     >
                       {newEffect.target ? (
                         <span className="flex items-center gap-2">
-                          <Wand2 className="h-3 w-3 text-violet-400" />
+                          <Wand2 className="h-3 w-3 text-amber-400" />
                           {(systemTraitsForDropdown as SystemTrait[]).find(t => t.id === newEffect.target)?.name || 'Select trait...'}
                         </span>
                       ) : (
@@ -8830,7 +8830,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     <Dialog open={showTraitPicker} onOpenChange={setShowTraitPicker}>
                       <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
                         <DialogHeader>
-                          <DialogTitle className="text-violet-400 flex items-center gap-2">
+                          <DialogTitle className="text-amber-400 flex items-center gap-2">
                             <Wand2 className="h-5 w-5" />
                             Select Trait
                           </DialogTitle>
@@ -8860,8 +8860,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                                   key={trait.id}
                                   className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                                     newEffect.target === trait.id 
-                                      ? 'bg-violet-900/30 border-violet-500' 
-                                      : 'bg-stone-800 border-stone-700 hover:border-violet-500'
+                                      ? 'bg-amber-900/30 border-amber-500' 
+                                      : 'bg-stone-800 border-stone-700 hover:border-amber-500'
                                   }`}
                                   onClick={() => {
                                     setNewEffect({ ...newEffect, target: trait.id });
@@ -8870,7 +8870,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                                 >
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                      <Wand2 className="h-4 w-4 text-violet-400" />
+                                      <Wand2 className="h-4 w-4 text-amber-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
@@ -8905,7 +8905,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                 variant="outline"
                 size="sm"
                 onClick={() => onSaveAsTemplate(formData)}
-                className="text-purple-400 border-purple-600"
+                className="text-amber-400 border-amber-600"
               >
                 <Library className="h-3 w-3 mr-1" />
                 Save as Template
@@ -8917,7 +8917,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
             <Button
               onClick={handleSubmit}
               disabled={isLoading}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-amber-600 hover:bg-amber-700"
             >
               {isLoading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
             </Button>
@@ -8966,7 +8966,7 @@ function SaveAsTemplateDialog({ open, onOpenChange, feat, onSave, isLoading }: S
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-purple-500">Save as Template</DialogTitle>
+          <DialogTitle className="text-amber-500">Save as Template</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -8987,7 +8987,7 @@ function SaveAsTemplateDialog({ open, onOpenChange, feat, onSave, isLoading }: S
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-amber-600 hover:bg-amber-700"
           >
             {isLoading ? 'Saving...' : 'Save Template'}
           </Button>
@@ -9461,7 +9461,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
           {initialData && (
             <div className="border-t border-stone-700 pt-4 mt-4">
               <Label className="flex items-center gap-2 mb-3">
-                <Flame className="h-4 w-4 text-violet-400" />
+                <Flame className="h-4 w-4 text-amber-400" />
                 Token Effects
               </Label>
               <SpellEffectsSection spellId={initialData.id} />
@@ -9834,7 +9834,7 @@ const CLASS_WORLD_OFFSET = 10000;
 
 const classTierStyles: Record<number, { border: string; bg: string; glow: string }> = {
   1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]' },
-  2: { border: 'border-violet-500', bg: 'bg-gradient-to-br from-violet-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
+  2: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]' },
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]' },
 };
 
@@ -11648,7 +11648,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
                     >
                       {newEffect.target ? (
                         <span className="flex items-center gap-2">
-                          <Wand2 className="h-3 w-3 text-violet-400" />
+                          <Wand2 className="h-3 w-3 text-amber-400" />
                           {(systemTraitsForDropdown as SystemTrait[]).find(t => t.id === newEffect.target)?.name || 'Select trait...'}
                         </span>
                       ) : (
@@ -11659,7 +11659,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
                     <Dialog open={showTraitPicker} onOpenChange={setShowTraitPicker}>
                       <DialogContent className="max-w-lg bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
                         <DialogHeader>
-                          <DialogTitle className="text-violet-400 flex items-center gap-2">
+                          <DialogTitle className="text-amber-400 flex items-center gap-2">
                             <Wand2 className="h-5 w-5" />
                             Select Trait
                           </DialogTitle>
@@ -11689,8 +11689,8 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
                                   key={trait.id}
                                   className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                                     newEffect.target === trait.id
-                                      ? 'bg-violet-900/30 border-violet-500'
-                                      : 'bg-stone-800 border-stone-700 hover:border-violet-500'
+                                      ? 'bg-amber-900/30 border-amber-500'
+                                      : 'bg-stone-800 border-stone-700 hover:border-amber-500'
                                   }`}
                                   onClick={() => {
                                     setNewEffect({ ...newEffect, target: trait.id });
@@ -11699,7 +11699,7 @@ function ClassNodeEditorDialog({ open, onOpenChange, node, onSave, personal }: {
                                 >
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                      <Wand2 className="h-4 w-4 text-violet-400" />
+                                      <Wand2 className="h-4 w-4 text-amber-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
@@ -13002,7 +13002,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                     data-testid="checkbox-can-apply-effects"
                   />
                   <Label className="flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-violet-400" />
+                    <Flame className="h-4 w-4 text-amber-400" />
                     Can Apply Effects on Hit
                   </Label>
                 </div>

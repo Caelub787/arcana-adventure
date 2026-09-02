@@ -191,7 +191,7 @@ function WikiArticlePreview({ content, onEntityClick }: { content: string; onEnt
       map: "text-emerald-400 hover:text-emerald-300",
       character: "text-blue-400 hover:text-blue-300",
       item: "text-orange-400 hover:text-orange-300",
-      spell: "text-purple-400 hover:text-purple-300",
+      spell: "text-amber-400 hover:text-amber-300",
     };
     parts.push(
       <span
@@ -229,7 +229,7 @@ const WIKI_CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Maps: <Map className="h-3.5 w-3.5 text-emerald-400" />,
   Characters: <User className="h-3.5 w-3.5 text-blue-400" />,
   Items: <Swords className="h-3.5 w-3.5 text-orange-400" />,
-  Spells: <Sparkles className="h-3.5 w-3.5 text-purple-400" />,
+  Spells: <Sparkles className="h-3.5 w-3.5 text-amber-400" />,
 };
 
 function WikiReferencePicker({ worldId, onSelect, onClose, position }: {

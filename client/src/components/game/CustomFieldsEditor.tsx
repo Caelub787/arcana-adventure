@@ -207,7 +207,7 @@ export function CustomFieldsEditor({ ownerType, ownerId, canEdit, isGM = false }
               />
             </div>
             {isGM && (
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer text-violet-300">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer text-amber-300">
                 <input
                   type="checkbox"
                   checked={newGmOnly}
@@ -394,7 +394,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
 
   return (
     <div
-      className={`rounded border p-2 bg-stone-900/50 ${field.gmOnly ? "border-violet-700/70" : "border-stone-700"}`}
+      className={`rounded border p-2 bg-stone-900/50 ${field.gmOnly ? "border-amber-700/70" : "border-stone-700"}`}
       data-testid={`row-custom-field-${field.id}`}
     >
       {editing ? (
@@ -414,7 +414,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             data-testid={`textarea-edit-custom-field-body-${field.id}`}
           />
           {isGM && (
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-violet-300">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-amber-300">
               <input
                 type="checkbox"
                 checked={editGmOnly}
@@ -447,7 +447,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             <div className="text-xs font-semibold text-amber-400 flex items-center gap-1">
               {field.header}
               {field.gmOnly && (
-                <span className="flex items-center gap-0.5 text-[10px] text-violet-400 font-normal" data-testid={`badge-gmonly-custom-field-${field.id}`}>
+                <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-normal" data-testid={`badge-gmonly-custom-field-${field.id}`}>
                   <Lock className="h-2.5 w-2.5" /> GM Only
                 </span>
               )}
@@ -465,7 +465,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                     seg.annotationId ? (
                       <span
                         key={i}
-                        className="bg-violet-700/40 hover:bg-violet-700/60 rounded-sm cursor-pointer underline decoration-violet-400 decoration-dotted decoration-2 underline-offset-2"
+                        className="bg-amber-700/40 hover:bg-amber-700/60 rounded-sm cursor-pointer underline decoration-amber-400 decoration-dotted decoration-2 underline-offset-2"
                         onClick={(e) => { e.stopPropagation(); toggleExpanded(seg.annotationId!); }}
                         data-testid={`highlight-annotation-${seg.annotationId}`}
                       >
@@ -485,7 +485,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-5 px-1 mt-0.5 text-[10px] text-violet-400 hover:text-violet-300"
+                className="h-5 px-1 mt-0.5 text-[10px] text-amber-400 hover:text-amber-300"
                 onClick={openAnnotationForm}
                 data-testid={`button-add-annotation-${field.id}`}
               >
@@ -494,14 +494,14 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             )}
 
             {isGM && pendingQuote !== null && (
-              <div className="mt-1.5 rounded border border-violet-800/50 bg-violet-950/20 p-2 space-y-1.5">
+              <div className="mt-1.5 rounded border border-amber-800/50 bg-amber-950/20 p-2 space-y-1.5">
                 <div>
-                  <Label className="text-[10px] text-violet-400">Attached to this text (select it above, or type/paste it here)</Label>
+                  <Label className="text-[10px] text-amber-400">Attached to this text (select it above, or type/paste it here)</Label>
                   <Input
                     value={pendingQuote}
                     onChange={(e) => setPendingQuote(e.target.value)}
                     placeholder="Exact phrase from the text above..."
-                    className="bg-stone-900 border-violet-800/60 text-xs h-7"
+                    className="bg-stone-900 border-amber-800/60 text-xs h-7"
                     data-testid={`input-annotation-quote-${field.id}`}
                   />
                   {pendingQuote.trim() && !body.includes(pendingQuote.trim()) && (
@@ -512,7 +512,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                   value={noteDraft}
                   onChange={(e) => setNoteDraft(e.target.value)}
                   placeholder="Only you (and other GMs) will see this..."
-                  className="bg-stone-900 border-violet-800/60 text-xs min-h-[50px]"
+                  className="bg-stone-900 border-amber-800/60 text-xs min-h-[50px]"
                   data-testid={`textarea-new-annotation-${field.id}`}
                 />
                 <div className="flex gap-1.5">
@@ -532,10 +532,10 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             )}
 
             {isGM && annotations.filter((a) => expandedIds.has(a.id)).map((a) => (
-              <div key={a.id} className="mt-1 pl-2 border-l-2 border-violet-700/60 flex items-start justify-between gap-2" data-testid={`text-annotation-note-${a.id}`}>
+              <div key={a.id} className="mt-1 pl-2 border-l-2 border-amber-700/60 flex items-start justify-between gap-2" data-testid={`text-annotation-note-${a.id}`}>
                 <div>
-                  <div className="text-[10px] text-violet-400 flex items-center gap-1"><Lock className="h-2.5 w-2.5" /> GM Note</div>
-                  <div className="text-xs text-violet-200 whitespace-pre-wrap">{a.note}</div>
+                  <div className="text-[10px] text-amber-400 flex items-center gap-1"><Lock className="h-2.5 w-2.5" /> GM Note</div>
+                  <div className="text-xs text-amber-200 whitespace-pre-wrap">{a.note}</div>
                 </div>
                 <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => handleDeleteAnnotation(a.id)} data-testid={`button-delete-annotation-${a.id}`}>
                   <Trash2 className="h-3 w-3 text-red-400" />
@@ -549,7 +549,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
                 {orphaned.map((a) => (
                   <div key={a.id} className="flex items-start justify-between gap-2">
                     <div className="text-[10px] text-stone-400">
-                      <span className="italic">"{truncate(a.quote, 40)}"</span>: <span className="text-violet-200">{a.note}</span>
+                      <span className="italic">"{truncate(a.quote, 40)}"</span>: <span className="text-amber-200">{a.note}</span>
                     </div>
                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => handleDeleteAnnotation(a.id)} data-testid={`button-delete-annotation-${a.id}`}>
                       <Trash2 className="h-3 w-3 text-red-400" />
@@ -586,14 +586,14 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
         <>
           <div className="fixed inset-0 z-[100000]" onClick={() => setContextMenuPos(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenuPos(null); }} />
           <div
-            className="fixed z-[100001] rounded border border-violet-700/60 bg-stone-900 shadow-xl py-1 min-w-[160px]"
+            className="fixed z-[100001] rounded border border-amber-700/60 bg-stone-900 shadow-xl py-1 min-w-[160px]"
             style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
             data-testid={`contextmenu-annotation-${field.id}`}
           >
             {contextMenuPos.quote ? (
               <button
                 type="button"
-                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-900/40 text-left"
                 onClick={() => {
                   const quote = contextMenuPos.quote;
                   setContextMenuPos(null);
@@ -607,7 +607,7 @@ function CustomFieldRow({ field, isGM, canEdit, isFirst, isLast, onMoveUp, onMov
             ) : (
               <button
                 type="button"
-                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 text-left"
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-900/40 text-left"
                 onClick={() => {
                   setContextMenuPos(null);
                   setPendingQuote("");
