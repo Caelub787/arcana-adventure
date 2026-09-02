@@ -5228,8 +5228,6 @@ interface BattleMapHotbarsProps {
   onEnterDetonatableAoeMode?: (item: any, casterToken: any) => void;
   detonatableGridTarget?: { x: number; y: number } | null;
   onClearDetonatableGridTarget?: () => void;
-  notesPanelOpen?: boolean;
-  notesPanelWidth?: number;
   // Render only the bottom-left DC/HP/Energy/Mana bars (used in AA V3, where
   // the V2 hotbar strip is replaced by the free hotbar but the bars remain).
   statsOnly?: boolean;
@@ -9350,7 +9348,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, onOpenCharacterSheet, onUpdateCharacter, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, statsOnly = false, onOpenCharacterSheet, onUpdateCharacter, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   const [editingEnergy, setEditingEnergy] = useState(false);
   const [energyDraft, setEnergyDraft] = useState('');
@@ -9577,11 +9575,11 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         );
       })()}
 
-      {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
+      {/* Hotbar Display - Bottom CENTER, always centered on screen regardless
+          of the side panel's presence, with type buttons above */}
       {!statsOnly && (
-      <div 
-        className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
-        style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+      <div
+        className="fixed bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-40"
         data-collision-id="character-hotbar"
       >
         <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">

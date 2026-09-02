@@ -10391,11 +10391,14 @@ export default function Campaign() {
         );
       })()}
 
-      {/* Top Bar: Nav & Settings */}
+      {/* Top Bar: Nav & Settings - each group is independently positioned
+          (not flex siblings) so the tracker always centers on the actual
+          screen and the panel-switch buttons always stay pinned top-right,
+          regardless of the side panel's width or open state. */}
       {!spectatorMode && (
-      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
+      <div className={`absolute top-0 left-0 right-0 p-4 pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
         {/* Left Side - Dice roller and quick search */}
-        <div className="pointer-events-auto flex flex-col gap-2">
+        <div className="absolute left-4 top-4 pointer-events-auto flex flex-col gap-2">
           {!isSandbox && (
             <div className="relative">
               <TooltipProvider>
@@ -10466,8 +10469,8 @@ export default function Campaign() {
 
         </div>
 
-        {/* Center - GM-pinned party tracker (portraits, wound/energy bars, live roll totals) */}
-        <div className="flex-1 flex justify-center">
+        {/* Center - GM-pinned party tracker (portraits, wound/energy bars, live roll totals) - always centered on screen */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-auto">
           <PinnedRosterBar
             members={(members as any[]) || []}
             characters={(characters as any[]) || []}
@@ -10482,13 +10485,12 @@ export default function Campaign() {
           />
         </div>
 
-        {/* Right Side - panel tab icons, horizontal row */}
-        <div className="pointer-events-auto flex flex-row flex-wrap justify-end gap-2"
-          style={{
-            marginRight: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 8}px` : '0px',
-            transition: 'margin-right 0.3s ease'
-          }}
-        >
+        {/* Right Side - panel tab icons, horizontal row. Always pinned to the
+            top-right corner - the side panel opens BELOW this row (its own
+            top offset reserves the space) instead of the row shifting left
+            of the panel, so these buttons sit above the panel like the
+            reference. */}
+        <div className="absolute right-4 top-4 pointer-events-auto flex flex-row flex-wrap justify-end gap-2 max-w-[70vw]">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -12986,8 +12988,6 @@ export default function Campaign() {
                }}
                detonatableGridTarget={detonatableGridTarget}
                onClearDetonatableGridTarget={() => setDetonatableGridTarget(null)}
-               notesPanelOpen={sidePanelOpen}
-               notesPanelWidth={effectivePanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
                onClearTarget={() => {
                  setTargetedTokenId(null);
@@ -13197,10 +13197,15 @@ export default function Campaign() {
           on screen needs to react to the drag. */}
       {!spectatorMode && activeSidePanel && !sidePanelMinimized && (
         <div
-          className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full py-2 pr-2'}`}
+          className={`fixed right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'pr-2'}`}
           style={{
             width: isMobile ? '100vw' : `${effectivePanelWidth}px`,
             maxWidth: isMobile ? '100vw' : '90vw',
+            // Starts below the top-right panel-switch buttons (pinned at
+            // top-4, ~52px tall) instead of at the very top of the screen,
+            // so those buttons always read as sitting above the panel.
+            top: isMobile ? undefined : '64px',
+            bottom: isMobile ? undefined : '8px',
             transform: isMobile ? undefined : `translate(${sidePanelDragOffset.x}px, ${sidePanelDragOffset.y}px)`,
           }}
         >
@@ -13724,7 +13729,6 @@ export default function Campaign() {
           campaignId={campaignId!}
           isGM={role === 'gm'}
           campaignSystem={campaign?.system}
-          rightOffset={sidePanelOpen && !isMobile ? effectivePanelWidth : 0}
           onOpenCharacterSheet={(characterId) => {
             const char = (characters as any[] | undefined)?.find((c: any) => c.id === characterId);
             if (char) openCharacterSheet(char);

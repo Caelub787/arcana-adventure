@@ -84,15 +84,12 @@ interface V3FreeHotbarProps {
   isGM: boolean;
   onOpenCharacterSheet: (characterId: string) => void;
   onOpenItem: (item: any, sourceCharacterId: string | null) => void;
-  // Pixel width of an open right-side panel (notes/world builder) so the
-  // hotbar shifts left instead of being covered. 0 when closed / on mobile.
-  rightOffset?: number;
   // Campaign system slug ('aa-v3', 'ca', ...) — swaps the HP/Energy/Mana
   // stat-bar display for C.A.'s Wounds/Energy display where relevant.
   campaignSystem?: string;
 }
 
-export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, rightOffset = 0, campaignSystem }: V3FreeHotbarProps) {
+export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
   const isCA = campaignSystem === 'ca';
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -252,8 +249,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
 
   return (
     <div
-      className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
-      style={{ right: rightOffset > 0 ? `${rightOffset + 16}px` : undefined }}
+      className="fixed bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
       data-testid="v3-free-hotbar"
     >
       <div className="flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
