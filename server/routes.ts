@@ -16722,11 +16722,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // access. GMs see everything.
         const role = await getKnowledgeRole(req.session.userId!, campaignId);
         const allFolders = await storage.getCampaignNoteFolders(campaignId);
+        const folderById = new Map(allFolders.map((f: any) => [f.id, f]));
         const shared = await storage.getSharedWithUser(req.session.userId!);
         const sharedFolderIds = new Set(shared.filter(s => s.folderId).map(s => s.folderId));
+
+        // Google-Drive-style sharing (spec 6): sharing a note, or a folder
+        // nested deep in the tree, also reveals the ancestor folder chain
+        // needed to navigate down to it - but nothing else in those
+        // ancestor folders. GET /api/notes already scopes note visibility
+        // per-folder to just what's individually shared/owned/visible, so
+        // granting "this ancestor folder exists" here can't leak siblings.
+        const ancestorFolderIds = new Set<string>();
+        const walkUpFrom = (folderId: string | null | undefined) => {
+          let current = folderId ? folderById.get(folderId) : undefined;
+          while (current && !ancestorFolderIds.has(current.id)) {
+            ancestorFolderIds.add(current.id);
+            current = current.parentId ? folderById.get(current.parentId) : undefined;
+          }
+        };
+        const sharedNoteIds = shared.filter(s => s.noteId).map(s => s.noteId as string);
+        if (sharedNoteIds.length > 0) {
+          const sharedNotes = await Promise.all(sharedNoteIds.map(id => storage.getNote(id)));
+          for (const n of sharedNotes) {
+            if (n && n.campaignId === campaignId && n.folderId) walkUpFrom(n.folderId);
+          }
+        }
+        for (const fid of Array.from(sharedFolderIds)) {
+          const folder = fid ? folderById.get(fid as string) : undefined;
+          if (folder?.parentId) walkUpFrom(folder.parentId);
+        }
+
         const visible = allFolders.filter((f: any) =>
           f.userId === req.session.userId ||
           sharedFolderIds.has(f.id) ||
+          ancestorFolderIds.has(f.id) ||
           knowledgeVisibilityGrantsAccess(f.visibility, f.visiblePlayerIds, req.session.userId!, role)
         );
         return res.json(visible);
