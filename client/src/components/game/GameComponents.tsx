@@ -9453,7 +9453,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           edits it inline without leaving the battlemap. */}
       {(() => {
         const ownerMember = (campaignMembers || []).find((m: any) => m.assignedCharacterId === character.id);
-        const cardAccentColor = ownerMember?.beaconColor || stableColorForId(character.id);
+        const cardAccentColor = characterTrackerColor(character, ownerMember);
         const accentMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(cardAccentColor);
         const accentRgb = accentMatch ? `${parseInt(accentMatch[1], 16)}, ${parseInt(accentMatch[2], 16)}, ${parseInt(accentMatch[3], 16)}` : '61, 119, 240';
         const isCABars = campaignSystem === 'ca';
@@ -11289,12 +11289,28 @@ export function stableColorForId(id: string): string {
   return NPC_COLOR_PALETTE[hash % NPC_COLOR_PALETTE.length];
 }
 
-export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile }: {
+// The color used everywhere a character's identity is shown (tracker
+// rings, dice-tray badges, chat avatars). For a real player, that's their
+// own beacon color - it's their signature color, and they usually only
+// ever play the one character. A GM plays many different characters/NPCs
+// though, so tying the color to the GM's own beacon would make every
+// character they control look identical; instead a GM's characters each
+// get their own stable per-character color, same as an unowned NPC. The
+// GM's personal beaconColor is untouched by this - it still drives their
+// actual beacon ping on the map.
+export function characterTrackerColor(character: any, member?: any): string {
+  const isGmMember = member?.role === 'gm' || member?.role === 'assistant_gm';
+  if (member?.beaconColor && !isGmMember) return member.beaconColor;
+  return stableColorForId(character?.id || member?.userId || member?.id || 'unknown');
+}
+
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, onOpenCharacterSheet }: {
   members: any[];
   characters: any[];
   campaignSystem?: string;
   rollFeed: PinnedRollFeedEntry[];
   isMobile?: boolean;
+  onOpenCharacterSheet?: (character: any) => void;
 }) {
   const pinnedMembers = (members || []).filter((m: any) => m.pinned);
   // Characters pinned directly (GM tool, mainly for NPCs with no owning
@@ -11321,8 +11337,9 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             character={character}
             campaignSystem={campaignSystem}
             rolls={rolls}
-            accentColor={member.beaconColor}
+            accentColor={characterTrackerColor(character, member)}
             isMobile={isMobile}
+            onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
           />
         );
       })}
@@ -11337,8 +11354,9 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             character={character}
             campaignSystem={campaignSystem}
             rolls={rolls}
-            accentColor={stableColorForId(character.id)}
+            accentColor={characterTrackerColor(character)}
             isMobile={isMobile}
+            onOpenSheet={() => onOpenCharacterSheet?.(character)}
           />
         );
       })}
@@ -11346,7 +11364,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, isMobile }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, isMobile, onOpenSheet }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11355,6 +11373,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   rolls: PinnedRollFeedEntry[];
   accentColor?: string;
   isMobile?: boolean;
+  onOpenSheet?: () => void;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
@@ -11540,7 +11559,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
 
   // Desktop: a rectangular card (portrait + name + resource bars + DC),
   // border/glow tinted to the beacon color, with a floating roll callout
-  // above it instead of the mobile trapezoid below.
+  // below it - a small square card of its own, sized and positioned so it
+  // never renders as a collapsed sliver (opacity/translate only, no
+  // width-collapse animation, which used to leave a squashed-round
+  // artifact behind while transitioning).
   return (
     <div
       ref={containerRef}
@@ -11557,40 +11579,11 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
       }}
     >
-      <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            onClick={() => rolls.length > 0 && setHistoryOpen(true)}
-            className="absolute left-1/2 -translate-x-1/2 overflow-hidden z-10"
-            style={{
-              bottom: 'calc(100% + 4px)',
-              maxWidth: visible ? '160px' : '0px',
-              opacity: visible ? 1 : 0,
-              transition: 'max-width 250ms ease, opacity 200ms ease',
-              pointerEvents: visible ? 'auto' : 'none',
-            }}
-            data-testid={`pinned-roll-${testId}`}
-          >
-            <div
-              className="whitespace-nowrap rounded-lg border px-3 py-1.5 shadow-lg text-center"
-              style={{
-                backgroundColor: 'rgba(19, 20, 28, 0.95)',
-                borderColor,
-                boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
-                transition: 'box-shadow 400ms ease',
-              }}
-            >
-              <div className="text-[10px] font-medium text-stone-300 truncate">{latest?.text || ''}</div>
-              <div className="text-lg font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
-            </div>
-          </button>
-        </PopoverTrigger>
-        {historyPopoverContent}
-      </Popover>
-
       <div
-        className="flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-44 transition-shadow"
+        role={onOpenSheet ? 'button' : undefined}
+        tabIndex={onOpenSheet ? 0 : undefined}
+        onClick={onOpenSheet}
+        className={`flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-44 transition-shadow ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
         style={{
           borderColor,
           boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
@@ -11634,6 +11627,30 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           )}
         </div>
       </div>
+
+      <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
+            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-24 rounded-lg border px-2 py-1.5 shadow-lg text-center z-10"
+            style={{
+              backgroundColor: 'rgba(19, 20, 28, 0.95)',
+              borderColor,
+              boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
+              opacity: visible ? 1 : 0,
+              transform: visible ? 'translate(-50%, 0)' : 'translate(-50%, -4px)',
+              pointerEvents: visible ? 'auto' : 'none',
+              transition: 'opacity 200ms ease, transform 200ms ease, box-shadow 400ms ease',
+            }}
+            data-testid={`pinned-roll-${testId}`}
+          >
+            <div className="text-[10px] font-medium text-stone-300 truncate">{latest?.text || ''}</div>
+            <div className="text-lg font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
+          </button>
+        </PopoverTrigger>
+        {historyPopoverContent}
+      </Popover>
     </div>
   );
 }

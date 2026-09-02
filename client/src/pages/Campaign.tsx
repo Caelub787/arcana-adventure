@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, stableColorForId, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -11,10 +11,11 @@ import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/li
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
-import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
+import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -1051,7 +1052,9 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
     const namedChar = !assignedChar ? (characters || []).find((c: any) => c.name === msg.sender) : null;
     const char = assignedChar || namedChar;
     const portrait = char?.portrait || member?.avatarUrl;
-    const color = member?.beaconColor || stableColorForId(char?.id || msg.userId || msg.sender || 'unknown');
+    const color = char
+      ? characterTrackerColor(char, member)
+      : (member?.beaconColor || stableColorForId(msg.userId || msg.sender || 'unknown'));
     return { portrait, color };
   };
 
@@ -1068,42 +1071,40 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <span className="text-xs text-stone-500">{messages.length} messages</span>
+      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-stone-800">
+        <div className="flex items-center gap-3">
+          {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`text-[13px] font-semibold capitalize transition-colors pb-0.5 ${filter === f ? 'text-white border-b-2 border-amber-500' : 'text-stone-500 hover:text-stone-300'}`}
+              data-testid={`button-chat-filter-${f}`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
         {role === 'gm' && (
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => window.open('/admin?personal=1', '_blank')}
-              className="border-amber-700/50 hover:bg-amber-900/30 text-amber-400 hover:text-amber-300 h-7 text-xs"
-              data-testid="button-my-library"
-            >
-              <BookOpen className="h-3 w-3 mr-1" /> My Library
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleClearChat}
-              className="border-red-700/50 hover:bg-red-900/30 text-red-400 hover:text-red-300 h-7 text-xs"
-              data-testid="button-clear-chat"
-            >
-              <Trash2 className="h-3 w-3 mr-1" /> Clear
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="text-stone-500 hover:text-stone-200 transition-colors p-1 rounded"
+                data-testid="button-chat-options"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
+              <DropdownMenuItem
+                onClick={handleClearChat}
+                className="text-red-400 focus:text-red-300 focus:bg-red-900/30"
+                data-testid="button-clear-chat"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-2" /> Clear Chat
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-      </div>
-      <div className="flex items-center gap-1 px-4 pb-2">
-        {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize transition-colors ${filter === f ? 'bg-amber-600 text-white' : 'bg-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-700'}`}
-            data-testid={`button-chat-filter-${f}`}
-          >
-            {f}
-          </button>
-        ))}
       </div>
       <ScrollArea className="flex-1 px-4 mb-2" ref={scrollAreaRef}>
         <div className="space-y-2 py-2">
@@ -1127,7 +1128,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
             return (
               <div key={msg.id || i} className={`flex items-start gap-2 rounded-lg p-2 ${isRoll ? 'bg-stone-800/60' : isWhisper ? 'bg-amber-900/20 border border-amber-800/30' : ''}`}>
                 <div
-                  className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border-2 bg-stone-800"
+                  className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border-2 bg-stone-800"
                   style={{ borderColor: color }}
                 >
                   {portrait ? (
@@ -1140,7 +1141,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold shrink-0" style={{ color }}>
+                    <span className="text-xs font-bold shrink-0 text-stone-100">
                       {msg.sender}
                     </span>
                     {isWhisper && (
@@ -1154,8 +1155,8 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
                     <span className={isRoll ? 'font-mono text-xs' : ''}>{msg.text}</span>
                     {rollTotal !== null && (
                       <span
-                        className="ml-auto shrink-0 rounded-md px-2 py-0.5 text-sm font-bold"
-                        style={{ backgroundColor: `${color}26`, color }}
+                        className="ml-auto shrink-0 rounded-md border px-2 py-0.5 text-sm font-bold bg-stone-950/40"
+                        style={{ borderColor: color, color }}
                       >
                         {rollTotal}
                       </span>
@@ -7035,6 +7036,30 @@ export default function Campaign() {
   const defaultPanelAppliedRef = useRef(false);
   const sidePanelOpen = activeSidePanel !== null && !sidePanelMinimized;
   const chatOpen = activeSidePanel === 'chat' && !sidePanelMinimized;
+  // The side panel docks flush to the right edge by default (which is also
+  // what all the battlemap layout math - toolbar/hotbar offsets, chat-open
+  // margins - reserves space for), but its header can be dragged to float
+  // it anywhere on desktop. The drag only offsets it visually via transform;
+  // the reserved layout space stays put at the default docked position, and
+  // "reset position" snaps it back there.
+  const [sidePanelDragOffset, setSidePanelDragOffset] = useState({ x: 0, y: 0 });
+  const sidePanelDragStateRef = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number }>({ dragging: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
+  const handleSidePanelDragStart = useCallback((e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+    sidePanelDragStateRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, baseX: sidePanelDragOffset.x, baseY: sidePanelDragOffset.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, [sidePanelDragOffset]);
+  const handleSidePanelDragMove = useCallback((e: React.PointerEvent) => {
+    if (!sidePanelDragStateRef.current.dragging) return;
+    const dx = e.clientX - sidePanelDragStateRef.current.startX;
+    const dy = e.clientY - sidePanelDragStateRef.current.startY;
+    setSidePanelDragOffset({ x: sidePanelDragStateRef.current.baseX + dx, y: sidePanelDragStateRef.current.baseY + dy });
+  }, []);
+  const handleSidePanelDragEnd = useCallback((e: React.PointerEvent) => {
+    if (!sidePanelDragStateRef.current.dragging) return;
+    sidePanelDragStateRef.current.dragging = false;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+  }, []);
   
   const [notesPanelWidth, setNotesPanelWidth] = useState(() => {
     const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.28 : 320;
@@ -10449,6 +10474,11 @@ export default function Campaign() {
             campaignSystem={(campaign as any)?.system}
             rollFeed={rollFeed}
             isMobile={isMobile}
+            onOpenCharacterSheet={(char: any) => {
+              if (!char?.id) return;
+              setCharacterSheetDefaultTab("overview");
+              openCharacterSheet(char);
+            }}
           />
         </div>
 
@@ -13159,17 +13189,30 @@ export default function Campaign() {
         allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
       />
       
-      {/* Unified Side Panel */}
+      {/* Unified Side Panel - docks in its reserved slot at the right edge
+          (the same slot all the battlemap layout math offsets around), but
+          floats visually with margin/rounded corners/shadow, and its header
+          can be dragged to reposition it anywhere on desktop via a pure
+          transform - the reserved slot itself never moves, so nothing else
+          on screen needs to react to the drag. */}
       {!spectatorMode && activeSidePanel && !sidePanelMinimized && (
-        <div 
-          className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
-          style={{ 
+        <div
+          className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full py-2 pr-2'}`}
+          style={{
             width: isMobile ? '100vw' : `${effectivePanelWidth}px`,
-            maxWidth: isMobile ? '100vw' : '90vw' 
+            maxWidth: isMobile ? '100vw' : '90vw',
+            transform: isMobile ? undefined : `translate(${sidePanelDragOffset.x}px, ${sidePanelDragOffset.y}px)`,
           }}
         >
-          <div className="flex-1 h-full bg-stone-900/95 border-l border-stone-700 backdrop-blur-sm flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-stone-800 shrink-0">
+          <div className={`flex-1 h-full bg-stone-900/95 border border-stone-700 backdrop-blur-sm flex flex-col shadow-2xl ${isMobile ? '' : 'rounded-xl overflow-hidden'}`}>
+            <div
+              className={`flex items-center justify-between p-3 border-b border-stone-800 shrink-0 ${isMobile ? '' : 'cursor-grab active:cursor-grabbing select-none'}`}
+              onPointerDown={isMobile ? undefined : handleSidePanelDragStart}
+              onPointerMove={isMobile ? undefined : handleSidePanelDragMove}
+              onPointerUp={isMobile ? undefined : handleSidePanelDragEnd}
+              onPointerCancel={isMobile ? undefined : handleSidePanelDragEnd}
+              style={isMobile ? undefined : { touchAction: 'none' }}
+            >
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
@@ -13179,10 +13222,24 @@ export default function Campaign() {
                 {activeSidePanel === 'scene' && 'Scenes'}
               </h2>
               <div className="flex items-center gap-1">
+                {!isMobile && (sidePanelDragOffset.x !== 0 || sidePanelDragOffset.y !== 0) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    data-no-drag
+                    onClick={() => setSidePanelDragOffset({ x: 0, y: 0 })}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-reset-panel-position"
+                    title="Reset panel position"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
                 {activeSidePanel === 'notes' && (
                   <Button
                     variant="ghost"
                     size="icon"
+                    data-no-drag
                     onClick={() => {
                       setFloatingNotesOpen(true);
                       setFloatingNotesInitialNoteId(null);
@@ -13200,6 +13257,7 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    data-no-drag
                     onClick={() => {
                       setFloatingWorldBuilderOpen(true);
                       setSidePanelMinimized(true);
@@ -13215,6 +13273,7 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  data-no-drag
                   onClick={() => setSidePanelMinimized(true)}
                   className="h-8 w-8 text-stone-400 hover:text-white"
                   data-testid="button-minimize-panel"
