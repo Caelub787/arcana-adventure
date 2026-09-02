@@ -11441,7 +11441,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
   const dc = character?.naturalArmor;
-  const visible = revealed || historyOpen || tapLocked;
+  // Never reveal an empty box - there's nothing to show until a roll exists.
+  const visible = !!latest && (revealed || historyOpen || tapLocked);
   const borderColor = accentColor || '#3D77F0';
   const rgbForBorder = accentRgb || '61, 119, 240';
 
@@ -11631,15 +11632,13 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-40 h-40 rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-1 px-2"
+            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-40 h-40 rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-1 px-2 transition-[opacity,box-shadow] duration-200"
             style={{
               backgroundColor: 'rgba(19, 20, 28, 0.95)',
               borderColor,
               boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
               opacity: visible ? 1 : 0,
-              transform: visible ? 'translate(-50%, 0)' : 'translate(-50%, -4px)',
               pointerEvents: visible ? 'auto' : 'none',
-              transition: 'opacity 200ms ease, transform 200ms ease, box-shadow 400ms ease',
             }}
             data-testid={`pinned-roll-${testId}`}
           >
