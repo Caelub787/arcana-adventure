@@ -6598,6 +6598,7 @@ function FloatingNotesEditor({
   zIndex = 10500,
   onBringToFront,
   panelKey,
+  isGm = false,
 }: {
   campaignId: string;
   initialNoteId: string | null;
@@ -6607,6 +6608,7 @@ function FloatingNotesEditor({
   zIndex?: number;
   onBringToFront?: () => void;
   panelKey?: string;
+  isGm?: boolean;
 }) {
   return (
     <FloatingPanel
@@ -6625,6 +6627,7 @@ function FloatingNotesEditor({
           campaignId={campaignId}
           onClose={onClose}
           isOpen={true}
+          isGm={isGm}
           campaignMembers={campaignMembers}
           onViewCharacter={onViewCharacter}
           initialNoteId={initialNoteId}
@@ -7021,6 +7024,25 @@ export default function Campaign() {
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
   const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
+  // Character-sheet "Notes" button: on mobile the sheet already lives inside a
+  // modal Dialog (body pointer-events:none), so a detached FloatingPanel would
+  // render dead - see the trustedPlayer comment on the mobile CharacterSheet
+  // below. Instead this swaps the dialog's content to the notes view in place.
+  const [mobileNotesFor, setMobileNotesFor] = useState<{ characterId: string; noteId: string } | null>(null);
+  const handleOpenCharacterNotes = async (char: any) => {
+    if (!effectiveCampaignId || !char?.id) return;
+    try {
+      const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'character-sheet', char.id, char.name);
+      if (isMobile) {
+        setMobileNotesFor({ characterId: char.id, noteId: note.id });
+      } else {
+        setFloatingNotesInitialNoteId(note.id);
+        setFloatingNotesOpen(true);
+      }
+    } catch (e) {
+      console.error('Failed to open character notes:', e);
+    }
+  };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [sidePanelInitialNoteId, setSidePanelInitialNoteId] = useState<string | null>(null);
   const sidePanelNoteOpenCounterRef = useRef(0);
@@ -12283,6 +12305,7 @@ export default function Campaign() {
         <FloatingNotesEditor
           campaignId={effectiveCampaignId}
           initialNoteId={floatingNotesInitialNoteId}
+          isGm={role === 'gm'}
           onClose={() => {
             setFloatingNotesOpen(false);
             setActiveSidePanel('notes');
@@ -13008,19 +13031,31 @@ export default function Campaign() {
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
       {!spectatorMode && !isSandbox && (isMobile ? (
-        <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => !open && setOpenCharacterSheets([])}>
+        <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => { if (!open) { setOpenCharacterSheets([]); setMobileNotesFor(null); } }}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
               <DialogTitle className="text-lg text-amber-500 font-display truncate pr-8">
-                {openCharacterSheets[0]?.name}
+                {mobileNotesFor && mobileNotesFor.characterId === openCharacterSheets[0]?.id ? `${openCharacterSheets[0]?.name} — Notes` : openCharacterSheets[0]?.name}
               </DialogTitle>
             </DialogHeader>
-            {openCharacterSheets[0] && (
+            {openCharacterSheets[0] && mobileNotesFor && mobileNotesFor.characterId === openCharacterSheets[0].id ? (
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <CampaignNotesPanel
+                  campaignId={effectiveCampaignId || ''}
+                  onClose={() => setMobileNotesFor(null)}
+                  isOpen={true}
+                  isGm={role === 'gm'}
+                  campaignMembers={members as any[] || []}
+                  initialNoteId={mobileNotesFor.noteId}
+                  hideCloseButton={true}
+                />
+              </div>
+            ) : openCharacterSheets[0] && (
               <CharacterSheet
                 character={openCharacterSheets[0]}
                 isGM={role === 'gm'}
                 isOwner={
-                  openCharacterSheets[0].userId === user?.id || 
+                  openCharacterSheets[0].userId === user?.id ||
                   myPermissions?.permissions?.[openCharacterSheets[0].id] === 'edit'
                 }
                 isAdmin={isAdmin}
@@ -13044,6 +13079,9 @@ export default function Campaign() {
                 // as "glitches/freezes"). onOpenItemDetail/onOpenSpellbook are omitted
                 // here so the item-detail / spellbook panels render IN-SHEET, inside
                 // the dialog content, where taps work. Desktop keeps detaching.
+                // onOpenNotes swaps this same dialog's content to the notes view
+                // (see mobileNotesFor above) rather than detaching, for the same reason.
+                onOpenNotes={handleOpenCharacterNotes}
                 trustedPlayer={(() => {
                   const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                   return !!m?.trustedPlayer;
@@ -13119,6 +13157,7 @@ export default function Campaign() {
               campaignSystem={(campaign as any)?.system}
               onOpenItemDetail={(item) => openDetachedItemDetail(sheet, item)}
               onOpenSpellbook={(item) => openDetachedSpellbook(sheet, item)}
+              onOpenNotes={handleOpenCharacterNotes}
               trustedPlayer={(() => {
                 const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                 return !!m?.trustedPlayer;
@@ -13384,6 +13423,7 @@ export default function Campaign() {
                     campaignId={effectiveCampaignId}
                     onClose={() => setSidePanelMinimized(true)}
                     isOpen={true}
+                    isGm={role === 'gm'}
                     campaignMembers={members as any[] || []}
                     onViewCharacter={(char: any) => {
                       if (char?.id) {

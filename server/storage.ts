@@ -4484,6 +4484,16 @@ export class DatabaseStorage implements IStorage {
     return folder;
   }
 
+  // Every folder that exists in a campaign, regardless of owner - used for
+  // provisioning lookups (e.g. finding the auto-created "Players" container)
+  // and as the raw input to visibility filtering, which happens separately.
+  async getCampaignNoteFolders(campaignId: string): Promise<NoteFolder[]> {
+    return await db.select()
+      .from(noteFolders)
+      .where(eq(noteFolders.campaignId, campaignId))
+      .orderBy(noteFolders.sortOrder);
+  }
+
   async getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]> {
     const sharedFolderRows = await db.selectDistinct({ folderId: notes.folderId })
       .from(noteShares)
@@ -4616,6 +4626,16 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(notes, eq(noteShares.noteId, notes.id))
       .where(eq(noteShares.sharedWithId, userId));
     return shares.map(s => s.notes);
+  }
+
+  // Every note that exists in a campaign, regardless of owner - the raw
+  // input to visibility filtering (done by the caller, which has campaign
+  // membership/role context this layer doesn't).
+  async getCampaignNotesRaw(campaignId: string): Promise<Note[]> {
+    return await db.select()
+      .from(notes)
+      .where(eq(notes.campaignId, campaignId))
+      .orderBy(desc(notes.isPinned), notes.sortOrder, desc(notes.updatedAt));
   }
 
   async getCampaignNotesForUser(userId: string, campaignId: string, folderId?: string): Promise<Note[]> {

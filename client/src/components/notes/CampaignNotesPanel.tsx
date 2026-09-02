@@ -73,6 +73,9 @@ interface CampaignNotesPanelProps {
   onViewCharacter?: (character: any) => void;
   initialNoteId?: string | null;
   hideCloseButton?: boolean;
+  // GMs get a visibility control on each note (GM Only / Party / Specific
+  // Players) - players never see it, since they can't change visibility.
+  isGm?: boolean;
 }
 
 const FOLDER_COLORS = [
@@ -544,6 +547,7 @@ export function CampaignNotesPanel({
   onViewCharacter,
   initialNoteId,
   hideCloseButton = false,
+  isGm = false,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -2436,6 +2440,27 @@ export function CampaignNotesPanel({
                 )}
               </div>
             )}
+            {isGm && currentNote && (
+              <Select
+                value={(currentNote as any).visibility || "gm"}
+                onValueChange={(value) => {
+                  if (!selectedNoteId) return;
+                  updateNoteMutation.mutate({
+                    id: selectedNoteId,
+                    data: { visibility: value, ...(value !== "players" ? { visiblePlayerIds: null } : {}) },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-6 text-xs w-[110px] border-stone-700 bg-stone-800/60" data-testid="select-note-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-900 border-stone-700 text-xs">
+                  <SelectItem value="gm">GM Only</SelectItem>
+                  <SelectItem value="party">Party</SelectItem>
+                  <SelectItem value="players">Specific Players</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -2459,6 +2484,33 @@ export function CampaignNotesPanel({
             </Button>
           </div>
         </div>
+        {isGm && currentNote && (currentNote as any).visibility === "players" && (
+          <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-stone-800 bg-stone-900/50">
+            <span className="text-[10px] text-stone-500 mr-1">Visible to:</span>
+            {campaignMembers.length === 0 && (
+              <span className="text-[10px] text-stone-600">No other players yet</span>
+            )}
+            {campaignMembers.map((m) => {
+              const currentIds: string[] = (currentNote as any).visiblePlayerIds || [];
+              const active = currentIds.includes(m.userId);
+              return (
+                <button
+                  key={m.userId}
+                  type="button"
+                  onClick={() => {
+                    if (!selectedNoteId) return;
+                    const nextIds = active ? currentIds.filter((id) => id !== m.userId) : [...currentIds, m.userId];
+                    updateNoteMutation.mutate({ id: selectedNoteId, data: { visiblePlayerIds: nextIds } });
+                  }}
+                  className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${active ? "bg-amber-900/30 border-amber-600/60 text-amber-300" : "bg-stone-800 border-stone-700 text-stone-400 hover:text-stone-200"}`}
+                  data-testid={`button-note-visible-to-${m.userId}`}
+                >
+                  {m.username}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {noteLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <LoadingLogo className="h-5 w-5 text-stone-500" />

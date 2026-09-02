@@ -1335,6 +1335,16 @@ export const noteFolders = pgTable("note_folders", {
   name: text("name").notNull(),
   color: text("color"), // Optional folder color
   sortOrder: integer("sort_order").default(0).notNull(),
+  // Distinguishes the auto-provisioned campaign default folders (wiki/party/
+  // players/gm-notes) from ordinary user-created ones ("custom"). A
+  // "player" folder is one auto-created per campaign member under Players.
+  kind: text("kind").default("custom").notNull(),
+  // Campaign-scoped visibility - who can see this folder and its contents
+  // by default (individual notes inside may still override their own).
+  // 'gm' = GM/assistant-GMs only, 'party' = every campaign member,
+  // 'players' = only the ids listed in visiblePlayerIds (plus GMs).
+  visibility: text("visibility").default("gm").notNull(),
+  visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1363,6 +1373,11 @@ export const notes = pgTable("notes", {
   isPinned: boolean("is_pinned").default(false).notNull(),
   isArchived: boolean("is_archived").default(false).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
+  // Campaign-scoped visibility, same semantics as noteFolders.visibility -
+  // defaults to 'gm' so every note is GM-only until someone opens it up,
+  // matching the "all notes hidden by default" campaign knowledge rule.
+  visibility: text("visibility").default("gm").notNull(),
+  visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

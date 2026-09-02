@@ -3386,6 +3386,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Campaign Knowledge System - default folder provisioning. Every campaign
+  // gets these four top-level folders automatically; every member gets a
+  // private folder nested under Players. Kept idempotent-ish by only being
+  // called from campaign creation / member join, which each only fire once
+  // per campaign/member.
+  async function provisionCampaignKnowledgeDefaults(campaignId: string, gmUserId: string) {
+    await storage.createNoteFolder({
+      userId: gmUserId, campaignId, parentId: null, name: "Wiki",
+      kind: "wiki", visibility: "party", sortOrder: 0,
+    } as any);
+    await storage.createNoteFolder({
+      userId: gmUserId, campaignId, parentId: null, name: "Party",
+      kind: "party", visibility: "party", sortOrder: 1,
+    } as any);
+    await storage.createNoteFolder({
+      userId: gmUserId, campaignId, parentId: null, name: "Players",
+      kind: "players", visibility: "gm", sortOrder: 2,
+    } as any);
+    await storage.createNoteFolder({
+      userId: gmUserId, campaignId, parentId: null, name: "GM Notes",
+      kind: "gm-notes", visibility: "gm", sortOrder: 3,
+    } as any);
+  }
+
+  async function provisionPlayerKnowledgeFolder(campaignId: string, memberUserId: string, username: string) {
+    const folders = await storage.getCampaignNoteFolders(campaignId);
+    const playersContainer = folders.find((f: any) => f.kind === "players" && !f.parentId);
+    // A player who already has a folder here (rejoining after a leave, or a
+    // retried request) shouldn't get a duplicate.
+    const alreadyHasFolder = folders.some((f: any) => f.kind === "player" && f.userId === memberUserId);
+    if (alreadyHasFolder) return;
+    await storage.createNoteFolder({
+      userId: memberUserId, campaignId, parentId: playersContainer?.id || null, name: username,
+      kind: "player", visibility: "players", visiblePlayerIds: [memberUserId], sortOrder: 0,
+    } as any);
+  }
+
   // Campaign routes
   app.post("/api/campaigns", requireAuth, async (req, res) => {
     try {
@@ -3408,6 +3445,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.session.userId!,
         role: "gm"
       });
+
+      await provisionCampaignKnowledgeDefaults(campaign.id, req.session.userId!);
 
       // Create default scene with Ancient ruins battlemap background
       const defaultScene = await storage.createScene({
@@ -3623,6 +3662,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.session.userId!,
         role: "player"
       });
+
+      const joiningUser = await storage.getUser(req.session.userId!);
+      if (joiningUser) {
+        await provisionPlayerKnowledgeFolder(campaign.id, req.session.userId!, joiningUser.username);
+      }
 
       // Broadcast member joined to all campaign members
       const updatedMembers = await storage.getCampaignMembers(campaign.id);
@@ -16541,14 +16585,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
-  // NOTES SYSTEM ROUTES
+  // NOTES SYSTEM ROUTES (Campaign Knowledge System)
   // ============================================
+
+  // Resolves a user's role within a campaign for knowledge-visibility
+  // purposes. Not a member at all (or no campaignId) means no
+  // visibility-based access - only explicit ownership/sharing can apply.
+  async function getKnowledgeRole(userId: string, campaignId: string | null | undefined): Promise<{ isMember: boolean; isGm: boolean }> {
+    if (!campaignId) return { isMember: false, isGm: false };
+    const members = await storage.getCampaignMembers(campaignId);
+    const membership = members.find((m: any) => m.userId === userId);
+    if (!membership) return { isMember: false, isGm: false };
+    return { isMember: true, isGm: membership.role === 'gm' || membership.role === 'assistant_gm' };
+  }
+
+  // Server-side visibility check - the single source of truth for whether a
+  // campaign-scoped note/folder's *default* visibility grants access. Hidden
+  // content must never be delivered based on client-side filtering, so every
+  // read path below calls through this (or the raw-list-filtering routes)
+  // rather than trusting the client to only ask for things it can see.
+  function knowledgeVisibilityGrantsAccess(
+    visibility: string | null | undefined,
+    visiblePlayerIds: string[] | null | undefined,
+    userId: string,
+    role: { isMember: boolean; isGm: boolean },
+  ): boolean {
+    if (role.isGm) return true;
+    if (!role.isMember) return false;
+    if (visibility === 'party') return true;
+    if (visibility === 'players') return !!visiblePlayerIds?.includes(userId);
+    return false; // 'gm' (default) - never visible to a non-GM
+  }
+
+  // Inline GM-only secrets: text wrapped in #...# inside note content is
+  // redacted for anyone who isn't a GM on that note's campaign - the real
+  // characters are stripped out server-side (never sent to the client at
+  // all), replaced with a fixed block so the redaction is visible without
+  // being recoverable by selecting/copying it.
+  function redactGmSecrets(content: string, canSeeGmSecrets: boolean): string {
+    if (canSeeGmSecrets || !content) return content;
+    return content.replace(/#([^#\n]*)#/g, (_match, inner: string) => '█'.repeat(Math.max(3, Math.min(inner.length, 24))));
+  }
 
   // Note Folder endpoints
   app.get("/api/notes/folders", requireAuth, async (req, res) => {
     try {
       const campaignId = req.query.campaignId as string | undefined;
       const showHidden = req.query.showHidden === 'true';
+      if (campaignId) {
+        // Campaign context: every folder in the campaign is a candidate: the
+        // requester sees their own, anything explicitly shared with them,
+        // and anything whose visibility (party / players list) grants them
+        // access. GMs see everything.
+        const role = await getKnowledgeRole(req.session.userId!, campaignId);
+        const allFolders = await storage.getCampaignNoteFolders(campaignId);
+        const shared = await storage.getSharedWithUser(req.session.userId!);
+        const sharedFolderIds = new Set(shared.filter(s => s.folderId).map(s => s.folderId));
+        const visible = allFolders.filter((f: any) =>
+          f.userId === req.session.userId ||
+          sharedFolderIds.has(f.id) ||
+          knowledgeVisibilityGrantsAccess(f.visibility, f.visiblePlayerIds, req.session.userId!, role)
+        );
+        return res.json(visible);
+      }
       const folders = await storage.getUserNoteFolders(req.session.userId!, campaignId, showHidden);
       res.json(folders);
     } catch (e) {
@@ -16655,10 +16754,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = req.query.campaignId as string | undefined;
       
       if (campaignId) {
-        const notes = await storage.getCampaignNotesForUser(req.session.userId!, campaignId, folderId);
-        return res.json(notes);
+        const role = await getKnowledgeRole(req.session.userId!, campaignId);
+        const allNotes = await storage.getCampaignNotesRaw(campaignId);
+        const shared = await storage.getSharedWithUser(req.session.userId!);
+        const sharedNoteIds = new Set(shared.filter(s => s.noteId).map(s => s.noteId));
+        const visible = allNotes
+          .filter((n: any) =>
+            (!folderId || n.folderId === folderId) && (
+              n.userId === req.session.userId ||
+              sharedNoteIds.has(n.id) ||
+              knowledgeVisibilityGrantsAccess(n.visibility, n.visiblePlayerIds, req.session.userId!, role)
+            )
+          )
+          .map((n: any) => ({ ...n, content: redactGmSecrets(n.content, role.isGm) }));
+        return res.json(visible);
       }
-      
+
       const ownedNotes = await storage.getUserNotes(req.session.userId!, folderId, undefined);
       const sharedNotes = await storage.getSharedNotes(req.session.userId!);
       const allNotes = [...ownedNotes];
@@ -16719,7 +16830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       sendToUser(req.session.userId!, { type: 'notes_changed', noteId: note.id });
-      
+
       res.status(201).json(note);
     } catch (e) {
       console.error("Failed to create note:", e);
@@ -16727,14 +16838,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Find-or-create the knowledge note "owned" by a campaign entity (e.g. a
+  // character sheet's Notes button) - used so every sheet has exactly one
+  // linked note that's auto-initialized the first time anyone opens it.
+  app.post("/api/notes/for-entity", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityType, entityId, title } = req.body as { campaignId?: string; entityType?: string; entityId?: string; title?: string };
+      if (!campaignId || !entityType || !entityId) {
+        return res.status(400).json({ error: "campaignId, entityType, and entityId are required" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+
+      const backlinks = await storage.getBacklinks(entityType, entityId);
+      for (const link of backlinks) {
+        const note = await storage.getNote(link.noteId);
+        if (!note || note.campaignId !== campaignId) continue;
+        const access = await storage.canAccessNote(req.session.userId!, note.id);
+        const visibilityGrants = knowledgeVisibilityGrantsAccess((note as any).visibility, (note as any).visiblePlayerIds, req.session.userId!, role);
+        if (access.canAccess || visibilityGrants) {
+          return res.json({ ...note, content: redactGmSecrets(note.content, role.isGm) });
+        }
+      }
+
+      const created = await storage.createNote({
+        userId: req.session.userId!,
+        campaignId,
+        folderId: null,
+        title: title || "Untitled",
+        content: "",
+        type: "note",
+        visibility: role.isGm ? "gm" : "players",
+        visiblePlayerIds: role.isGm ? null : [req.session.userId!],
+      } as any);
+      await storage.createNoteReference({
+        noteId: created.id,
+        entityType,
+        entityId,
+        label: title || null,
+        position: null,
+      } as any);
+
+      broadcastToCampaign(campaignId, { type: 'note_created', noteId: created.id, campaignId, userId: req.session.userId });
+      res.status(201).json(created);
+    } catch (e) {
+      console.error("Failed to get or create entity note:", e);
+      res.status(500).json({ error: "Failed to get or create entity note" });
+    }
+  });
+
   app.get("/api/notes/:id", requireAuth, async (req, res) => {
     try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
       const access = await storage.canAccessNote(req.session.userId!, req.params.id);
-      if (!access.canAccess) {
+      const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+      const visibilityGrants = knowledgeVisibilityGrantsAccess((note as any).visibility, (note as any).visiblePlayerIds, req.session.userId!, role);
+      if (!access.canAccess && !visibilityGrants) {
         return res.status(403).json({ error: "Not authorized to view this note" });
       }
-      const note = await storage.getNote(req.params.id);
-      res.json(note);
+      res.json({ ...note, content: redactGmSecrets(note.content, role.isGm) });
     } catch (e) {
       console.error("Failed to get note:", e);
       res.status(500).json({ error: "Failed to get note" });
@@ -16743,11 +16910,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/notes/:id", requireAuth, async (req, res) => {
     try {
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
-      if (!access.canAccess) {
-        return res.status(403).json({ error: "Not authorized to update this note" });
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
       }
-      if (access.permission !== 'owner' && access.permission !== 'edit') {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+      // GMs can edit anything in their campaign; party-visibility notes are
+      // collaboratively editable by every member (spec 4.2); players-scoped
+      // notes are editable by whichever players they're shared with.
+      const canEditByVisibility = role.isGm || (role.isMember && (
+        (note as any).visibility === 'party' ||
+        ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(req.session.userId!))
+      ));
+      const canEdit = (access.canAccess && (access.permission === 'owner' || access.permission === 'edit')) || canEditByVisibility;
+      if (!canEdit) {
         return res.status(403).json({ error: "Edit permission required" });
       }
       const updated = await storage.updateNote(req.params.id, req.body);

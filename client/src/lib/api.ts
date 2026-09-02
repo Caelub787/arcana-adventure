@@ -645,6 +645,9 @@ export interface NoteFolder {
   name: string;
   color?: string | null;
   sortOrder: number;
+  kind?: string;
+  visibility?: string;
+  visiblePlayerIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -663,6 +666,8 @@ export interface Note {
   isPinned: boolean;
   isArchived: boolean;
   sortOrder: number;
+  visibility?: string;
+  visiblePlayerIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2500,6 +2505,13 @@ class ApiClient {
     return this.request('/notes', {
       method: 'POST',
       body: JSON.stringify(note),
+    });
+  }
+
+  async getOrCreateEntityNote(campaignId: string, entityType: string, entityId: string, title?: string): Promise<Note> {
+    return this.request('/notes/for-entity', {
+      method: 'POST',
+      body: JSON.stringify({ campaignId, entityType, entityId, title }),
     });
   }
 

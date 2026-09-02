@@ -16761,6 +16761,7 @@ interface CharacterSheetProps {
   trustedPlayer?: boolean;
   onOpenItemDetail?: (item: any) => void;
   onOpenSpellbook?: (item: any) => void;
+  onOpenNotes?: (character: any) => void;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -18747,7 +18748,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -21394,6 +21395,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {isTemplate && (
             <Badge className="bg-amber-600/30 text-amber-300 text-xs">Template</Badge>
           )}
+        </div>
+      )}
+      {!isTemplate && campaignId && onOpenNotes && (
+        <div className="flex items-center justify-end px-2 pt-1.5 pb-0.5 bg-stone-950 border-b border-stone-800 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenNotes(character)}
+            className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
+            data-testid="button-character-notes"
+          >
+            <ScrollText className="h-3 w-3" />
+            Notes
+          </Button>
         </div>
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
