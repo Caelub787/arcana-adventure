@@ -2713,10 +2713,14 @@ class ApiClient {
     return this.request(`/notes/${noteId}/shares/${shareId}`, { method: 'DELETE' });
   }
 
-  // Entity search for note references
-  async searchEntities(query: string, type?: string): Promise<SearchableEntity[]> {
+  // Entity search for note references. Passing campaignId scopes results to
+  // that campaign's own characters/items plus admin-authored library
+  // content only - never another GM's personal library or another
+  // campaign's characters.
+  async searchEntities(query: string, type?: string, campaignId?: string): Promise<SearchableEntity[]> {
     const params = new URLSearchParams({ q: query });
     if (type && type !== 'all') params.append('type', type);
+    if (campaignId) params.append('campaignId', campaignId);
     return this.request(`/search/entities?${params.toString()}`);
   }
 

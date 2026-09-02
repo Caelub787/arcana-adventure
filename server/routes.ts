@@ -5709,6 +5709,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return false;
   };
 
+  // A note attached to a character-sheet or item-sheet entity is shared:
+  // whoever can edit the underlying character sees and edits the exact same
+  // note the GM does, and whoever can merely view it can read (but not
+  // edit) it - the note's own visibility/visiblePlayerIds fields (which
+  // drive access for ordinary, unlinked notes) are irrelevant here. Returns
+  // null for any other entity type, or when the item/character can't be
+  // resolved, so callers fall back to the normal visibility-based rules.
+  const checkEntityNoteAccess = async (
+    userId: string,
+    entityType: string,
+    entityId: string
+  ): Promise<{ canView: boolean; canEdit: boolean; isGM: boolean } | null> => {
+    let characterId: string | null = null;
+    if (entityType === 'character-sheet') {
+      characterId = entityId;
+    } else if (entityType === 'item-sheet') {
+      const item = await storage.getItem(entityId);
+      characterId = item?.characterId || null;
+    } else {
+      return null;
+    }
+    if (!characterId) return null;
+
+    const editAccess = await checkCharacterAccess(characterId, userId, 'edit');
+    if (editAccess.allowed) {
+      return { canView: true, canEdit: true, isGM: editAccess.isGM };
+    }
+    const viewAccess = await checkCharacterAccess(characterId, userId, 'view');
+    return { canView: viewAccess.allowed, canEdit: false, isGM: viewAccess.isGM };
+  };
+
+  // Same as above, but resolved from an existing note's own reference
+  // rows instead of a known entityType/entityId pair.
+  const getLinkedEntityNoteAccess = async (
+    userId: string,
+    noteId: string
+  ): Promise<{ canView: boolean; canEdit: boolean; isGM: boolean } | null> => {
+    const refs = await storage.getNoteReferences(noteId);
+    const entityRef = refs.find(r => r.entityType === 'character-sheet' || r.entityType === 'item-sheet');
+    if (!entityRef) return null;
+    return checkEntityNoteAccess(userId, entityRef.entityType, entityRef.entityId);
+  };
+
   // Resolves whether the requester is a REAL GM/assistant-GM (or admin) for
   // a customFields owner — deliberately distinct from checkCharacterAccess's
   // `isGM`, which also returns true for a trusted player's self-elevation on
@@ -16621,8 +16664,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const query = req.query.q as string || '';
       const type = req.query.type as string | undefined;
-      
-      const results = await storage.searchEntities(query, type, req.session.userId!);
+      const campaignId = req.query.campaignId as string | undefined;
+
+      const results = await storage.searchEntities(query, type, req.session.userId!, campaignId);
       res.json(results);
     } catch (e) {
       console.error("Failed to search entities:", e);
@@ -16983,10 +17027,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not a member of this campaign" });
       }
 
+      const entityAccess = await checkEntityNoteAccess(req.session.userId!, entityType, entityId);
+      if (entityAccess && !entityAccess.canView) {
+        return res.status(403).json({ error: "You don't have access to this character or item" });
+      }
+
       const backlinks = await storage.getBacklinks(entityType, entityId);
       for (const link of backlinks) {
         const note = await storage.getNote(link.noteId);
         if (!note || note.campaignId !== campaignId) continue;
+        if (entityAccess) {
+          // Entity-linked note: entity access alone grants it, regardless
+          // of the note's own visibility fields, so the GM and every player
+          // who can see the character land on the exact same note.
+          return res.json({ ...note, content: redactGmSecrets(note.content, role.isGm) });
+        }
         const access = await storage.canAccessNote(req.session.userId!, note.id);
         const visibilityGrants = knowledgeVisibilityGrantsAccess((note as any).visibility, (note as any).visiblePlayerIds, req.session.userId!, role);
         if (access.canAccess || visibilityGrants) {
@@ -17001,8 +17056,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         title: title || "Untitled",
         content: "",
         type: "note",
-        visibility: role.isGm ? "gm" : "players",
-        visiblePlayerIds: role.isGm ? null : [req.session.userId!],
+        visibility: entityAccess ? "party" : (role.isGm ? "gm" : "players"),
+        visiblePlayerIds: entityAccess ? null : (role.isGm ? null : [req.session.userId!]),
       } as any);
       await storage.createNoteReference({
         noteId: created.id,
@@ -17297,8 +17352,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!note) {
         return res.status(404).json({ error: "Note not found" });
       }
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
       const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+      const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, req.params.id);
+      if (entityAccess) {
+        if (!entityAccess.canView) {
+          return res.status(403).json({ error: "Not authorized to view this note" });
+        }
+        return res.json({ ...note, content: redactGmSecrets(note.content, role.isGm) });
+      }
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
       const visibilityGrants = knowledgeVisibilityGrantsAccess((note as any).visibility, (note as any).visiblePlayerIds, req.session.userId!, role);
       if (!access.canAccess && !visibilityGrants) {
         return res.status(403).json({ error: "Not authorized to view this note" });
@@ -17316,16 +17378,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!note) {
         return res.status(404).json({ error: "Note not found" });
       }
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
       const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
-      // GMs can edit anything in their campaign; party-visibility notes are
-      // collaboratively editable by every member (spec 4.2); players-scoped
-      // notes are editable by whichever players they're shared with.
-      const canEditByVisibility = role.isGm || (role.isMember && (
-        (note as any).visibility === 'party' ||
-        ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(req.session.userId!))
-      ));
-      const canEdit = (access.canAccess && (access.permission === 'owner' || access.permission === 'edit')) || canEditByVisibility;
+      const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, req.params.id);
+      let canEdit: boolean;
+      if (entityAccess) {
+        canEdit = entityAccess.canEdit;
+      } else {
+        const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+        // GMs can edit anything in their campaign; party-visibility notes are
+        // collaboratively editable by every member (spec 4.2); players-scoped
+        // notes are editable by whichever players they're shared with.
+        const canEditByVisibility = role.isGm || (role.isMember && (
+          (note as any).visibility === 'party' ||
+          ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(req.session.userId!))
+        ));
+        canEdit = (access.canAccess && (access.permission === 'owner' || access.permission === 'edit')) || canEditByVisibility;
+      }
       if (!canEdit) {
         return res.status(403).json({ error: "Edit permission required" });
       }
@@ -17668,9 +17736,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Note Reference endpoints
   app.get("/api/notes/:id/references", requireAuth, async (req, res) => {
     try {
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
-      if (!access.canAccess) {
-        return res.status(403).json({ error: "Not authorized to view this note" });
+      const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, req.params.id);
+      if (entityAccess) {
+        if (!entityAccess.canView) {
+          return res.status(403).json({ error: "Not authorized to view this note" });
+        }
+      } else {
+        const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ error: "Not authorized to view this note" });
+        }
       }
       const references = await storage.getNoteReferences(req.params.id);
       res.json(references);
@@ -17682,9 +17757,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/notes/:id/references", requireAuth, async (req, res) => {
     try {
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
-      if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
-        return res.status(403).json({ error: "Edit permission required" });
+      const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, req.params.id);
+      if (entityAccess) {
+        if (!entityAccess.canEdit) {
+          return res.status(403).json({ error: "Edit permission required" });
+        }
+      } else {
+        const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+        if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
+          return res.status(403).json({ error: "Edit permission required" });
+        }
       }
       const reference = await storage.createNoteReference({
         ...req.body,
@@ -17699,9 +17781,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/notes/:id/references/:refId", requireAuth, async (req, res) => {
     try {
-      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
-      if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
-        return res.status(403).json({ error: "Edit permission required" });
+      const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, req.params.id);
+      if (entityAccess) {
+        if (!entityAccess.canEdit) {
+          return res.status(403).json({ error: "Edit permission required" });
+        }
+      } else {
+        const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+        if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
+          return res.status(403).json({ error: "Edit permission required" });
+        }
       }
       await storage.deleteNoteReference(req.params.refId);
       res.json({ success: true });

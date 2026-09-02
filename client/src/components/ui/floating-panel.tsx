@@ -164,6 +164,15 @@ interface FloatingPanelProps {
    * flushed before paint (no flash).
    */
   onFitLocked?: () => void;
+  /**
+   * When provided, the panel's width is imperatively kept in sync with this
+   * value on every change (unless the user has manually resized the panel)
+   * instead of only being read once from defaultSize at mount. Lets a caller
+   * grow/shrink the panel - e.g. to dock a notes pane alongside its content -
+   * without changing `key` and forcing a remount, which unmounts and
+   * remounts the whole panel (a visible flash of it closing and reopening).
+   */
+  width?: number;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -183,6 +192,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   fitContent,
   fitContentActive,
   onFitLocked,
+  width,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -219,6 +229,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     fitContent={fitContent}
     fitContentActive={fitContentActive}
     onFitLocked={onFitLocked}
+    width={width}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -308,6 +319,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   fitContent,
   fitContentActive,
   onFitLocked,
+  width,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -504,6 +516,22 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     applyTransform();
     applyZIndex();
   }, [isFullscreen, isMinimized, applyZIndex]);
+
+  // Keep the panel's width in sync with the `width` prop, in place, instead
+  // of only reading it once from defaultSize at mount - lets a caller grow
+  // the panel (e.g. to dock a side pane) without remounting it. Skipped once
+  // the user has manually dragged a resize handle, and while fullscreen
+  // (which already forces the width to the viewport).
+  React.useLayoutEffect(() => {
+    if (width === undefined || userResizedRef.current || isFullscreen) return;
+    if (sizeRef.current.width === width) return;
+    sizeRef.current = { ...sizeRef.current, width };
+    applySize();
+    const p = clampPosition(posRef.current.x, posRef.current.y, sizeRef.current.width, sizeRef.current.height);
+    posRef.current.x = p.x;
+    posRef.current.y = p.y;
+    applyTransform();
+  }, [width, isFullscreen, applySize, applyTransform, clampPosition]);
 
   const handleDragStart = React.useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;

@@ -114,6 +114,10 @@ interface CanvasEditorProps {
   noteSearchProvider?: NoteSearchProvider;
   entitySearchProvider?: EntitySearchProvider;
   hideNoteNodes?: boolean;
+  // Scopes the default entity picker (used when no entitySearchProvider is
+  // given) to this campaign's own characters/items plus admin-authored
+  // library content only.
+  campaignId?: string;
 }
 
 const MIN_ZOOM = 0.25;
@@ -130,6 +134,7 @@ export function CanvasEditor({
   noteSearchProvider,
   entitySearchProvider,
   hideNoteNodes = false,
+  campaignId,
 }: CanvasEditorProps) {
   const [, setLocation] = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1908,6 +1913,7 @@ export function CanvasEditor({
                       }
                     }}
                     onSelect={handleEntitySelect}
+                    campaignId={campaignId}
                     triggerElement={
                       <TooltipTrigger asChild>
                         <Button

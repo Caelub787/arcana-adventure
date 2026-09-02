@@ -22,6 +22,10 @@ interface ReferencePickerProps {
   onSelect: (entity: SearchableEntity) => void;
   triggerElement?: React.ReactNode;
   position?: { top: number; left: number };
+  // Scopes results to this campaign's own characters/items plus
+  // admin-authored library content only. Omit only for a caller that isn't
+  // campaign-scoped at all (the standalone personal Notes page).
+  campaignId?: string;
 }
 
 const ENTITY_TYPES = [
@@ -83,6 +87,7 @@ export function ReferencePicker({
   onOpenChange,
   onSelect,
   triggerElement,
+  campaignId,
 }: ReferencePickerProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -92,9 +97,9 @@ export function ReferencePicker({
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const { data: entities = [], isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["/api/search/entities", debouncedSearch, selectedType],
+    queryKey: ["/api/search/entities", debouncedSearch, selectedType, campaignId],
     queryFn: async () => {
-      const results = await api.searchEntities(debouncedSearch, selectedType);
+      const results = await api.searchEntities(debouncedSearch, selectedType, campaignId);
       return results.slice(0, MAX_RESULTS);
     },
     enabled: open, // Fetch when open - show all entities when search is empty

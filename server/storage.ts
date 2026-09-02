@@ -144,7 +144,7 @@ export interface DuplicateCampaignItemCleanupReport {
 
 export interface IStorage {
   // Entity search for notes reference picker
-  searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]>;
+  searchEntities(query: string, type?: string, userId?: string, campaignId?: string): Promise<SearchableEntity[]>;
 
   // User operations
   getUser(id: string): Promise<User | undefined>;
@@ -899,13 +899,22 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  // Entity search for notes reference picker
-  async searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]> {
+  // Entity search for the notes reference picker. When campaignId is given
+  // (the note-taking flow always provides one), results are scoped to
+  // exactly what the user asked for - "within the campaign or admin": admin
+  // authored library content (ownerUserId/createdByUserId IS NULL) plus
+  // whatever actually belongs to THIS campaign, never another GM's personal
+  // library or another campaign's characters/items. Omitting campaignId
+  // (the standalone personal Notes page, which isn't campaign-scoped at
+  // all) preserves the old unscoped-but-still-admin-only-for-library-content
+  // behavior for that unrelated caller.
+  async searchEntities(query: string, type?: string, userId?: string, campaignId?: string): Promise<SearchableEntity[]> {
     const results: SearchableEntity[] = [];
     const searchPattern = `%${query}%`;
     const limit = 20;
 
-    // Search SystemSpells
+    // Search SystemSpells - admin-authored only (ownerUserId IS NULL);
+    // a personal GM library spell is neither "within the campaign" nor admin.
     if (!type || type === 'all' || type === 'spell') {
       const spellResults = await db.select({
         id: systemSpells.id,
@@ -914,9 +923,12 @@ export class DatabaseStorage implements IStorage {
         icon: systemSpells.icon,
       })
         .from(systemSpells)
-        .where(sql`${systemSpells.name} ILIKE ${searchPattern}`)
+        .where(and(
+          sql`${systemSpells.name} ILIKE ${searchPattern}`,
+          isNull(systemSpells.ownerUserId),
+        ))
         .limit(limit);
-      
+
       results.push(...spellResults.map(s => ({
         id: s.id,
         type: 'spell' as const,
@@ -926,7 +938,7 @@ export class DatabaseStorage implements IStorage {
       })));
     }
 
-    // Search SystemTraits
+    // Search SystemTraits - admin-authored only.
     if (!type || type === 'all' || type === 'trait') {
       const traitResults = await db.select({
         id: systemTraits.id,
@@ -934,9 +946,12 @@ export class DatabaseStorage implements IStorage {
         description: systemTraits.description,
       })
         .from(systemTraits)
-        .where(sql`${systemTraits.name} ILIKE ${searchPattern}`)
+        .where(and(
+          sql`${systemTraits.name} ILIKE ${searchPattern}`,
+          isNull(systemTraits.ownerUserId),
+        ))
         .limit(limit);
-      
+
       results.push(...traitResults.map(t => ({
         id: t.id,
         type: 'trait' as const,
@@ -945,7 +960,7 @@ export class DatabaseStorage implements IStorage {
       })));
     }
 
-    // Search SystemSkills
+    // Search SystemSkills - admin-authored only.
     if (!type || type === 'all' || type === 'skill') {
       const skillResults = await db.select({
         id: systemSkills.id,
@@ -953,9 +968,12 @@ export class DatabaseStorage implements IStorage {
         description: systemSkills.description,
       })
         .from(systemSkills)
-        .where(sql`${systemSkills.name} ILIKE ${searchPattern}`)
+        .where(and(
+          sql`${systemSkills.name} ILIKE ${searchPattern}`,
+          isNull(systemSkills.ownerUserId),
+        ))
         .limit(limit);
-      
+
       results.push(...skillResults.map(s => ({
         id: s.id,
         type: 'skill' as const,
@@ -964,8 +982,13 @@ export class DatabaseStorage implements IStorage {
       })));
     }
 
-    // Search System Items (items with isTemplate = true and no characterId)
+    // Search item templates - admin/shared (createdByUserId IS NULL) or,
+    // when scoped to a campaign, this campaign's own template items. A
+    // different GM's personal library templates are excluded either way.
     if (!type || type === 'all' || type === 'item') {
+      const itemScope = campaignId
+        ? or(isNull(items.createdByUserId), eq(items.campaignId, campaignId))
+        : isNull(items.createdByUserId);
       const itemResults = await db.select({
         id: items.id,
         name: items.name,
@@ -975,10 +998,11 @@ export class DatabaseStorage implements IStorage {
         .from(items)
         .where(and(
           sql`${items.name} ILIKE ${searchPattern}`,
-          eq(items.isTemplate, true)
+          eq(items.isTemplate, true),
+          itemScope,
         ))
         .limit(limit);
-      
+
       results.push(...itemResults.map(i => ({
         id: i.id,
         type: 'item' as const,
@@ -988,7 +1012,7 @@ export class DatabaseStorage implements IStorage {
       })));
     }
 
-    // Search SystemSpecies
+    // Search SystemSpecies - admin-authored only.
     if (!type || type === 'all' || type === 'species') {
       const speciesResults = await db.select({
         id: systemSpecies.id,
@@ -997,9 +1021,12 @@ export class DatabaseStorage implements IStorage {
         defaultImage: systemSpecies.defaultImage,
       })
         .from(systemSpecies)
-        .where(sql`${systemSpecies.name} ILIKE ${searchPattern}`)
+        .where(and(
+          sql`${systemSpecies.name} ILIKE ${searchPattern}`,
+          isNull(systemSpecies.ownerUserId),
+        ))
         .limit(limit);
-      
+
       results.push(...speciesResults.map(s => ({
         id: s.id,
         type: 'species' as const,
@@ -1011,14 +1038,26 @@ export class DatabaseStorage implements IStorage {
 
     // Search Characters with permission filtering
     if ((!type || type === 'all' || type === 'character') && userId) {
-      // Get campaigns where user is GM
-      const gmCampaigns = await db.select({ id: campaigns.id })
-        .from(campaigns)
-        .where(eq(campaigns.gmUserId, userId));
-      
-      const gmCampaignIds = gmCampaigns.map(c => c.id);
-      
-      // Find characters: either owned by user OR in campaigns where user is GM
+      let characterScope;
+      if (campaignId) {
+        // Campaign-scoped: every character IN THIS CAMPAIGN, further
+        // filtered below to what the requester can actually see if they
+        // aren't its GM.
+        characterScope = eq(characters.campaignId, campaignId);
+      } else {
+        // Unscoped caller (standalone personal Notes page): the old
+        // behavior - the user's own characters, or any character in a
+        // campaign they GM.
+        const gmCampaigns = await db.select({ id: campaigns.id })
+          .from(campaigns)
+          .where(eq(campaigns.gmUserId, userId));
+        const gmCampaignIds = gmCampaigns.map(c => c.id);
+        characterScope = or(
+          eq(characters.userId, userId),
+          gmCampaignIds.length > 0 ? inArray(characters.campaignId, gmCampaignIds) : sql`false`
+        );
+      }
+
       const characterResults = await db.select({
         id: characters.id,
         name: characters.name,
@@ -1030,14 +1069,25 @@ export class DatabaseStorage implements IStorage {
         .from(characters)
         .where(and(
           sql`${characters.name} ILIKE ${searchPattern}`,
-          or(
-            eq(characters.userId, userId),
-            gmCampaignIds.length > 0 ? inArray(characters.campaignId, gmCampaignIds) : sql`false`
-          )
+          characterScope,
         ))
         .limit(limit);
-      
-      results.push(...characterResults.map(c => ({
+
+      let visibleCharacters = characterResults;
+      if (campaignId) {
+        const campaign = await this.getCampaign(campaignId);
+        const isGm = !!campaign && campaign.gmUserId === userId;
+        if (!isGm) {
+          const characterIds = characterResults.map(c => c.id);
+          const permissions = await this.getUserPermissionsForCharacters(userId, characterIds);
+          const permissionMap = new Map(permissions.map(p => [p.characterId, p.accessLevel]));
+          visibleCharacters = characterResults.filter(c =>
+            c.userId === userId || permissionMap.has(c.id)
+          );
+        }
+      }
+
+      results.push(...visibleCharacters.map(c => ({
         id: c.id,
         type: 'character' as const,
         name: c.name,

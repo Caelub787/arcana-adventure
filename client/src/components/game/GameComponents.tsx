@@ -31405,11 +31405,11 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   if (!open || !item) return null;
   return (
     <FloatingPanel
-      key={dockedNoteId ? 'with-notes' : 'plain'}
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
-      defaultSize={{ width: dockedNoteId ? 720 * 2 : 720, height: Math.min(880, window.innerHeight - 40) }}
+      defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
+      width={dockedNoteId ? 720 * 2 : 720}
       defaultPosition={defaultPosition}
       minWidth={350}
       minHeight={300}

@@ -2294,6 +2294,7 @@ export function CampaignNotesPanel({
             onClose={() => setSelectedNoteId(null)}
             title={noteTitle}
             onTitleChange={setNoteTitle}
+            campaignId={campaignId}
           />
         </div>
       );
@@ -2489,6 +2490,7 @@ export function CampaignNotesPanel({
                 open={referencePickerOpen}
                 onOpenChange={setReferencePickerOpen}
                 onSelect={handleReferenceSelectFromButton}
+                campaignId={campaignId}
                 triggerElement={
                   <Button
                     variant="outline"

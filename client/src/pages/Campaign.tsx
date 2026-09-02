@@ -13006,7 +13006,7 @@ export default function Campaign() {
             || role === 'gm';
           return (
           <FloatingPanel
-            key={`${sheet.id}${dockedCharNotes[sheet.id] ? '-with-notes' : ''}`}
+            key={sheet.id}
             open={true}
             onClose={() => closeCharacterSheet(sheet.id)}
             title={editingSheetNameId === sheet.id ? (
@@ -13032,7 +13032,8 @@ export default function Campaign() {
               setSheetNameDraft(sheet.name);
               setEditingSheetNameId(sheet.id);
             } : undefined}
-            defaultSize={{ width: dockedCharNotes[sheet.id] ? 652 * 2 : 652, height: Math.min(window.innerHeight - 70, 480) }}
+            defaultSize={{ width: 652, height: Math.min(window.innerHeight - 70, 480) }}
+            width={dockedCharNotes[sheet.id] ? 652 * 2 : 652}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
             minHeight={400}
