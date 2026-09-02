@@ -51,6 +51,7 @@ import caWoundBodyFemale from "@/assets/ca_wound_body_female.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
 import { CustomFieldsEditor } from './CustomFieldsEditor';
+import { CampaignNotesPanel } from '../notes/CampaignNotesPanel';
 import { CraftRecipesEditor } from './CraftRecipesEditor';
 import { TemplateManager } from './TemplateManager';
 import { V3RuneAttachEditor } from './V3RuneAttachEditor';
@@ -31002,6 +31003,11 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [syncingTechniques, setSyncingTechniques] = useState(false);
+  // Docked notes pane: shown as a sibling inside this same FloatingPanel
+  // (not a separate floating window) so an item's notes stay visually
+  // attached to its sheet.
+  const [dockedNoteId, setDockedNoteId] = useState<string | null>(null);
+  const [dockingNote, setDockingNote] = useState(false);
   const handleSyncTechniques = async () => {
     if (!character?.id || !item?.id) return;
     setSyncingTechniques(true);
@@ -31370,7 +31376,8 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       zIndex={floatingZIndices?.[`item-detail${charPanelSuffix}`] || 10050}
       onBringToFront={() => bringToFront?.(`item-detail${charPanelSuffix}`)}
     >
-      <div className="p-4">
+      <div className="flex h-full min-h-0">
+      <div className="p-4 flex-1 min-w-0 overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             {isEditing ? (
               <Input 
@@ -31403,12 +31410,24 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                {onOpenNotes && (
+                {character?.campaignId && (
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={() => onOpenNotes(item)}
-                    className="h-8 w-8 text-stone-400 hover:text-stone-200"
+                    disabled={dockingNote}
+                    onClick={async () => {
+                      if (dockedNoteId) { setDockedNoteId(null); return; }
+                      setDockingNote(true);
+                      try {
+                        const note = await api.getOrCreateEntityNote(character.campaignId, 'item-sheet', item.id, item.name);
+                        setDockedNoteId(note.id);
+                      } catch (e: any) {
+                        toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
+                      } finally {
+                        setDockingNote(false);
+                      }
+                    }}
+                    className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${dockedNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
                     title="Notes"
                     data-testid="button-item-notes"
                   >
@@ -32435,6 +32454,20 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             )}
           </div>
         </div>
+      {dockedNoteId && character?.campaignId && (
+        <div className="w-80 flex-shrink-0 border-l border-stone-700 h-full min-h-0">
+          <CampaignNotesPanel
+            campaignId={character.campaignId}
+            onClose={() => setDockedNoteId(null)}
+            isOpen={true}
+            isGm={isGM}
+            hideCloseButton={false}
+            contentOnly={true}
+            initialNoteId={dockedNoteId}
+          />
+        </div>
+      )}
+      </div>
     </FloatingPanel>
   );
 }

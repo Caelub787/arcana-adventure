@@ -6553,6 +6553,7 @@ function FloatingNotesEditor({
           onViewCharacter={onViewCharacter}
           initialNoteId={initialNoteId}
           hideCloseButton={true}
+          contentOnly={true}
         />
       </div>
     </FloatingPanel>
@@ -6951,15 +6952,28 @@ export default function Campaign() {
   // time (character or, nested, an item within it), so a single slot here
   // covers both - it just needs a noteId, not which entity it came from.
   const [mobileNotesFor, setMobileNotesFor] = useState<{ noteId: string } | null>(null);
+  // Mobile's generic (not sheet-attached) Notes button: a full-screen
+  // Obsidian-style flow - browse (navOnly) until a note is tapped, then that
+  // note fills the screen (contentOnly, no nav chrome), with its own close
+  // button stepping back to the browse list rather than exiting outright.
+  const [mobileNotesNav, setMobileNotesNav] = useState<{ noteId: string | null } | null>(null);
+  // Desktop: a character's notes dock inline (as a sibling pane inside that
+  // character's own FloatingPanel) rather than opening a separate floating
+  // window - keyed by characterId so multiple open sheets can each have
+  // their own docked note independently.
+  const [dockedCharNotes, setDockedCharNotes] = useState<Record<string, string>>({});
   const handleOpenCharacterNotes = async (char: any) => {
     if (!effectiveCampaignId || !char?.id) return;
+    if (!isMobile && dockedCharNotes[char.id]) {
+      setDockedCharNotes(prev => { const next = { ...prev }; delete next[char.id]; return next; });
+      return;
+    }
     try {
       const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'character-sheet', char.id, char.name);
       if (isMobile) {
         setMobileNotesFor({ noteId: note.id });
       } else {
-        setFloatingNotesInitialNoteId(note.id);
-        setFloatingNotesOpen(true);
+        setDockedCharNotes(prev => ({ ...prev, [char.id]: note.id }));
       }
     } catch (e: any) {
       console.error('Failed to open character notes:', e);
@@ -10500,13 +10514,11 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    if (floatingNotesOpen) {
-                      bringToFront('notes');
+                    if (isMobile) {
+                      setMobileNotesNav(prev => prev ? null : { noteId: null });
                       return;
                     }
-                    if (isMobile) {
-                      setFloatingNotesOpen(true);
-                      setFloatingNotesInitialNoteId(null);
+                    if (floatingNotesOpen) {
                       bringToFront('notes');
                       return;
                     }
@@ -10517,7 +10529,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -12196,6 +12208,36 @@ export default function Campaign() {
         />
       )}
 
+      {/* Mobile full-screen Notes: browse (navOnly) until a note is tapped,
+          then that note fills the screen (contentOnly) - its own close
+          button steps back to the browse list; the dialog's own close exits
+          notes mode entirely. */}
+      {!spectatorMode && isMobile && mobileNotesNav && effectiveCampaignId && (
+        <Dialog open={true} onOpenChange={(open) => { if (!open) setMobileNotesNav(null); }}>
+          <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
+            <CampaignNotesPanel
+              campaignId={effectiveCampaignId}
+              isOpen={true}
+              isGm={role === 'gm'}
+              campaignMembers={(members as any[] || [])
+                .filter((m: any) => m.userId !== user?.id)
+                .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
+              onViewCharacter={(character) => {
+                if (character) {
+                  setCharacterSheetDefaultTab("overview");
+                  openCharacterSheet(character);
+                }
+              }}
+              navOnly={!mobileNotesNav.noteId}
+              contentOnly={!!mobileNotesNav.noteId}
+              initialNoteId={mobileNotesNav.noteId || undefined}
+              onOpenFloatingNote={(noteId) => setMobileNotesNav({ noteId })}
+              onClose={() => setMobileNotesNav(mobileNotesNav.noteId ? { noteId: null } : null)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Global Search (Alt+L) */}
       {!spectatorMode && effectiveCampaignId && (
         <GlobalSearch
@@ -12912,6 +12954,7 @@ export default function Campaign() {
                   campaignMembers={members as any[] || []}
                   initialNoteId={mobileNotesFor.noteId}
                   hideCloseButton={true}
+                  contentOnly={true}
                 />
               </div>
             ) : openCharacterSheets[0] && (
@@ -12998,11 +13041,13 @@ export default function Campaign() {
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
+            <div className="flex h-full min-h-0">
+            <div className="flex-1 min-w-0 h-full min-h-0">
             <CharacterSheet
               character={sheet}
               isGM={role === 'gm'}
               isOwner={
-                sheet.userId === user?.id || 
+                sheet.userId === user?.id ||
                 myPermissions?.permissions?.[sheet.id] === 'edit'
               }
               isAdmin={isAdmin}
@@ -13029,6 +13074,20 @@ export default function Campaign() {
                 return !!m?.trustedPlayer;
               })()}
             />
+            </div>
+            {dockedCharNotes[sheet.id] && (
+              <div className="w-80 flex-shrink-0 border-l border-stone-700 h-full min-h-0">
+                <CampaignNotesPanel
+                  campaignId={effectiveCampaignId || ''}
+                  onClose={() => setDockedCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}
+                  isOpen={true}
+                  isGm={role === 'gm'}
+                  contentOnly={true}
+                  initialNoteId={dockedCharNotes[sheet.id]}
+                />
+              </div>
+            )}
+            </div>
           </FloatingPanel>
           );
         })

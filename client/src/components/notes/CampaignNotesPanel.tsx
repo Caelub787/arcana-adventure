@@ -91,6 +91,13 @@ interface CampaignNotesPanelProps {
   // note view (opened from a sheet's Notes button, or popped out).
   navOnly?: boolean;
   onOpenFloatingNote?: (noteId: string) => void;
+  // Content-only mode: the inverse of navOnly - no folder tree/search/Home,
+  // no Graph/Timelines toggles, no multi-note tab bar. Just the single note
+  // named by initialNoteId, full-bleed. Used everywhere a note is shown
+  // outside the sidebar (a character/item sheet's docked notes pane, the
+  // floating panel for a note with no entity link, mobile's fullscreen note
+  // view) so navigation chrome only ever appears in the sidebar itself.
+  contentOnly?: boolean;
 }
 
 const FOLDER_COLORS = [
@@ -574,6 +581,7 @@ export function CampaignNotesPanel({
   isGm = false,
   navOnly = false,
   onOpenFloatingNote,
+  contentOnly = false,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -2680,20 +2688,24 @@ export function CampaignNotesPanel({
   return (
     <div className="h-full bg-stone-900/98 border-l border-stone-700 flex flex-col shadow-2xl">
       <div className="flex items-center justify-between p-2 border-b border-stone-700 bg-stone-900">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => setShowSidebar(!showSidebar)}
-          >
-            {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-          </Button>
-          <FileText className="h-4 w-4 text-amber-500" />
-          <h2 className="text-sm font-bold text-amber-500">Campaign Notes</h2>
+        <div className="flex items-center gap-2 min-w-0">
+          {!contentOnly && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={() => setShowSidebar(!showSidebar)}
+            >
+              {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+            </Button>
+          )}
+          <FileText className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          <h2 className="text-sm font-bold text-amber-500 truncate">
+            {contentOnly ? (currentNote?.title || "Note") : "Campaign Notes"}
+          </h2>
         </div>
         <div className="flex items-center gap-1">
-          {!navOnly && (
+          {!navOnly && !contentOnly && (
           <Button
             variant="ghost"
             size="icon"
@@ -2720,7 +2732,7 @@ export function CampaignNotesPanel({
             <Network className="h-4 w-4" />
           </Button>
           )}
-          {!navOnly && (
+          {!navOnly && !contentOnly && (
           <Button
             variant="ghost"
             size="icon"
@@ -2762,7 +2774,7 @@ export function CampaignNotesPanel({
         </div>
       </div>
 
-      {!navOnly && openNotes.length > 0 && (
+      {!navOnly && !contentOnly && openNotes.length > 0 && (
         <NoteTabs
           openNotes={openNotes}
           activeNoteId={selectedNoteId || tabActiveNoteId}
@@ -2777,6 +2789,18 @@ export function CampaignNotesPanel({
         {navOnly ? (
           <div className="flex-1 min-w-0 h-full overflow-hidden">
             {renderSidebar()}
+          </div>
+        ) : contentOnly ? (
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
+              {noteLoading ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <LoadingLogo className="h-5 w-5 text-stone-500" />
+                </div>
+              ) : selectedNoteId ? (
+                currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+              ) : null}
+            </div>
           </div>
         ) : tabActiveNoteId === GRAPH_TAB_ID && !selectedNoteId ? (
           renderGraphView()
