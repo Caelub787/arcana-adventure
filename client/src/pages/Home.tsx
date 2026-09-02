@@ -218,23 +218,6 @@ export default function Home() {
               </Card>
             </Link>
 
-            {/* Notes */}
-            <Link href="/notes">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-notes">
-                <CardHeader>
-                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                    <BookOpen className="h-6 w-6" />
-                  </div>
-                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-amber-400">Notes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Create notes, link references, and share with friends.
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-
             {/* My Library — everyone, including admins */}
             <Link href="/library">
               <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-my-library">

@@ -7,8 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { format } from "date-fns";
-import { useEntitiesByCampaign, ENTITY_TYPE_CONFIG, type Entity } from "@/lib/worldbuilding-api";
-import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -658,10 +656,6 @@ export function CampaignNotesPanel({
   const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
 
-  const [showWorldSection, setShowWorldSection] = useState(false);
-  const [worldEntityFilter, setWorldEntityFilter] = useState<string>("");
-  const [selectedWorldEntityId, setSelectedWorldEntityId] = useState<string | null>(null);
-
   // Google Drive sync state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [driveFiles, setDriveFiles] = useState<GoogleDocInfo[]>([]);
@@ -726,15 +720,6 @@ export function CampaignNotesPanel({
     enabled: !!user && !!campaignId && isOpen,
   });
 
-  const { data: worldEntities = [] } = useEntitiesByCampaign(isOpen ? campaignId : undefined);
-
-  const { data: campaignData } = useQuery({
-    queryKey: ["/api/campaigns", campaignId, "detail"],
-    queryFn: () => api.getCampaign(campaignId),
-    enabled: !!campaignId && isOpen,
-  });
-  const isGMForWorld = campaignData?.gmUserId === user?.id;
-  const selectedWorldEntity = worldEntities.find((e: Entity) => e.id === selectedWorldEntityId) || null;
 
   const { data: currentNote, isLoading: noteLoading } = useQuery<Note>({
     queryKey: ["/api/notes", selectedNoteId],
@@ -1642,38 +1627,9 @@ export function CampaignNotesPanel({
     }
   };
 
-  const handleWorldEntityClick = (entityId: string) => {
-    setSelectedWorldEntityId(entityId);
-    setSelectedNoteId(null);
-    setShowHomeView(false);
-    setShowWorldSection(true);
-  };
-
-  const handleWikiLinkClick = (entityName: string) => {
-    const match = worldEntities.find(
-      (e: Entity) => e.displayName.toLowerCase() === entityName.toLowerCase() && !e.isDeleted
-    );
-    if (match) {
-      handleWorldEntityClick(match.id);
-    } else {
-      toast({
-        title: "Entity not found",
-        description: `No worldbuilding entity named "${entityName}" was found.`,
-      });
-    }
-  };
-
   const handleEntityClick = async (entityType: string, entityId: string) => {
     const cleanType = entityType.replace(/^\[+/, '').toLowerCase().trim();
 
-    if (ENTITY_TYPE_CONFIG[cleanType]) {
-      const wEntity = worldEntities.find((e: Entity) => e.id === entityId);
-      if (wEntity) {
-        handleWorldEntityClick(entityId);
-        return;
-      }
-    }
-    
     setSelectedEntityType(cleanType);
     setSelectedEntityId(entityId);
     setEntityDialogOpen(true);
@@ -1740,7 +1696,7 @@ export function CampaignNotesPanel({
   };
 
   const formatInlineReferences = (content: string, keyPrefix: string): React.ReactNode[] => {
-    const combinedRegex = /\[\[([^:\]]+):([^\|]+)\|([^\]]+)\]\]|\[\[([^\]:\|]+)\]\]|\/\/([^\/]+)\/\/|\(\/([^\/]+)\/\)/g;
+    const combinedRegex = /\[\[([^:\]]+):([^\|]+)\|([^\]]+)\]\]|\/\/([^\/]+)\/\/|\(\/([^\/]+)\/\)/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -1766,19 +1722,7 @@ export function CampaignNotesPanel({
           </span>
         );
       } else if (match[4]) {
-        const wikiName = match[4];
-        parts.push(
-          <span
-            key={`${keyPrefix}-wiki-${match.index}`}
-            className="text-amber-400 cursor-pointer hover:text-amber-300 hover:underline transition-colors font-medium bg-amber-900/20 px-0.5 rounded"
-            onClick={() => handleWikiLinkClick(wikiName)}
-            data-testid={`panel-wiki-link-${wikiName}`}
-          >
-            {wikiName}
-          </span>
-        );
-      } else if (match[5]) {
-        const noteName = match[5];
+        const noteName = match[4];
         parts.push(
           <span
             key={`${keyPrefix}-${match.index}`}
@@ -1789,8 +1733,8 @@ export function CampaignNotesPanel({
             {noteName}
           </span>
         );
-      } else if (match[6]) {
-        const noteName = match[6];
+      } else if (match[5]) {
+        const noteName = match[5];
         parts.push(
           <span
             key={`${keyPrefix}-${match.index}`}
@@ -2107,68 +2051,6 @@ export function CampaignNotesPanel({
           <Users className="h-3 w-3" />
           <span>Shared</span>
         </div>
-        <Separator className="my-1 bg-stone-800" />
-        <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-            showWorldSection
-              ? "bg-emerald-900/30 text-emerald-400"
-              : "hover:bg-stone-800/50 text-stone-300"
-          }`}
-          onClick={() => {
-            setShowWorldSection(!showWorldSection);
-            if (!showWorldSection) {
-              setWorldEntityFilter("");
-              setSelectedWorldEntityId(null);
-            }
-          }}
-          data-testid="panel-folder-world"
-        >
-          <Globe className="h-3 w-3" />
-          <span>World</span>
-          {worldEntities.length > 0 && (
-            <span className="ml-auto text-[10px] text-stone-500">{worldEntities.filter((e: Entity) => !e.isDeleted).length}</span>
-          )}
-        </div>
-        {showWorldSection && (
-          <div className="ml-2 mt-1 space-y-0.5">
-            <Input
-              placeholder="Filter entities..."
-              value={worldEntityFilter}
-              onChange={(e) => setWorldEntityFilter(e.target.value)}
-              className="h-6 text-xs bg-stone-900/50 border-stone-700 mb-1"
-              data-testid="panel-world-filter-input"
-            />
-            {worldEntities
-              .filter((e: Entity) => !e.isDeleted)
-              .filter((e: Entity) =>
-                !worldEntityFilter || e.displayName.toLowerCase().includes(worldEntityFilter.toLowerCase()) ||
-                e.entityType.toLowerCase().includes(worldEntityFilter.toLowerCase())
-              )
-              .sort((a: Entity, b: Entity) => a.displayName.localeCompare(b.displayName))
-              .map((entity: Entity) => {
-                const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
-                return (
-                  <div
-                    key={entity.id}
-                    className={`flex items-center gap-1 py-0.5 px-1 rounded cursor-pointer transition-colors text-xs ${
-                      selectedWorldEntityId === entity.id
-                        ? "bg-emerald-900/30 text-emerald-300"
-                        : "hover:bg-stone-800/50 text-stone-400"
-                    }`}
-                    onClick={() => handleWorldEntityClick(entity.id)}
-                    data-testid={`panel-world-entity-${entity.id}`}
-                  >
-                    <span className="text-[10px]">{cfg?.icon || "📄"}</span>
-                    <span className="truncate">{entity.displayName}</span>
-                    <span className="ml-auto text-[9px] text-stone-600 capitalize">{entity.entityType}</span>
-                  </div>
-                );
-              })}
-            {worldEntities.filter((e: Entity) => !e.isDeleted).length === 0 && (
-              <div className="text-[10px] text-stone-600 px-1 py-1">No worldbuilding entities yet</div>
-            )}
-          </div>
-        )}
         <Separator className="my-1 bg-stone-800" />
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
@@ -2863,35 +2745,6 @@ export function CampaignNotesPanel({
               <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
                 {selectedNoteId ? (
                   currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
-                ) : selectedWorldEntity ? (
-                  <div className="flex-1 flex flex-col overflow-hidden" data-testid="panel-world-entity-view">
-                    <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-800 bg-stone-950/50">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5 text-stone-400 hover:text-stone-200"
-                        onClick={() => setSelectedWorldEntityId(null)}
-                        data-testid="panel-world-entity-back"
-                      >
-                        <ArrowLeft className="h-3 w-3 mr-1" />
-                        Back
-                      </Button>
-                      <Globe className="h-3.5 w-3.5 text-emerald-400" />
-                      <span className="text-xs font-medium text-emerald-300 truncate">{selectedWorldEntity.displayName}</span>
-                      <span className="text-[10px] text-stone-500 capitalize">({selectedWorldEntity.entityType})</span>
-                    </div>
-                    <div className="flex-1 overflow-auto">
-                      <WikiArticleEditor
-                        entity={selectedWorldEntity}
-                        campaignId={campaignId}
-                        isGM={isGMForWorld}
-                        onEntityUpdated={() => {}}
-                        onWikiLinkClick={(type, id) => {
-                          if (type === "entity") setSelectedWorldEntityId(id);
-                        }}
-                      />
-                    </div>
-                  </div>
                 ) : showHomeView ? (
                   renderHomeView()
                 ) : (

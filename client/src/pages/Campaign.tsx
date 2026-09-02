@@ -47,11 +47,8 @@ import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/
 import { migrateTemplateData } from "@/components/sandbox/types";
 import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expressionEngine';
 import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
-import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
-import { useEntities, useWorldbuildingSync, useLinkedWorld, useDeleteEntity, useMyEntityAccess } from "@/lib/worldbuilding-api";
 import { itemPanelKey, openItemPanel, closeItemPanel, itemPanelStaggerPosition } from "@/lib/detachedPanels";
-import EmbeddedWorldBuilder from "@/canvasrealms/EmbeddedWorldBuilder";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2, Layout as LayoutIcon } from "lucide-react";
+import { Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2, Layout as LayoutIcon } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6513,82 +6510,6 @@ function renderWorldHomeContent(content: string) {
   });
 }
 
-function WikiArticleWithAccess({ entity, worldId, campaignId, isGM, userId, onWikiLinkClick, shareToken, customTags }: {
-  entity: any;
-  worldId: string;
-  campaignId: string;
-  isGM: boolean;
-  userId?: string;
-  onWikiLinkClick?: (type: string, id: string) => void;
-  shareToken?: string;
-  customTags?: string[];
-}) {
-  const { data: myAccess } = useMyEntityAccess(
-    !isGM ? worldId : undefined,
-    !isGM ? entity.id : undefined
-  );
-  const canEdit = isGM || myAccess?.accessLevel === 'edit';
-  return (
-    <WikiArticleEditor
-      entity={entity}
-      worldId={worldId}
-      campaignId={campaignId}
-      isGM={isGM}
-      canEdit={canEdit}
-      onWikiLinkClick={onWikiLinkClick}
-      shareToken={shareToken}
-      customTags={customTags}
-    />
-  );
-}
-
-// Campaign-embedded World Builder = the ported Canvas Realms canvas, scoped to
-// a per-campaign CR realm. Replaces the old home-grown campaign World Builder.
-function CampaignWorldBuilder({ campaignId, v3 = false }: { campaignId: string; v3?: boolean }) {
-  return <EmbeddedWorldBuilder campaignId={campaignId} v3={v3} />;
-}
-
-function FloatingWorldBuilder({
-  campaignId,
-  isGM,
-  characters,
-  open,
-  onClose,
-  zIndex = 10200,
-  onBringToFront,
-  panelKey,
-  userId,
-  v3 = false,
-}: {
-  campaignId: string;
-  isGM: boolean;
-  characters: any[];
-  open: boolean;
-  onClose: () => void;
-  zIndex?: number;
-  onBringToFront?: () => void;
-  panelKey?: string;
-  userId?: string;
-  v3?: boolean;
-}) {
-  if (!open) return null;
-  return (
-    <FloatingPanel
-      open={open}
-      onClose={onClose}
-      title={<span className="text-amber-500">{v3 ? 'World Info' : 'World Builder'}</span>}
-      zIndex={zIndex}
-      onBringToFront={onBringToFront}
-      panelKey={panelKey}
-      defaultSize={{ width: 900, height: 650 }}
-      minWidth={600}
-      minHeight={400}
-    >
-      <CampaignWorldBuilder campaignId={campaignId} v3={v3} />
-    </FloatingPanel>
-  );
-}
-
 function FloatingNotesEditor({
   campaignId,
   initialNoteId,
@@ -7015,8 +6936,6 @@ export default function Campaign() {
   const [shopImportRarityFilter, setShopImportRarityFilter] = useState('all');
   const [viewingShopItem, setViewingShopItem] = useState<any | null>(null);
 
-  // Floating world builder state
-  const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
   const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
   const [v3PendingCount, setV3PendingCount] = useState(0);
   const [myLibraryOpen, setMyLibraryOpen] = useState(false);
@@ -7050,7 +6969,7 @@ export default function Campaign() {
   const [searchPreviewSpells, setSearchPreviewSpells] = useState<any[]>([]);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
-  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'world' | null;
+  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | null;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -7087,15 +7006,8 @@ export default function Campaign() {
   // Reference spec calls for the Adventure Log sidebar to default to
   // roughly 350-380px - still freely resizable afterward via the drag handle.
   const [notesPanelWidth, setNotesPanelWidth] = useState(370);
-  // The World (Canvas Realms) side panel needs more room than chat/notes, so it
-  // gets its own wider default and is resized independently.
-  const [worldPanelWidth, setWorldPanelWidth] = useState(() => {
-    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.45 : 480;
-    return Math.max(480, Math.min(1000, defaultWidth));
-  });
-  const isWorldSidePanel = activeSidePanel === 'world';
-  const effectivePanelWidth = isWorldSidePanel ? worldPanelWidth : notesPanelWidth;
-  
+  const effectivePanelWidth = notesPanelWidth;
+
   const handleToggleNotesPanel = useCallback(() => {
     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
       setSidePanelMinimized(true);
@@ -7158,8 +7070,8 @@ export default function Campaign() {
     if (!isResizingNotes || isMobile) return;
     const dx = e.clientX - notesResizeStartRef.current.x;
     const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width - dx));
-    if (isWorldSidePanel) setWorldPanelWidth(newWidth); else setNotesPanelWidth(newWidth);
-  }, [isResizingNotes, isMobile, isWorldSidePanel]);
+    setNotesPanelWidth(newWidth);
+  }, [isResizingNotes, isMobile]);
   
   const handleNotesResizeEnd = useCallback((e: React.PointerEvent) => {
     if (!isResizingNotes) return;
@@ -7464,14 +7376,8 @@ export default function Campaign() {
 
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
-  // AA V3 swaps the Notes panel for the Canvas Realms ("World") panel and opens
-  // the GM-linked shared world instead of the per-campaign auto-realm.
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'ca');
-
-  const { data: playerLinkedWorld } = useLinkedWorld(role !== 'gm' ? effectiveCampaignId : undefined);
-  const { data: campaignLinkedWorld } = useLinkedWorld(effectiveCampaignId);
-  const showWorldButton = isAAV2 || role === 'gm' || !!playerLinkedWorld;
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -7485,18 +7391,20 @@ export default function Campaign() {
         if (!isSandbox && dp === 'characters') {
           dp = 'chat';
         }
-        if (isAAV2 && dp === 'notes') {
-          dp = 'world';
-        }
         // Initiative moved into the Characters panel - legacy saved settings
         // pointing at the old standalone tab land there now.
         if (dp === 'initiative') {
           dp = 'characters';
         }
+        // Legacy saved settings pointing at the removed Canvas Realms "world"
+        // tab fall back to Notes, the Campaign Knowledge System's home.
+        if (dp === 'world') {
+          dp = 'notes';
+        }
         if (dp === 'none') {
           setActiveSidePanel(null);
           setSidePanelMinimized(true);
-        } else if (['characters', 'chat', 'notes', 'world', 'settings', 'scene'].includes(dp)) {
+        } else if (['characters', 'chat', 'notes', 'settings', 'scene'].includes(dp)) {
           setActiveSidePanel(dp as SidePanelTab);
           setSidePanelMinimized(false);
         }
@@ -10602,43 +10510,6 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {(!isAAV2 || isAAV3) && showWorldButton && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (floatingWorldBuilderOpen) {
-                      bringToFront('worldbuilder');
-                      return;
-                    }
-                    if (isMobile) {
-                      setFloatingWorldBuilderOpen(true);
-                      bringToFront('worldbuilder');
-                      return;
-                    }
-                    if (activeSidePanel === 'world' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('world');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'world' && !sidePanelMinimized) || floatingWorldBuilderOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                  data-testid="button-panel-world"
-                >
-                  <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>{isAAV3 ? 'World Info' : 'World Builder'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          )}
-
           {!spectatorMode && (
             <TooltipProvider>
               <Tooltip>
@@ -11187,26 +11058,6 @@ export default function Campaign() {
           setPendingSandboxAoe={setPendingSandboxAoe}
         />
       ))}
-
-      {/* Floating World Builder */}
-      {!spectatorMode && (!isAAV2 || isAAV3) && floatingWorldBuilderOpen && effectiveCampaignId && (
-        <FloatingWorldBuilder
-          campaignId={effectiveCampaignId}
-          isGM={role === 'gm'}
-          characters={characters as any[]}
-          open={floatingWorldBuilderOpen}
-          onClose={() => {
-            setFloatingWorldBuilderOpen(false);
-            setActiveSidePanel('world');
-            setSidePanelMinimized(false);
-          }}
-          panelKey="worldbuilder"
-          zIndex={floatingZIndicesRef.current['worldbuilder'] || 10200}
-          onBringToFront={() => bringToFront('worldbuilder')}
-          userId={user?.id}
-          v3={isAAV3}
-        />
-      )}
 
       {/* GM-only floating button: Spectators presence (camera icon).
          Visible only when at least one public spectator is connected. */}
@@ -12333,7 +12184,6 @@ export default function Campaign() {
           onClose={() => setGlobalSearchOpen(false)}
           campaignId={effectiveCampaignId}
           campaignSystem={(campaign as any)?.system}
-          worldId={(campaignLinkedWorld as any)?.id || (playerLinkedWorld as any)?.id || undefined}
           onSelectNote={(noteId, _title, _type) => {
             if (isAAV2) {
               setFloatingNotesInitialNoteId(noteId);
@@ -12348,15 +12198,10 @@ export default function Campaign() {
               setSidePanelMinimized(false);
             }
           }}
-          onSelectEntity={(entityId, title) => {
-            setActiveSidePanel('world');
-            setSidePanelMinimized(false);
-            // The World Builder listens for this and opens the entity in a new tab
-            window.dispatchEvent(
-              new CustomEvent('campaign-open-wiki-entity', {
-                detail: { entityId, title, campaignId: effectiveCampaignId },
-              }),
-            );
+          onSelectEntity={() => {
+            // Wiki/article search results are unreachable now that worldId is
+            // no longer passed to GlobalSearch (Canvas Realms removed) - this
+            // is kept only to satisfy GlobalSearch's required prop.
           }}
           onSelectCharacter={(char) => {
             openCharacterSheet(char);
@@ -13262,7 +13107,6 @@ export default function Campaign() {
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
                 {activeSidePanel === 'notes' && 'Notes'}
-                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && (isAAV3 ? 'World Info' : 'World')}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
               </h2>
@@ -13293,23 +13137,6 @@ export default function Campaign() {
                     }}
                     className="h-8 w-8 text-stone-400 hover:text-white"
                     data-testid="button-popout-notes"
-                    title="Pop out as floating panel"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                )}
-                {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    data-no-drag
-                    onClick={() => {
-                      setFloatingWorldBuilderOpen(true);
-                      setSidePanelMinimized(true);
-                      bringToFront('worldbuilder');
-                    }}
-                    className="h-8 w-8 text-stone-400 hover:text-white"
-                    data-testid="button-popout-world"
                     title="Pop out as floating panel"
                   >
                     <ExternalLink className="h-4 w-4" />
@@ -13436,11 +13263,6 @@ export default function Campaign() {
                     initialNoteId={sidePanelInitialNoteId || undefined}
                     hideCloseButton={true}
                   />
-                </div>
-              )}
-              {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && effectiveCampaignId && (
-                <div className="h-full overflow-hidden">
-                  <CampaignWorldBuilder campaignId={effectiveCampaignId} v3={isAAV3} />
                 </div>
               )}
               {activeSidePanel === 'settings' && effectiveCampaignId && (

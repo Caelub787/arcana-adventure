@@ -10700,140 +10700,6 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   );
 }
 
-function CampaignWikiSelector({ campaignId }: { campaignId: string }) {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const { data: myWorlds = [] } = useQuery<any[]>({
-    queryKey: ['/api/worlds'],
-    queryFn: async () => {
-      const res = await fetch('/api/worlds', { credentials: 'include' });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
-  const { data: linkedWorld } = useQuery<any>({
-    queryKey: ['/api/campaigns', campaignId, 'linked-world'],
-    queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${campaignId}/linked-world`, { credentials: 'include' });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: !!campaignId,
-  });
-  const linkWorldMutation = useMutation({
-    mutationFn: async (worldId: string | null) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/link-world`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ worldId }),
-      });
-      if (!res.ok) throw new Error('Failed to link world');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'linked-world'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
-      toast({ title: "Campaign wiki updated", duration: 2000 });
-    },
-  });
-  return (
-    <div className="mb-4 p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
-      <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
-        <BookOpen className="h-3 w-3 text-blue-400" /> Campaign Wiki
-      </h3>
-      <select
-        value={linkedWorld?.id || ""}
-        onChange={(e) => linkWorldMutation.mutate(e.target.value || null)}
-        className="w-full bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded px-2 py-1.5"
-        disabled={linkWorldMutation.isPending}
-        data-testid="select-campaign-wiki"
-      >
-        <option value="">None</option>
-        {myWorlds.filter((w: any) => w.userId === user?.id).map((w: any) => (
-          <option key={w.id} value={w.id}>{w.name}</option>
-        ))}
-      </select>
-      <p className="text-[10px] text-stone-500 mt-1">Link a world wiki to this campaign so players can access it</p>
-    </div>
-  );
-}
-
-// AA V3 only. Lets the GM link one of their own Canvas Realms worlds to the
-// campaign (writes realms.linkedCampaignId via the campaign-link route). Players
-// then open that shared world from the World panel. Mirrors CampaignWikiSelector.
-function CampaignRealmSelector({ campaignId }: { campaignId: string }) {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const { data: myRealms = [] } = useQuery<any[]>({
-    queryKey: ['/api/realms'],
-    queryFn: async () => {
-      const res = await fetch('/api/realms', { credentials: 'include' });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
-  const { data: linkedRealm } = useQuery<any>({
-    queryKey: ['/api/campaigns', campaignId, 'linked-realm'],
-    queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${campaignId}/linked-realm`, { credentials: 'include' });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: !!campaignId,
-  });
-  const linkRealmMutation = useMutation({
-    mutationFn: async (realmId: string | null) => {
-      // Only one world points at a campaign — unlink the previous one first.
-      if (linkedRealm?.id && linkedRealm.id !== realmId) {
-        const unlinkRes = await fetch(`/api/realms/${linkedRealm.id}/campaign-link`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ campaignId: null }),
-        });
-        if (!unlinkRes.ok) throw new Error('Failed to unlink previous world');
-      }
-      if (realmId) {
-        const res = await fetch(`/api/realms/${realmId}/campaign-link`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ campaignId }),
-        });
-        if (!res.ok) throw new Error('Failed to link world');
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'linked-realm'] });
-      queryClient.invalidateQueries({ queryKey: ['cr-campaign-realm', campaignId] });
-      toast({ title: "Campaign world updated", duration: 2000 });
-    },
-    onError: () => toast({ title: "Failed to update world", variant: "destructive" }),
-  });
-  const ownedRealms = myRealms.filter((r: any) => r.ownerUserId === user?.id);
-  return (
-    <div className="mb-4 p-3 bg-stone-900/50 border border-stone-800 rounded-lg">
-      <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
-        <BookOpen className="h-3 w-3 text-blue-400" /> Campaign World
-      </h3>
-      <select
-        value={linkedRealm?.id || ""}
-        onChange={(e) => linkRealmMutation.mutate(e.target.value || null)}
-        className="w-full bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded px-2 py-1.5"
-        disabled={linkRealmMutation.isPending}
-        data-testid="select-campaign-realm"
-      >
-        <option value="">None</option>
-        {ownedRealms.map((r: any) => (
-          <option key={r.id} value={r.id}>{r.name}</option>
-        ))}
-      </select>
-      <p className="text-[10px] text-stone-500 mt-1">Link one of your worlds so players can explore it (each player gets a private folder)</p>
-    </div>
-  );
-}
-
 function SpectatorShareLinkSection({ campaignId }: { campaignId: string }) {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<{ token: string | null; createdAt?: string; expiresAt?: string | null; expired?: boolean }>({
@@ -12561,10 +12427,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
             </div>
           )}
           
-          {role === 'gm' && (system === 'aa-v3'
-            ? <CampaignRealmSelector campaignId={campaignId!} />
-            : <CampaignWikiSelector campaignId={campaignId!} />)}
-
           {/* Invite Code Section */}
           <InviteCodeSection inviteCode={inviteCode} />
 
@@ -12908,9 +12770,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               )}
             </div>
           )}
-          {!charactersOnly && role === 'gm' && (system === 'aa-v3'
-            ? <CampaignRealmSelector campaignId={campaignId!} />
-            : <CampaignWikiSelector campaignId={campaignId!} />)}
           {!charactersOnly && <InviteCodeSection inviteCode={inviteCode} />}
           {!charactersOnly && (
             <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-3">
