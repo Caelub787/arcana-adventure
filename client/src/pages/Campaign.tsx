@@ -1071,27 +1071,25 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-stone-800">
-        <div className="flex items-center gap-3">
-          {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-[13px] font-semibold capitalize transition-colors pb-0.5 ${filter === f ? 'text-white border-b-2 border-amber-500' : 'text-stone-500 hover:text-stone-300'}`}
-              data-testid={`button-chat-filter-${f}`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-1.5 px-4 pt-3 pb-2 border-b border-stone-800">
+        {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold capitalize transition-colors ${filter === f ? 'bg-amber-900/30 border-amber-600/60 text-amber-300' : 'bg-stone-800/60 border-stone-700 text-stone-400 hover:text-stone-200 hover:border-stone-600'}`}
+            data-testid={`button-chat-filter-${f}`}
+          >
+            {f}
+          </button>
+        ))}
         {role === 'gm' && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="text-stone-500 hover:text-stone-200 transition-colors p-1 rounded"
+                className="ml-auto px-2 py-1 rounded-md border bg-stone-800/60 border-stone-700 text-stone-400 hover:text-stone-200 hover:border-stone-600 transition-colors"
                 data-testid="button-chat-options"
               >
-                <MoreVertical className="h-4 w-4" />
+                <MoreVertical className="h-3.5 w-3.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
@@ -1126,9 +1124,12 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
 
             const { portrait, color } = resolveMessageIdentity(msg);
             return (
-              <div key={msg.id || i} className={`flex items-start gap-2 rounded-lg p-2 ${isRoll ? 'bg-stone-800/60' : isWhisper ? 'bg-amber-900/20 border border-amber-800/30' : ''}`}>
+              <div
+                key={msg.id || i}
+                className={`flex items-center gap-2 rounded-lg border p-2 bg-stone-800/40 ${isWhisper ? 'border-amber-800/40 bg-amber-900/10' : 'border-stone-800'}`}
+              >
                 <div
-                  className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border-2 bg-stone-800"
+                  className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border-2 bg-stone-800 self-start"
                   style={{ borderColor: color }}
                 >
                   {portrait ? (
@@ -1151,18 +1152,18 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
                     )}
                     <span className="text-[10px] text-stone-500 shrink-0">{time}</span>
                   </div>
-                  <div className={`text-sm mt-0.5 flex items-center gap-2 ${isRoll ? 'text-stone-300' : isWhisper ? 'text-amber-200 italic' : 'text-stone-300'}`}>
-                    <span className={isRoll ? 'font-mono text-xs' : ''}>{msg.text}</span>
-                    {rollTotal !== null && (
-                      <span
-                        className="ml-auto shrink-0 rounded-md border px-2 py-0.5 text-sm font-bold bg-stone-950/40"
-                        style={{ borderColor: color, color }}
-                      >
-                        {rollTotal}
-                      </span>
-                    )}
+                  <div className={`text-sm mt-0.5 ${isRoll ? 'text-stone-300 font-mono text-xs' : isWhisper ? 'text-amber-200 italic' : 'text-stone-300'}`}>
+                    {msg.text}
                   </div>
                 </div>
+                {rollTotal !== null && (
+                  <span
+                    className="self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold bg-stone-950/40"
+                    style={{ borderColor: color, color }}
+                  >
+                    {rollTotal}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -7061,10 +7062,9 @@ export default function Campaign() {
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
   }, []);
   
-  const [notesPanelWidth, setNotesPanelWidth] = useState(() => {
-    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.28 : 320;
-    return Math.max(280, Math.min(600, defaultWidth));
-  });
+  // Reference spec calls for the Adventure Log sidebar to default to
+  // roughly 350-380px - still freely resizable afterward via the drag handle.
+  const [notesPanelWidth, setNotesPanelWidth] = useState(370);
   // The World (Canvas Realms) side panel needs more room than chat/notes, so it
   // gets its own wider default and is resized independently.
   const [worldPanelWidth, setWorldPanelWidth] = useState(() => {

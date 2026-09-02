@@ -11556,12 +11556,12 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     );
   }
 
-  // Desktop: a rectangular card (portrait + name + resource bars + DC),
-  // border/glow tinted to the beacon color, with a floating roll callout
-  // below it - a small square card of its own, sized and positioned so it
-  // never renders as a collapsed sliver (opacity/translate only, no
-  // width-collapse animation, which used to leave a squashed-round
-  // artifact behind while transitioning).
+  // Desktop: a compact ~200x75 horizontal player card - square portrait on
+  // the left, name/DC/HP/Energy stacked to its right, a chevron to open the
+  // roll history on the far right - border/glow tinted to the beacon color,
+  // with a floating roll callout hanging directly below it (a small square
+  // card of its own, opacity-only reveal so it never renders as a
+  // collapsed sliver).
   return (
     <div
       ref={containerRef}
@@ -11582,13 +11582,13 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
         onClick={onOpenSheet}
-        className={`flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-44 transition-shadow ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
+        className={`flex items-center gap-1.5 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-[200px] h-[75px] transition-shadow ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
         style={{
           borderColor,
           boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
         }}
       >
-        <div className="relative w-12 h-12 rounded-md overflow-hidden bg-stone-800 shrink-0">
+        <div className="relative w-[58px] h-[58px] rounded-md overflow-hidden bg-stone-800 shrink-0">
           {portraitSrc && !imgFailed ? (
             <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
           ) : (
@@ -11597,34 +11597,47 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
             </div>
           )}
         </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="text-sm font-bold text-white truncate leading-tight">{displayName}</div>
+        <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-bold text-white truncate leading-tight">{displayName}</span>
+            {character && typeof dc === 'number' && (
+              <span className="text-[10px] text-stone-400 font-semibold shrink-0">DC {dc}</span>
+            )}
+          </div>
           {character && primaryBar && (
             <div className="flex items-center gap-1">
-              <Heart className="h-3 w-3 text-red-500 shrink-0" />
+              <span className="text-[8px] font-bold text-red-400 w-4 shrink-0">HP</span>
               <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
                 <div
                   className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
                   style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
                 />
               </div>
+              <span className="text-[8px] text-stone-400 shrink-0">{primaryBar.value}/{primaryBar.max}</span>
             </div>
           )}
           {character && energyBar && (
             <div className="flex items-center gap-1">
-              <Zap className="h-3 w-3 text-cyan-400 shrink-0" />
+              <span className="text-[8px] font-bold text-cyan-400 w-4 shrink-0">EN</span>
               <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-cyan-500"
                   style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
                 />
               </div>
+              <span className="text-[8px] text-stone-400 shrink-0">{energyBar.value}/{energyBar.max}</span>
             </div>
           )}
-          {character && typeof dc === 'number' && (
-            <div className="text-[10px] text-stone-400 font-medium">DC {dc}</div>
-          )}
         </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}
+          className="self-stretch flex items-center justify-center w-4 shrink-0 text-stone-500 hover:text-stone-200 transition-colors"
+          aria-label={`${displayName}'s roll history`}
+          data-testid={`pinned-history-${testId}`}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -11632,7 +11645,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-40 h-40 rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-1 px-2 transition-[opacity,box-shadow] duration-200"
+            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-44 h-44 rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-1 px-2 transition-[opacity,box-shadow] duration-200"
             style={{
               backgroundColor: 'rgba(19, 20, 28, 0.95)',
               borderColor,
