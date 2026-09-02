@@ -12851,33 +12851,21 @@ export default function Campaign() {
            {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars
                statsOnly={isAAV3 || isCA}
-               overviewButton={(isAAV3 || isCA) ? (() => {
+               onOpenCharacterSheet={() => {
                  const sheetChar = role === 'gm'
                    ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
                    : character;
-                 if (!sheetChar?.id || spectatorMode) return null;
-                 return (
-                   <button
-                     className="flex items-center gap-2 px-2 py-1.5 md:px-3 md:py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm w-32 md:w-44 min-w-0"
-                     onClick={() => {
-                       setCharacterSheetDefaultTab("overview");
-                       openCharacterSheet(sheetChar);
-                     }}
-                     title={`Open ${sheetChar.name || 'Character'} Sheet`}
-                     data-testid="button-character-overview"
-                   >
-                     {sheetChar.portrait ? (
-                       <img src={sheetChar.portrait} alt="" className="w-6 h-6 md:w-7 md:h-7 rounded-full object-cover border border-stone-500 shrink-0" />
-                     ) : (
-                       <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center shrink-0">
-                         <User className="h-4 w-4 text-amber-400" />
-                       </div>
-                     )}
-                     <span className="text-xs md:text-sm font-medium truncate flex-1 text-left min-w-0">{sheetChar.name || 'Character'}</span>
-                     <ScrollText className="h-4 w-4 text-stone-400 shrink-0" />
-                   </button>
-                 );
-               })() : undefined}
+                 if (!sheetChar?.id) return;
+                 setCharacterSheetDefaultTab("overview");
+                 openCharacterSheet(sheetChar);
+               }}
+               onUpdateCharacter={(updates: any) => {
+                 const sheetChar = role === 'gm'
+                   ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
+                   : character;
+                 if (!sheetChar?.id) return;
+                 handleUpdateCharacterById(sheetChar.id, updates);
+               }}
                character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
                targetedTokenId={targetedTokenId}
@@ -12918,43 +12906,6 @@ export default function Campaign() {
 
         </div>
       </div>
-
-      {/* Character Overview Button - Outside battlemap container so fixed positioning works.
-          In AA V3 this button instead renders above the bottom-left HP/Energy/Mana bars
-          (passed to BattleMapHotbars as overviewButton). */}
-      {!spectatorMode && !isAAV3 && !isCA && (() => {
-        const sheetChar = role === 'gm'
-          ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
-          : character;
-        if (!sheetChar?.id) return null;
-        return (
-          <div
-            className={`fixed z-[35] transition-all duration-300 ${isAAV3 ? 'bottom-[84px] md:bottom-[110px]' : 'bottom-[105px] md:bottom-[140px]'}`}
-            style={{ right: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 16}px` : '16px' }}
-            data-testid="btn-character-overview"
-          >
-            <button
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
-              onClick={() => {
-                setCharacterSheetDefaultTab("overview");
-                openCharacterSheet(sheetChar);
-              }}
-              title={`Open ${sheetChar.name || 'Character'} Sheet`}
-              data-testid="button-character-overview"
-            >
-              {sheetChar.portrait ? (
-                <img src={sheetChar.portrait} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-500" />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center">
-                  <User className="h-4 w-4 text-amber-400" />
-                </div>
-              )}
-              <span className="text-sm font-medium max-w-[120px] truncate">{sheetChar.name || 'Character'}</span>
-              <ScrollText className="h-4 w-4 text-stone-400" />
-            </button>
-          </div>
-        );
-      })()}
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
       {!spectatorMode && !isSandbox && (isMobile ? (

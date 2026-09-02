@@ -5233,9 +5233,12 @@ interface BattleMapHotbarsProps {
   // Render only the bottom-left DC/HP/Energy/Mana bars (used in AA V3, where
   // the V2 hotbar strip is replaced by the free hotbar but the bars remain).
   statsOnly?: boolean;
-  // Optional node rendered at the top of the bottom-left stat-bar stack (same
-  // width and gap as the bars). Used in AA V3 for the character overview button.
-  overviewButton?: React.ReactNode;
+  // Opens the full character sheet for the currently-shown character - the
+  // mini tracker card at the top of the bottom-left stat stack is clickable.
+  onOpenCharacterSheet?: () => void;
+  // Persists an inline edit made from the mini tracker card (currently just
+  // the double-click-to-edit Energy value).
+  onUpdateCharacter?: (updates: any) => void;
   onRequestSaveRoll?: (params: {
     targetCharacterId: string;
     targetUserId: string;
@@ -9347,8 +9350,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, overviewButton, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, statsOnly = false, onOpenCharacterSheet, onUpdateCharacter, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
+  const [editingEnergy, setEditingEnergy] = useState(false);
+  const [energyDraft, setEnergyDraft] = useState('');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
     queryKey: ['hotbars', character?.id],
@@ -9440,101 +9445,137 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
 
   return (
     <>
-      {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
-      <div 
-        className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
-        style={{ left: '8px' }}
-        data-collision-id="hp-dc-display"
-      >
-        <div className="flex flex-col gap-1">
-          {/* Character overview button (AA V3) — sits above the bars, same width/gap */}
-          {overviewButton}
-          {/* DC Display - hidden in AA V3 */}
-          {campaignSystem !== 'aa-v3' && (
-            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-amber-600 relative overflow-hidden w-32 md:w-44">
-              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-amber-200">
-                <span>DC</span>
-                <span>{totalDC}</span>
-              </div>
-            </div>
-          )}
+      {/* Mini self-tracker card - Bottom LEFT. Same rectangular-card look as
+          the top PinnedRosterChip: portrait, name, resource bars, DC -
+          border tinted to the owning player's beacon color (or a stable
+          per-NPC color when GM-inspecting an unowned character). The whole
+          card opens the character sheet; double-clicking the Energy value
+          edits it inline without leaving the battlemap. */}
+      {(() => {
+        const ownerMember = (campaignMembers || []).find((m: any) => m.assignedCharacterId === character.id);
+        const cardAccentColor = ownerMember?.beaconColor || stableColorForId(character.id);
+        const accentMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(cardAccentColor);
+        const accentRgb = accentMatch ? `${parseInt(accentMatch[1], 16)}, ${parseInt(accentMatch[2], 16)}, ${parseInt(accentMatch[3], 16)}` : '61, 119, 240';
+        const isCABars = campaignSystem === 'ca';
+        const primaryBar = isCABars
+          ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost((character as any).caWounds)), max: CA_WOUND_MAX }
+          : { value: Math.min(character.hp ?? 10, effectiveMaxHp), max: effectiveMaxHp };
+        const energyValue = Math.min(character.energy ?? 10, effectiveMaxEnergy);
 
-          {/* Health Bar - hidden for C.A., which uses Wounds instead */}
-          {campaignSystem !== 'ca' && (
-          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
-            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
-              <span>HP</span>
-              <span>{Math.min(character.hp ?? 10, effectiveMaxHp)}/{effectiveMaxHp}</span>
-            </div>
-            <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div
-                className={`h-full ${vitalBarColor(character.hp ?? 10, effectiveMaxHp)}`}
-                initial={false}
-                animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
-                transition={{ duration: 0.8, ease: "easeInOut" }}
-              />
+        const commitEnergyEdit = () => {
+          const parsed = parseInt(energyDraft, 10);
+          if (!isNaN(parsed)) {
+            onUpdateCharacter?.({ energy: Math.max(0, parsed) });
+          }
+          setEditingEnergy(false);
+        };
+
+        return (
+          <div
+            className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
+            style={{ left: '8px' }}
+            data-collision-id="hp-dc-display"
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenCharacterSheet?.()}
+              className="flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
+              style={{ borderColor: cardAccentColor }}
+              data-testid="button-character-overview"
+            >
+              <div className="relative w-9 h-9 md:w-12 md:h-12 rounded-md overflow-hidden bg-stone-800 shrink-0">
+                {character.portrait ? (
+                  <img src={character.portrait} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-stone-600">
+                    <User className="h-4 w-4 md:h-5 md:w-5" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="text-xs md:text-sm font-bold text-white truncate leading-tight">{character.name || 'Character'}</div>
+
+                {campaignSystem !== 'ca' ? (
+                  <div className="flex items-center gap-1">
+                    <Heart className="h-3 w-3 text-red-500 shrink-0" />
+                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                        initial={false}
+                        animate={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+                        transition={{ duration: 0.8, ease: "easeInOut" }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Heart className="h-3 w-3 text-red-500 shrink-0" />
+                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                        initial={false}
+                        animate={{ width: `${(primaryBar.value / Math.max(1, primaryBar.max)) * 100}%` }}
+                        transition={{ duration: 0 }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Zap className="h-3 w-3 text-cyan-400 shrink-0" />
+                  {editingEnergy ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      value={energyDraft}
+                      onChange={(e) => setEnergyDraft(e.target.value)}
+                      onBlur={commitEnergyEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitEnergyEdit();
+                        if (e.key === 'Escape') setEditingEnergy(false);
+                      }}
+                      className="flex-1 h-4 min-w-0 bg-black/60 border border-cyan-500 rounded text-[9px] md:text-[10px] text-cyan-200 px-1"
+                      data-testid="input-hotbar-energy"
+                    />
+                  ) : (
+                    <div
+                      className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden cursor-text"
+                      onDoubleClick={() => { setEnergyDraft(String(energyValue)); setEditingEnergy(true); }}
+                      title="Double-click to edit"
+                    >
+                      <motion.div
+                        className="h-full bg-cyan-500"
+                        initial={false}
+                        animate={{ width: `${Math.max(0, Math.min(100, (energyValue / effectiveMaxEnergy) * 100))}%` }}
+                        transition={{ duration: 0.8, ease: "easeInOut" }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {showManaBar && (
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-fuchsia-400 shrink-0" />
+                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-fuchsia-700 to-fuchsia-400"
+                        initial={false}
+                        animate={{ width: `${Math.max(0, Math.min(100, ((character.mana ?? 0) / effectiveMaxMana) * 100))}%` }}
+                        transition={{ duration: 0.8, ease: "easeInOut" }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {campaignSystem !== 'aa-v3' && (
+                  <div className="text-[10px] text-stone-400 font-medium">DC {totalDC}</div>
+                )}
+              </div>
             </div>
           </div>
-          )}
-
-          {/* Wounds Bar - C.A. only, replaces HP entirely. Reads like an HP
-              bar: full 20/20 with no active wounds, draining as wound point
-              cost accumulates. */}
-          {campaignSystem === 'ca' && (() => {
-            const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost((character as any).caWounds));
-            return (
-              <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
-                <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
-                  <span>Wounds</span>
-                  <span>{remaining}/{CA_WOUND_MAX}</span>
-                </div>
-                <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-                  <motion.div
-                    className={`h-full ${vitalBarColor(remaining, CA_WOUND_MAX)}`}
-                    initial={false}
-                    animate={{ width: `${(remaining / CA_WOUND_MAX) * 100}%` }}
-                    transition={{ duration: 0 }}
-                  />
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Energy Bar */}
-          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-600 relative overflow-hidden w-32 md:w-44">
-            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
-              <span>Energy</span>
-              <span>{Math.min(character.energy ?? 10, effectiveMaxEnergy)}/{effectiveMaxEnergy}</span>
-            </div>
-            <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-cyan-500"
-                initial={false}
-                animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
-                transition={{ duration: 0.8, ease: "easeInOut" }}
-              />
-            </div>
-          </div>
-
-          {/* Mana Bar - AA V2 / AA V3 only, when character has a mana pool */}
-          {showManaBar && (
-            <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-fuchsia-500 relative overflow-hidden w-32 md:w-44">
-              <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-fuchsia-200">
-                <span>Mana</span>
-                <span>{Math.min(character.mana ?? 0, effectiveMaxMana)}/{effectiveMaxMana}</span>
-              </div>
-              <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-fuchsia-700 to-fuchsia-400"
-                  initial={false}
-                  animate={{ width: `${Math.min(100, ((character.mana ?? 0) / effectiveMaxMana) * 100)}%` }}
-                  transition={{ duration: 0.8, ease: "easeInOut" }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
       {!statsOnly && (
