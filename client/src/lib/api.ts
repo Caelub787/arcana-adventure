@@ -2720,6 +2720,22 @@ class ApiClient {
     return this.request(`/search/entities?${params.toString()}`);
   }
 
+  // Campaign-scoped character/item search for the note "Connect" flow -
+  // distinct from searchEntities() above, which hits global system-library
+  // tables and isn't scoped to a single campaign's actual characters/items.
+  async searchCampaignConnectEntities(campaignId: string, query: string, type?: 'character' | 'item'): Promise<SearchableEntity[]> {
+    const params = new URLSearchParams({ q: query });
+    if (type) params.append('type', type);
+    return this.request(`/campaigns/${campaignId}/connect-search?${params.toString()}`);
+  }
+
+  async connectNoteToEntity(noteId: string, entityType: 'character-sheet' | 'item-sheet', entityId: string): Promise<NoteReference> {
+    return this.request(`/notes/${noteId}/connect`, {
+      method: 'POST',
+      body: JSON.stringify({ entityType, entityId }),
+    });
+  }
+
   // Token Effects - public read, admin write
   async getTokenEffects(personal?: boolean, system?: string): Promise<TokenEffect[]> {
     const p = new URLSearchParams();

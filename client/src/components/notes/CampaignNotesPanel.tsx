@@ -70,7 +70,7 @@ function sceneLinkFromNote(note: Note | undefined): SceneNoteLink | null {
   return data as SceneNoteLink;
 }
 import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
-import type { SearchableEntity } from "@/lib/api";
+import type { SearchableEntity, NoteReference } from "@/lib/api";
 
 interface CampaignNotesPanelProps {
   campaignId: string;
@@ -595,6 +595,9 @@ export function CampaignNotesPanel({
   const [crossCampaignImportOpen, setCrossCampaignImportOpen] = useState(false);
   const [importDestCampaignId, setImportDestCampaignId] = useState<string>("");
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [connectSearch, setConnectSearch] = useState("");
+  const [connectType, setConnectType] = useState<"character" | "item">("character");
   const [editingFolder, setEditingFolder] = useState<NoteFolder | null>(null);
   const [folderName, setFolderName] = useState("");
   const [folderColor, setFolderColor] = useState<string | null>(null);
@@ -1134,6 +1137,33 @@ export function CampaignNotesPanel({
       queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId, "history"] });
       toast({ title: "Revision restored" });
+    },
+    onError: (err: any) =>
+      toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: currentNoteRefs = [] } = useQuery<NoteReference[]>({
+    queryKey: ["/api/notes", selectedNoteId, "references"],
+    queryFn: () => api.getNoteReferences(selectedNoteId!),
+    enabled: !!selectedNoteId,
+  });
+  const linkedEntityRef = currentNoteRefs.find(r => ["character-sheet", "item-sheet"].includes(r.entityType));
+
+  const debouncedConnectSearch = useDebouncedValue(connectSearch, 300);
+  const { data: connectResults = [], isLoading: connectSearchLoading } = useQuery<SearchableEntity[]>({
+    queryKey: ["/api/campaigns", campaignId, "connect-search", debouncedConnectSearch, connectType],
+    queryFn: () => api.searchCampaignConnectEntities(campaignId, debouncedConnectSearch, connectType),
+    enabled: connectDialogOpen && !!campaignId,
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: (entity: SearchableEntity) =>
+      api.connectNoteToEntity(selectedNoteId!, entity.type === "character" ? "character-sheet" : "item-sheet", entity.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId, "references"] });
+      setConnectDialogOpen(false);
+      setConnectSearch("");
+      toast({ title: "Note connected" });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -2455,6 +2485,18 @@ export function CampaignNotesPanel({
                 <HistoryIcon className="h-3 w-3" />
               </Button>
             )}
+            {isGm && currentNote && currentNote.type !== "canvas" && currentNote.type !== "scene" && !linkedEntityRef && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs gap-1 text-amber-400"
+                title="Connect this note to a character or item"
+                onClick={() => { setConnectType("character"); setConnectSearch(""); setConnectDialogOpen(true); }}
+                data-testid="button-connect-note"
+              >
+                <Link2 className="h-3 w-3" /> Connect
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -2814,6 +2856,7 @@ export function CampaignNotesPanel({
                 import: "Imported",
                 scene_link: "Linked a Scene",
                 restore: "Restored a revision",
+                link: "Connected to a sheet",
               };
               return (
                 <div key={rev.id} className="rounded border border-stone-800 bg-stone-900/50 p-2 text-xs" data-testid={`history-revision-${rev.id}`}>
@@ -2840,6 +2883,74 @@ export function CampaignNotesPanel({
                 </div>
               );
             })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) setConnectSearch(""); }}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Connect Note to a Sheet</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-stone-500">
+            Link this note to an existing character or item in this campaign.
+          </p>
+          <div className="flex gap-1">
+            <Button
+              variant={connectType === "character" ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs flex-1"
+              onClick={() => setConnectType("character")}
+              data-testid="button-connect-tab-character"
+            >
+              Characters
+            </Button>
+            <Button
+              variant={connectType === "item" ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs flex-1"
+              onClick={() => setConnectType("item")}
+              data-testid="button-connect-tab-item"
+            >
+              Items
+            </Button>
+          </div>
+          <Input
+            value={connectSearch}
+            onChange={(e) => setConnectSearch(e.target.value)}
+            placeholder={`Search ${connectType === "character" ? "characters" : "items"}...`}
+            className="h-8 text-xs bg-stone-900 border-stone-700"
+            data-testid="input-connect-search"
+          />
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {connectSearchLoading && (
+              <div className="flex justify-center py-4"><LoadingLogo className="h-5 w-5 text-stone-500" /></div>
+            )}
+            {!connectSearchLoading && connectResults.length === 0 && (
+              <p className="text-xs text-stone-600 text-center py-4">No matches.</p>
+            )}
+            {connectResults.map((entity) => (
+              <button
+                key={entity.id}
+                type="button"
+                className="w-full flex items-center gap-2 rounded border border-stone-800 bg-stone-900/50 hover:bg-stone-800/70 p-1.5 text-left disabled:opacity-50"
+                disabled={connectMutation.isPending}
+                onClick={() => connectMutation.mutate(entity)}
+                data-testid={`button-connect-entity-${entity.id}`}
+              >
+                {entity.icon ? (
+                  <img src={entity.icon} alt="" className="h-6 w-6 rounded object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-6 w-6 rounded bg-stone-800 flex-shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs text-stone-200 truncate">{entity.name}</div>
+                  {entity.description && (
+                    <div className="text-[10px] text-stone-500 truncate">{entity.description}</div>
+                  )}
+                </div>
+              </button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>

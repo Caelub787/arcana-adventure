@@ -16983,6 +16983,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Campaign-scoped search for the "Connect" flow (spec 2.2): find a
+  // character or item already in this campaign to link a pre-created,
+  // not-yet-linked entity note to. Deliberately NOT the same code path as
+  // the global searchEntities()/ReferencePicker used elsewhere in notes -
+  // that search hits global system-library tables (spells/traits/skills)
+  // and, for items, admin-authored isTemplate library items, neither of
+  // which are what "search through all characters/items" in a campaign
+  // means here. Reuses the exact same visibility filter as
+  // GET /api/campaigns/:campaignId/characters so a player never sees a
+  // character/item they couldn't otherwise see.
+  app.get("/api/campaigns/:campaignId/connect-search", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { campaignId } = req.params;
+      const q = ((req.query.q as string) || "").trim().toLowerCase();
+      const type = req.query.type as string | undefined;
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      const role = await getKnowledgeRole(userId, campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+
+      const allCharacters = await storage.getCampaignCharacters(campaignId);
+      let visibleCharacters = allCharacters;
+      if (!role.isGm) {
+        const characterIds = allCharacters.map(c => c.id);
+        const allPermissions = await storage.getUserPermissionsForCharacters(userId, characterIds);
+        const permissionMap = new Map(allPermissions.map(p => [p.characterId, p.accessLevel]));
+        visibleCharacters = allCharacters.filter(char => {
+          if (char.userId === userId) return true;
+          const accessLevel = permissionMap.get(char.id);
+          return accessLevel === 'name' || accessLevel === 'view' || accessLevel === 'edit';
+        });
+      }
+
+      const results: { id: string; type: 'character' | 'item'; name: string; description?: string; icon?: string }[] = [];
+
+      if (!type || type === 'character') {
+        for (const c of visibleCharacters) {
+          if (!q || c.name.toLowerCase().includes(q)) {
+            results.push({ id: c.id, type: 'character', name: c.name, description: c.race ?? undefined, icon: c.portrait ?? undefined });
+          }
+        }
+      }
+
+      if (!type || type === 'item') {
+        const itemLists = await Promise.all(visibleCharacters.map(c => storage.getItemsByCharacter(c.id)));
+        let visibleItems = itemLists.flat();
+        if (role.isGm) {
+          const templateItems = await storage.getCampaignTemplateItems(campaignId, userId);
+          visibleItems = visibleItems.concat(templateItems);
+        }
+        for (const i of visibleItems) {
+          if (!q || i.name.toLowerCase().includes(q)) {
+            results.push({ id: i.id, type: 'item', name: i.name, description: i.description ?? undefined, icon: i.image ?? undefined });
+          }
+        }
+      }
+
+      res.json(results.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50));
+    } catch (e) {
+      console.error("Failed to search connect entities:", e);
+      res.status(500).json({ error: "Failed to search entities" });
+    }
+  });
+
+  // Link a note (created before its character/item existed, or simply never
+  // linked) to a campaign character/item. At most one character-sheet or
+  // item-sheet link per note - connecting to a new entity replaces any prior
+  // one rather than stacking links.
+  app.post("/api/notes/:id/connect", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { entityType, entityId } = req.body as { entityType?: string; entityId?: string };
+      if (!entityType || !entityId || !["character-sheet", "item-sheet"].includes(entityType)) {
+        return res.status(400).json({ error: "entityType (character-sheet or item-sheet) and entityId are required" });
+      }
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      const access = await storage.canAccessNote(userId, req.params.id);
+      const role = await getKnowledgeRole(userId, note.campaignId);
+      const canEditByVisibility = role.isGm || (role.isMember && (
+        (note as any).visibility === 'party' ||
+        ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(userId))
+      ));
+      const canEdit = (access.canAccess && (access.permission === 'owner' || access.permission === 'edit')) || canEditByVisibility;
+      if (!canEdit) {
+        return res.status(403).json({ error: "Edit permission required" });
+      }
+
+      if (entityType === "character-sheet") {
+        const character = await storage.getCharacter(entityId);
+        if (!character || character.campaignId !== note.campaignId) {
+          return res.status(404).json({ error: "Character not found in this campaign" });
+        }
+      } else {
+        const item = await storage.getItem(entityId);
+        if (!item) {
+          return res.status(404).json({ error: "Item not found" });
+        }
+        const ownerCharacter = item.characterId ? await storage.getCharacter(item.characterId) : null;
+        const inCampaign = item.campaignId === note.campaignId || (ownerCharacter && ownerCharacter.campaignId === note.campaignId);
+        if (!inCampaign) {
+          return res.status(404).json({ error: "Item not found in this campaign" });
+        }
+      }
+
+      // A note connects to at most one entity - drop any prior link first.
+      const existingRefs = await storage.getNoteReferences(note.id);
+      for (const ref of existingRefs) {
+        if (["character-sheet", "item-sheet"].includes(ref.entityType)) {
+          await storage.deleteNoteReference(ref.id);
+        }
+      }
+      const created = await storage.createNoteReference({
+        noteId: note.id,
+        entityType,
+        entityId,
+        label: null,
+        position: null,
+      } as any);
+
+      if (note.campaignId) {
+        broadcastToCampaign(note.campaignId, { type: 'note_changed', noteId: note.id, campaignId: note.campaignId, userId });
+        await storage.createKnowledgeRevision({
+          campaignId: note.campaignId,
+          actorUserId: userId,
+          entityType: 'note',
+          entityId: note.id,
+          action: 'link',
+          before: { entityType: null, entityId: null } as any,
+          after: { entityType, entityId } as any,
+        });
+      }
+      res.status(201).json(created);
+    } catch (e) {
+      console.error("Failed to connect note to entity:", e);
+      res.status(500).json({ error: "Failed to connect note to entity" });
+    }
+  });
+
   // Cross-campaign import: copy one note (and, for a same-system entity-linked
   // note, its linked character/item as a brand-new independent copy) into a
   // campaign the requester GMs. Destination records are fully independent -

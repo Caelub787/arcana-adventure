@@ -16621,6 +16621,7 @@ interface CharacterSheetProps {
   onOpenItemDetail?: (item: any) => void;
   onOpenSpellbook?: (item: any) => void;
   onOpenNotes?: (character: any) => void;
+  onOpenItemNotes?: (item: any) => void;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -18431,7 +18432,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
 // Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
 // Campaign page) so it keeps living when the character sheet is closed. It owns
 // its own items query + update/delete mutations so the host page stays thin.
-export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition }: {
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition, onOpenNotes }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -18443,6 +18444,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
   trustedPlayer?: boolean;
   panelSuffix?: string;
   defaultPosition?: { x: number; y: number };
+  onOpenNotes?: (item: any) => void;
 }) {
   const queryClient = useQueryClient();
   const charPanelSuffix = externalPanelSuffix ?? (character?.id ? '-' + character.id : '');
@@ -18511,6 +18513,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       charPanelSuffix={charPanelSuffix}
       trustedPlayer={trustedPlayer}
       defaultPosition={defaultPosition}
+      onOpenNotes={onOpenNotes}
     />
   );
 }
@@ -18607,7 +18610,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes, onOpenItemNotes }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -26074,6 +26077,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         campaignSystem={campaignSystem}
         charPanelSuffix={charPanelSuffix}
         trustedPlayer={trustedPlayer}
+        onOpenNotes={onOpenItemNotes}
       />
       )}
 
@@ -29725,6 +29729,7 @@ interface ItemDetailDialogProps {
   charPanelSuffix?: string;
   trustedPlayer?: boolean;
   defaultPosition?: { x: number; y: number };
+  onOpenNotes?: (item: any) => void;
 }
 
 // AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
@@ -30992,7 +30997,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   );
 }
 
-export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -31397,6 +31402,18 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                       <TooltipContent><p>Sync techniques from library</p></TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                )}
+                {onOpenNotes && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => onOpenNotes(item)}
+                    className="h-8 w-8 text-stone-400 hover:text-stone-200"
+                    title="Notes"
+                    data-testid="button-item-notes"
+                  >
+                    <ScrollText className="h-4 w-4" />
+                  </Button>
                 )}
                 {canEditItem && (
                   <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">

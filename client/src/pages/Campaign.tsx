@@ -6943,23 +6943,40 @@ export default function Campaign() {
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
   const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
-  // Character-sheet "Notes" button: on mobile the sheet already lives inside a
-  // modal Dialog (body pointer-events:none), so a detached FloatingPanel would
-  // render dead - see the trustedPlayer comment on the mobile CharacterSheet
-  // below. Instead this swaps the dialog's content to the notes view in place.
-  const [mobileNotesFor, setMobileNotesFor] = useState<{ characterId: string; noteId: string } | null>(null);
+  // Character/item-sheet "Notes" button: on mobile the sheet already lives
+  // inside a modal Dialog (body pointer-events:none), so a detached
+  // FloatingPanel would render dead - see the trustedPlayer comment on the
+  // mobile CharacterSheet below. Instead this swaps the dialog's content to
+  // the notes view in place. Only one sheet is ever open on mobile at a
+  // time (character or, nested, an item within it), so a single slot here
+  // covers both - it just needs a noteId, not which entity it came from.
+  const [mobileNotesFor, setMobileNotesFor] = useState<{ noteId: string } | null>(null);
   const handleOpenCharacterNotes = async (char: any) => {
     if (!effectiveCampaignId || !char?.id) return;
     try {
       const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'character-sheet', char.id, char.name);
       if (isMobile) {
-        setMobileNotesFor({ characterId: char.id, noteId: note.id });
+        setMobileNotesFor({ noteId: note.id });
       } else {
         setFloatingNotesInitialNoteId(note.id);
         setFloatingNotesOpen(true);
       }
     } catch (e) {
       console.error('Failed to open character notes:', e);
+    }
+  };
+  const handleOpenItemNotes = async (item: any) => {
+    if (!effectiveCampaignId || !item?.id) return;
+    try {
+      const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'item-sheet', item.id, item.name);
+      if (isMobile) {
+        setMobileNotesFor({ noteId: note.id });
+      } else {
+        setFloatingNotesInitialNoteId(note.id);
+        setFloatingNotesOpen(true);
+      }
+    } catch (e) {
+      console.error('Failed to open item notes:', e);
     }
   };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -12880,10 +12897,10 @@ export default function Campaign() {
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
               <DialogTitle className="text-lg text-amber-500 font-display truncate pr-8">
-                {mobileNotesFor && mobileNotesFor.characterId === openCharacterSheets[0]?.id ? `${openCharacterSheets[0]?.name} — Notes` : openCharacterSheets[0]?.name}
+                {mobileNotesFor ? `${openCharacterSheets[0]?.name} — Notes` : openCharacterSheets[0]?.name}
               </DialogTitle>
             </DialogHeader>
-            {openCharacterSheets[0] && mobileNotesFor && mobileNotesFor.characterId === openCharacterSheets[0].id ? (
+            {openCharacterSheets[0] && mobileNotesFor ? (
               <div className="flex-1 min-h-0 overflow-hidden">
                 <CampaignNotesPanel
                   campaignId={effectiveCampaignId || ''}
@@ -12924,9 +12941,11 @@ export default function Campaign() {
                 // as "glitches/freezes"). onOpenItemDetail/onOpenSpellbook are omitted
                 // here so the item-detail / spellbook panels render IN-SHEET, inside
                 // the dialog content, where taps work. Desktop keeps detaching.
-                // onOpenNotes swaps this same dialog's content to the notes view
-                // (see mobileNotesFor above) rather than detaching, for the same reason.
+                // onOpenNotes/onOpenItemNotes swap this same dialog's content to
+                // the notes view (see mobileNotesFor above) rather than detaching,
+                // for the same reason.
                 onOpenNotes={handleOpenCharacterNotes}
+                onOpenItemNotes={handleOpenItemNotes}
                 trustedPlayer={(() => {
                   const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                   return !!m?.trustedPlayer;
@@ -13036,6 +13055,7 @@ export default function Campaign() {
             const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
             return !!m?.trustedPlayer;
           })()}
+          onOpenNotes={handleOpenItemNotes}
         />
       ))}
 
