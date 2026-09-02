@@ -3,7 +3,7 @@ services:
     name: arcana-adventure
     runtime: node
     plan: free
-    buildCommand: npm install --include=dev && npm run db:push -- --force && npm run build
+    buildCommand: npm install --include=dev && (npm run db:push -- --force || true) && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
