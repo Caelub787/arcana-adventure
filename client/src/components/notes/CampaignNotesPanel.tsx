@@ -83,6 +83,14 @@ interface CampaignNotesPanelProps {
   // GMs get a visibility control on each note (GM Only / Party / Specific
   // Players) - players never see it, since they can't change visibility.
   isGm?: boolean;
+  // Sidebar mode: the campaign side panel's "Notes" tab is navigation only
+  // (folder tree + search), like Obsidian's sidebar - it never shows note
+  // content inline. Selecting a note (or Graph/Timelines) hands off to
+  // onOpenFloatingNote instead of opening inline, and the content pane
+  // isn't rendered at all. Not set when this panel IS the floating/full
+  // note view (opened from a sheet's Notes button, or popped out).
+  navOnly?: boolean;
+  onOpenFloatingNote?: (noteId: string) => void;
 }
 
 const FOLDER_COLORS = [
@@ -564,6 +572,8 @@ export function CampaignNotesPanel({
   initialNoteId,
   hideCloseButton = false,
   isGm = false,
+  navOnly = false,
+  onOpenFloatingNote,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -590,6 +600,20 @@ export function CampaignNotesPanel({
       setShowHomeView(false);
     }
   }, [initialNoteId]);
+
+  // Sidebar (navOnly) mode never shows note content inline - whatever set
+  // selectedNoteId (folder tree click, search result, "New Note", etc.) gets
+  // redirected to the floating-panel callback instead, and the selection is
+  // cleared right back so the content pane never renders. Centralizing the
+  // redirect here means every existing setSelectedNoteId(...) call site
+  // "just works" for both modes without being individually rewritten.
+  useEffect(() => {
+    if (navOnly && selectedNoteId && onOpenFloatingNote) {
+      const id = selectedNoteId;
+      setSelectedNoteId(null);
+      onOpenFloatingNote(id);
+    }
+  }, [navOnly, selectedNoteId, onOpenFloatingNote]);
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [crossCampaignImportOpen, setCrossCampaignImportOpen] = useState(false);
@@ -2669,6 +2693,7 @@ export function CampaignNotesPanel({
           <h2 className="text-sm font-bold text-amber-500">Campaign Notes</h2>
         </div>
         <div className="flex items-center gap-1">
+          {!navOnly && (
           <Button
             variant="ghost"
             size="icon"
@@ -2694,6 +2719,8 @@ export function CampaignNotesPanel({
           >
             <Network className="h-4 w-4" />
           </Button>
+          )}
+          {!navOnly && (
           <Button
             variant="ghost"
             size="icon"
@@ -2720,6 +2747,7 @@ export function CampaignNotesPanel({
           >
             <HistoryIcon className="h-4 w-4" />
           </Button>
+          )}
           {!hideCloseButton && (
             <Button
               variant="ghost"
@@ -2734,7 +2762,7 @@ export function CampaignNotesPanel({
         </div>
       </div>
 
-      {openNotes.length > 0 && (
+      {!navOnly && openNotes.length > 0 && (
         <NoteTabs
           openNotes={openNotes}
           activeNoteId={selectedNoteId || tabActiveNoteId}
@@ -2746,7 +2774,11 @@ export function CampaignNotesPanel({
       )}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {tabActiveNoteId === GRAPH_TAB_ID && !selectedNoteId ? (
+        {navOnly ? (
+          <div className="flex-1 min-w-0 h-full overflow-hidden">
+            {renderSidebar()}
+          </div>
+        ) : tabActiveNoteId === GRAPH_TAB_ID && !selectedNoteId ? (
           renderGraphView()
         ) : tabActiveNoteId === TIMELINES_TAB_ID && !selectedNoteId ? (
           <TimelinePanel campaignId={campaignId} isGm={isGm} campaignMembers={campaignMembers} />

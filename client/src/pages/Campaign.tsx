@@ -13284,6 +13284,12 @@ export default function Campaign() {
                     }}
                     initialNoteId={sidePanelInitialNoteId || undefined}
                     hideCloseButton={true}
+                    navOnly={true}
+                    onOpenFloatingNote={(noteId) => {
+                      setFloatingNotesInitialNoteId(noteId);
+                      setFloatingNotesOpen(true);
+                      bringToFront('notes');
+                    }}
                   />
                 </div>
               )}
