@@ -10380,6 +10380,7 @@ export default function Campaign() {
             characters={(characters as any[]) || []}
             campaignSystem={(campaign as any)?.system}
             rollFeed={rollFeed}
+            isMobile={isMobile}
           />
         </div>
 

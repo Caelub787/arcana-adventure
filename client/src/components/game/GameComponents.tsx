@@ -11237,11 +11237,23 @@ export type PinnedRollFeedEntry = {
 // the trapezium; clicking it opens a short history of recent rolls.
 // Rolls still post to chat as normal - this is purely a supplemental live
 // glance at the party.
-export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed }: {
+// Stable per-entity color for anyone without a real beaconColor (NPCs, or
+// members who never set one) - hashes the id into a fixed palette so the
+// same character always gets the same color instead of it shifting around
+// as the pinned list changes (a plain array-index cycle would do that).
+const NPC_COLOR_PALETTE = ['#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#f472b6', '#eab308', '#f87171', '#818cf8'];
+function stableColorForId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return NPC_COLOR_PALETTE[hash % NPC_COLOR_PALETTE.length];
+}
+
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile }: {
   members: any[];
   characters: any[];
   campaignSystem?: string;
   rollFeed: PinnedRollFeedEntry[];
+  isMobile?: boolean;
 }) {
   const pinnedMembers = (members || []).filter((m: any) => m.pinned);
   // Characters pinned directly (GM tool, mainly for NPCs with no owning
@@ -11269,6 +11281,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed 
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={member.beaconColor}
+            isMobile={isMobile}
           />
         );
       })}
@@ -11283,6 +11296,8 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed 
             character={character}
             campaignSystem={campaignSystem}
             rolls={rolls}
+            accentColor={stableColorForId(character.id)}
+            isMobile={isMobile}
           />
         );
       })}
@@ -11290,7 +11305,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed 
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, isMobile }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11298,6 +11313,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
   accentColor?: string;
+  isMobile?: boolean;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
@@ -11366,12 +11382,128 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
+  const dc = character?.naturalArmor;
   const visible = revealed || historyOpen || tapLocked;
+  const borderColor = accentColor || '#3D77F0';
+  const rgbForBorder = accentRgb || '61, 119, 240';
 
+  const historyPopoverContent = (
+    <PopoverContent side="bottom" align="center" className="w-56 bg-stone-900 border-stone-700 p-2">
+      <div className="text-xs font-bold mb-1" style={{ color: borderColor }}>{displayName}'s Recent Rolls</div>
+      {rolls.length === 0 ? (
+        <div className="text-xs text-stone-500">No rolls yet</div>
+      ) : (
+        <div className="space-y-1 max-h-48 overflow-y-auto">
+          {rolls.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
+              <span className="truncate flex-1">{r.text}</span>
+              {r.total !== null && <span className="font-mono font-bold shrink-0" style={{ color: borderColor }}>{r.total}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </PopoverContent>
+  );
+
+  if (isMobile) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative flex flex-col items-center"
+        data-testid={testId}
+        onMouseEnter={() => {
+          hoveringRef.current = true;
+          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+          setRevealed(true);
+        }}
+        onMouseLeave={() => {
+          hoveringRef.current = false;
+          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
+        }}
+        onClick={() => setTapLocked(true)}
+      >
+        <div
+          className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${accentRgb ? '' : (glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600')}`}
+          style={accentRgb ? {
+            borderColor: accentColor,
+            boxShadow: glow ? `0 0 0 4px rgba(${accentRgb}, 0.8)` : undefined,
+          } : undefined}
+        >
+          {portraitSrc && !imgFailed ? (
+            <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
+          ) : (
+            <div className="w-full h-full bg-stone-800" />
+          )}
+          {/* Name and vital bars overlaid directly on the portrait, like a token label + bars. */}
+          <div
+            className="absolute top-0 left-0 right-0 px-0.5 pt-0.5 text-[9px] leading-tight font-bold text-white truncate text-center pointer-events-none"
+            style={{ textShadow: '0 0 3px #000, 0 0 3px #000, 0 0 3px #000' }}
+          >
+            {displayName}
+          </div>
+          {character && primaryBar && energyBar && (
+            <div className="absolute bottom-0 left-0 right-0 px-0.5 pb-0.5 space-y-0.5 pointer-events-none">
+              <div className="h-1 bg-black/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500"
+                  style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+                />
+              </div>
+              <div className="h-1 bg-black/60 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              onClick={() => rolls.length > 0 && setHistoryOpen(true)}
+              className="mt-0.5 overflow-hidden"
+              style={{
+                width: '72px',
+                height: visible ? '28px' : '0px',
+                opacity: visible ? 1 : 0,
+                transition: 'height 250ms ease, opacity 200ms ease',
+                pointerEvents: visible ? 'auto' : 'none',
+              }}
+              data-testid={`pinned-roll-${testId}`}
+            >
+              <div
+                className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${accentRgb ? '' : (glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600')}`}
+                style={{
+                  clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
+                  transition: 'background-color 500ms ease, box-shadow 500ms ease, border-color 500ms ease',
+                  ...(accentRgb ? {
+                    backgroundColor: glow ? accentColor : 'rgba(28, 25, 23, 0.95)',
+                    border: `1px solid ${accentColor}`,
+                    boxShadow: glow ? `0 0 12px 4px rgba(${accentRgb}, 0.7)` : undefined,
+                  } : {}),
+                }}
+              >
+                {latest ? (latest.total ?? '') : ''}
+              </div>
+            </button>
+          </PopoverTrigger>
+          {historyPopoverContent}
+        </Popover>
+      </div>
+    );
+  }
+
+  // Desktop: a rectangular card (portrait + name + resource bars + DC),
+  // border/glow tinted to the beacon color, with a floating roll callout
+  // above it instead of the mobile trapezoid below.
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col items-center"
+      className="relative"
       data-testid={testId}
       onMouseEnter={() => {
         hoveringRef.current = true;
@@ -11383,92 +11515,84 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
       }}
-      onClick={() => setTapLocked(true)}
     >
-      <div
-        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${accentRgb ? '' : (glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600')}`}
-        style={accentRgb ? {
-          borderColor: accentColor,
-          boxShadow: glow ? `0 0 0 4px rgba(${accentRgb}, 0.8)` : undefined,
-        } : undefined}
-      >
-        {portraitSrc && !imgFailed ? (
-          <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
-        ) : (
-          <div className="w-full h-full bg-stone-800" />
-        )}
-        {/* Name and vital bars overlaid directly on the portrait, like a token label + bars. */}
-        <div
-          className="absolute top-0 left-0 right-0 px-0.5 pt-0.5 text-[9px] leading-tight font-bold text-white truncate text-center pointer-events-none"
-          style={{ textShadow: '0 0 3px #000, 0 0 3px #000, 0 0 3px #000' }}
-        >
-          {displayName}
-        </div>
-        {character && primaryBar && energyBar && (
-          <div className="absolute bottom-0 left-0 right-0 px-0.5 pb-0.5 space-y-0.5 pointer-events-none">
-            <div className="h-1 bg-black/60 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-cyan-500"
-                style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
-              />
-            </div>
-            <div className="h-1 bg-black/60 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-                style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
       <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             onClick={() => rolls.length > 0 && setHistoryOpen(true)}
-            className="mt-0.5 overflow-hidden"
+            className="absolute left-1/2 -translate-x-1/2 overflow-hidden z-10"
             style={{
-              width: '72px',
-              height: visible ? '28px' : '0px',
+              bottom: 'calc(100% + 4px)',
+              maxWidth: visible ? '160px' : '0px',
               opacity: visible ? 1 : 0,
-              transition: 'height 250ms ease, opacity 200ms ease',
+              transition: 'max-width 250ms ease, opacity 200ms ease',
               pointerEvents: visible ? 'auto' : 'none',
             }}
             data-testid={`pinned-roll-${testId}`}
           >
             <div
-              className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${accentRgb ? '' : (glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600')}`}
+              className="whitespace-nowrap rounded-lg border px-3 py-1.5 shadow-lg text-center"
               style={{
-                clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
-                transition: 'background-color 500ms ease, box-shadow 500ms ease, border-color 500ms ease',
-                ...(accentRgb ? {
-                  backgroundColor: glow ? accentColor : 'rgba(28, 25, 23, 0.95)',
-                  border: `1px solid ${accentColor}`,
-                  boxShadow: glow ? `0 0 12px 4px rgba(${accentRgb}, 0.7)` : undefined,
-                } : {}),
+                backgroundColor: 'rgba(19, 20, 28, 0.95)',
+                borderColor,
+                boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
+                transition: 'box-shadow 400ms ease',
               }}
             >
-              {latest ? (latest.total ?? '') : ''}
+              <div className="text-[10px] font-medium text-stone-300 truncate">{latest?.text || ''}</div>
+              <div className="text-lg font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
             </div>
           </button>
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="center" className="w-56 bg-stone-900 border-stone-700 p-2">
-          <div className="text-xs font-bold text-amber-400 mb-1">{displayName}'s Recent Rolls</div>
-          {rolls.length === 0 ? (
-            <div className="text-xs text-stone-500">No rolls yet</div>
+        {historyPopoverContent}
+      </Popover>
+
+      <div
+        className="flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-44 transition-shadow"
+        style={{
+          borderColor,
+          boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
+        }}
+      >
+        <div className="relative w-12 h-12 rounded-md overflow-hidden bg-stone-800 shrink-0">
+          {portraitSrc && !imgFailed ? (
+            <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
           ) : (
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {rolls.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
-                  <span className="truncate flex-1">{r.text}</span>
-                  {r.total !== null && <span className="text-amber-400 font-mono font-bold shrink-0">{r.total}</span>}
-                </div>
-              ))}
+            <div className="w-full h-full flex items-center justify-center text-stone-600">
+              <Users className="h-5 w-5" />
             </div>
           )}
-        </PopoverContent>
-      </Popover>
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="text-sm font-bold text-white truncate leading-tight">{displayName}</div>
+          {character && primaryBar && (
+            <div className="flex items-center gap-1">
+              <Heart className="h-3 w-3 text-red-500 shrink-0" />
+              <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {character && energyBar && (
+            <div className="flex items-center gap-1">
+              <Zap className="h-3 w-3 text-cyan-400 shrink-0" />
+              <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500"
+                  style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {character && typeof dc === 'number' && (
+            <div className="text-[10px] text-stone-400 font-medium">DC {dc}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
