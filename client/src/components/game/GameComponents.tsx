@@ -11514,7 +11514,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-44 h-44 rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-1 px-2 transition-[opacity,box-shadow] duration-200"
+            className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-[70px] h-[70px] rounded-lg border shadow-lg text-center z-10 flex flex-col items-center justify-center gap-0.5 px-1 transition-[opacity,box-shadow] duration-200"
             style={{
               backgroundColor: 'rgba(19, 20, 28, 0.95)',
               borderColor,
@@ -11524,8 +11524,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
             }}
             data-testid={`pinned-roll-${testId}`}
           >
-            <div className="text-xs font-medium text-stone-300 truncate max-w-full">{latest?.text || ''}</div>
-            <div className="text-4xl font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
+            <div className="text-[8px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
+            <div className="text-lg font-bold leading-tight" style={{ color: borderColor }}>{latest ? (latest.total ?? '') : ''}</div>
           </button>
         </PopoverTrigger>
         {historyPopoverContent}

@@ -6961,8 +6961,9 @@ export default function Campaign() {
         setFloatingNotesInitialNoteId(note.id);
         setFloatingNotesOpen(true);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to open character notes:', e);
+      toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
     }
   };
   const handleOpenItemNotes = async (item: any) => {
@@ -6975,8 +6976,9 @@ export default function Campaign() {
         setFloatingNotesInitialNoteId(note.id);
         setFloatingNotesOpen(true);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to open item notes:', e);
+      toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
     }
   };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);

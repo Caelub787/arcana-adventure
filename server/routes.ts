@@ -3446,7 +3446,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "gm"
       });
 
-      await provisionCampaignKnowledgeDefaults(campaign.id, req.session.userId!);
+      // Default note folders are a convenience, not core to a campaign
+      // existing - never let a failure here (e.g. a lagging schema
+      // migration) block campaign creation itself.
+      try {
+        await provisionCampaignKnowledgeDefaults(campaign.id, req.session.userId!);
+      } catch (folderErr) {
+        console.error('[POST /api/campaigns] Failed to provision default note folders:', folderErr);
+      }
 
       // Create default scene with Ancient ruins battlemap background
       const defaultScene = await storage.createScene({
@@ -3466,6 +3473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(campaign);
     } catch (err) {
+      console.error('[POST /api/campaigns] Failed to create campaign:', err);
       res.status(400).json({ error: "Failed to create campaign" });
     }
   });
