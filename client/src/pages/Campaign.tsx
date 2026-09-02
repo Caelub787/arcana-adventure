@@ -6958,7 +6958,7 @@ export default function Campaign() {
   const [searchPreviewSpells, setSearchPreviewSpells] = useState<any[]>([]);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
-  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | 'world' | null;
+  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'world' | null;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -7373,10 +7373,15 @@ export default function Campaign() {
         if (isAAV2 && dp === 'notes') {
           dp = 'world';
         }
+        // Initiative moved into the Characters panel - legacy saved settings
+        // pointing at the old standalone tab land there now.
+        if (dp === 'initiative') {
+          dp = 'characters';
+        }
         if (dp === 'none') {
           setActiveSidePanel(null);
           setSidePanelMinimized(true);
-        } else if (['characters', 'chat', 'notes', 'world', 'settings', 'scene', 'initiative'].includes(dp)) {
+        } else if (['characters', 'chat', 'notes', 'world', 'settings', 'scene'].includes(dp)) {
           setActiveSidePanel(dp as SidePanelTab);
           setSidePanelMinimized(false);
         }
@@ -10378,9 +10383,9 @@ export default function Campaign() {
           />
         </div>
 
-        {/* Right Side - Settings menu at top, then panel tab icons */}
-        <div className="pointer-events-auto flex flex-col gap-2"
-          style={{ 
+        {/* Right Side - panel tab icons, horizontal row */}
+        <div className="pointer-events-auto flex flex-row flex-wrap justify-end gap-2"
+          style={{
             marginRight: (sidePanelOpen && !isMobile) ? `${effectivePanelWidth + 8}px` : '0px',
             transition: 'margin-right 0.3s ease'
           }}
@@ -10405,7 +10410,7 @@ export default function Campaign() {
                   <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                 <p>Chat</p>
               </TooltipContent>
             </Tooltip>
@@ -10431,34 +10436,8 @@ export default function Campaign() {
                   <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
               </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                 <p>{isSandbox ? 'Actors' : 'Characters'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'initiative' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('initiative');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                  data-testid="button-panel-initiative"
-                >
-                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Initiative</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -10493,7 +10472,7 @@ export default function Campaign() {
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                 <p>Notes</p>
               </TooltipContent>
             </Tooltip>
@@ -10529,7 +10508,7 @@ export default function Campaign() {
                   <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                 <p>{isAAV3 ? 'World Info' : 'World Builder'}</p>
               </TooltipContent>
             </Tooltip>
@@ -10557,7 +10536,7 @@ export default function Campaign() {
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>My Library</p>
                 </TooltipContent>
               </Tooltip>
@@ -10586,55 +10565,12 @@ export default function Campaign() {
                     )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>Crafted Spells</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
-
-          {role === 'gm' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => { setShowMapPinEditor(prev => !prev); bringToFront('map-pins'); }}
-                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${showMapPinEditor ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                    data-testid="button-map-pins"
-                  >
-                    <MapPin className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Map Pins</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          {role === 'gm' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setFogToolActive(!fogToolActive)}
-                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${fogToolActive ? 'border-cyan-500 text-cyan-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                    data-testid="button-fog-of-war"
-                  >
-                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Fog of War</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
 
           {role === 'gm' && (
             <TooltipProvider>
@@ -10657,7 +10593,7 @@ export default function Campaign() {
                     <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>Scene Settings</p>
                 </TooltipContent>
               </Tooltip>
@@ -10684,7 +10620,7 @@ export default function Campaign() {
                   <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
                 <p>Settings</p>
               </TooltipContent>
             </Tooltip>
@@ -13221,7 +13157,6 @@ export default function Campaign() {
                 {activeSidePanel === 'world' && (!isAAV2 || isAAV3) && (isAAV3 ? 'World Info' : 'World')}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
-                {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
               <div className="flex items-center gap-1">
                 {activeSidePanel === 'notes' && (
@@ -13336,6 +13271,22 @@ export default function Campaign() {
                         inline={true}
                         charactersOnly={true}
                       />
+                      {!isSandbox && (
+                        <div className="border-t border-stone-700 mt-3 pt-3">
+                          <Label className="text-stone-300 text-xs font-bold mb-2 block px-1">Initiative</Label>
+                          <InitiativeTracker
+                            open={true}
+                            onOpenChange={() => {}}
+                            sceneId={activeScene?.id}
+                            campaignId={effectiveCampaignId || undefined}
+                            isGM={role === 'gm'}
+                            characters={characters as any[]}
+                            userId={user?.id}
+                            inline={true}
+                            allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -13403,21 +13354,6 @@ export default function Campaign() {
                       }
                     }}
                     inline={true}
-                  />
-                </div>
-              )}
-              {activeSidePanel === 'initiative' && (
-                <div className="h-full flex flex-col p-3">
-                  <InitiativeTracker
-                    open={true}
-                    onOpenChange={() => {}}
-                    sceneId={activeScene?.id}
-                    campaignId={effectiveCampaignId || undefined}
-                    isGM={role === 'gm'}
-                    characters={characters as any[]}
-                    userId={user?.id}
-                    inline={true}
-                    allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
                   />
                 </div>
               )}
@@ -13656,6 +13592,32 @@ export default function Campaign() {
                         No scene selected
                       </div>
                     )}
+                  </div>
+
+                  <div className="border-t border-stone-700 pt-3 space-y-2">
+                    <Label className="text-stone-300 text-xs font-bold mb-2 block">Map Pins</Label>
+                    <Button
+                      variant="outline"
+                      onClick={() => { setShowMapPinEditor(prev => !prev); bringToFront('map-pins'); }}
+                      className={`w-full h-8 text-xs ${showMapPinEditor ? 'bg-amber-900/30 border-amber-600 text-amber-300' : 'bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700'}`}
+                      data-testid="button-scene-map-pins"
+                    >
+                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                      {showMapPinEditor ? 'Close Map Pins' : 'Manage Map Pins'}
+                    </Button>
+                  </div>
+
+                  <div className="border-t border-stone-700 pt-3 space-y-2">
+                    <Label className="text-stone-300 text-xs font-bold mb-2 block">Fog of War</Label>
+                    <Button
+                      variant="outline"
+                      onClick={() => setFogToolActive(!fogToolActive)}
+                      className={`w-full h-8 text-xs ${fogToolActive ? 'bg-cyan-900/30 border-cyan-600 text-cyan-300' : 'bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700'}`}
+                      data-testid="button-scene-fog-of-war"
+                    >
+                      <Layers className="h-3.5 w-3.5 mr-1.5" />
+                      {fogToolActive ? 'Exit Fog Tool' : 'Open Fog Tool'}
+                    </Button>
                   </div>
                 </div>
               )}
