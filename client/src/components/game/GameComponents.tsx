@@ -11283,7 +11283,7 @@ export type PinnedRollFeedEntry = {
 // same character always gets the same color instead of it shifting around
 // as the pinned list changes (a plain array-index cycle would do that).
 const NPC_COLOR_PALETTE = ['#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#f472b6', '#eab308', '#f87171', '#818cf8'];
-function stableColorForId(id: string): string {
+export function stableColorForId(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   return NPC_COLOR_PALETTE[hash % NPC_COLOR_PALETTE.length];

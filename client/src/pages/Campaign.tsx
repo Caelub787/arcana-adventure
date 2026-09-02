@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, stableColorForId, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -943,12 +943,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
-function SidePanelChat({ campaignId, role, members }: { campaignId: string; role: string; members?: any[] }) {
+function SidePanelChat({ campaignId, role, members, characters, currentUserId }: { campaignId: string; role: string; members?: any[]; characters?: any[]; currentUserId?: string }) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string; recipientId?: string; recipientName?: string }>>([]);
   const [chatTarget, setChatTarget] = useState<string>('all');
+  const [filter, setFilter] = useState<'all' | 'rolls' | 'chat' | 'events'>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -1038,6 +1039,33 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
 
   const otherMembers = (members || []).filter((m: any) => m.userId !== user?.id);
 
+  // Resolves the avatar image and accent-ring color for a chat/roll message:
+  // the sender's assigned character portrait when they have one, otherwise
+  // their account avatar; NPC/actor rolls (no owning member) fall back to
+  // matching a character by name. The ring color is the player's beacon
+  // color - the same color used everywhere else (pinned tracker, mini
+  // tracker card) - or a stable per-identity color when there's no member.
+  const resolveMessageIdentity = (msg: any) => {
+    const member = (members || []).find((m: any) => m.userId === msg.userId);
+    const assignedChar = member?.assignedCharacterId ? (characters || []).find((c: any) => c.id === member.assignedCharacterId) : null;
+    const namedChar = !assignedChar ? (characters || []).find((c: any) => c.name === msg.sender) : null;
+    const char = assignedChar || namedChar;
+    const portrait = char?.portrait || member?.avatarUrl;
+    const color = member?.beaconColor || stableColorForId(char?.id || msg.userId || msg.sender || 'unknown');
+    return { portrait, color };
+  };
+
+  const isRollMessage = (msg: any) => msg.type === 'roll' || (msg.type !== 'system' && msg.type !== 'gm-audit' && !!msg.text?.includes('rolled'));
+  const isEventMessage = (msg: any) => msg.type === 'system' || msg.type === 'gm-audit';
+
+  const visibleMessages = messages.filter((msg: any) => msg.type !== 'gm-audit' || role === 'gm' || role === 'assistant_gm');
+  const filteredMessages = visibleMessages.filter((msg: any) => {
+    if (filter === 'all') return true;
+    if (filter === 'rolls') return isRollMessage(msg);
+    if (filter === 'events') return isEventMessage(msg);
+    return !isRollMessage(msg) && !isEventMessage(msg);
+  });
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
@@ -1065,34 +1093,74 @@ function SidePanelChat({ campaignId, role, members }: { campaignId: string; role
           </div>
         )}
       </div>
+      <div className="flex items-center gap-1 px-4 pb-2">
+        {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize transition-colors ${filter === f ? 'bg-amber-600 text-white' : 'bg-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-700'}`}
+            data-testid={`button-chat-filter-${f}`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
       <ScrollArea className="flex-1 px-4 mb-2" ref={scrollAreaRef}>
         <div className="space-y-2 py-2">
-          {messages.filter((msg: any) => msg.type !== 'gm-audit' || role === 'gm' || role === 'assistant_gm').map((msg, i) => {
-            const isRoll = msg.type === 'roll' || msg.text?.includes('rolled');
+          {filteredMessages.map((msg, i) => {
+            const isRoll = isRollMessage(msg);
             const isWhisper = msg.type === 'whisper';
-            const isAudit = msg.type === 'gm-audit';
+            const isEvent = isEventMessage(msg);
             const rollTotal = isRoll ? parseRollTotal(msg.text) : null;
             const isMe = msg.userId === user?.id;
-            return (
-              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''} ${isWhisper ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''}`}>
-                <div className="flex items-start gap-2">
-                  <span className={`text-xs font-bold shrink-0 ${isWhisper ? 'text-amber-400' : isMe ? 'text-amber-400' : 'text-stone-400'}`}>
-                    {msg.sender}
-                  </span>
-                  {isWhisper && (
-                    <span className="text-[10px] text-amber-400/70 shrink-0">
-                      {isMe ? `to ${msg.recipientName || 'someone'}` : 'whispers'}
-                    </span>
-                  )}
-                  <span className="text-xs text-stone-500 shrink-0">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+            const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (isEvent) {
+              return (
+                <div key={msg.id || i} className="text-center text-[11px] text-stone-500 italic py-1">
+                  {msg.text} <span className="text-stone-600">· {time}</span>
                 </div>
-                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : isWhisper ? 'text-amber-200 italic' : 'text-stone-300'}`}>
-                  {msg.text}
-                  {rollTotal !== null && (
-                    <span className="ml-2 text-amber-400 font-bold">({rollTotal})</span>
+              );
+            }
+
+            const { portrait, color } = resolveMessageIdentity(msg);
+            return (
+              <div key={msg.id || i} className={`flex items-start gap-2 rounded-lg p-2 ${isRoll ? 'bg-stone-800/60' : isWhisper ? 'bg-amber-900/20 border border-amber-800/30' : ''}`}>
+                <div
+                  className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border-2 bg-stone-800"
+                  style={{ borderColor: color }}
+                >
+                  {portrait ? (
+                    <img src={portrait} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-stone-500">
+                      <User className="h-3.5 w-3.5" />
+                    </div>
                   )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold shrink-0" style={{ color }}>
+                      {msg.sender}
+                    </span>
+                    {isWhisper && (
+                      <span className="text-[10px] text-amber-400/70 shrink-0">
+                        {isMe ? `to ${msg.recipientName || 'someone'}` : 'whispers'}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-stone-500 shrink-0">{time}</span>
+                  </div>
+                  <div className={`text-sm mt-0.5 flex items-center gap-2 ${isRoll ? 'text-stone-300' : isWhisper ? 'text-amber-200 italic' : 'text-stone-300'}`}>
+                    <span className={isRoll ? 'font-mono text-xs' : ''}>{msg.text}</span>
+                    {rollTotal !== null && (
+                      <span
+                        className="ml-auto shrink-0 rounded-md px-2 py-0.5 text-sm font-bold"
+                        style={{ backgroundColor: `${color}26`, color }}
+                      >
+                        {rollTotal}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -13157,10 +13225,12 @@ export default function Campaign() {
             </div>
             <div className="flex-1 overflow-hidden">
               {activeSidePanel === 'chat' && effectiveCampaignId && (
-                <SidePanelChat 
-                  campaignId={effectiveCampaignId} 
+                <SidePanelChat
+                  campaignId={effectiveCampaignId}
                   role={role}
                   members={(members as any[]) || []}
+                  characters={(characters as any[]) || []}
+                  currentUserId={user?.id}
                 />
               )}
               {activeSidePanel === 'characters' && effectiveCampaignId && (
