@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
@@ -9349,6 +9350,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
 const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, statsOnly = false, onOpenCharacterSheet, onUpdateCharacter, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
+  const isMobile = useIsMobile();
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   const [editingEnergy, setEditingEnergy] = useState(false);
   const [energyDraft, setEnergyDraft] = useState('');
@@ -9575,11 +9577,12 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         );
       })()}
 
-      {/* Hotbar Display - Bottom CENTER, always centered on screen regardless
-          of the side panel's presence, with type buttons above */}
+      {/* Hotbar Display - centered on desktop; pinned to the right edge on
+          mobile like before, so it doesn't collide with the bottom-left
+          mini tracker card on narrow screens - with type buttons above */}
       {!statsOnly && (
       <div
-        className="fixed bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-40"
+        className={`fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
         data-collision-id="character-hotbar"
       >
         <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">

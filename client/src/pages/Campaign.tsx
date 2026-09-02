@@ -10485,12 +10485,13 @@ export default function Campaign() {
           />
         </div>
 
-        {/* Right Side - panel tab icons, horizontal row. Always pinned to the
-            top-right corner - the side panel opens BELOW this row (its own
-            top offset reserves the space) instead of the row shifting left
-            of the panel, so these buttons sit above the panel like the
-            reference. */}
-        <div className="absolute right-4 top-4 pointer-events-auto flex flex-row flex-wrap justify-end gap-2 max-w-[70vw]">
+        {/* Right Side - panel tab icons. On desktop, a horizontal row pinned
+            to the top-right corner - the side panel opens BELOW this row
+            (its own top offset reserves the space) instead of the row
+            shifting left of the panel, so these buttons sit above the
+            panel like the reference. On mobile there's no room for a row,
+            so it's a vertical column down the right edge instead. */}
+        <div className={`absolute pointer-events-auto flex gap-2 ${isMobile ? 'right-2 top-4 flex-col' : 'right-4 top-4 flex-row flex-wrap justify-end max-w-[70vw]'}`}>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -13711,13 +13712,16 @@ export default function Campaign() {
           </div>
           {!isMobile && (
             <div
-              className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
+              className="w-2 h-full cursor-ew-resize shrink-0 relative group"
               onPointerDown={handleNotesResizeStart}
               onPointerMove={handleNotesResizeMove}
               onPointerUp={handleNotesResizeEnd}
               onPointerCancel={handleNotesResizeEnd}
+              data-testid="handle-resize-panel"
             >
-              <div className="w-1 h-8 bg-stone-500 rounded-full" />
+              {/* Invisible until hovered/dragged - the panel's own left
+                  edge is the grab target, not a persistent visible bar. */}
+              <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 transition-colors ${isResizingNotes ? 'bg-amber-500' : 'bg-transparent group-hover:bg-amber-500/70'}`} />
             </div>
           )}
         </div>

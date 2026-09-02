@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
@@ -91,6 +92,7 @@ interface V3FreeHotbarProps {
 
 export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
   const isCA = campaignSystem === 'ca';
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [loadout, setLoadout] = useState(() => {
@@ -249,7 +251,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
 
   return (
     <div
-      className="fixed bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
+      className={`fixed bottom-2 sm:bottom-4 z-30 pointer-events-auto ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
       data-testid="v3-free-hotbar"
     >
       <div className="flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
