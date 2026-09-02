@@ -39,7 +39,7 @@ neonConfig.webSocketConstructor = ws;
 
 // PostgreSQL session store for persistence across server restarts
 const PgStore = ConnectPgSimple(session);
-const pool = new Pool({ 
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 10
 });
@@ -132,6 +132,89 @@ async function ensureMapMakerColumns() {
   }
 }
 
+// Same self-healing pattern as ensureMapMakerColumns, extended to every
+// table/column the Campaign Knowledge System (notes visibility/folders/
+// timelines/history) and the C.A. ruleset (wounds/custom fields/linked
+// skill rolls) added - all of it landed after the Map Maker columns above
+// turned up unreliably applied by the build-time db:push, so it gets the
+// same boot-time guard rather than waiting to find each gap one bug report
+// at a time. Every statement is idempotent (IF NOT EXISTS) and safe to
+// leave here permanently, including after a build-time push starts
+// reliably picking these up too.
+async function ensureKnowledgeSystemSchema() {
+  const statements = [
+    `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'custom'`,
+    `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'gm'`,
+    `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS visible_player_ids jsonb`,
+    `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'gm'`,
+    `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visible_player_ids jsonb`,
+    `ALTER TABLE IF EXISTS scenes ADD COLUMN IF NOT EXISTS source_map_id varchar`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS roll_entries ADD COLUMN IF NOT EXISTS linked_skill_key text`,
+    `CREATE TABLE IF NOT EXISTS timelines (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      campaign_id varchar NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      name text NOT NULL,
+      description text DEFAULT '',
+      calendar jsonb,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS timeline_events (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      timeline_id varchar NOT NULL REFERENCES timelines(id) ON DELETE CASCADE,
+      campaign_id varchar NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      description text DEFAULT '',
+      date_type text NOT NULL DEFAULT 'ordered',
+      date_value jsonb,
+      end_date_value jsonb,
+      sort_order integer NOT NULL DEFAULT 0,
+      tags jsonb,
+      category text,
+      color text,
+      image text,
+      links jsonb,
+      visibility text NOT NULL DEFAULT 'gm',
+      visible_player_ids jsonb,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS knowledge_revisions (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      campaign_id varchar NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      actor_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      entity_type text NOT NULL,
+      entity_id varchar NOT NULL,
+      action text NOT NULL,
+      before jsonb,
+      after jsonb,
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS custom_fields (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_type text NOT NULL,
+      owner_id varchar NOT NULL,
+      header text NOT NULL,
+      body text DEFAULT '',
+      gm_only boolean NOT NULL DEFAULT false,
+      gm_notes text DEFAULT '',
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+  ];
+  for (const sql of statements) {
+    try {
+      await dbPool.query(sql);
+    } catch (err) {
+      console.error(`Failed to run startup schema guard (${sql}):`, err);
+    }
+  }
+}
+
 // Compact inline SVG placeholders — just enough to try out placement,
 // scatter, and the variant-swap hotkey before real art exists. Encoded as
 // data: URIs so no upload/storage step is needed to seed them.
@@ -183,6 +266,7 @@ export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
   await ensureMapMakerColumns();
+  await ensureKnowledgeSystemSchema();
   await ensureTestStampAssets();
   const server = await registerRoutes(app);
 
