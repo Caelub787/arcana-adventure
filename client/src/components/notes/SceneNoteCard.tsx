@@ -10,7 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Map as MapIcon, Upload, Link2, ExternalLink } from "lucide-react";
+import { Map as MapIcon, Upload, Link2, ExternalLink, FolderOpen } from "lucide-react";
+import { ImageBrowser } from "@/components/ImageBrowser";
 
 export interface SceneNoteLink {
   sceneId?: string;
@@ -37,6 +38,7 @@ export function SceneNoteCard({ campaignId, isGm, link, onLinkChange }: SceneNot
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [driveBrowserOpen, setDriveBrowserOpen] = useState(false);
   const [pickedExistingId, setPickedExistingId] = useState<string>("");
 
   const { data: scenes = [] } = useQuery<Scene[]>({
@@ -47,11 +49,10 @@ export function SceneNoteCard({ campaignId, isGm, link, onLinkChange }: SceneNot
 
   const linkedScene = link?.sceneId ? scenes.find(s => s.id === link.sceneId) : null;
 
-  const handleUpload = async (file: File) => {
+  const registerFromDataUrl = async (dataUrl: string, name: string) => {
     setUploading(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const scene = await api.registerSceneFromUpload(campaignId, dataUrl, file.name.replace(/\.[^.]+$/, ""));
+      const scene = await api.registerSceneFromUpload(campaignId, dataUrl, name);
       onLinkChange({ sceneId: scene.id, source: "upload" });
       toast({ title: "Scene registered", description: `"${scene.name}" is now available in this campaign's Scenes.` });
     } catch (err: any) {
@@ -59,6 +60,11 @@ export function SceneNoteCard({ campaignId, isGm, link, onLinkChange }: SceneNot
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleUpload = async (file: File) => {
+    const dataUrl = await readFileAsDataUrl(file);
+    await registerFromDataUrl(dataUrl, file.name.replace(/\.[^.]+$/, ""));
   };
 
   if (!isGm) {
@@ -126,7 +132,23 @@ export function SceneNoteCard({ campaignId, isGm, link, onLinkChange }: SceneNot
         >
           <Upload className="h-3 w-3 mr-1" /> {uploading ? "Uploading..." : "Upload Image"}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs flex-1"
+          disabled={uploading}
+          onClick={() => setDriveBrowserOpen(true)}
+          data-testid="button-browse-drive-scene-image"
+        >
+          <FolderOpen className="h-3 w-3 mr-1" /> Google Drive
+        </Button>
       </div>
+      <ImageBrowser
+        open={driveBrowserOpen}
+        onOpenChange={setDriveBrowserOpen}
+        onSelect={(dataUrl) => registerFromDataUrl(dataUrl, "Imported Map")}
+        title="Import Map from Google Drive"
+      />
       {scenes.length > 0 && (
         <div className="flex gap-2">
           <Select value={pickedExistingId} onValueChange={setPickedExistingId}>
