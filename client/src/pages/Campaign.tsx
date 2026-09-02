@@ -38,6 +38,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
+import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
 import AdminSettings from "@/pages/AdminSettings";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
@@ -6944,6 +6945,9 @@ export default function Campaign() {
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
   const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
+  // Timelines has no tab bar to live in now that the sidebar is nav-only -
+  // opened from its right-click menu item into its own floating panel.
+  const [timelinesFloatingOpen, setTimelinesFloatingOpen] = useState(false);
   // Character/item-sheet "Notes" button: on mobile the sheet already lives
   // inside a modal Dialog (body pointer-events:none), so a detached
   // FloatingPanel would render dead - see the trustedPlayer comment on the
@@ -12210,6 +12214,30 @@ export default function Campaign() {
         />
       )}
 
+      {/* Floating Timelines - the sidebar's right-click menu opens this
+          directly since navOnly has no tab bar to host it inline anymore. */}
+      {!spectatorMode && timelinesFloatingOpen && effectiveCampaignId && (
+        <FloatingPanel
+          open={true}
+          onClose={() => setTimelinesFloatingOpen(false)}
+          title={<span className="text-amber-500">Timelines</span>}
+          defaultSize={{ width: 700, height: 500 }}
+          minWidth={400}
+          minHeight={300}
+          panelKey="timelines"
+          zIndex={floatingZIndicesRef.current['timelines'] || 10500}
+          onBringToFront={() => bringToFront('timelines')}
+        >
+          <div className="h-full overflow-hidden" data-testid="floating-timelines-panel">
+            <TimelinePanel
+              campaignId={effectiveCampaignId}
+              isGm={role === 'gm'}
+              campaignMembers={members as any[] || []}
+            />
+          </div>
+        </FloatingPanel>
+      )}
+
       {/* Mobile full-screen Notes: browse (navOnly) until a note is tapped,
           then that note fills the screen (contentOnly) - its own close
           button steps back to the browse list; the dialog's own close exits
@@ -13333,6 +13361,10 @@ export default function Campaign() {
                       setFloatingNotesInitialNoteId(noteId);
                       setFloatingNotesOpen(true);
                       bringToFront('notes');
+                    }}
+                    onOpenTimelines={() => {
+                      setTimelinesFloatingOpen(true);
+                      bringToFront('timelines');
                     }}
                   />
                 </div>

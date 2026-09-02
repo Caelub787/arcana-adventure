@@ -90,6 +90,10 @@ interface CampaignNotesPanelProps {
   // note view (opened from a sheet's Notes button, or popped out).
   navOnly?: boolean;
   onOpenFloatingNote?: (noteId: string) => void;
+  // Sidebar's right-click "Timelines" menu item - navOnly has no tab bar to
+  // host the Timelines/Graph views inline, so opening them is delegated to
+  // the caller (which can pop them into their own floating panel).
+  onOpenTimelines?: () => void;
   // Content-only mode: the inverse of navOnly - no folder tree/search/Home,
   // no Graph/Timelines toggles, no multi-note tab bar. Just the single note
   // named by initialNoteId, full-bleed. Used everywhere a note is shown
@@ -580,6 +584,7 @@ export function CampaignNotesPanel({
   isGm = false,
   navOnly = false,
   onOpenFloatingNote,
+  onOpenTimelines,
   contentOnly = false,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
@@ -2013,6 +2018,47 @@ export function CampaignNotesPanel({
           {showHiddenFolders ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
           <span className="truncate">{showHiddenFolders ? "Hide Others" : "Show Hidden"}</span>
         </div>
+        {/* Right-click blank space to create a new top-level folder/note/
+            canvas/scene, or jump to Timelines - a folder/note row's own
+            context menu (above) takes precedence when right-clicking it
+            directly, since this filler only covers space below the list. */}
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div className="min-h-[100px]" data-testid="panel-sidebar-blank-context-target" />
+          </ContextMenuTrigger>
+          <ContextMenuContent className="bg-stone-900 border-stone-700">
+            <ContextMenuItem onClick={() => openFolderDialog()} data-testid="context-menu-new-root-folder">
+              <FolderPlus className="h-3 w-3 mr-2" /> New Folder
+            </ContextMenuItem>
+            <ContextMenuSeparator className="bg-stone-700" />
+            <ContextMenuItem
+              onClick={() => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any)}
+              data-testid="context-menu-new-root-note"
+            >
+              <FileText className="h-3 w-3 mr-2" /> New Note
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any)}
+              data-testid="context-menu-new-root-canvas"
+            >
+              <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any)}
+              data-testid="context-menu-new-root-scene"
+            >
+              <MapIcon className="h-3 w-3 mr-2" /> New Scene
+            </ContextMenuItem>
+            {onOpenTimelines && (
+              <>
+                <ContextMenuSeparator className="bg-stone-700" />
+                <ContextMenuItem onClick={onOpenTimelines} data-testid="context-menu-open-timelines">
+                  <HistoryIcon className="h-3 w-3 mr-2" /> Timelines
+                </ContextMenuItem>
+              </>
+            )}
+          </ContextMenuContent>
+        </ContextMenu>
       </ScrollArea>
       )}
     </div>

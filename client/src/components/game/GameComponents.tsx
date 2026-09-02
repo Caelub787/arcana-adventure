@@ -16,6 +16,7 @@ import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelI
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10952,7 +10953,8 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
   onPlaceCharacterToken?: (characterId: string) => void;
   onTogglePin?: (char: any) => void;
 }) {
-  return (
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const content = (
     <div className="space-y-3">
       {role === 'gm' && onAddCharacter && (
         <Button variant="secondary" className="w-full bg-stone-800 hover:bg-stone-700" onClick={onAddCharacter} data-testid="button-add-character-inline">
@@ -10960,18 +10962,18 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
         </Button>
       )}
       {role === 'gm' && (
-        <Button variant="outline" className="w-full border-teal-700 text-teal-400 hover:bg-teal-900/30" onClick={onShowTemplateLibrary} data-testid="button-add-from-library-inline">
-          <Library className="mr-2 h-4 w-4" /> Add from Library
-        </Button>
-      )}
-      {role === 'gm' && (
-        <Button variant="secondary" className="w-full bg-stone-800/80 border-stone-700 hover:bg-stone-700" onClick={onShowImportDialog} data-testid="button-import-character-inline">
-          <Download className="mr-2 h-4 w-4" /> Import from Campaign
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 border-teal-700 text-teal-400 hover:bg-teal-900/30" onClick={onShowTemplateLibrary} data-testid="button-add-from-library-inline">
+            <Library className="mr-1.5 h-3.5 w-3.5" /> Library
+          </Button>
+          <Button variant="secondary" size="sm" className="flex-1 bg-stone-800/80 border-stone-700 hover:bg-stone-700" onClick={onShowImportDialog} data-testid="button-import-character-inline">
+            <Download className="mr-1.5 h-3.5 w-3.5" /> Import
+          </Button>
+        </div>
       )}
       {role === 'gm' && (
         <div className="flex gap-2">
-          <Input placeholder="New folder name..." value={newFolderName} onChange={(e) => onSetNewFolderName(e.target.value)} className="flex-1 bg-stone-900 border-stone-700 text-stone-200" data-testid="input-new-folder-name-inline" />
+          <Input ref={newFolderInputRef} placeholder="New folder name..." value={newFolderName} onChange={(e) => onSetNewFolderName(e.target.value)} className="flex-1 bg-stone-900 border-stone-700 text-stone-200" data-testid="input-new-folder-name-inline" />
           <Button variant="secondary" size="sm" onClick={() => { if (newFolderName.trim()) { onCreateFolder(newFolderName.trim()); onSetNewFolderName(''); } }} disabled={!newFolderName.trim() || createFolderPending} className="bg-stone-800 hover:bg-stone-700" data-testid="button-create-folder-inline">
             <FolderPlus className="h-4 w-4" />
           </Button>
@@ -11042,6 +11044,34 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
         </div>
       </div>
     </div>
+  );
+
+  if (role !== 'gm') return content;
+
+  // Right-click anywhere in this panel (folder rows/character rows included -
+  // they have no context menu of their own to compete with) for the same
+  // actions as the buttons above, so the GM doesn't have to scroll back up.
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+      <ContextMenuContent className="bg-stone-900 border-stone-700">
+        <ContextMenuItem onClick={() => newFolderInputRef.current?.focus()} data-testid="context-menu-new-character-folder">
+          <FolderPlus className="h-3 w-3 mr-2" /> New Folder
+        </ContextMenuItem>
+        <ContextMenuSeparator className="bg-stone-700" />
+        {onAddCharacter && (
+          <ContextMenuItem onClick={onAddCharacter} data-testid="context-menu-create-character">
+            <Plus className="h-3 w-3 mr-2" /> Create Character
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem onClick={onShowTemplateLibrary} data-testid="context-menu-add-from-library">
+          <Library className="h-3 w-3 mr-2" /> Add from Library
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onShowImportDialog} data-testid="context-menu-import-character">
+          <Download className="h-3 w-3 mr-2" /> Import from Campaign
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -12916,16 +12946,6 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           </div>}
           {charactersOnly ? (
             <>
-              {role === 'gm' && (
-                <Button
-                  variant="secondary"
-                  className="w-full mb-3 bg-amber-800 hover:bg-amber-700"
-                  onClick={() => setShowLevelUpDialog(true)}
-                  data-testid="button-level-up-all-characters"
-                >
-                  <TrendingUp className="mr-2 h-4 w-4" /> Level Up All
-                </Button>
-              )}
             <CharacterManagementContent
               role={role}
               characters={characters}
