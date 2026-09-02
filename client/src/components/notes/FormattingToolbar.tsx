@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Bold, Italic, Underline, Type, Image, Upload, Link } from "lucide-react";
+import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff } from "lucide-react";
 
 export type NoteFont = "inherit" | "serif" | "sans-serif" | "monospace";
 
@@ -49,6 +49,10 @@ interface FormattingToolbarProps {
   font: NoteFont;
   onFontChange: (font: NoteFont) => void;
   compact?: boolean;
+  // Shows the "GM Secret" button, which wraps the selection in #...# -
+  // redacted server-side for anyone who isn't a GM on this note's campaign.
+  // Only GMs can create these, since only a GM can see what they hide.
+  isGm?: boolean;
 }
 
 export function FormattingToolbar({
@@ -58,6 +62,7 @@ export function FormattingToolbar({
   font,
   onFontChange,
   compact = false,
+  isGm = false,
 }: FormattingToolbarProps) {
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -156,6 +161,7 @@ export function FormattingToolbar({
   const handleBold = () => wrapSelection("**", "**");
   const handleItalic = () => wrapSelection("*", "*");
   const handleUnderline = () => wrapSelection("__", "__");
+  const handleGmSecret = () => wrapSelection("#", "#");
 
   const buttonSize = compact ? "h-6 w-6" : "h-8 w-8";
   const iconSize = compact ? "h-3 w-3" : "h-4 w-4";
@@ -197,6 +203,22 @@ export function FormattingToolbar({
         >
           <Underline className={iconSize} />
         </Button>
+        {isGm && (
+          <>
+            <div className="w-px h-5 bg-stone-700 mx-1" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={`${buttonSize} border-red-900 text-red-400 hover:bg-red-950`}
+              onClick={handleGmSecret}
+              title="GM Secret (hidden from players)"
+              data-testid="button-format-gm-secret"
+            >
+              <EyeOff className={iconSize} />
+            </Button>
+          </>
+        )}
         <div className="w-px h-5 bg-stone-700 mx-1" />
         <Button
           type="button"
@@ -384,7 +406,7 @@ export function renderFormattedText(text: string, keyPrefix: string = ""): React
   const parts: React.ReactNode[] = [];
   let currentIndex = 0;
   
-  const regex = /!\[([^\]]*)\]\(([^)]+)\)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)/g;
+  const regex = /!\[([^\]]*)\]\(([^)]+)\)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)|(#([^#\n]+)#)/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
@@ -396,7 +418,17 @@ export function renderFormattedText(text: string, keyPrefix: string = ""): React
       );
     }
 
-    if (match[1] !== undefined && match[2]) {
+    if (match[9] && match[10]) {
+      parts.push(
+        <span
+          key={`${keyPrefix}-gmsecret-${match.index}`}
+          className="bg-red-950/50 border border-red-900/60 rounded px-1 text-red-300"
+          title="GM Secret - hidden from players"
+        >
+          {match[10]}
+        </span>
+      );
+    } else if (match[1] !== undefined && match[2]) {
       const altText = match[1] || "image";
       const imageUrl = match[2];
       parts.push(

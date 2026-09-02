@@ -13006,7 +13006,7 @@ export default function Campaign() {
             || role === 'gm';
           return (
           <FloatingPanel
-            key={sheet.id}
+            key={`${sheet.id}${dockedCharNotes[sheet.id] ? '-with-notes' : ''}`}
             open={true}
             onClose={() => closeCharacterSheet(sheet.id)}
             title={editingSheetNameId === sheet.id ? (
@@ -13032,7 +13032,7 @@ export default function Campaign() {
               setSheetNameDraft(sheet.name);
               setEditingSheetNameId(sheet.id);
             } : undefined}
-            defaultSize={{ width: 652, height: Math.min(window.innerHeight - 70, 480) }}
+            defaultSize={{ width: dockedCharNotes[sheet.id] ? 652 * 2 : 652, height: Math.min(window.innerHeight - 70, 480) }}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
             minHeight={400}
@@ -13042,7 +13042,7 @@ export default function Campaign() {
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <div className="flex h-full min-h-0">
-            <div className="flex-1 min-w-0 h-full min-h-0">
+            <div className="flex-shrink-0 h-full min-h-0" style={{ width: '652px' }}>
             <CharacterSheet
               character={sheet}
               isGM={role === 'gm'}
@@ -13076,7 +13076,7 @@ export default function Campaign() {
             />
             </div>
             {dockedCharNotes[sheet.id] && (
-              <div className="w-80 flex-shrink-0 border-l border-stone-700 h-full min-h-0">
+              <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: '652px' }}>
                 <CampaignNotesPanel
                   campaignId={effectiveCampaignId || ''}
                   onClose={() => setDockedCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}

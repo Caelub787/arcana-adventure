@@ -31365,10 +31365,11 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   if (!open || !item) return null;
   return (
     <FloatingPanel
+      key={dockedNoteId ? 'with-notes' : 'plain'}
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
-      defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
+      defaultSize={{ width: dockedNoteId ? 720 * 2 : 720, height: Math.min(880, window.innerHeight - 40) }}
       defaultPosition={defaultPosition}
       minWidth={350}
       minHeight={300}
@@ -31377,7 +31378,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       onBringToFront={() => bringToFront?.(`item-detail${charPanelSuffix}`)}
     >
       <div className="flex h-full min-h-0">
-      <div className="p-4 flex-1 min-w-0 overflow-y-auto">
+      <div className="p-4 flex-shrink-0 overflow-y-auto" style={{ width: '720px' }}>
           <div className="flex items-center justify-between mb-4">
             {isEditing ? (
               <Input 
@@ -32455,7 +32456,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
           </div>
         </div>
       {dockedNoteId && character?.campaignId && (
-        <div className="w-80 flex-shrink-0 border-l border-stone-700 h-full min-h-0">
+        <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: '720px' }}>
           <CampaignNotesPanel
             campaignId={character.campaignId}
             onClose={() => setDockedNoteId(null)}

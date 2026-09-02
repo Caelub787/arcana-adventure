@@ -17450,11 +17450,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (note.userId !== req.session.userId) {
         return res.status(403).json({ error: "Only the owner can delete this note" });
       }
-      
+      const refs = await storage.getNoteReferences(req.params.id);
+      if (refs.some(r => r.entityType === "character-sheet" || r.entityType === "item-sheet")) {
+        return res.status(403).json({ error: "Notes attached to a character or item sheet can't be deleted" });
+      }
+
       // Store campaignId and shares before deletion for broadcast
       const campaignId = note.campaignId;
       const shares = await storage.getNoteShares(req.params.id);
-      
+
       await storage.deleteNote(req.params.id);
       
       if (campaignId) {
