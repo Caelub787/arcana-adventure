@@ -814,6 +814,13 @@ export function CampaignNotesPanel({
       if (data.type === 'note_folder_changed') {
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       }
+      if (data.type === 'timeline_changed') {
+        if (data.campaignId && data.campaignId !== campaignId) return;
+        queryClient.invalidateQueries({ queryKey: ["/api/timelines"] });
+        if (data.timelineId) {
+          queryClient.invalidateQueries({ queryKey: ["/api/timelines", data.timelineId, "events"] });
+        }
+      }
     };
 
     const unsub1 = gameWs.onMessage(handleMessage);
