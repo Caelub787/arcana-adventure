@@ -11135,6 +11135,9 @@ export type PinnedRollFeedEntry = {
   text: string;
   total: number | null;
   ts: number;
+  // e.g. "d20", "d6" - drives the tumble animation's random range so it
+  // never flashes a number the actual die couldn't land on.
+  dieType?: string;
 };
 
 // Top-of-screen party tracker: GM-pinned members shown as small portrait
@@ -11260,6 +11263,11 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rollAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Timestamp a fresh roll should stay visible until, even through a brief
+  // hover-then-leave while the mouse merely passes over the tracker - without
+  // this, mouseleave's quick 400ms hide could cut a just-landed roll's
+  // display short. Only actually used once that time is in the future.
+  const revealUntilRef = useRef<number>(0);
   // Seeded with whatever roll is already latest on mount (e.g. hydrated
   // history after a reload) so it's treated as already-seen - only a roll
   // that arrives *after* mount should trigger the glow/reveal-then-fade
@@ -11296,6 +11304,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     lastSeenIdRef.current = latest.id;
     setRevealed(true);
     setGlow(true);
+    revealUntilRef.current = Date.now() + 3200;
     if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
     glowTimerRef.current = setTimeout(() => setGlow(false), 700);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -11305,12 +11314,15 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
 
     // Tumble a fake number in the total's spot for a beat before settling
     // on the real one, so the reveal feels like an actual roll landing.
+    // Bounded to the actual die's face values (not the total, which can run
+    // higher once modifiers are added) so a d6 never flashes a 17.
     if (latest.total !== null) {
+      const dieMax = parseInt(latest.dieType?.replace(/^d/i, '') || '', 10) || 20;
       setRolling(true);
-      setRollDisplay(1 + Math.floor(Math.random() * 20));
+      setRollDisplay(1 + Math.floor(Math.random() * dieMax));
       if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
       rollIntervalRef.current = setInterval(() => {
-        setRollDisplay(1 + Math.floor(Math.random() * 20));
+        setRollDisplay(1 + Math.floor(Math.random() * dieMax));
       }, 80);
       if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
       rollAnimTimeoutRef.current = setTimeout(() => {
@@ -11374,7 +11386,11 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         onMouseLeave={() => {
           hoveringRef.current = false;
           if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-          hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
+          // A fresh roll stays visible for its full window even through a
+          // brief hover-then-leave - only a genuine "hovered to peek at an
+          // already-settled roll" gets the quick 400ms hide.
+          const delay = Math.max(400, revealUntilRef.current - Date.now());
+          hideTimerRef.current = setTimeout(() => setRevealed(false), delay);
         }}
         onClick={() => setTapLocked(true)}
       >

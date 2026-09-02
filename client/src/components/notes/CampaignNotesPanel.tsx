@@ -2560,7 +2560,13 @@ export function CampaignNotesPanel({
     <div className="h-full bg-stone-900/98 border-l border-stone-700 flex flex-col shadow-2xl">
       <div className="flex items-center justify-between p-2 border-b border-stone-700 bg-stone-900">
         <div className="flex items-center gap-2 min-w-0">
-          {!contentOnly && (
+          {/* The sidebar-toggle/title header only applies to the two-pane
+              "full" layout (sidebar + content side by side) - navOnly is the
+              pure-navigation sidebar itself (its own "Notes" label already
+              lives in the surrounding side-panel chrome), and contentOnly is
+              a single note's content with zero nav chrome, so neither mode
+              shows this row's icon/toggle. */}
+          {!contentOnly && !navOnly && (
             <Button
               variant="ghost"
               size="icon"
@@ -2570,10 +2576,14 @@ export function CampaignNotesPanel({
               {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
             </Button>
           )}
-          <FileText className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <h2 className="text-sm font-bold text-amber-500 truncate">
-            {contentOnly ? (currentNote?.title || "Note") : "Campaign Notes"}
-          </h2>
+          {!navOnly && (
+            <>
+              <FileText className="h-4 w-4 text-amber-500 flex-shrink-0" />
+              <h2 className="text-sm font-bold text-amber-500 truncate">
+                {contentOnly ? (currentNote?.title || "Note") : "Campaign Notes"}
+              </h2>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {!navOnly && !contentOnly && (

@@ -151,6 +151,7 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS scenes ADD COLUMN IF NOT EXISTS source_map_id varchar`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS roll_entries ADD COLUMN IF NOT EXISTS linked_skill_key text`,
+    `ALTER TABLE IF EXISTS campaigns ADD COLUMN IF NOT EXISTS roll_feed jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `CREATE TABLE IF NOT EXISTS timelines (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,

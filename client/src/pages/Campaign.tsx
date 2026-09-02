@@ -40,7 +40,7 @@ import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
 import AdminSettings from "@/pages/AdminSettings";
-import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
@@ -7190,6 +7190,7 @@ export default function Campaign() {
           text: n.label || '',
           total: typeof n.total === 'number' ? n.total : null,
           ts: typeof n.ts === 'number' ? n.ts : Date.now(),
+          dieType: n.dieType || undefined,
         }));
       setRollFeed(hydrated.slice(0, 50));
     }).catch(() => {});
@@ -7205,6 +7206,7 @@ export default function Campaign() {
         text: n.label || '',
         total: typeof n.total === 'number' ? n.total : null,
         ts: typeof n.ts === 'number' ? n.ts : Date.now(),
+        dieType: n.dieType || undefined,
       };
       setRollFeed(prev => [entry, ...prev].slice(0, 50));
     };
@@ -13204,24 +13206,6 @@ export default function Campaign() {
                     title="Reset panel position"
                   >
                     <RotateCcw className="h-4 w-4" />
-                  </Button>
-                )}
-                {activeSidePanel === 'notes' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    data-no-drag
-                    onClick={() => {
-                      setFloatingNotesOpen(true);
-                      setFloatingNotesInitialNoteId(null);
-                      setSidePanelMinimized(true);
-                      bringToFront('notes');
-                    }}
-                    className="h-8 w-8 text-stone-400 hover:text-white"
-                    data-testid="button-popout-notes"
-                    title="Pop out as floating panel"
-                  >
-                    <ExternalLink className="h-4 w-4" />
                   </Button>
                 )}
                 <Button

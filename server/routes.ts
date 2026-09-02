@@ -3588,14 +3588,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // chat above. Serves from the in-memory cache when warm, falling back to
   // the durable column (and warming the cache from it) otherwise.
   app.get("/api/campaigns/:id/roll-feed", requireAuth, async (req, res) => {
-    const cached = campaignRollFeeds.get(req.params.id);
-    if (cached) {
-      return res.json(cached);
+    try {
+      const cached = campaignRollFeeds.get(req.params.id);
+      if (cached) {
+        return res.json(cached);
+      }
+      const campaign = await storage.getCampaign(req.params.id);
+      const feed = Array.isArray(campaign?.rollFeed) ? campaign.rollFeed : [];
+      campaignRollFeeds.set(req.params.id, feed);
+      res.json(feed);
+    } catch (err) {
+      console.error('Error fetching roll feed:', err);
+      res.json([]);
     }
-    const campaign = await storage.getCampaign(req.params.id);
-    const feed = Array.isArray(campaign?.rollFeed) ? campaign.rollFeed : [];
-    campaignRollFeeds.set(req.params.id, feed);
-    res.json(feed);
   });
 
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {
