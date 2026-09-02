@@ -35,6 +35,9 @@ import {
   type Note, type InsertNote,
   type NoteReference, type InsertNoteReference,
   type NoteShare, type InsertNoteShare,
+  type Timeline, type InsertTimeline,
+  type TimelineEvent, type InsertTimelineEvent,
+  type KnowledgeRevision, type InsertKnowledgeRevision,
   type TokenEffect, type InsertTokenEffect,
   type SpellEffect, type InsertSpellEffect,
   type ItemEffect, type InsertItemEffect,
@@ -95,7 +98,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, customFields, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, customFields, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
@@ -614,6 +617,24 @@ export interface IStorage {
   updateNoteShare(id: string, permission: string): Promise<NoteShare | undefined>;
   deleteNoteShare(id: string): Promise<void>;
   canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }>;
+
+  // Timeline operations
+  createCampaignTimeline(timeline: InsertTimeline): Promise<Timeline>;
+  getCampaignTimeline(id: string): Promise<Timeline | undefined>;
+  getCampaignTimelines(campaignId: string): Promise<Timeline[]>;
+  updateCampaignTimeline(id: string, data: Partial<Timeline>): Promise<Timeline | undefined>;
+  deleteCampaignTimeline(id: string): Promise<void>;
+  createTimelineEvent(event: InsertTimelineEvent): Promise<TimelineEvent>;
+  getTimelineEvent(id: string): Promise<TimelineEvent | undefined>;
+  getTimelineEvents(timelineId: string): Promise<TimelineEvent[]>;
+  getCampaignTimelineEvents(campaignId: string): Promise<TimelineEvent[]>;
+  updateTimelineEvent(id: string, data: Partial<TimelineEvent>): Promise<TimelineEvent | undefined>;
+  deleteTimelineEvent(id: string): Promise<void>;
+
+  // Knowledge revision (audit log) operations
+  createKnowledgeRevision(revision: InsertKnowledgeRevision): Promise<KnowledgeRevision>;
+  getKnowledgeRevisionsForEntity(entityType: string, entityId: string): Promise<KnowledgeRevision[]>;
+  getCampaignKnowledgeRevisions(campaignId: string, limit?: number): Promise<KnowledgeRevision[]>;
 
   // Token Effects CRUD operations
   getTokenEffects(opts?: { ownerScope?: string[]; personal?: boolean; system?: string }): Promise<TokenEffect[]>;
@@ -4810,6 +4831,95 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { canAccess: false, permission: null };
+  }
+
+  // Timeline operations (campaign Knowledge System timelines - distinct from
+  // the pre-existing Canvas Realms World timeline methods below, which share
+  // the create/get/update/deleteTimeline names on a different table)
+  async createCampaignTimeline(timeline: InsertTimeline): Promise<Timeline> {
+    const [created] = await db.insert(timelines).values(timeline).returning();
+    return created;
+  }
+
+  async getCampaignTimeline(id: string): Promise<Timeline | undefined> {
+    const [timeline] = await db.select().from(timelines).where(eq(timelines.id, id));
+    return timeline;
+  }
+
+  async getCampaignTimelines(campaignId: string): Promise<Timeline[]> {
+    return await db.select()
+      .from(timelines)
+      .where(eq(timelines.campaignId, campaignId))
+      .orderBy(timelines.sortOrder);
+  }
+
+  async updateCampaignTimeline(id: string, data: Partial<Timeline>): Promise<Timeline | undefined> {
+    const [updated] = await db.update(timelines)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(timelines.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCampaignTimeline(id: string): Promise<void> {
+    await db.delete(timelines).where(eq(timelines.id, id));
+  }
+
+  async createTimelineEvent(event: InsertTimelineEvent): Promise<TimelineEvent> {
+    const [created] = await db.insert(timelineEvents).values(event).returning();
+    return created;
+  }
+
+  async getTimelineEvent(id: string): Promise<TimelineEvent | undefined> {
+    const [event] = await db.select().from(timelineEvents).where(eq(timelineEvents.id, id));
+    return event;
+  }
+
+  async getTimelineEvents(timelineId: string): Promise<TimelineEvent[]> {
+    return await db.select()
+      .from(timelineEvents)
+      .where(eq(timelineEvents.timelineId, timelineId))
+      .orderBy(timelineEvents.sortOrder);
+  }
+
+  async getCampaignTimelineEvents(campaignId: string): Promise<TimelineEvent[]> {
+    return await db.select()
+      .from(timelineEvents)
+      .where(eq(timelineEvents.campaignId, campaignId))
+      .orderBy(timelineEvents.sortOrder);
+  }
+
+  async updateTimelineEvent(id: string, data: Partial<TimelineEvent>): Promise<TimelineEvent | undefined> {
+    const [updated] = await db.update(timelineEvents)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(timelineEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTimelineEvent(id: string): Promise<void> {
+    await db.delete(timelineEvents).where(eq(timelineEvents.id, id));
+  }
+
+  // Knowledge revision (audit log) operations
+  async createKnowledgeRevision(revision: InsertKnowledgeRevision): Promise<KnowledgeRevision> {
+    const [created] = await db.insert(knowledgeRevisions).values(revision).returning();
+    return created;
+  }
+
+  async getKnowledgeRevisionsForEntity(entityType: string, entityId: string): Promise<KnowledgeRevision[]> {
+    return await db.select()
+      .from(knowledgeRevisions)
+      .where(and(eq(knowledgeRevisions.entityType, entityType), eq(knowledgeRevisions.entityId, entityId)))
+      .orderBy(desc(knowledgeRevisions.createdAt));
+  }
+
+  async getCampaignKnowledgeRevisions(campaignId: string, limit: number = 200): Promise<KnowledgeRevision[]> {
+    return await db.select()
+      .from(knowledgeRevisions)
+      .where(eq(knowledgeRevisions.campaignId, campaignId))
+      .orderBy(desc(knowledgeRevisions.createdAt))
+      .limit(limit);
   }
 
   // Token Effects CRUD operations

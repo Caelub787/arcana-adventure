@@ -682,6 +682,52 @@ export interface NoteReference {
   createdAt: string;
 }
 
+export interface Timeline {
+  id: string;
+  userId: string;
+  campaignId: string;
+  name: string;
+  description?: string | null;
+  calendar?: { eraNames?: string[]; monthNames?: string[]; daysPerMonth?: number[] } | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeRevision {
+  id: string;
+  campaignId: string;
+  actorUserId: string;
+  entityType: string;
+  entityId: string;
+  action: "content" | "visibility" | "move" | "link" | "create" | "delete" | "import" | "scene_link" | "restore";
+  before?: any;
+  after?: any;
+  createdAt: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  timelineId: string;
+  campaignId: string;
+  userId: string;
+  title: string;
+  description?: string | null;
+  dateType: "exact" | "range" | "uncertain" | "relative" | "era" | "ordered";
+  dateValue?: any;
+  endDateValue?: any;
+  sortOrder: number;
+  tags?: string[] | null;
+  category?: string | null;
+  color?: string | null;
+  image?: string | null;
+  links?: { entityType: string; entityId: string; label?: string }[] | null;
+  visibility: string;
+  visiblePlayerIds?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface NoteShare {
   id: string;
   noteId?: string | null;
@@ -1498,6 +1544,13 @@ class ApiClient {
 
   async deleteStampAssetVariant(id: string): Promise<void> {
     return this.request(`/stamp-asset-variants/${id}`, { method: 'DELETE' });
+  }
+
+  async registerSceneFromUpload(campaignId: string, image: string, name?: string): Promise<Scene> {
+    return this.request(`/campaigns/${campaignId}/scenes/from-upload`, {
+      method: 'POST',
+      body: JSON.stringify({ image, name }),
+    });
   }
 
   async importMapToScene(mapId: string, data: { campaignId: string; image: string; name?: string }): Promise<any> {
@@ -2513,6 +2566,57 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ campaignId, entityType, entityId, title }),
     });
+  }
+
+  async importNoteToCampaign(noteId: string, destinationCampaignId: string): Promise<{ note: Note; entityImported: boolean; entityId: string | null; sameSystem: boolean; unlinked: boolean }> {
+    return this.request(`/notes/${noteId}/import-to-campaign`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationCampaignId }),
+    });
+  }
+
+  async getNoteHistory(noteId: string): Promise<KnowledgeRevision[]> {
+    return this.request(`/notes/${noteId}/history`);
+  }
+
+  async restoreNoteRevision(noteId: string, revisionId: string): Promise<Note> {
+    return this.request(`/notes/${noteId}/restore/${revisionId}`, { method: 'POST' });
+  }
+
+  async getCampaignKnowledgeActivity(campaignId: string): Promise<KnowledgeRevision[]> {
+    return this.request(`/campaigns/${campaignId}/knowledge-activity`);
+  }
+
+  async getTimelines(campaignId: string): Promise<Timeline[]> {
+    return this.request(`/timelines?campaignId=${encodeURIComponent(campaignId)}`);
+  }
+
+  async createTimeline(data: Partial<Timeline>): Promise<Timeline> {
+    return this.request('/timelines', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateTimeline(id: string, data: Partial<Timeline>): Promise<Timeline> {
+    return this.request(`/timelines/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteTimeline(id: string): Promise<void> {
+    return this.request(`/timelines/${id}`, { method: 'DELETE' });
+  }
+
+  async getTimelineEvents(timelineId: string): Promise<TimelineEvent[]> {
+    return this.request(`/timelines/${timelineId}/events`);
+  }
+
+  async createTimelineEvent(data: Partial<TimelineEvent> & { timelineId: string }): Promise<TimelineEvent> {
+    return this.request('/timeline-events', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateTimelineEvent(id: string, data: Partial<TimelineEvent>): Promise<TimelineEvent> {
+    return this.request(`/timeline-events/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteTimelineEvent(id: string): Promise<void> {
+    return this.request(`/timeline-events/${id}`, { method: 'DELETE' });
   }
 
   async getNote(id: string): Promise<Note> {

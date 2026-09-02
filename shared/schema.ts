@@ -147,6 +147,12 @@ export const scenes = pgTable("scenes", {
   folderId: varchar("folder_id"), // Optional folder for organization
   name: text("name").notNull(),
   backgroundImage: text("background_image"),
+  // Set when this Scene was auto-registered from a Map Maker map (via a Scene
+  // note or the Map Maker toolbar) - lets us find an already-linked Scene for
+  // that map instead of creating a duplicate on a second import. No DB FK
+  // (mirrors the ammunitionTypeId/advancedItemTypeId convention elsewhere in
+  // this schema) since maps aren't campaign-scoped and can be deleted independently.
+  sourceMapId: varchar("source_map_id"),
   gridEnabled: boolean("grid_enabled").default(true).notNull(),
   gridType: text("grid_type").default("square").notNull(), // "square" or "hex"
   gridSize: integer("grid_size").default(50).notNull(),
@@ -1431,6 +1437,101 @@ export const insertNoteShareSchema = createInsertSchema(noteShares).omit({
 
 export type InsertNoteShare = z.infer<typeof insertNoteShareSchema>;
 export type NoteShare = typeof noteShares.$inferSelect;
+
+// Timelines (a campaign may have several - lore history, session log, planned
+// GM events, a character's personal arc, etc.)
+export const timelines = pgTable("timelines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  // Optional custom calendar for settings that don't use real-world dates -
+  // e.g. { eraNames: string[], monthNames: string[], daysPerMonth: number[] }.
+  // Null means events use ordinary real-world year/month/day values.
+  calendar: jsonb("calendar"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTimelineSchema = createInsertSchema(timelines).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTimeline = z.infer<typeof insertTimelineSchema>;
+export type Timeline = typeof timelines.$inferSelect;
+
+export const timelineEvents = pgTable("timeline_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  timelineId: varchar("timeline_id").notNull().references(() => timelines.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  // "exact" | "range" | "uncertain" | "relative" | "era" | "ordered" - dateValue's
+  // shape depends on this: exact/range use {year, month?, day?} (+ endYear/endMonth/
+  // endDay for range), uncertain/relative/era store free text, ordered stores
+  // nothing (position comes from sortOrder alone).
+  dateType: text("date_type").default("ordered").notNull(),
+  dateValue: jsonb("date_value"),
+  endDateValue: jsonb("end_date_value"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  tags: jsonb("tags").$type<string[]>(),
+  category: text("category"),
+  color: text("color"),
+  image: text("image"),
+  // Links to notes/characters/items/scenes/other events - same shape as
+  // noteReferences so the graph/backlinks code can treat them uniformly.
+  links: jsonb("links").$type<{ entityType: string; entityId: string; label?: string }[]>(),
+  // Same visibility model as notes: 'gm' (default, hidden until revealed),
+  // 'party' (every campaign member), 'players' (only visiblePlayerIds).
+  visibility: text("visibility").default("gm").notNull(),
+  visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTimelineEventSchema = createInsertSchema(timelineEvents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTimelineEvent = z.infer<typeof insertTimelineEventSchema>;
+export type TimelineEvent = typeof timelineEvents.$inferSelect;
+
+// Knowledge revisions (change history / audit log for the Campaign Knowledge
+// System - notes, folders, timelines, and their visibility/link changes).
+// Collaborative keystrokes are coalesced server-side into one revision per
+// debounced save rather than logged per character.
+export const knowledgeRevisions = pgTable("knowledge_revisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  actorUserId: varchar("actor_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // "note" | "note_folder" | "timeline" | "timeline_event"
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  // "content" | "visibility" | "move" | "link" | "create" | "delete" | "import" | "scene_link" | "restore"
+  action: text("action").notNull(),
+  // Snapshot of the fields that changed, before/after - e.g. { title, content,
+  // visibility, visiblePlayerIds, folderId }. Only fields the actor is
+  // recording are present; readers still get server-side visibility
+  // filtering on top of this (see the history route).
+  before: jsonb("before"),
+  after: jsonb("after"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertKnowledgeRevisionSchema = createInsertSchema(knowledgeRevisions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertKnowledgeRevision = z.infer<typeof insertKnowledgeRevisionSchema>;
+export type KnowledgeRevision = typeof knowledgeRevisions.$inferSelect;
 
 // Canvas Node data structure (stored in canvasData jsonb)
 // {

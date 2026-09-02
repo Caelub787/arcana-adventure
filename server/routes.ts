@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type CustomField, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type CustomField, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -6334,6 +6334,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!(await hasGmAccess(userId, campaignId, campaign.gmUserId))) {
         return res.status(403).json({ error: "Only the GM can import a map as a scene" });
       }
+      // Don't re-register the same map as a second Scene in this campaign -
+      // link the already-registered one instead (spec: "must not require a
+      // second upload" / "no duplicate Scene entries").
+      const existingScenes = await storage.getCampaignScenes(campaignId);
+      const alreadyLinked = existingScenes.find((s: any) => s.sourceMapId === map.id);
+      if (alreadyLinked) {
+        return res.json(alreadyLinked);
+      }
       const matches = (image as string).match(/^data:([^;]+);base64,(.+)$/);
       if (!matches) return res.status(400).json({ error: "Invalid image data" });
       const buffer = Buffer.from(matches[2], 'base64');
@@ -6343,11 +6351,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: name || map.name,
         backgroundImage,
         gridSize: map.gridSize,
+        sourceMapId: map.id,
       } as any);
       res.json(scene);
     } catch (err) {
       console.error("Failed to import map as scene:", err);
       res.status(500).json({ error: "Failed to import map as scene", details: (err as any)?.message });
+    }
+  });
+
+  // Scene note support: register a device-uploaded image directly as a
+  // campaign Scene (no Map Maker map involved - raw raster upload).
+  app.post("/api/campaigns/:campaignId/scenes/from-upload", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { campaignId } = req.params;
+      const { image, name } = req.body as { image?: string; name?: string };
+      if (!image) return res.status(400).json({ error: "image is required" });
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!(await hasGmAccess(userId, campaignId, campaign.gmUserId))) {
+        return res.status(403).json({ error: "Only the GM can register a scene" });
+      }
+      const matches = (image as string).match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) return res.status(400).json({ error: "Invalid image data" });
+      const buffer = Buffer.from(matches[2], 'base64');
+      const backgroundImage = await processAndSaveImage(buffer, `scene-upload-${campaignId}`);
+      const scene = await storage.createScene({
+        campaignId,
+        name: name || "New Scene",
+        backgroundImage,
+      } as any);
+      res.status(201).json(scene);
+    } catch (err) {
+      console.error("Failed to register scene from upload:", err);
+      res.status(500).json({ error: "Failed to register scene from upload", details: (err as any)?.message });
     }
   });
 
@@ -16627,6 +16665,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return content.replace(/#([^#\n]*)#/g, (_match, inner: string) => '█'.repeat(Math.max(3, Math.min(inner.length, 24))));
   }
 
+  // Records a knowledge-system change for the audit log / history feature.
+  // Consecutive content edits to the same note by the same actor within
+  // COALESCE_WINDOW_MS are merged into the most recent revision instead of
+  // spawning a new one each autosave, so "collaborative keystrokes" (already
+  // debounced client-side) end up as one sensible revision per editing
+  // session rather than one row per PATCH.
+  const NOTE_REVISION_COALESCE_WINDOW_MS = 10 * 60 * 1000;
+  async function recordNoteRevision(
+    campaignId: string,
+    actorUserId: string,
+    action: 'content' | 'visibility' | 'move' | 'create' | 'delete' | 'restore',
+    entityId: string,
+    before: Record<string, unknown> | undefined,
+    after: Record<string, unknown> | undefined,
+  ) {
+    try {
+      if (action === 'content') {
+        const recent = await storage.getKnowledgeRevisionsForEntity('note', entityId);
+        const last = recent[0];
+        if (
+          last &&
+          last.action === 'content' &&
+          last.actorUserId === actorUserId &&
+          Date.now() - new Date(last.createdAt).getTime() < NOTE_REVISION_COALESCE_WINDOW_MS
+        ) {
+          await db.update(knowledgeRevisions)
+            .set({ after: after as any })
+            .where(eq(knowledgeRevisions.id, last.id));
+          return;
+        }
+      }
+      await storage.createKnowledgeRevision({
+        campaignId,
+        actorUserId,
+        entityType: 'note',
+        entityId,
+        action,
+        before: before as any,
+        after: after as any,
+      });
+    } catch (e) {
+      console.error("Failed to record knowledge revision:", e);
+    }
+  }
+
   // Note Folder endpoints
   app.get("/api/notes/folders", requireAuth, async (req, res) => {
     try {
@@ -16685,6 +16768,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateNoteFolder(req.params.id, req.body);
       if (updated?.campaignId) {
         broadcastToCampaign(updated.campaignId, { type: 'note_folder_changed', campaignId: updated.campaignId });
+        if (req.body.parentId !== undefined && req.body.parentId !== folder.parentId) {
+          await storage.createKnowledgeRevision({
+            campaignId: updated.campaignId,
+            actorUserId: req.session.userId!,
+            entityType: 'note_folder',
+            entityId: updated.id,
+            action: 'move',
+            before: { parentId: folder.parentId },
+            after: { parentId: updated.parentId },
+          });
+        }
       }
       sendToUser(req.session.userId!, { type: 'note_folder_changed' });
       res.json(updated);
@@ -16889,6 +16983,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cross-campaign import: copy one note (and, for a same-system entity-linked
+  // note, its linked character/item as a brand-new independent copy) into a
+  // campaign the requester GMs. Destination records are fully independent -
+  // later edits on either side never sync (spec section 15).
+  app.post("/api/notes/:id/import-to-campaign", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { destinationCampaignId } = req.body as { destinationCampaignId?: string };
+      if (!destinationCampaignId) {
+        return res.status(400).json({ error: "destinationCampaignId is required" });
+      }
+      const sourceNote = await storage.getNote(req.params.id);
+      if (!sourceNote) return res.status(404).json({ error: "Note not found" });
+      const sourceRole = await getKnowledgeRole(userId, sourceNote.campaignId);
+      const access = await storage.canAccessNote(userId, sourceNote.id);
+      const visibilityGrants = knowledgeVisibilityGrantsAccess((sourceNote as any).visibility, (sourceNote as any).visiblePlayerIds, userId, sourceRole);
+      if (!access.canAccess && !visibilityGrants) {
+        return res.status(403).json({ error: "Not authorized to import this note" });
+      }
+      const destCampaign = await storage.getCampaign(destinationCampaignId);
+      if (!destCampaign) return res.status(404).json({ error: "Destination campaign not found" });
+      if (!(await hasGmAccess(userId, destinationCampaignId, destCampaign.gmUserId))) {
+        return res.status(403).json({ error: "Only the destination campaign's GM can import into it" });
+      }
+
+      let sameSystem = true;
+      if (sourceNote.campaignId) {
+        const sourceCampaign = await storage.getCampaign(sourceNote.campaignId);
+        sameSystem = !sourceCampaign || sourceCampaign.system === destCampaign.system;
+      }
+
+      // Find a linked character/item sheet, if any (the same noteReferences
+      // mechanism the KNOW7 "Notes" sheet button uses to link a note to its entity).
+      const refs = await storage.getNoteReferences(sourceNote.id);
+      const entityRef = refs.find(r => ["character-sheet", "character", "item-sheet", "item"].includes(r.entityType));
+      const isCharacterEntity = entityRef && (entityRef.entityType === "character-sheet" || entityRef.entityType === "character");
+
+      let newEntityId: string | null = null;
+      let importedEntityType: string | null = null;
+      if (entityRef && sameSystem) {
+        if (isCharacterEntity) {
+          const sourceChar = await storage.getCharacter(entityRef.entityId);
+          if (sourceChar) {
+            const { id: _id, ...charData } = sourceChar as any;
+            const newChar = await storage.createCharacter({
+              ...charData,
+              campaignId: destinationCampaignId,
+              userId,
+              isTemplate: false,
+              pinned: false,
+            } as any);
+            newEntityId = newChar.id;
+            importedEntityType = entityRef.entityType;
+          }
+        } else {
+          const sourceItem = await storage.getItem(entityRef.entityId);
+          if (sourceItem) {
+            const { id: _id, ...itemData } = sourceItem as any;
+            const newItem = await storage.createItem({
+              ...itemData,
+              campaignId: destinationCampaignId,
+              characterId: null,
+              worldId: null,
+              isTemplate: true,
+              createdByUserId: userId,
+            } as any);
+            newEntityId = newItem.id;
+            importedEntityType = entityRef.entityType;
+          }
+        }
+      }
+
+      // Rewrite [[type:oldId|label]]-style inline references to the copied
+      // entity's new id so the imported note's links keep working.
+      let importedContent = redactGmSecrets(sourceNote.content, sourceRole.isGm);
+      if (entityRef && newEntityId) {
+        importedContent = importedContent.split(entityRef.entityId).join(newEntityId);
+      }
+
+      const newNote = await storage.createNote({
+        userId,
+        campaignId: destinationCampaignId,
+        folderId: null,
+        title: sourceNote.title,
+        content: importedContent,
+        type: sourceNote.type === "canvas" || sourceNote.type === "scene" ? "markdown" : sourceNote.type,
+        visibility: "gm",
+        visiblePlayerIds: null,
+      } as any);
+
+      if (entityRef && newEntityId && importedEntityType) {
+        await storage.createNoteReference({
+          noteId: newNote.id,
+          entityType: importedEntityType,
+          entityId: newEntityId,
+          label: entityRef.label,
+          position: null,
+        } as any);
+      }
+
+      await storage.createKnowledgeRevision({
+        campaignId: destinationCampaignId,
+        actorUserId: userId,
+        entityType: "note",
+        entityId: newNote.id,
+        action: "import",
+        before: { sourceNoteId: sourceNote.id, sourceCampaignId: sourceNote.campaignId },
+        after: { sameSystem, entityImported: !!newEntityId },
+      });
+
+      broadcastToCampaign(destinationCampaignId, { type: 'note_created', noteId: newNote.id, campaignId: destinationCampaignId, userId });
+      res.status(201).json({
+        note: newNote,
+        entityImported: !!newEntityId,
+        entityId: newEntityId,
+        sameSystem,
+        unlinked: !!entityRef && !newEntityId,
+      });
+    } catch (e) {
+      console.error("Failed to import note to campaign:", e);
+      res.status(500).json({ error: "Failed to import note to campaign" });
+    }
+  });
+
   app.get("/api/notes/:id", requireAuth, async (req, res) => {
     try {
       const note = await storage.getNote(req.params.id);
@@ -16930,6 +17148,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateNote(req.params.id, req.body);
       if (updated?.campaignId) {
         broadcastToCampaign(updated.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: updated.campaignId });
+        if (req.body.visibility !== undefined || req.body.visiblePlayerIds !== undefined) {
+          await recordNoteRevision(
+            updated.campaignId, req.session.userId!, 'visibility', updated.id,
+            { visibility: (note as any).visibility, visiblePlayerIds: (note as any).visiblePlayerIds },
+            { visibility: updated.visibility, visiblePlayerIds: (updated as any).visiblePlayerIds },
+          );
+        }
+        if (req.body.folderId !== undefined && req.body.folderId !== note.folderId) {
+          await recordNoteRevision(
+            updated.campaignId, req.session.userId!, 'move', updated.id,
+            { folderId: note.folderId }, { folderId: updated.folderId },
+          );
+        }
+        if (req.body.title !== undefined || req.body.content !== undefined) {
+          await recordNoteRevision(
+            updated.campaignId, req.session.userId!, 'content', updated.id,
+            { title: note.title, content: note.content }, { title: updated.title, content: updated.content },
+          );
+        }
       }
       const noteShares = await storage.getNoteShares(req.params.id);
       if (noteShares.length > 0) {
@@ -16942,6 +17179,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to update note:", e);
       res.status(500).json({ error: "Failed to update note" });
+    }
+  });
+
+  // Per-note change history. GM-only for now: a revision snapshot can contain
+  // text that was GM-only (or players-only) at the time it was written, and
+  // correctly re-filtering every historical snapshot by the CURRENT viewer's
+  // access on every revision is easy to get subtly wrong - scoped to GMs
+  // until a player-safe filtered view is built out.
+  app.get("/api/notes/:id/history", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+      if (!role.isGm) {
+        return res.status(403).json({ error: "Only the GM can view note history" });
+      }
+      const revisions = await storage.getKnowledgeRevisionsForEntity('note', req.params.id);
+      res.json(revisions);
+    } catch (e) {
+      console.error("Failed to get note history:", e);
+      res.status(500).json({ error: "Failed to get note history" });
+    }
+  });
+
+  app.post("/api/notes/:id/restore/:revisionId", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+      if (!role.isGm) {
+        return res.status(403).json({ error: "Only the GM can restore a note revision" });
+      }
+      const revisions = await storage.getKnowledgeRevisionsForEntity('note', req.params.id);
+      const revision = revisions.find(r => r.id === req.params.revisionId);
+      if (!revision || revision.action !== 'content' || !revision.after) {
+        return res.status(404).json({ error: "Revision not found" });
+      }
+      const snapshot = revision.after as { title?: string; content?: string };
+      const restored = await storage.updateNote(req.params.id, {
+        title: snapshot.title ?? note.title,
+        content: snapshot.content ?? note.content,
+      } as any);
+      // The restore itself is recorded as a NEW revision rather than erasing
+      // history (spec 17: "recording the restoration as a new event").
+      if (restored?.campaignId) {
+        await storage.createKnowledgeRevision({
+          campaignId: restored.campaignId,
+          actorUserId: req.session.userId!,
+          entityType: 'note',
+          entityId: restored.id,
+          action: 'restore',
+          before: { title: note.title, content: note.content },
+          after: { title: restored.title, content: restored.content, restoredFromRevisionId: revision.id },
+        });
+        broadcastToCampaign(restored.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: restored.campaignId });
+      }
+      res.json(restored);
+    } catch (e) {
+      console.error("Failed to restore note revision:", e);
+      res.status(500).json({ error: "Failed to restore note revision" });
+    }
+  });
+
+  // GM-facing campaign-wide knowledge activity feed.
+  app.get("/api/campaigns/:campaignId/knowledge-activity", requireAuth, async (req, res) => {
+    try {
+      const role = await getKnowledgeRole(req.session.userId!, req.params.campaignId);
+      if (!role.isGm) {
+        return res.status(403).json({ error: "Only the GM can view campaign activity" });
+      }
+      const activity = await storage.getCampaignKnowledgeRevisions(req.params.campaignId);
+      res.json(activity);
+    } catch (e) {
+      console.error("Failed to get campaign knowledge activity:", e);
+      res.status(500).json({ error: "Failed to get campaign knowledge activity" });
     }
   });
 
@@ -16976,11 +17288,192 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       sendToUser(req.session.userId!, { type: 'notes_changed', noteId: req.params.id });
-      
+
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete note:", e);
       res.status(500).json({ error: "Failed to delete note" });
+    }
+  });
+
+  // ===== TIMELINE ROUTES (Campaign Knowledge System) =====
+  // Timeline events share the exact visibility model as notes ('gm' default,
+  // 'party', or 'players' + visiblePlayerIds) - reuses getKnowledgeRole /
+  // knowledgeVisibilityGrantsAccess / redactGmSecrets from the notes routes above.
+
+  app.get("/api/timelines", requireAuth, async (req, res) => {
+    try {
+      const campaignId = req.query.campaignId as string | undefined;
+      if (!campaignId) {
+        return res.status(400).json({ error: "campaignId is required" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      const list = await storage.getCampaignTimelines(campaignId);
+      res.json(list);
+    } catch (e) {
+      console.error("Failed to get timelines:", e);
+      res.status(500).json({ error: "Failed to get timelines" });
+    }
+  });
+
+  app.post("/api/timelines", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.body as { campaignId?: string };
+      if (!campaignId) {
+        return res.status(400).json({ error: "campaignId is required" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      const timeline = await storage.createCampaignTimeline({ ...req.body, userId: req.session.userId! });
+      broadcastToCampaign(campaignId, { type: 'timeline_changed', campaignId, timelineId: timeline.id });
+      await storage.createKnowledgeRevision({
+        campaignId, actorUserId: req.session.userId!, entityType: 'timeline', entityId: timeline.id,
+        action: 'create', after: { name: timeline.name },
+      });
+      res.status(201).json(timeline);
+    } catch (e) {
+      console.error("Failed to create timeline:", e);
+      res.status(500).json({ error: "Failed to create timeline" });
+    }
+  });
+
+  app.put("/api/timelines/:id", requireAuth, async (req, res) => {
+    try {
+      const timeline = await storage.getCampaignTimeline(req.params.id);
+      if (!timeline) {
+        return res.status(404).json({ error: "Timeline not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, timeline.campaignId);
+      if (!role.isGm && timeline.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to edit this timeline" });
+      }
+      const updated = await storage.updateCampaignTimeline(req.params.id, req.body);
+      broadcastToCampaign(timeline.campaignId, { type: 'timeline_changed', campaignId: timeline.campaignId, timelineId: timeline.id });
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update timeline:", e);
+      res.status(500).json({ error: "Failed to update timeline" });
+    }
+  });
+
+  app.delete("/api/timelines/:id", requireAuth, async (req, res) => {
+    try {
+      const timeline = await storage.getCampaignTimeline(req.params.id);
+      if (!timeline) {
+        return res.status(404).json({ error: "Timeline not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, timeline.campaignId);
+      if (!role.isGm && timeline.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to delete this timeline" });
+      }
+      await storage.deleteCampaignTimeline(req.params.id);
+      broadcastToCampaign(timeline.campaignId, { type: 'timeline_changed', campaignId: timeline.campaignId, timelineId: timeline.id });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete timeline:", e);
+      res.status(500).json({ error: "Failed to delete timeline" });
+    }
+  });
+
+  app.get("/api/timelines/:id/events", requireAuth, async (req, res) => {
+    try {
+      const timeline = await storage.getCampaignTimeline(req.params.id);
+      if (!timeline) {
+        return res.status(404).json({ error: "Timeline not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, timeline.campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      const allEvents = await storage.getTimelineEvents(req.params.id);
+      const visible = allEvents
+        .filter((ev: any) => ev.userId === req.session.userId || knowledgeVisibilityGrantsAccess(ev.visibility, ev.visiblePlayerIds, req.session.userId!, role))
+        .map((ev: any) => ({ ...ev, description: redactGmSecrets(ev.description || '', role.isGm) }));
+      res.json(visible);
+    } catch (e) {
+      console.error("Failed to get timeline events:", e);
+      res.status(500).json({ error: "Failed to get timeline events" });
+    }
+  });
+
+  app.post("/api/timeline-events", requireAuth, async (req, res) => {
+    try {
+      const { timelineId } = req.body as { timelineId?: string };
+      if (!timelineId) {
+        return res.status(400).json({ error: "timelineId is required" });
+      }
+      const timeline = await storage.getCampaignTimeline(timelineId);
+      if (!timeline) {
+        return res.status(404).json({ error: "Timeline not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, timeline.campaignId);
+      if (!role.isMember) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      const event = await storage.createTimelineEvent({
+        ...req.body,
+        campaignId: timeline.campaignId,
+        userId: req.session.userId!,
+      });
+      broadcastToCampaign(timeline.campaignId, { type: 'timeline_changed', campaignId: timeline.campaignId, timelineId });
+      await storage.createKnowledgeRevision({
+        campaignId: timeline.campaignId, actorUserId: req.session.userId!, entityType: 'timeline_event', entityId: event.id,
+        action: 'create', after: { title: event.title, visibility: event.visibility },
+      });
+      res.status(201).json(event);
+    } catch (e) {
+      console.error("Failed to create timeline event:", e);
+      res.status(500).json({ error: "Failed to create timeline event" });
+    }
+  });
+
+  app.put("/api/timeline-events/:id", requireAuth, async (req, res) => {
+    try {
+      const event = await storage.getTimelineEvent(req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: "Timeline event not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, event.campaignId);
+      if (!role.isGm && event.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to edit this event" });
+      }
+      const before = { visibility: event.visibility, visiblePlayerIds: event.visiblePlayerIds };
+      const updated = await storage.updateTimelineEvent(req.params.id, req.body);
+      broadcastToCampaign(event.campaignId, { type: 'timeline_changed', campaignId: event.campaignId, timelineId: event.timelineId });
+      if (updated && (req.body.visibility !== undefined || req.body.visiblePlayerIds !== undefined)) {
+        await storage.createKnowledgeRevision({
+          campaignId: event.campaignId, actorUserId: req.session.userId!, entityType: 'timeline_event', entityId: event.id,
+          action: 'visibility', before, after: { visibility: updated.visibility, visiblePlayerIds: updated.visiblePlayerIds },
+        });
+      }
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update timeline event:", e);
+      res.status(500).json({ error: "Failed to update timeline event" });
+    }
+  });
+
+  app.delete("/api/timeline-events/:id", requireAuth, async (req, res) => {
+    try {
+      const event = await storage.getTimelineEvent(req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: "Timeline event not found" });
+      }
+      const role = await getKnowledgeRole(req.session.userId!, event.campaignId);
+      if (!role.isGm && event.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to delete this event" });
+      }
+      await storage.deleteTimelineEvent(req.params.id);
+      broadcastToCampaign(event.campaignId, { type: 'timeline_changed', campaignId: event.campaignId, timelineId: event.timelineId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete timeline event:", e);
+      res.status(500).json({ error: "Failed to delete timeline event" });
     }
   });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, globalWs, noteWs, NotePresence } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, globalWs, noteWs, NotePresence, KnowledgeRevision } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -57,11 +57,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, CloudDownload, ExternalLink, Home, ArrowUp, ArrowLeft, BookOpen, Globe } from "lucide-react";
+import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, CloudDownload, ExternalLink, Home, ArrowUp, ArrowLeft, BookOpen, Globe, History as HistoryIcon, Map as MapIcon } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
-import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID } from "@/components/notes/NoteTabs";
+import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID, TIMELINES_TAB_ID } from "@/components/notes/NoteTabs";
+import { TimelinePanel } from "@/components/notes/TimelinePanel";
+import { SceneNoteCard, type SceneNoteLink } from "@/components/notes/SceneNoteCard";
+
+function sceneLinkFromNote(note: Note | undefined): SceneNoteLink | null {
+  if (!note || note.type !== "scene") return null;
+  const data = note.canvasData as any;
+  if (!data || typeof data !== "object") return null;
+  return data as SceneNoteLink;
+}
 import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
@@ -176,6 +185,7 @@ interface FolderTreeItemProps {
   onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
+  onCreateScene: (folderId: string) => void;
   onShareNote: (noteId: string) => void;
   onDeleteNote: (note: Note) => void;
   onMoveNote: (noteId: string, folderId: string | null) => void;
@@ -208,6 +218,7 @@ function FolderTreeItem({
   onReorderFolder,
   onCreateNote,
   onCreateCanvas,
+  onCreateScene,
   onShareNote,
   onDeleteNote,
   onMoveNote,
@@ -437,6 +448,12 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
           </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onCreateScene(folder.id)}
+            data-testid={`context-menu-new-scene-${folder.id}`}
+          >
+            <MapIcon className="h-3 w-3 mr-2" /> New Scene
+          </ContextMenuItem>
           <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
             onClick={() => onDeleteFolder(folder)}
@@ -467,6 +484,7 @@ function FolderTreeItem({
               onReorderFolder={onReorderFolder}
               onCreateNote={onCreateNote}
               onCreateCanvas={onCreateCanvas}
+              onCreateScene={onCreateScene}
               onShareNote={onShareNote}
               onDeleteNote={onDeleteNote}
               onMoveNote={onMoveNote}
@@ -576,6 +594,9 @@ export function CampaignNotesPanel({
   }, [initialNoteId]);
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [crossCampaignImportOpen, setCrossCampaignImportOpen] = useState(false);
+  const [importDestCampaignId, setImportDestCampaignId] = useState<string>("");
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<NoteFolder | null>(null);
   const [folderName, setFolderName] = useState("");
   const [folderColor, setFolderColor] = useState<string | null>(null);
@@ -763,7 +784,7 @@ export function CampaignNotesPanel({
         }
         
         // Open in tabs when selecting a note
-        openNoteTab(currentNote.id, currentNote.title, currentNote.type as "markdown" | "canvas" | undefined);
+        openNoteTab(currentNote.id, currentNote.title, currentNote.type as OpenNote["type"]);
       }
     }
   }, [currentNote, openNoteTab]);
@@ -942,6 +963,12 @@ export function CampaignNotesPanel({
       setShowHomeView(false);
       return;
     }
+    if (tabNoteId === TIMELINES_TAB_ID) {
+      switchTab(TIMELINES_TAB_ID);
+      setSelectedNoteId(null);
+      setShowHomeView(false);
+      return;
+    }
     if (tabNoteId !== selectedNoteId) {
       setSelectedNoteId(tabNoteId);
     }
@@ -952,19 +979,19 @@ export function CampaignNotesPanel({
     const remainingNotes = openNotes.filter(n => n.noteId !== tabNoteId);
     closeTab(tabNoteId);
     
-    const isActiveTab = tabNoteId === GRAPH_TAB_ID
-      ? tabActiveNoteId === GRAPH_TAB_ID
+    const isActiveTab = (tabNoteId === GRAPH_TAB_ID || tabNoteId === TIMELINES_TAB_ID)
+      ? tabActiveNoteId === tabNoteId
       : tabNoteId === selectedNoteId;
-    
+
     if (isActiveTab) {
       if (remainingNotes.length > 0) {
         const currentIdx = openNotes.findIndex(n => n.noteId === tabNoteId);
-        const newActiveNote = currentIdx > 0 
-          ? openNotes[currentIdx - 1] 
+        const newActiveNote = currentIdx > 0
+          ? openNotes[currentIdx - 1]
           : remainingNotes[0];
         if (newActiveNote) {
-          if (newActiveNote.noteId === GRAPH_TAB_ID) {
-            switchTab(GRAPH_TAB_ID);
+          if (newActiveNote.noteId === GRAPH_TAB_ID || newActiveNote.noteId === TIMELINES_TAB_ID) {
+            switchTab(newActiveNote.noteId);
             setSelectedNoteId(null);
             setShowHomeView(false);
           } else {
@@ -1071,6 +1098,50 @@ export function CampaignNotesPanel({
         setSelectedFolderId(null);
       }
       toast({ title: "Folder deleted" });
+    },
+    onError: (err: any) =>
+      toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: gmCampaigns = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/campaigns", "gm-owned"],
+    queryFn: async () => {
+      const { created } = await api.getCampaigns();
+      return created.filter((c: any) => c.id !== campaignId);
+    },
+    enabled: isGm && crossCampaignImportOpen,
+  });
+
+  const importNoteMutation = useMutation({
+    mutationFn: () => api.importNoteToCampaign(selectedNoteId!, importDestCampaignId),
+    onSuccess: (result) => {
+      setCrossCampaignImportOpen(false);
+      setImportDestCampaignId("");
+      toast({
+        title: "Note imported",
+        description: result.unlinked
+          ? "Copied as an unlinked note (different game systems can't share a linked sheet)."
+          : result.entityImported
+          ? "Note and its linked sheet were copied as independent records."
+          : "Note copied.",
+      });
+    },
+    onError: (err: any) =>
+      toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: noteHistory = [], isLoading: noteHistoryLoading } = useQuery<KnowledgeRevision[]>({
+    queryKey: ["/api/notes", selectedNoteId, "history"],
+    queryFn: () => api.getNoteHistory(selectedNoteId!),
+    enabled: isGm && historyDialogOpen && !!selectedNoteId,
+  });
+
+  const restoreRevisionMutation = useMutation({
+    mutationFn: (revisionId: string) => api.restoreNoteRevision(selectedNoteId!, revisionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId, "history"] });
+      toast({ title: "Revision restored" });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1975,6 +2046,16 @@ export function CampaignNotesPanel({
                     campaignId: campaignId,
                   });
                 }}
+                onCreateScene={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Scene",
+                    content: "",
+                    type: "scene",
+                    canvasData: {},
+                    folderId: folderId,
+                    campaignId: campaignId,
+                  });
+                }}
                 onShareNote={(id) => {
                   openShareDialog(id);
                 }}
@@ -2461,6 +2542,30 @@ export function CampaignNotesPanel({
                 </SelectContent>
               </Select>
             )}
+            {isGm && currentNote && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                title="Import into another campaign"
+                onClick={() => setCrossCampaignImportOpen(true)}
+                data-testid="button-import-note"
+              >
+                <CloudUpload className="h-3 w-3" />
+              </Button>
+            )}
+            {isGm && currentNote && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                title="Change history"
+                onClick={() => setHistoryDialogOpen(true)}
+                data-testid="button-note-history"
+              >
+                <HistoryIcon className="h-3 w-3" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -2524,6 +2629,19 @@ export function CampaignNotesPanel({
               className="text-sm font-medium border-none bg-transparent focus-visible:ring-0 px-0 mb-1 h-7 shrink-0"
               data-testid="panel-input-note-title"
             />
+            {currentNote?.type === "scene" && (
+              <div className="shrink-0 mb-2">
+                <SceneNoteCard
+                  campaignId={campaignId}
+                  isGm={isGm}
+                  link={sceneLinkFromNote(currentNote)}
+                  onLinkChange={(link) => {
+                    if (!selectedNoteId) return;
+                    updateNoteMutation.mutate({ id: selectedNoteId, data: { canvasData: link } as any });
+                  }}
+                />
+              </div>
+            )}
             <div className="shrink-0">
               <FormattingToolbar
                 textareaRef={textareaRef}
@@ -2645,6 +2763,32 @@ export function CampaignNotesPanel({
           >
             <Network className="h-4 w-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-6 w-6 ${tabActiveNoteId === TIMELINES_TAB_ID ? 'bg-amber-900/50 text-amber-400' : 'text-stone-400'}`}
+            onClick={() => {
+              const existing = openNotes.find(n => n.noteId === TIMELINES_TAB_ID);
+              if (existing) {
+                if (tabActiveNoteId === TIMELINES_TAB_ID) {
+                  closeTab(TIMELINES_TAB_ID);
+                  setShowHomeView(true);
+                } else {
+                  switchTab(TIMELINES_TAB_ID);
+                  setSelectedNoteId(null);
+                  setShowHomeView(false);
+                }
+              } else {
+                openNoteTab(TIMELINES_TAB_ID, "Timelines", "timeline");
+                setSelectedNoteId(null);
+                setShowHomeView(false);
+              }
+            }}
+            data-testid="panel-button-toggle-timelines"
+            aria-label="Timelines"
+          >
+            <HistoryIcon className="h-4 w-4" />
+          </Button>
           {!hideCloseButton && (
             <Button
               variant="ghost"
@@ -2673,6 +2817,8 @@ export function CampaignNotesPanel({
       <div className="flex-1 flex overflow-hidden min-h-0">
         {tabActiveNoteId === GRAPH_TAB_ID && !selectedNoteId ? (
           renderGraphView()
+        ) : tabActiveNoteId === TIMELINES_TAB_ID && !selectedNoteId ? (
+          <TimelinePanel campaignId={campaignId} isGm={isGm} campaignMembers={campaignMembers} />
         ) : (
           <div className="flex h-full min-h-0 overflow-hidden w-full">
             {showSidebar && !(selectedNoteId && noteMode === "edit" && currentNote?.type !== "canvas") && (
@@ -2749,6 +2895,94 @@ export function CampaignNotesPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={crossCampaignImportOpen} onOpenChange={(open) => { setCrossCampaignImportOpen(open); if (!open) setImportDestCampaignId(""); }}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Import Note to Another Campaign</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-stone-500">
+            Copies this note into a campaign you GM. Same game system entity-linked notes copy the linked sheet too, as an independent record; different systems copy the note text only, unlinked.
+          </p>
+          <Select value={importDestCampaignId} onValueChange={setImportDestCampaignId}>
+            <SelectTrigger className="h-8 text-xs bg-stone-900 border-stone-700" data-testid="select-import-destination">
+              <SelectValue placeholder="Choose a destination campaign..." />
+            </SelectTrigger>
+            <SelectContent className="bg-stone-900 border-stone-700 text-xs">
+              {gmCampaigns.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+              {gmCampaigns.length === 0 && (
+                <div className="px-2 py-1.5 text-[11px] text-stone-600">No other campaigns you GM.</div>
+              )}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCrossCampaignImportOpen(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={!importDestCampaignId || importNoteMutation.isPending}
+              onClick={() => importNoteMutation.mutate()}
+              data-testid="button-confirm-import"
+            >
+              Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-md max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Change History</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+            {noteHistoryLoading && (
+              <div className="flex justify-center py-4"><LoadingLogo className="h-5 w-5 text-stone-500" /></div>
+            )}
+            {!noteHistoryLoading && noteHistory.length === 0 && (
+              <p className="text-xs text-stone-600 text-center py-4">No recorded changes yet.</p>
+            )}
+            {noteHistory.map((rev) => {
+              const actor = campaignMembers.find(m => m.userId === rev.actorUserId);
+              const actionLabel: Record<string, string> = {
+                content: "Edited content",
+                visibility: "Changed visibility",
+                move: "Moved",
+                create: "Created",
+                delete: "Deleted",
+                import: "Imported",
+                scene_link: "Linked a Scene",
+                restore: "Restored a revision",
+              };
+              return (
+                <div key={rev.id} className="rounded border border-stone-800 bg-stone-900/50 p-2 text-xs" data-testid={`history-revision-${rev.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-stone-300 font-medium">{actionLabel[rev.action] || rev.action}</span>
+                    <span className="text-[10px] text-stone-500">{new Date(rev.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">by {actor?.username || "someone"}</div>
+                  {rev.action === "visibility" && rev.after && (
+                    <div className="text-[10px] text-stone-500 mt-1">→ {rev.after.visibility}</div>
+                  )}
+                  {rev.action === "content" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] mt-1.5"
+                      disabled={restoreRevisionMutation.isPending}
+                      onClick={() => restoreRevisionMutation.mutate(rev.id)}
+                      data-testid={`button-restore-revision-${rev.id}`}
+                    >
+                      Restore this version
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
         <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-sm">
