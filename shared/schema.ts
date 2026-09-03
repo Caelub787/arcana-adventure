@@ -1384,6 +1384,8 @@ export const notes = pgTable("notes", {
   // matching the "all notes hidden by default" campaign knowledge rule.
   visibility: text("visibility").default("gm").notNull(),
   visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
+  // Free-form wiki-style tags, campaign-scoped (not shared across campaigns).
+  tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

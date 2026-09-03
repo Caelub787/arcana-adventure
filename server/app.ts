@@ -148,6 +148,7 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS visible_player_ids jsonb`,
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'gm'`,
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visible_player_ids jsonb`,
+    `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS tags jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS scenes ADD COLUMN IF NOT EXISTS source_map_id varchar`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS roll_entries ADD COLUMN IF NOT EXISTS linked_skill_key text`,

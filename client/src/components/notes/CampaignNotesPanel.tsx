@@ -678,6 +678,12 @@ export function CampaignNotesPanel({
   const debouncedContent = useDebouncedValue(noteContent, 1000);
   const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
 
+  const [addingTag, setAddingTag] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
+  // Sidebar tag filter - selecting a tag switches the tree to a flat list of
+  // every note carrying it, the same way the search box already does.
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
   const [notePickerInitialSearch, setNotePickerInitialSearch] = useState("");
@@ -1217,6 +1223,16 @@ export function CampaignNotesPanel({
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const handleAddTag = (noteId: string, existing: string[], raw: string) => {
+    const tag = raw.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!tag || existing.includes(tag)) return;
+    updateNoteMutation.mutate({ id: noteId, data: { tags: [...existing, tag] } as any });
+  };
+
+  const handleRemoveTag = (noteId: string, existing: string[], tag: string) => {
+    updateNoteMutation.mutate({ id: noteId, data: { tags: existing.filter(t => t !== tag) } as any });
+  };
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
@@ -1789,6 +1805,10 @@ export function CampaignNotesPanel({
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
+  const allTagsForFilter = Array.from(
+    new Set(allNotesForTree.flatMap((n) => ((n as any).tags || []) as string[]))
+  ).sort();
+
   if (!isOpen) return null;
 
   const renderSidebar = () => (
@@ -1819,10 +1839,25 @@ export function CampaignNotesPanel({
           )}
         </div>
       </div>
-      {sidebarSearchQuery ? (
+      {allTagsForFilter.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap px-1.5 py-1 border-b border-stone-700">
+          {allTagsForFilter.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+              className={`text-[10px] px-1.5 py-0.5 rounded ${activeTagFilter === tag ? "bg-amber-900/50 text-amber-400" : "bg-stone-800/60 text-stone-400 hover:text-stone-200"}`}
+              data-testid={`panel-tag-filter-${tag}`}
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
+      )}
+      {sidebarSearchQuery || activeTagFilter ? (
         <ScrollArea className="flex-1 p-1">
           {allNotesForTree
             .filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))
+            .filter((n) => !activeTagFilter || ((n as any).tags || []).includes(activeTagFilter))
             .map((note) => (
               <div
                 key={note.id}
@@ -1838,8 +1873,19 @@ export function CampaignNotesPanel({
                 <span className="flex-1 truncate">{note.title || "Untitled"}</span>
               </div>
             ))}
-          {allNotesForTree.filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase())).length === 0 && (
+          {allNotesForTree
+            .filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))
+            .filter((n) => !activeTagFilter || ((n as any).tags || []).includes(activeTagFilter)).length === 0 && (
             <p className="text-xs text-stone-500 text-center py-2">No notes found</p>
+          )}
+          {activeTagFilter && (
+            <button
+              onClick={() => setActiveTagFilter(null)}
+              className="w-full text-xs text-stone-500 hover:text-stone-300 text-center py-1 mt-1 border-t border-stone-800"
+              data-testid="button-clear-tag-filter"
+            >
+              Clear #{activeTagFilter} filter
+            </button>
           )}
         </ScrollArea>
       ) : (
@@ -2241,6 +2287,71 @@ export function CampaignNotesPanel({
     </div>
   );
 
+  const renderTagRow = () => {
+    if (!currentNote) return null;
+    const tags: string[] = (currentNote as any).tags || [];
+    return (
+      <div className="flex items-center gap-1 flex-wrap mb-1">
+        {tags.map((tag) => (
+          <Badge
+            key={tag}
+            variant="secondary"
+            className="bg-stone-800 text-stone-400 text-[10px] gap-1 pr-1"
+            data-testid={`note-tag-${tag}`}
+          >
+            <button
+              onClick={() => setActiveTagFilter(tag)}
+              className="hover:text-amber-400"
+              title={`Filter by #${tag}`}
+            >
+              #{tag}
+            </button>
+            <button
+              onClick={() => handleRemoveTag(currentNote.id, tags, tag)}
+              className="hover:text-red-400"
+              data-testid={`button-remove-tag-${tag}`}
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </Badge>
+        ))}
+        {addingTag ? (
+          <Input
+            autoFocus
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleAddTag(currentNote.id, tags, tagDraft);
+                setTagDraft("");
+                setAddingTag(false);
+              } else if (e.key === "Escape") {
+                setTagDraft("");
+                setAddingTag(false);
+              }
+            }}
+            onBlur={() => {
+              if (tagDraft.trim()) handleAddTag(currentNote.id, tags, tagDraft);
+              setTagDraft("");
+              setAddingTag(false);
+            }}
+            placeholder="tag name"
+            className="h-5 w-24 text-[10px] px-1.5 bg-stone-900 border-stone-700"
+            data-testid="input-new-note-tag"
+          />
+        ) : (
+          <button
+            onClick={() => setAddingTag(true)}
+            className="text-[10px] text-stone-500 hover:text-amber-400 px-1"
+            data-testid="button-add-note-tag"
+          >
+            + tag
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderNoteReadView = () => (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center justify-end p-2 border-b border-stone-700">
@@ -2311,10 +2422,11 @@ export function CampaignNotesPanel({
         </div>
       ) : (
         <ScrollArea className="flex-1 p-3">
-          <h1 className="text-lg font-bold text-stone-100 mb-3" data-testid="panel-text-note-read-title">
+          <h1 className="text-lg font-bold text-stone-100 mb-1" data-testid="panel-text-note-read-title">
             {currentNote?.title}
           </h1>
-          <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
+          {renderTagRow()}
+          <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
             {formatEntityReferences(currentNote?.content || "")}
           </div>
         </ScrollArea>
@@ -2507,6 +2619,7 @@ export function CampaignNotesPanel({
               className="text-sm font-medium border-none bg-transparent focus-visible:ring-0 px-0 mb-1 h-7 shrink-0"
               data-testid="panel-input-note-title"
             />
+            <div className="shrink-0 mb-1">{renderTagRow()}</div>
             {currentNote?.type === "scene" && (
               <div className="shrink-0 mb-2">
                 <SceneNoteCard
