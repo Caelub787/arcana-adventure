@@ -4911,6 +4911,23 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
       {role === 'gm' && showPlayerViewports && otherPlayersViewports && Array.from(otherPlayersViewports.values()).some(v => !v.hidden) && (() => {
         const zoom = zoomRef.current;
         const myCenter = pixelOffsetToWorld(panRef.current.x, panRef.current.y, zoom, viewportSize.width, viewportSize.height);
+        // pixelOffsetToWorld's "world" coordinate is a local bookkeeping
+        // value (paired with worldToPixelOffset to store/restore THIS same
+        // client's own view later, e.g. across a resize) - it's correct for
+        // that round trip, but it drifts from the map's real/true world
+        // coordinates (the ones used everywhere else: clicking, placing
+        // tokens, wheel-zoom-toward-cursor) by MAP_OFFSET/zoom. That's
+        // invisible for a same-client round trip, but comparing it against
+        // a DIFFERENT client's reported center - each computed at that
+        // client's own, often different, zoom - means the two drifts don't
+        // match and the gap grows with how far apart the zooms are. Undoing
+        // each side's own drift with its own known zoom before diffing
+        // removes it entirely.
+        const toTrueWorld = (local: { x: number; y: number }, atZoom: number) => ({
+          x: local.x + MAP_OFFSET / atZoom,
+          y: local.y + MAP_OFFSET / atZoom,
+        });
+        const myTrueCenter = toTrueWorld(myCenter, zoom);
         const fallbackPalette = ['#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#fbbf24', '#f87171'];
         return (
           <svg
@@ -4918,8 +4935,12 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 60 }}
           >
             {Array.from(otherPlayersViewports.values()).filter(v => !v.hidden).map((viewport, index) => {
-              const screenX = viewportSize.width / 2 + zoom * (viewport.viewportX - myCenter.x) - (viewport.viewportWidth * zoom) / 2;
-              const screenY = viewportSize.height / 2 + zoom * (viewport.viewportY - myCenter.y) - (viewport.viewportHeight * zoom) / 2;
+              const theirTrueCenter = toTrueWorld(
+                { x: viewport.viewportX, y: viewport.viewportY },
+                viewport.zoom || 1
+              );
+              const screenX = viewportSize.width / 2 + zoom * (theirTrueCenter.x - myTrueCenter.x) - (viewport.viewportWidth * zoom) / 2;
+              const screenY = viewportSize.height / 2 + zoom * (theirTrueCenter.y - myTrueCenter.y) - (viewport.viewportHeight * zoom) / 2;
               const screenW = viewport.viewportWidth * zoom;
               const screenH = viewport.viewportHeight * zoom;
 
@@ -4931,7 +4952,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
                 return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
               })();
-              const color = { stroke: `rgba(${rgb}, 0.85)`, fill: `rgba(${rgb}, 0.12)` };
+              const color = { stroke: `rgba(${rgb}, 0.85)`, fill: `rgba(${rgb}, 0.05)` };
 
               return (
                 <g key={viewport.userId}>
