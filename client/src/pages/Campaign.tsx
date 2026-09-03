@@ -7336,10 +7336,19 @@ export default function Campaign() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
   
-  // Debounced viewport broadcasting - send viewport updates to other players every 200ms
+  // Throttled viewport broadcasting - send viewport updates to other players
+  // at most every 500ms. This has a trailing edge: a currentView change that
+  // lands inside an already-active window schedules a deferred send instead
+  // of being dropped, so the final state of a fast burst (e.g. a couple of
+  // quick zoom-in/zoom-out flicks, each under 500ms apart) always eventually
+  // goes out. Without the trailing edge, that final state was silently
+  // discarded forever - nothing re-checks currentView once the window
+  // reopens - which is why zooming looked like it never broadcast, and why
+  // the GM's overlay could get stuck on a stale position after a few quick
+  // back-and-forth moves.
   const lastViewportBroadcastRef = useRef<number>(0);
   const viewportSizeRef = useRef({ width: 0, height: 0 });
-  
+
   useEffect(() => {
     // Update viewport size from battlemapContainerRef
     if (battlemapContainerRef.current) {
@@ -7348,16 +7357,12 @@ export default function Campaign() {
         height: battlemapContainerRef.current.clientHeight,
       };
     }
-    
-    // Debounce viewport broadcasts to every 500ms for better performance
-    const now = Date.now();
-    if (now - lastViewportBroadcastRef.current >= 500) {
-      lastViewportBroadcastRef.current = now;
-      
+
+    const sendViewportNow = () => {
+      lastViewportBroadcastRef.current = Date.now();
       // Calculate viewport size in world units (accounting for zoom)
       const vpWidth = viewportSizeRef.current.width / currentView.zoom;
       const vpHeight = viewportSizeRef.current.height / currentView.zoom;
-      
       gameWs.sendViewport({
         viewportX: currentView.x,
         viewportY: currentView.y,
@@ -7365,7 +7370,15 @@ export default function Campaign() {
         viewportHeight: vpHeight,
         zoom: currentView.zoom,
       });
+    };
+
+    const elapsed = Date.now() - lastViewportBroadcastRef.current;
+    if (elapsed >= 500) {
+      sendViewportNow();
+      return;
     }
+    const timeoutId = setTimeout(sendViewportNow, 500 - elapsed);
+    return () => clearTimeout(timeoutId);
   }, [currentView]);
 
   // Tab-visibility tracking for the GM's "Show player screens" overlay: a

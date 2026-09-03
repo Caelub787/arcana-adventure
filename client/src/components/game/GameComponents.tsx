@@ -1346,6 +1346,23 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
 
+  // The "other players' viewports" overlay's screen position/size is
+  // computed from THIS client's own panRef/zoomRef at render time. Panning
+  // and zooming update those refs directly (and drive the map's motion
+  // values) without touching React state, on purpose, so dragging the map
+  // stays smooth regardless of how much else is on screen - but that also
+  // means the overlay doesn't move while the GM drags/zooms their own
+  // camera, only snapping into place on the next unrelated re-render (e.g.
+  // the drag ending). Ticking a low-frequency re-render while the overlay
+  // is actually visible keeps it tracking the GM's own camera in real time,
+  // without adding any cost to the hot pan/zoom paths themselves or for
+  // anyone who doesn't have this toggle on.
+  useEffect(() => {
+    if (!showPlayerViewports) return;
+    const interval = setInterval(() => forceUpdate(n => n + 1), 100);
+    return () => clearInterval(interval);
+  }, [showPlayerViewports]);
+
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
 
@@ -4914,7 +4931,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
                 return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
               })();
-              const color = { stroke: `rgba(${rgb}, 0.9)`, fill: `rgba(${rgb}, 0.1)` };
+              const color = { stroke: `rgba(${rgb}, 0.65)`, fill: `rgba(${rgb}, 0.07)` };
 
               return (
                 <g key={viewport.userId}>
@@ -4925,16 +4942,16 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     height={screenH}
                     fill={color.fill}
                     stroke={color.stroke}
-                    strokeWidth={3}
-                    strokeDasharray="12 6"
+                    strokeWidth={1.5}
+                    strokeDasharray="7 4"
                   />
                   <text
-                    x={screenX + 8}
-                    y={screenY + 18}
+                    x={screenX + 6}
+                    y={screenY + 14}
                     fill={color.stroke}
-                    fontSize="14"
+                    fontSize="10"
                     fontWeight="bold"
-                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+                    style={{ textShadow: '0 0 3px rgba(0,0,0,0.8)' }}
                   >
                     {viewport.username}
                   </text>
