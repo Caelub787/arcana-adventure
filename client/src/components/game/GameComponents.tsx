@@ -4915,7 +4915,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         return (
           <svg
             className="absolute pointer-events-none"
-            style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 22 }}
+            style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 60 }}
           >
             {Array.from(otherPlayersViewports.values()).filter(v => !v.hidden).map((viewport, index) => {
               const screenX = viewportSize.width / 2 + zoom * (viewport.viewportX - myCenter.x) - (viewport.viewportWidth * zoom) / 2;
@@ -4931,7 +4931,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
                 return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : '251, 191, 36';
               })();
-              const color = { stroke: `rgba(${rgb}, 0.65)`, fill: `rgba(${rgb}, 0.07)` };
+              const color = { stroke: `rgba(${rgb}, 0.85)`, fill: `rgba(${rgb}, 0.12)` };
 
               return (
                 <g key={viewport.userId}>
@@ -4942,16 +4942,16 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     height={screenH}
                     fill={color.fill}
                     stroke={color.stroke}
-                    strokeWidth={1.5}
-                    strokeDasharray="7 4"
+                    strokeWidth={2}
+                    strokeDasharray="9 5"
                   />
                   <text
                     x={screenX + 6}
-                    y={screenY + 14}
+                    y={screenY + 15}
                     fill={color.stroke}
-                    fontSize="10"
+                    fontSize="11"
                     fontWeight="bold"
-                    style={{ textShadow: '0 0 3px rgba(0,0,0,0.8)' }}
+                    style={{ textShadow: '0 0 3px rgba(0,0,0,0.9)' }}
                   >
                     {viewport.username}
                   </text>
