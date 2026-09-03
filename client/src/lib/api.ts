@@ -1228,6 +1228,12 @@ class ApiClient {
     return this.request(`/characters/${characterId}/items`);
   }
 
+  // Resolves a bare item id to its full record (including characterId) -
+  // used to dock an item-linked note's sheet when only the item id is known.
+  async getItem(id: string): Promise<Item> {
+    return this.request(`/items/${id}`);
+  }
+
   async createItem(characterId: string, item: Partial<Item>): Promise<Item> {
     return this.request(`/characters/${characterId}/items`, {
       method: 'POST',
@@ -2588,7 +2594,10 @@ class ApiClient {
     });
   }
 
-  async deleteNote(id: string): Promise<{ success: boolean }> {
+  // Notes linked to a character/item sheet keep their row and entity link
+  // forever, so deleting one clears its contents instead - the response is
+  // the updated Note rather than { success: true } in that case.
+  async deleteNote(id: string): Promise<{ success: boolean } | Note> {
     return this.request(`/notes/${id}`, { method: 'DELETE' });
   }
 

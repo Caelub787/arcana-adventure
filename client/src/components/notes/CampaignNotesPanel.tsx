@@ -90,6 +90,11 @@ interface CampaignNotesPanelProps {
   // note view (opened from a sheet's Notes button, or popped out).
   navOnly?: boolean;
   onOpenFloatingNote?: (noteId: string) => void;
+  // Sidebar mode only: a note linked to a character/item sheet opens docked
+  // alongside that sheet (the same docking its own Notes button uses)
+  // instead of via onOpenFloatingNote. Falls back to onOpenFloatingNote when
+  // not provided, or for notes with no entity link.
+  onOpenEntityNote?: (entityType: 'character-sheet' | 'item-sheet', entityId: string, noteId: string) => void;
   // Sidebar's right-click "Timelines" menu item - navOnly has no tab bar to
   // host the Timelines/Graph views inline, so opening them is delegated to
   // the caller (which can pop them into their own floating panel).
@@ -584,6 +589,7 @@ export function CampaignNotesPanel({
   isGm = false,
   navOnly = false,
   onOpenFloatingNote,
+  onOpenEntityNote,
   onOpenTimelines,
   contentOnly = false,
 }: CampaignNotesPanelProps) {
@@ -593,7 +599,6 @@ export function CampaignNotesPanel({
   const isMobile = useIsMobile();
 
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [showSharedNotes, setShowSharedNotes] = useState(false);
   const [showHomeView, setShowHomeView] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
@@ -613,20 +618,6 @@ export function CampaignNotesPanel({
     }
   }, [initialNoteId]);
 
-  // Sidebar (navOnly) mode never shows note content inline - whatever set
-  // selectedNoteId (folder tree click, search result, "New Note", etc.) gets
-  // redirected to the floating-panel callback instead, and the selection is
-  // cleared right back so the content pane never renders. Centralizing the
-  // redirect here means every existing setSelectedNoteId(...) call site
-  // "just works" for both modes without being individually rewritten.
-  useEffect(() => {
-    if (navOnly && selectedNoteId && onOpenFloatingNote) {
-      const id = selectedNoteId;
-      setSelectedNoteId(null);
-      onOpenFloatingNote(id);
-    }
-  }, [navOnly, selectedNoteId, onOpenFloatingNote]);
-
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [crossCampaignImportOpen, setCrossCampaignImportOpen] = useState(false);
   const [importDestCampaignId, setImportDestCampaignId] = useState<string>("");
@@ -639,7 +630,6 @@ export function CampaignNotesPanel({
   const [folderColor, setFolderColor] = useState<string | null>(null);
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
 
-  const [showHiddenFolders, setShowHiddenFolders] = useState(false);
   const [folderCampaignAssignment, setFolderCampaignAssignment] = useState<string | null>(null);
 
   const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
@@ -725,25 +715,20 @@ export function CampaignNotesPanel({
   const lastSavedCanvasRef = useRef<CanvasData | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
-    queryKey: ["/api/notes/folders", campaignId, showHiddenFolders],
-    queryFn: () => api.getNoteFolders(campaignId, showHiddenFolders),
+    queryKey: ["/api/notes/folders", campaignId],
+    queryFn: () => api.getNoteFolders(campaignId),
     enabled: !!user && isOpen,
   });
 
   const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>({
-    queryKey: ["/api/notes", selectedFolderId, showSharedNotes, campaignId, showHiddenFolders],
-    queryFn: () => {
-      if (showSharedNotes) return api.getSharedNotes();
-      const isHiddenFolder = showHiddenFolders && selectedFolderId && folders.length > 0 &&
-        folders.find(f => f.id === selectedFolderId)?.campaignId !== campaignId;
-      return api.getNotes(selectedFolderId ?? undefined, isHiddenFolder ? undefined : campaignId);
-    },
+    queryKey: ["/api/notes", selectedFolderId, campaignId],
+    queryFn: () => api.getNotes(selectedFolderId ?? undefined, campaignId),
     enabled: !!user && isOpen,
   });
 
   const { data: allNotesForTree = [] } = useQuery<Note[]>({
-    queryKey: ["/api/notes/all", campaignId, showHiddenFolders],
-    queryFn: () => showHiddenFolders ? api.getNotes(undefined) : api.getNotes(undefined, campaignId),
+    queryKey: ["/api/notes/all", campaignId],
+    queryFn: () => api.getNotes(undefined, campaignId),
     enabled: !!user && isOpen,
   });
 
@@ -1172,12 +1157,45 @@ export function CampaignNotesPanel({
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const { data: currentNoteRefs = [] } = useQuery<NoteReference[]>({
+  const { data: currentNoteRefsRaw } = useQuery<NoteReference[]>({
     queryKey: ["/api/notes", selectedNoteId, "references"],
     queryFn: () => api.getNoteReferences(selectedNoteId!),
     enabled: !!selectedNoteId,
   });
+  const currentNoteRefs = currentNoteRefsRaw ?? [];
   const linkedEntityRef = currentNoteRefs.find(r => ["character-sheet", "item-sheet"].includes(r.entityType));
+
+  // Sidebar (navOnly) mode never shows note content inline - whatever set
+  // selectedNoteId (folder tree click, search result, "New Note", etc.) gets
+  // redirected to onOpenEntityNote (docking alongside the linked character/
+  // item sheet) when the note has an entity link and that callback is
+  // provided, or onOpenFloatingNote otherwise - and the selection is cleared
+  // right back so the content pane never renders. Centralizing the redirect
+  // here means every existing setSelectedNoteId(...) call site "just works"
+  // for both modes without being individually rewritten. When
+  // onOpenEntityNote isn't provided (e.g. the mobile nav flow) this skips
+  // waiting on currentNoteRefsRaw entirely, so mobile opens instantly same
+  // as before.
+  useEffect(() => {
+    if (!navOnly || !selectedNoteId) return;
+    if (!onOpenEntityNote) {
+      if (onOpenFloatingNote) {
+        const id = selectedNoteId;
+        setSelectedNoteId(null);
+        onOpenFloatingNote(id);
+      }
+      return;
+    }
+    if (currentNoteRefsRaw === undefined) return;
+    const id = selectedNoteId;
+    const entityRef = currentNoteRefsRaw.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet");
+    setSelectedNoteId(null);
+    if (entityRef) {
+      onOpenEntityNote(entityRef.entityType as "character-sheet" | "item-sheet", entityRef.entityId, id);
+    } else if (onOpenFloatingNote) {
+      onOpenFloatingNote(id);
+    }
+  }, [navOnly, selectedNoteId, currentNoteRefsRaw, onOpenFloatingNote, onOpenEntityNote]);
 
   const debouncedConnectSearch = useDebouncedValue(connectSearch, 300);
   const { data: connectResults = [], isLoading: connectSearchLoading } = useQuery<SearchableEntity[]>({
@@ -1236,12 +1254,21 @@ export function CampaignNotesPanel({
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
-    onSuccess: (_data, deletedId) => {
+    onSuccess: (data, deletedId) => {
       queryClient.refetchQueries({ queryKey: ["/api/notes"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
+      // Entity-linked notes come back as the cleared Note (not { success })
+      // since the row and its entity link stay - keep it open, just refresh
+      // its content instead of closing it like a real delete would.
+      const wasCleared = !!data && "id" in (data as any);
+      if (wasCleared) {
+        queryClient.refetchQueries({ queryKey: ["/api/notes", deletedId] });
+        toast({ title: "Note contents cleared" });
+        return;
+      }
       closeTab(deletedId);
       if (selectedNoteId === deletedId) {
         setSelectedNoteId(null);
@@ -1904,13 +1931,12 @@ export function CampaignNotesPanel({
       <ScrollArea className="flex-1 p-1">
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
-            showHomeView && !selectedFolderId && !showSharedNotes
+            showHomeView && !selectedFolderId
               ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
               : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
           }`}
           onClick={() => {
             setSelectedFolderId(null);
-            setShowSharedNotes(false);
             setShowHomeView(true);
             setSelectedNoteId(null);
           }}
@@ -1964,7 +1990,6 @@ export function CampaignNotesPanel({
                 selectedNoteId={selectedNoteId}
                 onSelect={(id) => {
                   setSelectedFolderId(id);
-                  setShowSharedNotes(false);
                 }}
                 onNoteSelect={(id) => {
                   setShowHomeView(false);
@@ -2049,60 +2074,53 @@ export function CampaignNotesPanel({
           {unfiledNotesForTree.length > 0 && (
             <div className="mt-1 pt-1 border-t border-stone-800">
               {unfiledNotesForTree.map((note) => (
-                <div
-                  key={note.id}
-                  onClick={() => {
-                    setShowHomeView(false);
-                    setSelectedNoteId(note.id);
-                  }}
-                  className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
-                    selectedNoteId === note.id
-                      ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
-                      : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
-                  }`}
-                  data-testid={`panel-sidebar-unfiled-note-${note.id}`}
-                >
-                  {note.type === "canvas" ? (
-                    <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
-                  ) : note.type === "scene" ? (
-                    <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
-                  ) : (
-                    <FileText className="h-2.5 w-2.5 flex-shrink-0" />
-                  )}
-                  <span className="flex-1 truncate">{note.title || "Untitled"}</span>
-                </div>
+                <ContextMenu key={note.id}>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      onClick={() => {
+                        setShowHomeView(false);
+                        setSelectedNoteId(note.id);
+                      }}
+                      className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
+                        selectedNoteId === note.id
+                          ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
+                          : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
+                      }`}
+                      data-testid={`panel-sidebar-unfiled-note-${note.id}`}
+                    >
+                      {note.type === "canvas" ? (
+                        <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                      ) : note.type === "scene" ? (
+                        <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
+                      ) : (
+                        <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+                      )}
+                      <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+                    </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="bg-stone-900 border-stone-700">
+                    <ContextMenuItem
+                      onClick={() => openShareDialog(note.id)}
+                      data-testid={`panel-sidebar-unfiled-note-share-${note.id}`}
+                    >
+                      <Share2 className="h-3 w-3 mr-2" /> Share
+                    </ContextMenuItem>
+                    <ContextMenuSeparator className="bg-stone-700" />
+                    <ContextMenuItem
+                      onClick={() => {
+                        setNoteToDelete(note);
+                        setDeleteNoteDialogOpen(true);
+                      }}
+                      className="text-red-400 focus:text-red-400"
+                      data-testid={`panel-sidebar-unfiled-note-delete-${note.id}`}
+                    >
+                      <Trash2 className="h-3 w-3 mr-2" /> Delete
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               ))}
             </div>
           )}
-        </div>
-        <Separator className="my-1 bg-stone-800" />
-        <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
-            showSharedNotes
-              ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
-              : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
-          }`}
-          onClick={() => {
-            setShowSharedNotes(true);
-            setSelectedFolderId(null);
-          }}
-          data-testid="panel-folder-shared"
-        >
-          <Users className="h-3 w-3" />
-          <span>Shared</span>
-        </div>
-        <Separator className="my-1 bg-stone-800" />
-        <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
-            showHiddenFolders
-              ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
-              : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-400"
-          }`}
-          onClick={() => setShowHiddenFolders(!showHiddenFolders)}
-          data-testid="panel-toggle-hidden-folders"
-        >
-          {showHiddenFolders ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-          <span className="truncate">{showHiddenFolders ? "Hide Others" : "Show Hidden"}</span>
         </div>
         {/* Right-click blank space to create a new top-level folder/note/
             canvas/scene, or jump to Timelines - a folder/note row's own
@@ -2439,7 +2457,6 @@ export function CampaignNotesPanel({
           >
             <Share2 className="h-3 w-3" />
           </Button>
-          {!linkedEntityRef && (
           <Button
             variant="ghost"
             size="sm"
@@ -2453,7 +2470,6 @@ export function CampaignNotesPanel({
           >
             <Trash2 className="h-3 w-3" />
           </Button>
-          )}
         </div>
       </div>
       {noteLoading ? (
@@ -2604,7 +2620,6 @@ export function CampaignNotesPanel({
             >
               <Share2 className="h-3 w-3" />
             </Button>
-            {!linkedEntityRef && (
             <Button
               variant="ghost"
               size="sm"
@@ -2618,7 +2633,6 @@ export function CampaignNotesPanel({
             >
               <Trash2 className="h-3 w-3" />
             </Button>
-            )}
           </div>
         </div>
         {isGm && currentNote && (currentNote as any).visibility === "players" && (
@@ -3216,7 +3230,7 @@ export function CampaignNotesPanel({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-red-500 text-sm">Delete Note?</AlertDialogTitle>
             <AlertDialogDescription className="text-stone-400 text-xs">
-              Are you sure you want to delete "{noteToDelete?.title}"? This action cannot be undone.
+              Are you sure you want to delete "{noteToDelete?.title}"? If this note is attached to a character or item sheet, its contents will be cleared but the note page will stay. Otherwise, this action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

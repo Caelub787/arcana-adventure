@@ -6702,6 +6702,11 @@ export default function Campaign() {
   // brings it to the front.
   const [detachedItemPanels, setDetachedItemPanels] = useState<any[]>([]);
   const [detachedSpellbookPanels, setDetachedSpellbookPanels] = useState<any[]>([]);
+  // Docks an item note alongside its DetachedItemDetailPanel (mirrors
+  // dockedCharNotes below, but keyed by that panel's panelKey) when a note
+  // linked to an item is opened from the sidebar rather than the item's own
+  // Notes button.
+  const [detachedItemDockedNotes, setDetachedItemDockedNotes] = useState<Record<string, string>>({});
 
   const openDetachedItemDetail = (character: any, item: any) => {
     const panelKey = itemPanelKey(character.id, item.id);
@@ -6997,6 +7002,33 @@ export default function Campaign() {
     } catch (e: any) {
       console.error('Failed to open item notes:', e);
       toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
+    }
+  };
+  // A note clicked in the sidebar that's linked to a character/item sheet
+  // should open docked alongside that sheet (same docking used by the
+  // sheet's own Notes button) rather than as a generic floating note panel.
+  const handleOpenEntityNoteFromSidebar = async (
+    entityType: 'character-sheet' | 'item-sheet',
+    entityId: string,
+    noteId: string,
+  ) => {
+    try {
+      if (entityType === 'character-sheet') {
+        const char = (characters as any[] | undefined)?.find((c: any) => c.id === entityId) || await api.getCharacter(entityId);
+        if (!char) return;
+        openCharacterSheet(char);
+        setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
+      } else {
+        const item = await api.getItem(entityId);
+        if (!item.characterId) return;
+        const owner = (characters as any[] | undefined)?.find((c: any) => c.id === item.characterId) || await api.getCharacter(item.characterId);
+        if (!owner) return;
+        openDetachedItemDetail(owner, item);
+        setDetachedItemDockedNotes(prev => ({ ...prev, [itemPanelKey(owner.id, item.id)]: noteId }));
+      }
+    } catch (e: any) {
+      console.error('Failed to open entity note:', e);
+      toast({ title: "Couldn't open note", description: e?.message || "Please try again.", variant: "destructive" });
     }
   };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -13148,6 +13180,7 @@ export default function Campaign() {
             return !!m?.trustedPlayer;
           })()}
           onOpenNotes={handleOpenItemNotes}
+          initialDockedNoteId={detachedItemDockedNotes[p.panelKey] ?? null}
         />
       ))}
 
@@ -13362,6 +13395,7 @@ export default function Campaign() {
                       setFloatingNotesOpen(true);
                       bringToFront('notes');
                     }}
+                    onOpenEntityNote={handleOpenEntityNoteFromSidebar}
                     onOpenTimelines={() => {
                       setTimelinesFloatingOpen(true);
                       bringToFront('timelines');

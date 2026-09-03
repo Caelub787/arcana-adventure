@@ -18508,7 +18508,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
 // Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
 // Campaign page) so it keeps living when the character sheet is closed. It owns
 // its own items query + update/delete mutations so the host page stays thin.
-export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition, onOpenNotes }: {
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition, onOpenNotes, initialDockedNoteId }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -18521,6 +18521,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
   panelSuffix?: string;
   defaultPosition?: { x: number; y: number };
   onOpenNotes?: (item: any) => void;
+  initialDockedNoteId?: string | null;
 }) {
   const queryClient = useQueryClient();
   const charPanelSuffix = externalPanelSuffix ?? (character?.id ? '-' + character.id : '');
@@ -18590,6 +18591,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       trustedPlayer={trustedPlayer}
       defaultPosition={defaultPosition}
       onOpenNotes={onOpenNotes}
+      initialDockedNoteId={initialDockedNoteId}
     />
   );
 }
@@ -29798,6 +29800,10 @@ interface ItemDetailDialogProps {
   trustedPlayer?: boolean;
   defaultPosition?: { x: number; y: number };
   onOpenNotes?: (item: any) => void;
+  // Dock this note alongside the item sheet as soon as it opens - used when
+  // the dialog is opened from a sidebar note click rather than the sheet's
+  // own Notes button.
+  initialDockedNoteId?: string | null;
 }
 
 // AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
@@ -31065,7 +31071,7 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   );
 }
 
-export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes, initialDockedNoteId = null }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -31073,8 +31079,13 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   // Docked notes pane: shown as a sibling inside this same FloatingPanel
   // (not a separate floating window) so an item's notes stay visually
   // attached to its sheet.
-  const [dockedNoteId, setDockedNoteId] = useState<string | null>(null);
+  const [dockedNoteId, setDockedNoteId] = useState<string | null>(initialDockedNoteId);
   const [dockingNote, setDockingNote] = useState(false);
+  // A sidebar note click re-targets an already-open dialog by changing this
+  // prop (rather than remounting it), so pick that up too.
+  useEffect(() => {
+    if (initialDockedNoteId) setDockedNoteId(initialDockedNoteId);
+  }, [initialDockedNoteId]);
   const handleSyncTechniques = async () => {
     if (!character?.id || !item?.id) return;
     setSyncingTechniques(true);

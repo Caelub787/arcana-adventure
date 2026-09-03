@@ -14324,6 +14324,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Resolves a bare item id to its full record + owning character - used to
+  // dock an item-linked note's sheet from a sidebar note click, where only
+  // the item id (from the note's entity reference) is known up front.
+  app.get("/api/items/:id", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+      if (!item.characterId) {
+        return res.status(400).json({ error: "Item has no associated character" });
+      }
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'view');
+      if (!access.allowed) {
+        return res.status(403).json({ error: "Not authorized to view this item" });
+      }
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item" });
+    }
+  });
+
   app.patch("/api/items/:id", requireAuth, async (req, res) => {
     try {
       // Get current item first
@@ -17397,12 +17419,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!note) {
         return res.status(404).json({ error: "Note not found" });
       }
+      const refs = await storage.getNoteReferences(req.params.id);
+      const entityRef = refs.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet");
+      if (entityRef) {
+        // The sheet's Notes button always needs a note to open, so a note
+        // linked to a character/item keeps its row and entity link forever -
+        // "deleting" one clears its contents instead of removing it.
+        const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+        const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, note, role.isGm);
+        if (!entityAccess?.canEdit) {
+          return res.status(403).json({ error: "Edit permission required" });
+        }
+        const cleared = await storage.updateNote(req.params.id, { content: "" });
+        if (cleared?.campaignId) {
+          broadcastToCampaign(cleared.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: cleared.campaignId });
+        }
+        return res.json(cleared);
+      }
       if (note.userId !== req.session.userId) {
         return res.status(403).json({ error: "Only the owner can delete this note" });
-      }
-      const refs = await storage.getNoteReferences(req.params.id);
-      if (refs.some(r => r.entityType === "character-sheet" || r.entityType === "item-sheet")) {
-        return res.status(403).json({ error: "Notes attached to a character or item sheet can't be deleted" });
       }
 
       // Store campaignId and shares before deletion for broadcast
