@@ -379,14 +379,14 @@ function FolderTreeItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+            className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
               isDragOver && dropPosition === "into"
-                ? "bg-amber-700/50 ring-2 ring-amber-500"
+                ? "bg-amber-700/50 ring-2 ring-amber-500 border-transparent"
                 : isSelected
-                ? "bg-amber-900/30 text-amber-400"
+                ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
                 : isOtherCampaign
-                ? "hover:bg-stone-800/50 text-stone-500 opacity-60"
-                : "hover:bg-stone-800/50 text-stone-300"
+                ? "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-500 opacity-60"
+                : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
             }`}
             style={{ paddingLeft: `${level * 8 + 4}px` }}
             onClick={() => setExpanded(!expanded)}
@@ -532,10 +532,10 @@ function FolderTreeItem({
                     e.stopPropagation();
                     onNoteSelect(note.id);
                   }}
-                  className={`flex items-center gap-1 py-0.5 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+                  className={`flex items-center gap-1 py-0.5 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
                     selectedNoteId === note.id
-                      ? "bg-amber-900/30 text-amber-400"
-                      : "hover:bg-stone-800/50 text-stone-400"
+                      ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_8px_rgba(61,119,240,0.12)]"
+                      : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-400"
                   }`}
                   style={{ paddingLeft: `${(level + 1) * 8 + 4}px` }}
                   data-testid={`panel-folder-note-item-${note.id}`}
@@ -1878,7 +1878,7 @@ export function CampaignNotesPanel({
                   setSelectedNoteId(note.id);
                   setSidebarSearchQuery("");
                 }}
-                className="flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs hover:bg-stone-800/50 text-stone-300"
+                className="flex items-center gap-1 py-1 px-1.5 rounded-md border border-transparent cursor-pointer transition-all text-xs hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
                 data-testid={`panel-sidebar-search-result-${note.id}`}
               >
                 <FileText className="h-2.5 w-2.5 flex-shrink-0" />
@@ -1903,10 +1903,10 @@ export function CampaignNotesPanel({
       ) : (
       <ScrollArea className="flex-1 p-1">
         <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+          className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
             showHomeView && !selectedFolderId && !showSharedNotes
-              ? "bg-amber-900/30 text-amber-400"
-              : "hover:bg-stone-800/50 text-stone-300"
+              ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
+              : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
           }`}
           onClick={() => {
             setSelectedFolderId(null);
@@ -2055,10 +2055,10 @@ export function CampaignNotesPanel({
                     setShowHomeView(false);
                     setSelectedNoteId(note.id);
                   }}
-                  className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+                  className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
                     selectedNoteId === note.id
-                      ? "bg-amber-900/30 text-amber-400"
-                      : "hover:bg-stone-800/50 text-stone-300"
+                      ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
+                      : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
                   }`}
                   data-testid={`panel-sidebar-unfiled-note-${note.id}`}
                 >
@@ -2077,10 +2077,10 @@ export function CampaignNotesPanel({
         </div>
         <Separator className="my-1 bg-stone-800" />
         <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+          className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
             showSharedNotes
-              ? "bg-amber-900/30 text-amber-400"
-              : "hover:bg-stone-800/50 text-stone-300"
+              ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
+              : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-300"
           }`}
           onClick={() => {
             setShowSharedNotes(true);
@@ -2093,10 +2093,10 @@ export function CampaignNotesPanel({
         </div>
         <Separator className="my-1 bg-stone-800" />
         <div
-          className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+          className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
             showHiddenFolders
-              ? "bg-amber-900/30 text-amber-400"
-              : "hover:bg-stone-800/50 text-stone-400"
+              ? "bg-amber-900/25 text-amber-400 border-amber-700/40 shadow-[0_0_10px_rgba(61,119,240,0.15)]"
+              : "border-transparent hover:bg-stone-800/50 hover:border-stone-700/40 text-stone-400"
           }`}
           onClick={() => setShowHiddenFolders(!showHiddenFolders)}
           data-testid="panel-toggle-hidden-folders"
@@ -2462,12 +2462,14 @@ export function CampaignNotesPanel({
         </div>
       ) : (
         <ScrollArea className="flex-1 p-3">
-          <h1 className="text-lg font-bold text-stone-100 mb-1" data-testid="panel-text-note-read-title">
-            {currentNote?.title}
-          </h1>
-          {renderTagRow()}
-          <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
-            {formatEntityReferences(currentNote?.content || "")}
+          <div className="bg-stone-900/40 border border-stone-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.25)] p-4">
+            <h1 className="text-lg font-bold text-stone-100 mb-1 font-display" data-testid="panel-text-note-read-title">
+              {currentNote?.title}
+            </h1>
+            {renderTagRow()}
+            <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
+              {formatEntityReferences(currentNote?.content || "")}
+            </div>
           </div>
         </ScrollArea>
       )}

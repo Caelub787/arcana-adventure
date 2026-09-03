@@ -202,6 +202,35 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
+
+  /* Themed scrollbars everywhere - applied globally (not opt-in) so every
+     scrollable panel in the app, including character/item sheets and the
+     notes system, gets the same dark-surface track + accent-on-hover thumb
+     instead of the browser's default chrome. Firefox via scrollbar-color/
+     -width, Chromium/Safari via the ::-webkit-scrollbar pseudo-elements. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--t-stone-600) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--t-stone-600);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--t-amber-500);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
   
   h1, h2, h3, h4, h5, h6 {
     @apply font-display tracking-tight;
@@ -429,24 +458,25 @@
     @apply text-base sm:text-lg md:text-xl;
   }
 
-  /* Scrollbar Styling */
+  /* Scrollbar Styling - kept for any explicit callers; matches the global
+     scrollbar rule above (previously a leftover purple hover from the old
+     violet theme, never updated when the app reskinned to blue). */
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(38, 38, 38, 0.5);
-    border-radius: 4px;
+    background: transparent;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(120, 113, 108, 0.5);
+    background: var(--t-stone-600);
     border-radius: 4px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(168, 85, 247, 0.6);
+    background: var(--t-amber-500);
   }
 }
 
