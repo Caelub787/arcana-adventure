@@ -1029,6 +1029,34 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     }
   };
 
+  // Admin/My Library mode switcher - lets an admin who's also a GM hop
+  // between the full system-management view and their own personal
+  // library without going back to the home page first. Only meaningful
+  // for admins (the only ones with an "Admin" mode to switch to) and only
+  // on this page's real standalone routes (/admin, /library) - forcePersonal
+  // reflects which one we're actually on.
+  const renderLibraryModeTabs = () => {
+    if (!isAdmin || embedded) return null;
+    return (
+      <div className="flex items-center gap-1 border border-stone-800 rounded-md p-0.5 bg-stone-900/60 w-fit">
+        <button
+          onClick={() => setLocation('/admin')}
+          className={`px-3 py-1 text-xs font-medium rounded transition-colors ${!forcePersonal ? 'bg-amber-900/25 text-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+          data-testid="tab-admin-mode"
+        >
+          Admin
+        </button>
+        <button
+          onClick={() => setLocation('/library')}
+          className={`px-3 py-1 text-xs font-medium rounded transition-colors ${forcePersonal ? 'bg-amber-900/25 text-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+          data-testid="tab-my-library-mode"
+        >
+          My Library
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div data-section="admin" className={`${embedded ? 'h-full' : 'h-screen'} bg-stone-950 text-stone-200 flex flex-col overflow-auto`}>
       <div className={`w-full ${embedded ? 'px-3 py-3' : 'px-4 py-4'} flex flex-col flex-1 min-h-0`}>
@@ -1088,6 +1116,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               </Select>
             </div>
           )}
+          {renderLibraryModeTabs()}
         </div>
 
         {currentView === 'dashboard' && (
@@ -1578,6 +1607,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             isLoading={updateTokenEffectMutation.isPending}
             systemSlug={systemSlug}
           />
+        )}
+
+        {renderLibraryModeTabs() && (
+          <div className="mt-4 pt-4 border-t border-stone-800 shrink-0">
+            {renderLibraryModeTabs()}
+          </div>
         )}
 
         {viewingCharacterSheet && (

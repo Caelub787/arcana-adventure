@@ -40,7 +40,6 @@ import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
-import AdminSettings from "@/pages/AdminSettings";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -6945,7 +6944,6 @@ export default function Campaign() {
 
   const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
   const [v3PendingCount, setV3PendingCount] = useState(0);
-  const [myLibraryOpen, setMyLibraryOpen] = useState(false);
 
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
@@ -10627,15 +10625,8 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {
-                      if (myLibraryOpen) {
-                        setMyLibraryOpen(false);
-                      } else {
-                        setMyLibraryOpen(true);
-                        bringToFront('my-library');
-                      }
-                    }}
-                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${myLibraryOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    onClick={() => setLocation('/library')}
+                    className="bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
                     data-testid="button-panel-my-library"
                   >
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11269,27 +11260,6 @@ export default function Campaign() {
               })
             )}
           </div>
-        </FloatingPanel>
-      )}
-
-      {/* My Library FloatingPanel */}
-      {!spectatorMode && myLibraryOpen && effectiveCampaignId && (
-        <FloatingPanel
-          open={myLibraryOpen}
-          onClose={() => setMyLibraryOpen(false)}
-          title={<span className="text-amber-500">My Library</span>}
-          panelKey="my-library"
-          zIndex={floatingZIndicesRef.current['my-library'] || 10300}
-          onBringToFront={() => bringToFront('my-library')}
-          defaultSize={{ width: 760, height: 620 }}
-          minWidth={480}
-          minHeight={380}
-        >
-          <AdminSettings
-            embedded
-            forcePersonal
-            embeddedSystem={campaignSystemSlug === 'aa-v2' ? 'A.A. V2' : campaignSystemSlug === 'aa-v3' ? 'A.A. V3' : campaignSystemSlug === 'ca' ? 'C.A.' : 'Arcana Adventure'}
-          />
         </FloatingPanel>
       )}
 
