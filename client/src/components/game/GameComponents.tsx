@@ -1346,23 +1346,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
 
-  // The "other players' viewports" overlay's screen position/size is
-  // computed from THIS client's own panRef/zoomRef at render time. Panning
-  // and zooming update those refs directly (and drive the map's motion
-  // values) without touching React state, on purpose, so dragging the map
-  // stays smooth regardless of how much else is on screen - but that also
-  // means the overlay doesn't move while the GM drags/zooms their own
-  // camera, only snapping into place on the next unrelated re-render (e.g.
-  // the drag ending). Ticking a low-frequency re-render while the overlay
-  // is actually visible keeps it tracking the GM's own camera in real time,
-  // without adding any cost to the hot pan/zoom paths themselves or for
-  // anyone who doesn't have this toggle on.
-  useEffect(() => {
-    if (!showPlayerViewports) return;
-    const interval = setInterval(() => forceUpdate(n => n + 1), 100);
-    return () => clearInterval(interval);
-  }, [showPlayerViewports]);
-
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
 
@@ -1419,7 +1402,79 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
       y: (vpHeight / 2 - panY) / zoom - MAP_OFFSET
     };
   };
-  
+
+  // DOM refs for the "other players' viewports" overlay's rect/text
+  // elements, keyed by userId - populated via ref callbacks in that JSX
+  // further down, so the rAF loop right below can move them directly
+  // through the DOM instead of through a React re-render.
+  const overlayRectRefs = useRef<Map<string, SVGRectElement>>(new Map());
+  const overlayTextRefs = useRef<Map<string, SVGTextElement>>(new Map());
+
+  // Screen-space rect for one reported player viewport, relative to THIS
+  // client's own current camera. Shared by the overlay's JSX render (so a
+  // newly-joined player's rect appears in the right spot immediately) and
+  // the rAF loop below (for continuous updates as the GM's own camera
+  // moves). pixelOffsetToWorld's "world" coordinate is a local bookkeeping
+  // value meant for storing/restoring THIS client's own view later, not
+  // for comparing across clients - it drifts from the map's real/true
+  // world coordinates by MAP_OFFSET/zoom, and since the other viewport was
+  // reported by a different client at ITS OWN (often different) zoom, both
+  // sides need that drift undone with their own known zoom before they're
+  // comparable.
+  const getOverlayScreenRect = (viewport: { viewportX: number; viewportY: number; viewportWidth: number; viewportHeight: number; zoom: number }) => {
+    const zoom = zoomRef.current;
+    const myCenter = pixelOffsetToWorld(panRef.current.x, panRef.current.y, zoom, viewportSize.width, viewportSize.height);
+    const toTrueWorld = (local: { x: number; y: number }, atZoom: number) => ({
+      x: local.x + MAP_OFFSET / atZoom,
+      y: local.y + MAP_OFFSET / atZoom,
+    });
+    const myTrueCenter = toTrueWorld(myCenter, zoom);
+    const theirTrueCenter = toTrueWorld({ x: viewport.viewportX, y: viewport.viewportY }, viewport.zoom || 1);
+    return {
+      x: viewportSize.width / 2 + zoom * (theirTrueCenter.x - myTrueCenter.x) - (viewport.viewportWidth * zoom) / 2,
+      y: viewportSize.height / 2 + zoom * (theirTrueCenter.y - myTrueCenter.y) - (viewport.viewportHeight * zoom) / 2,
+      width: Math.max(0, viewport.viewportWidth * zoom),
+      height: Math.max(0, viewport.viewportHeight * zoom),
+    };
+  };
+
+  // The overlay's screen position depends on THIS client's own panRef/
+  // zoomRef, which panning/zooming update directly (driving the map's
+  // motion values) without a React re-render - on purpose, so dragging the
+  // map stays smooth no matter how much else is on screen. Any React-
+  // driven update (even a throttled one) can't keep pace with that 60fps
+  // motion-value-driven camera and visibly stutters against it. Writing
+  // straight to each rect/text's DOM attributes every animation frame,
+  // only while this toggle is on, keeps the overlay locked to the map
+  // exactly like everything else driven off these same refs.
+  useEffect(() => {
+    if (!showPlayerViewports) return;
+    let rafId: number;
+    const tick = () => {
+      otherPlayersViewports?.forEach((viewport, userId) => {
+        if (viewport.hidden) return;
+        const rectEl = overlayRectRefs.current.get(userId);
+        const textEl = overlayTextRefs.current.get(userId);
+        if (!rectEl && !textEl) return;
+        const { x, y, width, height } = getOverlayScreenRect(viewport);
+        if (rectEl) {
+          rectEl.setAttribute('x', String(x));
+          rectEl.setAttribute('y', String(y));
+          rectEl.setAttribute('width', String(width));
+          rectEl.setAttribute('height', String(height));
+        }
+        if (textEl) {
+          textEl.setAttribute('x', String(x + 6));
+          textEl.setAttribute('y', String(y + 15));
+        }
+      });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPlayerViewports, otherPlayersViewports]);
+
   // Track stored world coordinates for recalculation on viewport changes
   const storedWorldCoordsRef = useRef<{ x: number; y: number } | null>(null);
   
@@ -4909,25 +4964,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           *different* client's transform - doing so left every rectangle
           rendered many thousands of pixels off-screen). */}
       {role === 'gm' && showPlayerViewports && otherPlayersViewports && Array.from(otherPlayersViewports.values()).some(v => !v.hidden) && (() => {
-        const zoom = zoomRef.current;
-        const myCenter = pixelOffsetToWorld(panRef.current.x, panRef.current.y, zoom, viewportSize.width, viewportSize.height);
-        // pixelOffsetToWorld's "world" coordinate is a local bookkeeping
-        // value (paired with worldToPixelOffset to store/restore THIS same
-        // client's own view later, e.g. across a resize) - it's correct for
-        // that round trip, but it drifts from the map's real/true world
-        // coordinates (the ones used everywhere else: clicking, placing
-        // tokens, wheel-zoom-toward-cursor) by MAP_OFFSET/zoom. That's
-        // invisible for a same-client round trip, but comparing it against
-        // a DIFFERENT client's reported center - each computed at that
-        // client's own, often different, zoom - means the two drifts don't
-        // match and the gap grows with how far apart the zooms are. Undoing
-        // each side's own drift with its own known zoom before diffing
-        // removes it entirely.
-        const toTrueWorld = (local: { x: number; y: number }, atZoom: number) => ({
-          x: local.x + MAP_OFFSET / atZoom,
-          y: local.y + MAP_OFFSET / atZoom,
-        });
-        const myTrueCenter = toTrueWorld(myCenter, zoom);
         const fallbackPalette = ['#22d3ee', '#fb923c', '#a855f7', '#4ade80', '#fbbf24', '#f87171'];
         return (
           <svg
@@ -4935,14 +4971,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 60 }}
           >
             {Array.from(otherPlayersViewports.values()).filter(v => !v.hidden).map((viewport, index) => {
-              const theirTrueCenter = toTrueWorld(
-                { x: viewport.viewportX, y: viewport.viewportY },
-                viewport.zoom || 1
-              );
-              const screenX = viewportSize.width / 2 + zoom * (theirTrueCenter.x - myTrueCenter.x) - (viewport.viewportWidth * zoom) / 2;
-              const screenY = viewportSize.height / 2 + zoom * (theirTrueCenter.y - myTrueCenter.y) - (viewport.viewportHeight * zoom) / 2;
-              const screenW = viewport.viewportWidth * zoom;
-              const screenH = viewport.viewportHeight * zoom;
+              // Initial/data-driven position only - the rAF loop above takes
+              // over moving these every frame from here on, so this stays in
+              // sync with the GM's own camera without stuttering.
+              const { x: screenX, y: screenY, width: screenW, height: screenH } = getOverlayScreenRect(viewport);
 
               // Prefer the player's own beacon color (same one used for their
               // map ping) so the GM can match a viewport to a person at a
@@ -4957,6 +4989,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               return (
                 <g key={viewport.userId}>
                   <rect
+                    ref={(el) => {
+                      if (el) overlayRectRefs.current.set(viewport.userId, el);
+                      else overlayRectRefs.current.delete(viewport.userId);
+                    }}
                     x={screenX}
                     y={screenY}
                     width={screenW}
@@ -4967,6 +5003,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     strokeDasharray="9 5"
                   />
                   <text
+                    ref={(el) => {
+                      if (el) overlayTextRefs.current.set(viewport.userId, el);
+                      else overlayTextRefs.current.delete(viewport.userId);
+                    }}
                     x={screenX + 6}
                     y={screenY + 15}
                     fill={color.stroke}
