@@ -232,7 +232,14 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
     if (embedded && embeddedSystem) return embeddedSystem;
-    if (!isAdmin) return 'A.A. V2';
+    if (!isAdmin) {
+      // My Library (forcePersonal, e.g. players): default to C.A., but still
+      // remember a manual switch across visits like admins already do.
+      // Every other non-admin context (a non-admin GM's admin panel) keeps
+      // the existing A.A. V2-only default untouched.
+      if (forcePersonal) return localStorage.getItem('admin-selected-system') || 'C.A.';
+      return 'A.A. V2';
+    }
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
   const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : selectedSystem === 'C.A.' ? 'ca' : 'arcana-adventure';
@@ -247,8 +254,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // Non-admin GMs are scoped to their private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
   useEffect(() => {
-    if (!embedded && !isAdmin && selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
-  }, [isAdmin, selectedSystem, embedded]);
+    // My Library (forcePersonal) players/non-admins can freely pick any of
+    // the 4 systems - only the non-forcePersonal non-admin context (a
+    // non-admin GM's own admin panel) stays locked to A.A. V2/V3.
+    if (forcePersonal || embedded || isAdmin) return;
+    if (selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
+  }, [isAdmin, selectedSystem, embedded, forcePersonal]);
   useEffect(() => {
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
   }, [isAdmin, currentView]);
@@ -1062,7 +1073,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
           </div>
-          {(isAdmin || embedded) && (
+          {(isAdmin || embedded || forcePersonal) && (
             <div className={embedded ? 'w-[150px]' : 'w-[200px]'}>
               <Select value={selectedSystem} onValueChange={(val) => { setSelectedSystem(val); if (!embedded) localStorage.setItem('admin-selected-system', val); }}>
                 <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">

@@ -4233,6 +4233,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { characterId } = req.body;
       await storage.setAssignedCharacter(req.params.id, req.session.userId!, characterId);
+      // The top-of-screen pinned party tracker reads assignedCharacterId off
+      // the cached members list, which otherwise only refetches on manual
+      // reload - broadcast the fresh list the same way the pinned-flag route
+      // does so a character swap shows up live for everyone instantly.
+      const updatedMembers = await storage.getCampaignMembers(req.params.id);
+      broadcastToCampaign(req.params.id, {
+        type: "members_updated",
+        members: updatedMembers,
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to set assigned character" });

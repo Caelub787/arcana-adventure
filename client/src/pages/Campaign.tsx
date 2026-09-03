@@ -7038,7 +7038,7 @@ export default function Campaign() {
   const [searchPreviewSpells, setSearchPreviewSpells] = useState<any[]>([]);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
-  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | null;
+  type SidePanelTab = 'characters' | 'initiative' | 'chat' | 'notes' | 'settings' | 'scene' | null;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -10558,6 +10558,34 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          {!isSandbox && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'initiative' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('initiative');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    data-testid="button-panel-initiative"
+                  >
+                    <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Initiative</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -13109,6 +13137,7 @@ export default function Campaign() {
             } : undefined}
             defaultSize={{ width: 652, height: Math.min(window.innerHeight - 70, 480) }}
             width={dockedCharNotes[sheet.id] ? 652 * 2 : 652}
+            lockWidthResize={!dockedCharNotes[sheet.id]}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
             minHeight={400}
@@ -13264,6 +13293,7 @@ export default function Campaign() {
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
+                {activeSidePanel === 'initiative' && 'Initiative'}
                 {activeSidePanel === 'notes' && 'Notes'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
@@ -13364,24 +13394,23 @@ export default function Campaign() {
                         inline={true}
                         charactersOnly={true}
                       />
-                      {!isSandbox && (
-                        <div className="border-t border-stone-700 mt-3 pt-3">
-                          <Label className="text-stone-300 text-xs font-bold mb-2 block px-1">Initiative</Label>
-                          <InitiativeTracker
-                            open={true}
-                            onOpenChange={() => {}}
-                            sceneId={activeScene?.id}
-                            campaignId={effectiveCampaignId || undefined}
-                            isGM={role === 'gm'}
-                            characters={characters as any[]}
-                            userId={user?.id}
-                            inline={true}
-                            allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
-                          />
-                        </div>
-                      )}
                     </div>
                   )}
+                </div>
+              )}
+              {activeSidePanel === 'initiative' && effectiveCampaignId && !isSandbox && (
+                <div className="h-full p-4 pt-3 overflow-hidden">
+                  <InitiativeTracker
+                    open={true}
+                    onOpenChange={() => {}}
+                    sceneId={activeScene?.id}
+                    campaignId={effectiveCampaignId || undefined}
+                    isGM={role === 'gm'}
+                    characters={characters as any[]}
+                    userId={user?.id}
+                    inline={true}
+                    allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
+                  />
                 </div>
               )}
               {activeSidePanel === 'notes' && effectiveCampaignId && (

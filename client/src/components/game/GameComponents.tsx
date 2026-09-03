@@ -31526,6 +31526,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       title={isEditing ? "Edit Item" : item.name}
       defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
       width={dockedNoteId ? 720 * 2 : 720}
+      lockWidthResize={!dockedNoteId}
       defaultPosition={defaultPosition}
       minWidth={350}
       minHeight={300}

@@ -173,6 +173,18 @@ interface FloatingPanelProps {
    * remounts the whole panel (a visible flash of it closing and reopening).
    */
   width?: number;
+  /**
+   * Disables the width-changing resize handles (e/w edges, and the
+   * horizontal component of the corner handles - corners degrade to
+   * vertical-only) while true. Height resize still works normally. For a
+   * panel using `width` to dock a side pane on demand (see above): a manual
+   * width resize permanently stops that sync (`width` is only ever applied
+   * "unless the user has manually resized the panel"), so resizing before
+   * the pane exists silently breaks the dock/undock sizing forever after -
+   * pass true while the pane is closed, false once it's open, so a user can
+   * only resize width at a point where doing so can't corrupt that sync.
+   */
+  lockWidthResize?: boolean;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -193,6 +205,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   fitContentActive,
   onFitLocked,
   width,
+  lockWidthResize,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -230,6 +243,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     fitContentActive={fitContentActive}
     onFitLocked={onFitLocked}
     width={width}
+    lockWidthResize={lockWidthResize}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -320,6 +334,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   fitContentActive,
   onFitLocked,
   width,
+  lockWidthResize,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -588,10 +603,15 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   }, [applyTransform]);
 
   const handleResizeStart = React.useCallback((e: React.PointerEvent, direction: string) => {
+    // Strip the width-changing components (e/w) while locked - a pure e/w
+    // handle then does nothing at all, and a corner degrades to
+    // vertical-only. See the `lockWidthResize` prop doc for why.
+    const dir = lockWidthResize ? direction.replace(/[ew]/g, '') : direction;
+    if (!dir) return;
     e.preventDefault();
     e.stopPropagation();
     userResizedRef.current = true;
-    isResizingRef.current = direction;
+    isResizingRef.current = dir;
     resizeStartRef.current = {
       x: e.clientX, y: e.clientY,
       width: sizeRef.current.width, height: sizeRef.current.height,
@@ -604,7 +624,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
       const content = el.querySelector('[data-panel-content]') as HTMLElement;
       if (content) content.style.pointerEvents = 'none';
     }
-  }, []);
+  }, [lockWidthResize]);
 
   const handleResizeMove = React.useCallback((e: React.PointerEvent) => {
     const dir = isResizingRef.current;
@@ -864,7 +884,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
             onPointerCancel={handleResizeEnd}
           />
           <div
-            className={`${resizeHandleBase} left-0 cursor-w-resize`}
+            className={lockWidthResize ? "absolute left-0 cursor-default" : `${resizeHandleBase} left-0 cursor-w-resize`}
             style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, left: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'w')}
             onPointerMove={handleResizeMove}
@@ -872,7 +892,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
             onPointerCancel={handleResizeEnd}
           />
           <div
-            className={`${resizeHandleBase} right-0 cursor-e-resize`}
+            className={lockWidthResize ? "absolute right-0 cursor-default" : `${resizeHandleBase} right-0 cursor-e-resize`}
             style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, right: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'e')}
             onPointerMove={handleResizeMove}
