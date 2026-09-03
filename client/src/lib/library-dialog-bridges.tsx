@@ -26,7 +26,6 @@ const TRANSIENT_ROLL_FIELDS = [
 ] as const;
 
 const TRANSIENT_RECIPE_FIELDS = ['_localId', 'outputItemName'] as const;
-const TRANSIENT_CUSTOM_FIELD_FIELDS = ['_localId'] as const;
 
 interface Identified {
   id?: string;
@@ -79,13 +78,12 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
         // fetches fails (network/auth/transient), let it propagate so the
         // dialog refuses to hydrate rather than presenting empty children
         // that a subsequent save would treat as authoritative deletions.
-        const [item, rolls, craftRecipes, links, buildRecipeRes, customFields] = await Promise.all([
+        const [item, rolls, craftRecipes, links, buildRecipeRes] = await Promise.all([
           api.getSystemItem(id),
           api.getItemRolls(id),
           api.getCraftRecipes(id),
           api.getItemTemplateLinks(id),
           supportsBuild ? api.getItemBuildRecipe(id) : Promise.resolve({ buildRecipe: null }),
-          api.getItemCustomFields(id),
         ]);
         const data = {
           ...item,
@@ -93,7 +91,6 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
           craftRecipes,
           templateLinks: links.templateIds,
           buildRecipe: buildRecipeRes.buildRecipe,
-          customFields,
         } as unknown as T;
         return envelope(kind, id, data);
       }
@@ -115,8 +112,8 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
     upsert: async <T,>(kind: SyncKind, body: T & { externalId?: string; externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> => {
       if (kind === 'item') {
         const supportsBuild = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
-        const draft = body as unknown as ItemDraft & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null; customFields?: any[] };
-        const { rolls = [], craftRecipes = [], customFields = [], templateLinks, buildRecipe, ...itemFields } = draft;
+        const draft = body as unknown as ItemDraft & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null };
+        const { rolls = [], craftRecipes = [], templateLinks, buildRecipe, ...itemFields } = draft;
         const created = await api.createSystemItem({
           ...(itemFields as Partial<ApiItem>),
           system: systemSlug,
@@ -140,12 +137,6 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
           const cleaned = stripFields(recipe as Identified, TRANSIENT_RECIPE_FIELDS);
           delete cleaned.id;
           await api.createCraftRecipe(created.id, cleaned);
-        }
-
-        for (const field of customFields) {
-          const cleaned = stripFields(field as Identified, TRANSIENT_CUSTOM_FIELD_FIELDS);
-          delete cleaned.id;
-          await api.createCustomField({ ...cleaned, ownerType: 'item', ownerId: created.id });
         }
 
         if (Array.isArray(templateLinks) && templateLinks.length > 0) {
@@ -190,8 +181,8 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
     patch: async <T,>(kind: SyncKind, id: string, body: Partial<T> & { externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> => {
       if (kind === 'item') {
         const supportsBuild = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
-        const draft = body as unknown as Partial<ItemDraft> & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null; customFields?: any[] };
-        const { rolls, craftRecipes, customFields, templateLinks, buildRecipe, ...itemFields } = draft;
+        const draft = body as unknown as Partial<ItemDraft> & { buildRecipe?: { outputQuantity?: number; ingredients?: any[] } | null };
+        const { rolls, craftRecipes, templateLinks, buildRecipe, ...itemFields } = draft;
         const updated = await api.updateSystemItem(id, itemFields as Partial<ApiItem>);
 
         if (Array.isArray(rolls)) {
@@ -240,30 +231,6 @@ export function arcanaApiTransport(systemSlug: string, personal?: boolean, world
             } else {
               delete cleaned.id;
               await api.createCraftRecipe(id, cleaned);
-            }
-          }
-        }
-
-        if (Array.isArray(customFields)) {
-          // Fail-closed: same rationale as the rolls section above.
-          const existing = await api.getItemCustomFields(id);
-          const newIds = new Set(
-            customFields.filter((f): f is typeof f & { id: string } => typeof (f as Identified).id === 'string')
-              .map((f) => (f as Identified).id as string),
-          );
-          for (const old of existing) {
-            if (!newIds.has(old.id)) await api.deleteCustomField(old.id);
-          }
-          const existingById = new Map(existing.map((f) => [f.id, f]));
-          for (const field of customFields) {
-            const cleaned = stripFields(field as Identified, TRANSIENT_CUSTOM_FIELD_FIELDS);
-            const fid = cleaned.id as string | undefined;
-            if (fid && existingById.has(fid)) {
-              const { id: _omit, ...rest } = cleaned;
-              await api.updateCustomField(fid, rest);
-            } else {
-              delete cleaned.id;
-              await api.createCustomField({ ...cleaned, ownerType: 'item', ownerId: id });
             }
           }
         }

@@ -511,22 +511,6 @@ export interface CampaignBan {
   username: string;
 }
 
-export interface CustomField {
-  id: string;
-  ownerType: string;
-  ownerId: string;
-  header: string;
-  body?: string;
-  // When true, this whole field is hidden from non-GM viewers — the server
-  // omits it from the response entirely for them, it's never just CSS-hidden.
-  gmOnly?: boolean;
-  // GM-only companion note. The server strips this out of every response
-  // sent to a non-GM viewer, so it's simply absent (undefined) for players.
-  gmNotes?: string;
-  sortOrder: number;
-  createdAt: string;
-}
-
 export interface GameMap {
   id: string;
   ownerUserId: string;
@@ -668,6 +652,7 @@ export interface Note {
   sortOrder: number;
   visibility?: string;
   visiblePlayerIds?: string[] | null;
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1456,33 +1441,6 @@ class ApiClient {
 
   async resetRollEntryToTemplate(id: string): Promise<RollEntry> {
     return this.request(`/roll-entries/${id}/reset-template`, { method: 'POST' });
-  }
-
-  // Custom Fields (C.A. only)
-  async getItemCustomFields(itemId: string): Promise<CustomField[]> {
-    return this.request(`/items/${itemId}/custom-fields`);
-  }
-
-  async getCharacterCustomFields(characterId: string): Promise<CustomField[]> {
-    return this.request(`/characters/${characterId}/custom-fields`);
-  }
-
-  async createCustomField(data: Partial<CustomField>): Promise<CustomField> {
-    return this.request('/custom-fields', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateCustomField(id: string, data: Partial<CustomField>): Promise<CustomField> {
-    return this.request(`/custom-fields/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteCustomField(id: string): Promise<void> {
-    return this.request(`/custom-fields/${id}`, { method: 'DELETE' });
   }
 
   // Map Maker

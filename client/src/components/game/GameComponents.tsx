@@ -51,7 +51,6 @@ import caWoundBodyMale from "@/assets/ca_wound_body_male.png";
 import caWoundBodyFemale from "@/assets/ca_wound_body_female.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
-import { CustomFieldsEditor } from './CustomFieldsEditor';
 import { CampaignNotesPanel } from '../notes/CampaignNotesPanel';
 import { CraftRecipesEditor } from './CraftRecipesEditor';
 import { TemplateManager } from './TemplateManager';
@@ -21965,14 +21964,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 </AlertDialogContent>
               </AlertDialog>
 
-              <Card className="bg-stone-800 border-stone-700">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-amber-500 text-sm font-medium">Custom Sections</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <CustomFieldsEditor ownerType="character" ownerId={liveCharacter.id} canEdit={isOwner || isGM} isGM={isGM} />
-                </CardContent>
-              </Card>
               </>
             ) : (
             <Card className="bg-stone-800 border-stone-700">
@@ -32502,13 +32493,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               characterMana={character?.mana ?? 0}
               characterItems={items as any[]}
             />
-            )}
-
-            {campaignSystem === 'ca' && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Custom Fields</h3>
-                <CustomFieldsEditor ownerType="item" ownerId={item.id} canEdit={isGM || isOwner} isGM={isGM} />
-              </div>
             )}
 
             {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (

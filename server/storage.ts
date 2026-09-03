@@ -51,7 +51,6 @@ import {
   type SandboxActor, type InsertSandboxActor,
   type SandboxFolder, type InsertSandboxFolder,
   type RollEntry, type InsertRollEntry,
-  type CustomField, type InsertCustomField,
   type GameMap, type InsertMap,
   type StampAsset, type InsertStampAsset,
   type StampAssetVariant, type InsertStampAssetVariant,
@@ -98,7 +97,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, customFields, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
@@ -321,12 +320,6 @@ export interface IStorage {
   updateRollEntry(id: string, data: Partial<InsertRollEntry>): Promise<RollEntry | undefined>;
   deleteRollEntry(id: string): Promise<void>;
   deleteRollEntriesByOwner(ownerType: string, ownerId: string): Promise<void>;
-
-  // Custom Field operations (C.A. only)
-  getCustomFields(ownerType: string, ownerId: string): Promise<CustomField[]>;
-  createCustomField(field: InsertCustomField): Promise<CustomField>;
-  updateCustomField(id: string, data: Partial<InsertCustomField>): Promise<CustomField | undefined>;
-  deleteCustomField(id: string): Promise<void>;
 
   // Map Maker operations
   getMapsByOwner(ownerUserId: string): Promise<GameMap[]>;
@@ -2997,34 +2990,6 @@ export class DatabaseStorage implements IStorage {
       eq(rollEntries.ownerType, ownerType),
       eq(rollEntries.ownerId, ownerId)
     ));
-  }
-
-  // Custom Field operations (C.A. only)
-  async getCustomFields(ownerType: string, ownerId: string): Promise<CustomField[]> {
-    return await db.select()
-      .from(customFields)
-      .where(and(
-        eq(customFields.ownerType, ownerType),
-        eq(customFields.ownerId, ownerId)
-      ))
-      .orderBy(customFields.sortOrder);
-  }
-
-  async createCustomField(field: InsertCustomField): Promise<CustomField> {
-    const [newField] = await db.insert(customFields).values(field).returning();
-    return newField;
-  }
-
-  async updateCustomField(id: string, data: Partial<InsertCustomField>): Promise<CustomField | undefined> {
-    const [field] = await db.update(customFields)
-      .set(data)
-      .where(eq(customFields.id, id))
-      .returning();
-    return field;
-  }
-
-  async deleteCustomField(id: string): Promise<void> {
-    await db.delete(customFields).where(eq(customFields.id, id));
   }
 
   // Map Maker operations

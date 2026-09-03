@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, customFields, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type CustomField, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -5757,37 +5757,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return checkEntityNoteAccess(userId, entityRef.entityType, entityRef.entityId);
   };
 
-  // Resolves whether the requester is a REAL GM/assistant-GM (or admin) for
-  // a customFields owner — deliberately distinct from checkCharacterAccess's
-  // `isGM`, which also returns true for a trusted player's self-elevation on
-  // their own sheet. GM-only content must never be visible to a trusted
-  // player just because they're allowed to edit their own character.
-  const resolveGmAccessForOwner = async (req: any, userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
-    if (ownerType === 'character') {
-      const character = await storage.getCharacter(ownerId);
-      if (!character) return false;
-      if (character.isTemplate && !character.campaignId) return await isAdminUser(userId);
-      if (!character.campaignId) return false;
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) return false;
-      return await hasGmAccess(userId, campaign.id, campaign.gmUserId, req);
-    }
-    if (ownerType === 'item') {
-      const item = await storage.getItem(ownerId);
-      if (!item) return false;
-      let campaignId: string | null | undefined = item.campaignId;
-      if (!campaignId && item.characterId) {
-        const owningCharacter = await storage.getCharacter(item.characterId);
-        campaignId = owningCharacter?.campaignId;
-      }
-      if (!campaignId) return await isAdminUser(userId);
-      const campaign = await storage.getCampaign(campaignId);
-      if (!campaign) return false;
-      return await hasGmAccess(userId, campaign.id, campaign.gmUserId, req);
-    }
-    return false;
-  };
-
   app.post("/api/roll-entries", requireAuth, async (req, res) => {
     try {
       const userId = (req as any).session?.userId;
@@ -5997,117 +5966,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete roll entry" });
-    }
-  });
-
-  // Custom Fields (C.A. only): freeform header+body sections on items and
-  // characters. Reuses canModifyRollEntries's item/character access rules —
-  // that helper is ownerType-generic, not roll-specific.
-  //
-  // GM-only visibility: a field with gmOnly=true is dropped from the
-  // response entirely for non-GM viewers (never just hidden client-side),
-  // and every field's `gmNotes` companion note is stripped out for non-GM
-  // viewers regardless of the field's own gmOnly flag.
-  const filterCustomFieldsForViewer = (fields: CustomField[], isGmViewer: boolean): Partial<CustomField>[] => {
-    if (isGmViewer) return fields;
-    return fields.filter(f => !f.gmOnly).map(({ gmNotes, ...rest }) => rest);
-  };
-
-  app.get("/api/items/:id/custom-fields", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).session?.userId!;
-      const isGmViewer = await resolveGmAccessForOwner(req, userId, "item", req.params.id);
-      const fields = await storage.getCustomFields("item", req.params.id);
-      res.json(filterCustomFieldsForViewer(fields, isGmViewer));
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch item custom fields" });
-    }
-  });
-
-  app.get("/api/characters/:id/custom-fields", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).session?.userId!;
-      const isGmViewer = await resolveGmAccessForOwner(req, userId, "character", req.params.id);
-      const fields = await storage.getCustomFields("character", req.params.id);
-      res.json(filterCustomFieldsForViewer(fields, isGmViewer));
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch character custom fields" });
-    }
-  });
-
-  app.post("/api/custom-fields", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).session?.userId!;
-      const canModify = await canModifyRollEntries(userId, req.body.ownerType, req.body.ownerId);
-      if (!canModify) {
-        return res.status(403).json({ error: "Not authorized to modify custom fields for this entity" });
-      }
-      // Only a real GM may create a gmOnly field or write gmNotes — a player
-      // who merely owns the character/item cannot hide content from a GM's
-      // own campaign or attach a note only the GM should see.
-      const isGmViewer = await resolveGmAccessForOwner(req, userId, req.body.ownerType, req.body.ownerId);
-      const body = { ...req.body };
-      if (!isGmViewer) {
-        delete body.gmOnly;
-        delete body.gmNotes;
-      }
-      const field = await storage.createCustomField(body);
-      res.json(isGmViewer ? field : filterCustomFieldsForViewer([field], false)[0]);
-    } catch (err) {
-      res.status(400).json({ error: "Failed to create custom field" });
-    }
-  });
-
-  app.patch("/api/custom-fields/:id", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).session?.userId!;
-      const existing = await db.select().from(customFields).where(eq(customFields.id, req.params.id)).then(r => r[0]);
-      if (!existing) return res.status(404).json({ error: "Custom field not found" });
-      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
-      if (!canModify) {
-        return res.status(403).json({ error: "Not authorized to modify this custom field" });
-      }
-      const isGmViewer = await resolveGmAccessForOwner(req, userId, existing.ownerType, existing.ownerId);
-      // A gmOnly field's header/body/gmNotes are all off-limits to a
-      // non-GM editor too — not just its visibility.
-      if (existing.gmOnly && !isGmViewer) {
-        return res.status(403).json({ error: "Not authorized to modify this custom field" });
-      }
-      const patchBody = { ...req.body };
-      delete patchBody.id;
-      delete patchBody.ownerId;
-      delete patchBody.ownerType;
-      if (!isGmViewer) {
-        delete patchBody.gmOnly;
-        delete patchBody.gmNotes;
-      }
-      const field = await storage.updateCustomField(req.params.id, patchBody);
-      if (!field) return res.status(404).json({ error: "Custom field not found" });
-      res.json(isGmViewer ? field : filterCustomFieldsForViewer([field], false)[0]);
-    } catch (err) {
-      res.status(400).json({ error: "Failed to update custom field" });
-    }
-  });
-
-  app.delete("/api/custom-fields/:id", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).session?.userId!;
-      const existing = await db.select().from(customFields).where(eq(customFields.id, req.params.id)).then(r => r[0]);
-      if (!existing) return res.status(404).json({ error: "Custom field not found" });
-      const canModify = await canModifyRollEntries(userId, existing.ownerType, existing.ownerId);
-      if (!canModify) {
-        return res.status(403).json({ error: "Not authorized to delete this custom field" });
-      }
-      if (existing.gmOnly) {
-        const isGmViewer = await resolveGmAccessForOwner(req, userId, existing.ownerType, existing.ownerId);
-        if (!isGmViewer) {
-          return res.status(403).json({ error: "Not authorized to delete this custom field" });
-        }
-      }
-      await storage.deleteCustomField(req.params.id);
-      res.json({ success: true });
-    } catch (err) {
-      res.status(400).json({ error: "Failed to delete custom field" });
     }
   });
 

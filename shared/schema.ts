@@ -1845,37 +1845,6 @@ export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
 export type InsertRollEntry = z.infer<typeof insertRollEntrySchema>;
 export type RollEntry = typeof rollEntries.$inferSelect;
 
-// C.A. only: freeform header+body sections. Used on the Overview tab
-// (ownerType "character") and on C.A.'s blank-sheet items (ownerType
-// "item"), mirroring roll_entries' ownerType-keyed pattern (no FK — same
-// reasoning as rollEntries.ownerId).
-export const customFields = pgTable("custom_fields", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  ownerType: text("owner_type").notNull(), // "character" or "item"
-  ownerId: varchar("owner_id").notNull(),
-  header: text("header").notNull(),
-  body: text("body").default(""),
-  // When true, this entire field (header + body + gmNotes) is invisible to
-  // non-GM viewers — the server omits it from the response entirely rather
-  // than just hiding it client-side.
-  gmOnly: boolean("gm_only").notNull().default(false),
-  // A companion note visible ONLY to the GM/assistant-GM, independent of
-  // `body`. Kept as a separate column (not embedded markers inside `body`)
-  // specifically so a player editing the visible `body` text can never
-  // collide with or overwrite GM notes — they're different storage
-  // entirely, not different layers of the same string.
-  gmNotes: text("gm_notes").default(""),
-  sortOrder: integer("sort_order").default(0).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertCustomFieldSchema = createInsertSchema(customFields).omit({
-  id: true,
-  createdAt: true,
-});
-export type InsertCustomField = z.infer<typeof insertCustomFieldSchema>;
-export type CustomField = typeof customFields.$inferSelect;
-
 // Scene Walls table (for fog of war line-of-sight)
 export const sceneWalls = pgTable("scene_walls", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

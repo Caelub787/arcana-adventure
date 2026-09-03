@@ -1779,6 +1779,18 @@ export function CampaignNotesPanel({
     );
   };
 
+  // Notes with no folder never show up by browsing the folder tree above -
+  // that includes every character/item sheet's entity-linked note, since
+  // those are always created at root with no folder assignment. Without
+  // this they're only reachable via search/tags/the sheet's own Notes
+  // button, which made the whole sidebar look like it wasn't tracking them.
+  const unfiledNotesForTree = allNotesForTree
+    .filter((n) => !n.folderId && !n.isArchived)
+    .sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    });
+
   const rootFolders = folders
     .filter((f) => !f.parentId)
     .sort((a, b) => {
@@ -2033,6 +2045,34 @@ export function CampaignNotesPanel({
                 setExpandedFolderIds={setExpandedFolderIds}
               />
             ))
+          )}
+          {unfiledNotesForTree.length > 0 && (
+            <div className="mt-1 pt-1 border-t border-stone-800">
+              {unfiledNotesForTree.map((note) => (
+                <div
+                  key={note.id}
+                  onClick={() => {
+                    setShowHomeView(false);
+                    setSelectedNoteId(note.id);
+                  }}
+                  className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+                    selectedNoteId === note.id
+                      ? "bg-amber-900/30 text-amber-400"
+                      : "hover:bg-stone-800/50 text-stone-300"
+                  }`}
+                  data-testid={`panel-sidebar-unfiled-note-${note.id}`}
+                >
+                  {note.type === "canvas" ? (
+                    <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : note.type === "scene" ? (
+                    <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+                  )}
+                  <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <Separator className="my-1 bg-stone-800" />

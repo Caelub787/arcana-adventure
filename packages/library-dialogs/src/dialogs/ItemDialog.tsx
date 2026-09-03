@@ -21,7 +21,6 @@ import {
 import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
 import { RollEntriesEditor, type RollEntryDraft } from "../components/RollEntriesEditor";
-import { CustomFieldsEditor, type CustomFieldDraft } from "../components/CustomFieldsEditor";
 import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRecipesEditor";
 import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
@@ -262,7 +261,6 @@ export interface ItemDraft {
   socketedRunes?: SocketedRuneSnapshot[] | null;
   // Children
   rolls?: RollEntryDraft[];
-  customFields?: CustomFieldDraft[];
   craftRecipes?: CraftRecipeDraft[];
   buildRecipe?: BuildRecipeDraft | null;
   templateLinks?: string[];
@@ -282,7 +280,6 @@ const FRESH: ItemDraft = {
   durability: 10,
   isContainer: false,
   rolls: [],
-  customFields: [],
   craftRecipes: [],
   buildRecipe: { outputQuantity: 1, ingredients: [] },
   templateLinks: [],
@@ -322,7 +319,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       return;
     }
     setLoading(true);
-    host.transport.get<ItemDraft & { rolls?: any[]; craftRecipes?: any[]; customFields?: any[]; templateLinks?: string[] }>("item", initialValue.id)
+    host.transport.get<ItemDraft & { rolls?: any[]; craftRecipes?: any[]; templateLinks?: string[] }>("item", initialValue.id)
       .then(env => {
         const data: any = env.data ?? env;
         setDraft({
@@ -330,7 +327,6 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
           ...data,
           rolls: (data.rolls ?? []).map((r: any) => ({ ...r, _localId: r.id })),
           craftRecipes: (data.craftRecipes ?? []).map((r: any) => ({ ...r, _localId: r.id, ingredients: r.ingredients ?? [] })),
-          customFields: (data.customFields ?? []).map((f: any) => ({ ...f, _localId: f.id })),
           buildRecipe: data.buildRecipe
             ? { id: data.buildRecipe.id, outputQuantity: data.buildRecipe.outputQuantity ?? 1, ingredients: data.buildRecipe.ingredients ?? [] }
             : { outputQuantity: 1, ingredients: [] },
@@ -404,13 +400,12 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
       // are recognized by the server's children-aware sync handler
       // (server/sync/children.ts) and stripped before the parent insert.
       const {
-        rolls: _rolls, craftRecipes: _cr, customFields: _cf, buildRecipe: _br, templateLinks: _tl,
+        rolls: _rolls, craftRecipes: _cr, buildRecipe: _br, templateLinks: _tl,
         ...parentFields
       } = draft;
       const payload: any = { ...parentFields };
       payload.rolls = (draft.rolls ?? []).map(({ _localId, templateName, templatePriority, templateUseOwnOrder, templateOwnerKey, ...r }) => r);
       payload.craftRecipes = (draft.craftRecipes ?? []).map(({ _localId, ...r }) => r);
-      payload.customFields = (draft.customFields ?? []).map(({ _localId, ...f }) => f);
       payload.buildRecipe = draft.buildRecipe ?? { outputQuantity: 1, ingredients: [] };
       payload.templateLinks = draft.templateLinks ?? [];
       const env = editing
@@ -1256,15 +1251,6 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 onChange={(rolls) => set({ rolls })}
                 campaignSystem={campaignSystem ?? draft.system}
                 host={host}
-              />
-            </Section>
-          )}
-
-          {isCA && (
-            <Section title="Custom Fields">
-              <CustomFieldsEditor
-                value={draft.customFields ?? []}
-                onChange={(customFields) => set({ customFields })}
               />
             </Section>
           )}
