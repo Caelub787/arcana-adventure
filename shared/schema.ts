@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
 import type { CAWound } from "./ca";
+import type { SwampyWound } from "./swampy";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -310,6 +311,13 @@ export const characters = pgTable("characters", {
   // bar on the Overview tab. Just a bare number a player sets directly —
   // no current/max/temp split like Energy has.
   caEnergyPool: integer("ca_energy_pool").notNull().default(0),
+  // Swampy only: the same three pieces of state C.A. keeps above, but on its
+  // own columns so the two systems' wound/body/pool mechanics can diverge
+  // without one ever reading or overwriting the other's data. See
+  // shared/swampy.ts for the SwampyWound shape.
+  swampyWounds: jsonb("swampy_wounds").$type<SwampyWound[]>().notNull().default(sql`'[]'::jsonb`),
+  swampyBodySex: text("swampy_body_sex").notNull().default("male"),
+  swampyEnergyPool: integer("swampy_energy_pool").notNull().default(0),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
   spellCreationTokens: integer("spell_creation_tokens").notNull().default(0),
   // AA V3 weapon techniques: technique ids this character has unlocked by

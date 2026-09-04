@@ -151,6 +151,13 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS tags jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS scenes ADD COLUMN IF NOT EXISTS source_map_id varchar`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_body_sex text NOT NULL DEFAULT 'male'`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_energy_pool integer NOT NULL DEFAULT 0`,
+    // Swampy keeps its own copies of the three C.A.-shaped columns so the two
+    // systems' wound/body/pool mechanics can diverge independently.
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS swampy_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS swampy_body_sex text NOT NULL DEFAULT 'male'`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS swampy_energy_pool integer NOT NULL DEFAULT 0`,
     `ALTER TABLE IF EXISTS roll_entries ADD COLUMN IF NOT EXISTS linked_skill_key text`,
     `ALTER TABLE IF EXISTS campaigns ADD COLUMN IF NOT EXISTS roll_feed jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `CREATE TABLE IF NOT EXISTS timelines (
