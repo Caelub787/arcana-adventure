@@ -8,6 +8,7 @@
 - [Long-press must not open modals mid-touch](longpress-modal-timing.md) — arm at the hold threshold, open on pointerup; opening a modal while the finger is down freezes/dismisses on mobile.
 - [CR sidebar stacking context](cr-sidebar-stacking-context.md) — backdrop-blur sidebars trap child z-index; popovers overhanging the sidebar edge must portal to document.body or clicks fall through.
 - [Mobile modal dialog vs detached panels](mobile-modal-detached-panels.md) — panels detached outside the mobile character-sheet Dialog are untappable (Radix modal body pointer-events:none); render in-sheet on mobile.
+- [FloatingPanel child height chain](floating-panel-scroll-chain.md) — a `flex-1` child under a plain block wrapper grows to full content height, so its own tab-body scroller never overflows and the wheel does nothing; the wrapper must be a flex column.
 - [Floating panel z-order policy](floating-panel-zorder.md) — never raise panels from portaled-child events, force-bump z on open, never stopPropagation pointerdown; all learned from shipped regressions.
 - [FloatingPanel fit to a non-visible tab](floating-panel-fit-other-tab.md) — fitContent measures only the active tab; to size to a taller hidden tab, seed it active, lock via onFitLocked, switch back before paint.
 - [Characters have no `system` column](character-system-column.md) — a character's system comes from its campaign; `character.system` is always undefined; for char-owned items the campaign system is authoritative for gating.

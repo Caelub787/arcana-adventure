@@ -13147,7 +13147,12 @@ export default function Campaign() {
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <div className="flex h-full min-h-0">
-            <div className="flex-shrink-0 h-full min-h-0" style={{ width: '652px' }}>
+            {/* This wrapper must be a flex COLUMN: CharacterSheet's root sizes
+                itself with `flex-1 min-h-0`, which is inert under a plain block
+                parent. Without it the sheet grew to its full content height,
+                its own `flex-1 min-h-0 overflow-y-auto` tab body never
+                overflowed, and so nothing under the cursor could scroll. */}
+            <div className="flex flex-col flex-shrink-0 h-full min-h-0" style={{ width: '652px' }}>
             <CharacterSheet
               character={sheet}
               isGM={role === 'gm'}
