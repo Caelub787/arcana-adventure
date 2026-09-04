@@ -69,6 +69,44 @@ outright; that shut a character's own controller out of its sheet note. The rule
 lives in two places that must stay in step: `getLinkedEntityNoteAccess` and the
 inline check in `POST /api/notes/for-entity`.
 
+## Live editing is the same rule, per recipient
+
+Notes edit live over the `note_update` WebSocket message. That channel used to
+rebroadcast `content` verbatim to everyone in the note room with no
+authorization beyond room membership — a hole straight through the redaction: a
+GM typing `#the vault code#` pushed the raw characters to every player watching,
+on every keystroke.
+
+The server is now authoritative for the text. On each `note_update` it merges
+the sender's version (`mergeGmSecretsOnWrite`), persists it — **the live edit is
+the save**, there is no separate save step — and then sends every other viewer
+their **own** redacted projection. One shared payload is exactly what leaked; the
+fan-out must stay per recipient.
+
+`join_note` is where per-socket access is resolved (`resolveNoteAccess`) and
+cached on `ws.noteAccess`, so the per-keystroke broadcast doesn't re-query. It
+used to consult only `storage.canAccessNote`, which knows nothing about campaign
+visibility or entity-linked access.
+
+The sender also gets a `correction: true` echo when the merge changed their text
+(they deleted a block, or typed `#...#` that got defused), so their editor
+reconciles instead of re-sending a version the server keeps rewriting.
+
+## An unclosed `#` is a secret too
+
+A secret has to be hidden from the first keystroke, so `gmSecretRanges()` treats
+an unterminated `#` as a secret running to the end of its line. Without that,
+everything the GM typed before the closing `#` went out in the clear.
+
+The catch: `#` is also markdown's heading marker. A run of 1-6 `#` at the start
+of a line followed by whitespace is a heading and is skipped; `#word` at line
+start is still a secret. Both `redactGmSecrets` and `mergeGmSecretsOnWrite` go
+through this one tokenizer — they must always agree on what a span is.
+
+Note the client's `FormattingToolbar` preview regex still only styles *closed*
+pairs, so a half-typed secret renders unstyled in the GM's own preview. Cosmetic
+only: the GM can read it either way, and players never receive it.
+
 ## Members for the visibility/share pickers
 
 `CampaignNotesPanel` fetches campaign members itself when the host doesn't pass

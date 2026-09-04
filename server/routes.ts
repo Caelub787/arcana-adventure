@@ -2613,14 +2613,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          // Check access permissions
-          const { canAccess } = await storage.canAccessNote(authenticatedUserId, noteId);
-          const isOwner = note.userId === authenticatedUserId;
-          
-          if (!canAccess && !isOwner) {
+          // Check access permissions. This used to consult only
+          // storage.canAccessNote, which knows nothing about campaign
+          // visibility or entity-linked (character sheet) access - so it both
+          // turned away players who legitimately had the note open and, more
+          // importantly, told us nothing about whether this socket may read GM
+          // secrets. Live updates are projected per recipient off the values
+          // cached here, so this has to be the real rule.
+          const noteAccess = await resolveNoteAccess(authenticatedUserId, note);
+          if (!noteAccess.canView) {
             ws.send(JSON.stringify({ type: "error", message: "Not authorized to view this note" }));
             return;
           }
+          if (!(ws as any).noteAccess) (ws as any).noteAccess = new Map<string, { canEdit: boolean; isGm: boolean }>();
+          (ws as any).noteAccess.set(noteId, { canEdit: noteAccess.canEdit, isGm: noteAccess.isGm });
           
           // Initialize note room if doesn't exist
           if (!noteRooms.has(noteId)) {
@@ -2706,41 +2712,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
               noteRooms.delete(noteId);
             }
           }
-          
+          (ws as any).noteAccess?.delete(noteId);
+
           console.log(`[WebSocket] User ${username} left note ${noteId}`);
         }
         
-        // Handle note_update - broadcast content changes to other viewers
+        // Handle note_update - live edits, fanned out per recipient.
+        //
+        // This used to rebroadcast `content` verbatim to everyone in the note
+        // room, with no authorization beyond room membership. That made the
+        // collab channel a hole straight through the GM-secret redaction: a GM
+        // typing `#the vault code#` pushed the raw characters to every player
+        // watching, live, on every keystroke. It also let any room member
+        // overwrite the note.
+        //
+        // Now the server is authoritative for the text: it merges the sender's
+        // version (restoring any secret they couldn't see), persists it, and
+        // sends every other viewer THEIR OWN redacted projection of the result.
         if (message.type === "note_update") {
           const { noteId, title, content, canvasData } = message;
           if (!noteId) return;
-          
+
           const noteRoom = noteRooms.get(noteId);
           if (!noteRoom || !noteRoom.clients.has(ws)) return;
-          
-          // Update presence activity
+
+          const senderAccess = (ws as any).noteAccess?.get(noteId);
+          if (!senderAccess?.canEdit) return;
+
           const presence = noteRoom.presence.get(authenticatedUserId);
           if (presence) {
             presence.lastActive = Date.now();
           }
-          
-          // Broadcast update to all OTHER clients viewing this note
-          const updateMessage = JSON.stringify({
-            type: "note_update",
-            noteId,
-            userId: authenticatedUserId,
-            username,
-            title,
-            content,
-            canvasData,
-            timestamp: Date.now()
-          });
-          
-          noteRoom.clients.forEach((client) => {
-            if (client !== ws && client.readyState === 1) {
-              client.send(updateMessage);
+
+          const liveNote = await storage.getNote(noteId);
+          if (!liveNote) return;
+
+          const patch: Record<string, any> = {};
+          if (typeof title === 'string') patch.title = title;
+          if (typeof canvasData === 'string') patch.canvasData = canvasData;
+          let mergedContent: string | undefined;
+          if (typeof content === 'string') {
+            mergedContent = mergeGmSecretsOnWrite(liveNote.content || '', content, senderAccess.isGm);
+            patch.content = mergedContent;
+          }
+
+          // Live editing IS the save - there is no separate save step, so the
+          // authoritative text has to land now rather than on a later autosave.
+          if (Object.keys(patch).length > 0) {
+            try {
+              await storage.updateNote(noteId, patch as any);
+            } catch (err) {
+              console.error('[note_update] failed to persist live edit:', err);
+              return;
             }
+          }
+
+          // Fan out one message per recipient, redacted for that recipient.
+          // A single shared payload is exactly what leaked before.
+          noteRoom.clients.forEach((client) => {
+            if (client === ws || client.readyState !== 1) return;
+            const recipient = (client as any).noteAccess?.get(noteId);
+            if (!recipient) return; // never joined properly - send nothing
+            client.send(JSON.stringify({
+              type: "note_update",
+              noteId,
+              userId: authenticatedUserId,
+              username,
+              ...(patch.title !== undefined ? { title: patch.title } : {}),
+              ...(mergedContent !== undefined
+                ? { content: redactGmSecrets(mergedContent, recipient.isGm) }
+                : {}),
+              ...(patch.canvasData !== undefined ? { canvasData: patch.canvasData } : {}),
+              timestamp: Date.now(),
+            }));
           });
+
+          // The sender's own copy can drift from the authoritative text - they
+          // may have deleted a redaction block, or typed `#...#` that got
+          // defused. Echo their projection back so their editor reconciles.
+          if (mergedContent !== undefined) {
+            const senderProjection = redactGmSecrets(mergedContent, senderAccess.isGm);
+            if (senderProjection !== content) {
+              ws.send(JSON.stringify({
+                type: "note_update",
+                noteId,
+                userId: authenticatedUserId,
+                username,
+                content: senderProjection,
+                correction: true,
+                timestamp: Date.now(),
+              }));
+            }
+          }
         }
         
         // Handle cursor_update - for live cursor/selection presence
@@ -16636,12 +16699,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // characters are stripped out server-side (never sent to the client at
   // all), replaced with a fixed block so the redaction is visible without
   // being recoverable by selecting/copying it.
-  const GM_SECRET_RE = /#([^#\n]*)#/g;
   const REDACTION_RUN_RE = /█+/g;
+
+  /**
+   * The [start, end) ranges of GM-secret spans in a note.
+   *
+   * A closed `#...#` pair is a secret, as it always was. An UNCLOSED `#` is
+   * also a secret, running to the end of its line - without that, a GM typing
+   * one out pushed the half-finished text (`#the vault co`) to every player
+   * watching live, since it only became redactable once they typed the closing
+   * `#`. Secrets have to be secret from the first keystroke.
+   *
+   * The catch is that `#` is also markdown's heading marker, so a run of 1-6
+   * `#` at the start of a line followed by whitespace is a heading and is
+   * skipped. `#word` at the start of a line is still a secret - the toolbar's
+   * GM Secret button wraps a selection tightly, so that is what a real secret
+   * looks like mid-typing.
+   */
+  function gmSecretRanges(content: string): Array<[number, number]> {
+    const ranges: Array<[number, number]> = [];
+    if (!content) return ranges;
+    let i = 0;
+    while (i < content.length) {
+      const ch = content[i];
+      if (ch !== '#') { i++; continue; }
+
+      const atLineStart = i === 0 || content[i - 1] === '\n';
+      if (atLineStart) {
+        let hashes = 0;
+        while (i + hashes < content.length && content[i + hashes] === '#') hashes++;
+        const after = content[i + hashes];
+        if (hashes <= 6 && (after === ' ' || after === '\t')) {
+          i += hashes; // markdown heading, not a secret
+          continue;
+        }
+      }
+
+      let lineEnd = content.indexOf('\n', i + 1);
+      if (lineEnd === -1) lineEnd = content.length;
+      const close = content.indexOf('#', i + 1);
+      if (close !== -1 && close < lineEnd) {
+        ranges.push([i, close + 1]);
+        i = close + 1;
+      } else {
+        ranges.push([i, lineEnd]);
+        i = lineEnd;
+      }
+    }
+    return ranges;
+  }
+
+  /** The text a span hides, without its `#` delimiters. */
+  function gmSecretInner(content: string, [start, end]: [number, number]): string {
+    let inner = content.slice(start, end);
+    if (inner.startsWith('#')) inner = inner.slice(1);
+    if (inner.endsWith('#')) inner = inner.slice(0, -1);
+    return inner;
+  }
 
   function redactGmSecrets(content: string, canSeeGmSecrets: boolean): string {
     if (canSeeGmSecrets || !content) return content;
-    return content.replace(GM_SECRET_RE, (_match, inner: string) => '█'.repeat(Math.max(3, Math.min(inner.length, 24))));
+    const ranges = gmSecretRanges(content);
+    if (ranges.length === 0) return content;
+    let out = '';
+    let cursor = 0;
+    for (const range of ranges) {
+      out += content.slice(cursor, range[0]);
+      const innerLength = gmSecretInner(content, range).length;
+      out += '█'.repeat(Math.max(3, Math.min(innerLength, 24)));
+      cursor = range[1];
+    }
+    return out + content.slice(cursor);
   }
 
   // The inverse of redactGmSecrets, for the write side.
@@ -16665,10 +16793,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // whatever they PUT.
   function mergeGmSecretsOnWrite(stored: string, submitted: string, canSeeGmSecrets: boolean): string {
     if (canSeeGmSecrets) return submitted;
-    const secrets = String(stored || '').match(GM_SECRET_RE) ?? [];
+    const storedText = String(stored || '');
+    const secrets = gmSecretRanges(storedText).map(r => storedText.slice(r[0], r[1]));
     // Defuse any secret markup the writer added themselves. Their words are
-    // kept, just not as a secret.
-    let out = String(submitted ?? '').replace(GM_SECRET_RE, (_m, inner: string) => inner);
+    // kept, just not as a secret. Right to left so the earlier ranges stay valid.
+    let out = String(submitted ?? '');
+    const ownRanges = gmSecretRanges(out);
+    for (let i = ownRanges.length - 1; i >= 0; i--) {
+      const range = ownRanges[i];
+      out = out.slice(0, range[0]) + gmSecretInner(out, range) + out.slice(range[1]);
+    }
     let restored = 0;
     // A function replacement is substituted literally, so a secret containing
     // `$&` (or any other `$` pattern) can't corrupt the merge.
@@ -16679,6 +16813,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       out = body ? body + '\n\n' + tail : tail;
     }
     return out;
+  }
+
+  // Single source of truth for "what may this user do with this note".
+  //
+  // The same three-branch rule (entity-linked access, then note shares, then
+  // campaign visibility) was previously written out at each of GET, PUT and
+  // the WebSocket join, and the copies had already drifted apart more than
+  // once. Every caller goes through here now.
+  //
+  // `isGm` is the campaign-membership role and is what decides whether GM
+  // secrets are readable - never derive that from character access, which is
+  // also true for a trusted player editing their own sheet.
+  async function resolveNoteAccess(
+    userId: string,
+    note: any,
+  ): Promise<{ canView: boolean; canEdit: boolean; isGm: boolean }> {
+    const role = await getKnowledgeRole(userId, note.campaignId);
+    const entityAccess = await getLinkedEntityNoteAccess(userId, note, role.isGm);
+    if (entityAccess) {
+      return { canView: entityAccess.canView, canEdit: entityAccess.canEdit, isGm: role.isGm };
+    }
+    const access = await storage.canAccessNote(userId, note.id);
+    const visibilityGrants = knowledgeVisibilityGrantsAccess(
+      note.visibility, note.visiblePlayerIds, userId, role,
+    );
+    const canEdit =
+      (access.canAccess && (access.permission === 'owner' || access.permission === 'edit'))
+      || role.isGm
+      || (role.isMember && (
+        note.visibility === 'party'
+        || (note.visibility === 'players' && note.visiblePlayerIds?.includes(userId))
+      ));
+    return {
+      canView: canEdit || access.canAccess || visibilityGrants || note.userId === userId,
+      canEdit,
+      isGm: role.isGm,
+    };
   }
 
   // Records a knowledge-system change for the audit log / history feature.

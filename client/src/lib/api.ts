@@ -4345,14 +4345,21 @@ export class NoteWebSocket {
     }
   }
 
-  sendNoteUpdate(noteId: string, updates: { title?: string; content?: string; canvasData?: string }) {
-    if (!this.joinedNotes.has(noteId)) return;
-    
+  /**
+   * Push a live edit. Returns whether it actually went out - the note editor
+   * falls back to a REST save when it didn't, since live edits are the only
+   * thing persisting the note now.
+   */
+  sendNoteUpdate(noteId: string, updates: { title?: string; content?: string; canvasData?: string }): boolean {
+    if (!this.joinedNotes.has(noteId)) return false;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+
     this.send({
       type: 'note_update',
       noteId,
       ...updates
     });
+    return true;
   }
 
   sendCursorUpdate(noteId: string, cursorPosition: { line: number; column: number } | null, selection?: { start: number; end: number }) {

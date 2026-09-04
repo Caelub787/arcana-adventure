@@ -5,6 +5,7 @@ import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { editKeepsGmSecrets, hasRedactedGmSecrets } from "@/lib/gmSecretGuard";
+import { remapCaret } from "@/lib/liveTextSync";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
@@ -667,6 +668,11 @@ export function CampaignNotesPanel({
   const [canvasData, setCanvasData] = useState<CanvasData>({ nodes: [], connections: [] });
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
+  // Live collaboration lane. 1s felt like "type, wait, save"; this is short
+  // enough to read as live while still coalescing a burst of keystrokes into
+  // one message.
+  const liveTitle = useDebouncedValue(noteTitle, 150);
+  const liveContent = useDebouncedValue(noteContent, 150);
   const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
 
   const [addingTag, setAddingTag] = useState(false);
@@ -683,6 +689,10 @@ export function CampaignNotesPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // One nudge per note is enough; repeating it on every keystroke is noise.
   const gmSecretToastShownRef = useRef(false);
+  // Whether the last edit went out over the live channel. When it did, the
+  // server has already persisted it and the REST autosave below must stay out
+  // of the way - two writers racing on the same text loses keystrokes.
+  const liveSyncActiveRef = useRef(false);
   const handleFormattingKeyDown = useFormattingShortcuts(textareaRef as React.RefObject<HTMLTextAreaElement>, noteContent, setNoteContent);
 
   const [entityDialogOpen, setEntityDialogOpen] = useState(false);
@@ -798,6 +808,7 @@ export function CampaignNotesPanel({
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
         gmSecretToastShownRef.current = false;
+        liveSyncActiveRef.current = false;
         lastLoadedNoteIdRef.current = currentNote.id;
         lastSavedContentRef.current = null;
         lastSavedCanvasRef.current = null;
@@ -902,18 +913,55 @@ export function CampaignNotesPanel({
           }
           break;
 
-        case 'note_update':
-          // Ignore our own updates and updates that arrived shortly after our local change
-          if (data.userId === user?.id) return;
-          if (Date.now() - lastLocalUpdateRef.current < 500) return;
-          
-          // Apply remote changes
+        case 'note_update': {
+          // Our own edits echo back only as a `correction`: the server merged
+          // our version into the stored note and what we're holding no longer
+          // matches (we deleted a redaction block, or typed #...# that got
+          // defused). Those must be applied, or the editor keeps re-sending a
+          // version the server keeps rejecting.
+          if (data.userId === user?.id && !data.correction) return;
+
+          // Everything else is applied immediately - the whole point is that
+          // edits are live. The old "ignore anything within 500ms of a local
+          // change" guard dropped exactly the updates that arrive while two
+          // people are both typing, leaving the two editors permanently out
+          // of sync. The caret is protected below instead.
           isReceivingRemoteUpdateRef.current = true;
           if (data.title !== undefined) {
             setNoteTitle(data.title);
           }
           if (data.content !== undefined) {
-            setNoteContent(data.content);
+            const el = textareaRef.current;
+            const isFocused = !!el && document.activeElement === el;
+            if (isFocused) {
+              // Re-setting a controlled textarea's value drops the caret at the
+              // end, mid-sentence. Work out where the caret belongs in the new
+              // text and put it back after React paints.
+              const selStart = el.selectionStart;
+              const selEnd = el.selectionEnd;
+              setNoteContent((prev) => {
+                const nextStart = remapCaret(prev, data.content, selStart);
+                const nextEnd = remapCaret(prev, data.content, selEnd);
+                requestAnimationFrame(() => {
+                  if (textareaRef.current && document.activeElement === textareaRef.current) {
+                    textareaRef.current.setSelectionRange(nextStart, nextEnd);
+                  }
+                });
+                return data.content;
+              });
+            } else {
+              setNoteContent(data.content);
+            }
+            // The live edit is already persisted server-side, so don't let the
+            // PUT fallback fire and write this same text back again.
+            lastSavedContentRef.current = {
+              title: data.title !== undefined ? data.title : noteTitle,
+              content: data.content,
+            };
+            lastSentContentRef.current = {
+              title: data.title !== undefined ? data.title : noteTitle,
+              content: data.content,
+            };
           }
           if (data.canvasData !== undefined) {
             try {
@@ -928,6 +976,7 @@ export function CampaignNotesPanel({
           // Small delay to allow state to settle before re-enabling local updates
           setTimeout(() => { isReceivingRemoteUpdateRef.current = false; }, 100);
           break;
+        }
 
         case 'cursor_update':
           // Update remote user's cursor position
@@ -953,26 +1002,28 @@ export function CampaignNotesPanel({
     // Skip initial mount - only broadcast after first change
     if (!hasInitializedCollabRef.current) {
       hasInitializedCollabRef.current = true;
-      lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+      lastSentContentRef.current = { title: liveTitle, content: liveContent };
       return;
     }
     
     // Skip if content hasn't actually changed (prevents ping-pong)
     const lastSent = lastSentContentRef.current;
-    if (lastSent && lastSent.title === debouncedTitle && lastSent.content === debouncedContent) {
+    if (lastSent && lastSent.title === liveTitle && lastSent.content === liveContent) {
       return;
     }
     
     // Track that we made a local update
     lastLocalUpdateRef.current = Date.now();
-    lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+    lastSentContentRef.current = { title: liveTitle, content: liveContent };
     
-    // Send update to other collaborators
-    noteWs.sendNoteUpdate(selectedNoteId, {
-      title: debouncedTitle,
-      content: debouncedContent,
+    // Send update to other collaborators. The server merges this against the
+    // stored note, persists it, and fans out a per-recipient projection - so
+    // this send IS the save, not a preview of one.
+    liveSyncActiveRef.current = noteWs.sendNoteUpdate(selectedNoteId, {
+      title: liveTitle,
+      content: liveContent,
     });
-  }, [debouncedTitle, debouncedContent, selectedNoteId, isOpen]);
+  }, [liveTitle, liveContent, selectedNoteId, isOpen]);
 
   // Broadcast canvas changes separately
   useEffect(() => {
@@ -1351,6 +1402,10 @@ export function CampaignNotesPanel({
     }
 
     lastSavedContentRef.current = { title: debouncedTitle, content: debouncedContent };
+    // Live edits already persist server-side as they happen. This REST save is
+    // only the fallback for when the collaboration socket isn't carrying them
+    // (still connecting, dropped, or reconnecting).
+    if (liveSyncActiveRef.current && noteWs.isJoinedToNote(selectedNoteId)) return;
     updateNoteMutation.mutate({
       id: selectedNoteId,
       data: { title: debouncedTitle, content: debouncedContent },

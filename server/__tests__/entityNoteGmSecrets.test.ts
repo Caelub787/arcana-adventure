@@ -196,6 +196,46 @@ describe("entity-linked note: read", () => {
   });
 });
 
+// `#` is both the GM-secret delimiter and markdown's heading marker, and a
+// secret has to be hidden from the first keystroke rather than only once it is
+// closed. These pin down where that line sits.
+describe("what counts as a secret", () => {
+  async function playerSees(content: string) {
+    noteRow.content = content;
+    return (await (await api(`/api/notes/${noteId}`, { user: editor })).json()).content;
+  }
+
+  it("hides an unclosed secret the GM is still typing", async () => {
+    const seen = await playerSees("Mara. #the vault co");
+    expect(seen).not.toContain("vault");
+    expect(seen).toBe("Mara. " + "█".repeat("the vault co".length));
+  });
+
+  it("hides an unclosed secret only to the end of its line", async () => {
+    const seen = await playerSees("#half typed\nPublic next line.");
+    expect(seen).not.toContain("half typed");
+    expect(seen).toContain("Public next line.");
+  });
+
+  it("leaves markdown headings alone", async () => {
+    expect(await playerSees("# Chapter One\n\nText.")).toBe("# Chapter One\n\nText.");
+    expect(await playerSees("### Deep heading\nText.")).toBe("### Deep heading\nText.");
+  });
+
+  it("still treats a secret at the start of a line as a secret", async () => {
+    const seen = await playerSees("#hidden thing#\nVisible.");
+    expect(seen).not.toContain("hidden thing");
+    expect(seen).toContain("Visible.");
+  });
+
+  it("handles several secrets on one line", async () => {
+    const seen = await playerSees("A #one# B #two# C");
+    expect(seen).not.toContain("one");
+    expect(seen).not.toContain("two");
+    expect(seen).toBe("A ███ B ███ C");
+  });
+});
+
 describe("entity-linked note: who may edit", () => {
   it("lets a player with EDIT access on the character save the note", async () => {
     const got = await (await api(`/api/notes/${noteId}`, { user: editor })).json();
