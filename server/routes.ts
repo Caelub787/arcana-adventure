@@ -2539,6 +2539,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
             username,
           });
 
+          // Every roll also lands in chat, the same way the dice roller's do.
+          // Before this only /roll and the dice button reached the Adventure
+          // Log, so an attack, a skill check or a Duality roll left no record
+          // there at all - the tracker's tray was the only place it appeared,
+          // and that only keeps the most recent few.
+          let rollChatMessage: any = null;
+          if (notification && notification.type !== 'system') {
+            try {
+              const senderDisplay = notification.characterName
+                ? `${notification.characterName} (${username})`
+                : username;
+              const parts: string[] = [];
+              if (notification.label) parts.push(String(notification.label));
+              const detail: string[] = [];
+              if (typeof notification.result === 'number') detail.push(String(notification.result));
+              if (notification.modifier) {
+                detail.push(notification.modifier > 0 ? `+ ${notification.modifier}` : `- ${Math.abs(notification.modifier)}`);
+              }
+              const detailText = detail.length > 0 ? ` ${detail.join(' ')}` : '';
+              const totalText = typeof notification.total === 'number' ? ` = ${notification.total}` : '';
+              const rollText = `${parts.join(' ')}:${detailText}${totalText}`.replace(/\s+/g, ' ').trim();
+              rollChatMessage = await storage.createChatMessage({
+                campaignId,
+                userId: authenticatedUserId,
+                sender: senderDisplay,
+                text: rollText,
+                type: "roll",
+              });
+            } catch (err) {
+              // A roll that can't be logged still has to reach the table.
+              console.error('[roll_notification] Failed to log the roll to chat:', err);
+            }
+          }
+
           // Broadcast roll notification to all OTHER campaign members
           const room = campaignRooms.get(campaignId);
           if (room) {
@@ -2546,12 +2580,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               type: "roll_notification",
               notification: storedNotification
             });
+            // The chat entry goes to EVERYONE including the roller - unlike the
+            // notification, they don't already have it locally.
+            const chatBroadcast = rollChatMessage
+              ? JSON.stringify({ type: "chat_message", message: rollChatMessage })
+              : null;
 
             room.forEach((client) => {
+              if (client.readyState !== 1) return;
               // Send to all clients except the sender (sender already sees it locally)
-              if (client !== ws && client.readyState === 1) {
-                client.send(rollMessage);
-              }
+              if (client !== ws) client.send(rollMessage);
+              if (chatBroadcast) client.send(chatBroadcast);
             });
           }
         }

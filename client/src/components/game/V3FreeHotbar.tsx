@@ -17,6 +17,8 @@ import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Fil
 import { LazyItemImage } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
 import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
+import { isSwampySystem } from "@shared/systems";
+import { SWAMPY_MAX_HOPE } from "@shared/swampy";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -31,11 +33,13 @@ export interface FreeHotbarCharView {
   maxEnergy?: number;
   mana?: number;
   maxMana?: number;
-  // Wound-system (C.A. / Swampy) state. Each system stores its wounds on its
-  // own column, so both are carried and the active system's rules pack picks
-  // the one to read.
+  // Wound-system (C.A.) state, read through that system's own column.
   caWounds?: unknown;
   swampyWounds?: unknown;
+  // Swampy: HP is shared above; Strain and Hope are its own tracks.
+  swampyStrain?: number | null;
+  swampyMaxStrain?: number | null;
+  swampyHope?: number | null;
   canEdit?: boolean;
 }
 
@@ -69,8 +73,21 @@ function woundCapacityRemaining(char: FreeHotbarCharView, rules: WoundSystemRule
   return Math.max(0, rules.WOUND_MAX - rules.woundTotalCost(rules.woundsOf(char)));
 }
 
-function CharStatBars({ char, thin, woundRules }: { char: FreeHotbarCharView; thin?: boolean; woundRules?: WoundSystemRules | null }) {
-  // C.A. and Swampy have no HP/mana — show Wound Capacity remaining + Energy instead.
+function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCharView; thin?: boolean; woundRules?: WoundSystemRules | null; isSwampy?: boolean }) {
+  // Swampy keeps HP but has no mana; its second and third tracks are Strain
+  // and Hope, which is what a player actually watches between rolls.
+  if (isSwampy) {
+    const maxStrain = Math.max(1, char.swampyMaxStrain ?? 6);
+    const strain = Math.max(0, Math.min(maxStrain, char.swampyStrain ?? 0));
+    return (
+      <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
+        <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color={vitalBarColor(char.hp ?? 0, char.maxHp ?? 0)} thin={thin} medium={thin} />
+        <StatBar value={strain} max={maxStrain} color="bg-violet-500" thin={thin} medium={thin} />
+        <StatBar value={char.swampyHope ?? 0} max={SWAMPY_MAX_HOPE} color="bg-amber-400" thin={thin} medium={thin} />
+      </div>
+    );
+  }
+  // C.A. has no HP/mana — show Wound Capacity remaining + Energy instead.
   if (woundRules) {
     const remaining = woundCapacityRemaining(char, woundRules);
     return (
@@ -103,6 +120,7 @@ interface V3FreeHotbarProps {
 
 export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
   const woundRules = isWoundSystem(campaignSystem) ? woundSystemRules(campaignSystem) : null;
+  const isSwampy = isSwampySystem(campaignSystem);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -185,6 +203,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       maxMana: live.maxMana ?? char.maxMana,
       caWounds: live.caWounds ?? char.caWounds,
       swampyWounds: live.swampyWounds ?? char.swampyWounds,
+      swampyStrain: live.swampyStrain ?? char.swampyStrain,
+      swampyMaxStrain: live.swampyMaxStrain ?? char.swampyMaxStrain,
+      swampyHope: live.swampyHope ?? char.swampyHope,
       // live.portrait can be a genuine null (no portrait set) while char.portrait
       // already carries the species-default fallback resolved server-side —
       // an empty live value must not clobber that fallback.
@@ -327,7 +348,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         </div>
                       )}
                       <div className="absolute bottom-0 left-0 right-0" data-testid={`free-hotbar-slot-${slotIndex}-bars`}>
-                        <CharStatBars char={liveEntryChar} thin woundRules={woundRules} />
+                        <CharStatBars char={liveEntryChar} thin woundRules={woundRules} isSwampy={isSwampy} />
                       </div>
                     </div>
                     );
@@ -409,7 +430,31 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )}
                   </div>
                   <div className="flex-1 space-y-2 pt-0.5">
-                    {woundRules ? (
+                    {isSwampy ? (
+                      <>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>HP</span>
+                            <span data-testid="text-peek-hp">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
+                          </div>
+                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color={vitalBarColor(c.hp ?? 0, c.maxHp ?? 0)} />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Strain</span>
+                            <span data-testid="text-peek-strain">{c.swampyStrain ?? 0} / {Math.max(1, c.swampyMaxStrain ?? 6)}</span>
+                          </div>
+                          <StatBar value={c.swampyStrain ?? 0} max={Math.max(1, c.swampyMaxStrain ?? 6)} color="bg-violet-500" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-stone-400 mb-0.5">
+                            <span>Hope</span>
+                            <span data-testid="text-peek-hope">{c.swampyHope ?? 0} / {SWAMPY_MAX_HOPE}</span>
+                          </div>
+                          <StatBar value={c.swampyHope ?? 0} max={SWAMPY_MAX_HOPE} color="bg-amber-400" />
+                        </div>
+                      </>
+                    ) : woundRules ? (
                       <>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

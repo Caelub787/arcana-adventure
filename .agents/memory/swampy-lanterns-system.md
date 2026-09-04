@@ -75,6 +75,14 @@ Don't "add the missing piece" — these are absent on purpose:
 - A Working snapshots its Warren's **name** next to the id, so a precedent still
   reads correctly after that Warren is deleted.
 
+## Shared surfaces Swampy opts into
+
+- **Hotbars**: the free hotbar (`V3FreeHotbar`, shared with V3 and C.A.), not the
+  V2 battle/GM hotbars — Swampy has no per-character hotbar model to slot into.
+  Its stat bars are HP / Strain / Hope; C.A.'s are Wounds / Energy, so
+  `CharStatBars` branches on `isSwampy` before the wound pack.
+- **Fear** docks bottom-right above the hotbars, not with the party tracker.
+
 ## Items
 
 Items are unchanged — the brief changes magic, not equipment. Swampy uses the

@@ -944,7 +944,10 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
-function SidePanelChat({ campaignId, role, members, characters, currentUserId }: { campaignId: string; role: string; members?: any[]; characters?: any[]; currentUserId?: string }) {
+function SidePanelChat({ campaignId, role, members, characters, currentUserId, rollCharacterId }: { campaignId: string; role: string; members?: any[]; characters?: any[]; currentUserId?: string; rollCharacterId?: string }) {
+  // The dice roller lives here rather than in the top-left toolbar: a roll is a
+  // thing you say to the table, and its result lands in this log anyway.
+  const [diceMenuOpen, setDiceMenuOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
   const [message, setMessage] = useState('');
@@ -1191,6 +1194,39 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId }:
           )}
         </div>
         <div className="flex gap-2">
+          <div className="relative shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDiceMenuOpen((v) => !v)}
+              className={`h-9 px-2 border-stone-700 ${diceMenuOpen ? 'bg-amber-900/30 border-amber-600 text-amber-300' : 'bg-stone-800 text-stone-300 hover:text-white'}`}
+              title="Roll dice"
+              data-testid="button-chat-dice-roller"
+            >
+              <Dices className="h-4 w-4" />
+            </Button>
+            {diceMenuOpen && (
+              <div className="absolute bottom-full mb-1 left-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 shadow-xl z-50">
+                <div className="flex flex-col gap-1 min-w-[80px]">
+                  {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+                    <Button
+                      key={die}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        gameWs.sendDiceRoll(die, 0, undefined, rollCharacterId);
+                        setDiceMenuOpen(false);
+                      }}
+                      className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
+                      data-testid={`button-roll-${die}`}
+                    >
+                      {die.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <Input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -6791,7 +6827,6 @@ export default function Campaign() {
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
   
   // Dice roller state
-  const [diceMenuOpen, setDiceMenuOpen] = useState(false);
   const battlemapContainerRef = useRef<HTMLDivElement>(null);
 
   // DC save prompt popup state
@@ -10468,100 +10503,10 @@ export default function Campaign() {
           regardless of the side panel's width or open state. */}
       {!spectatorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
-        {/* Left Side - Dice roller and quick search */}
+        {/* Left Side - quick search. The dice roller used to sit above this;
+            it now lives in the chat's input row, where its result already
+            lands. Search is the top-left button in every system. */}
         <div className="absolute left-4 top-4 pointer-events-auto flex flex-col gap-2">
-          {!isSandbox && (
-            <div className="relative">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDiceMenuOpen(!diceMenuOpen)}
-                      className="bg-stone-900/70 hover:bg-stone-800/90 border border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white backdrop-blur-sm shadow-lg pointer-events-auto"
-                      data-testid="button-dice-roller"
-                    >
-                      <Dices className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Roll Dice</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              {diceMenuOpen && (
-                <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
-                  <div className="flex flex-col gap-1 min-w-[80px]">
-                    {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
-                      <Button
-                        key={die}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          gameWs.sendDiceRoll(die, 0, undefined, character?.id);
-                          setDiceMenuOpen(false);
-                        }}
-                        className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
-                        data-testid={`button-roll-${die}`}
-                      >
-                        {die.toUpperCase()}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {isSwampy && !isSandbox && (
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (activeSidePanel === 'ledger' && !sidePanelMinimized) setSidePanelMinimized(true);
-                        else { setActiveSidePanel('ledger'); setSidePanelMinimized(false); }
-                      }}
-                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                      data-testid="button-panel-ledger"
-                    >
-                      <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Working Ledger</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (activeSidePanel === 'deck' && !sidePanelMinimized) setSidePanelMinimized(true);
-                        else { setActiveSidePanel('deck'); setSidePanelMinimized(false); }
-                      }}
-                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                      data-testid="button-panel-deck"
-                    >
-                      <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Deck of Houses</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
-          )}
-
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10601,18 +10546,6 @@ export default function Campaign() {
               openCharacterSheet(char);
             }}
           />
-          {/* Fear is the GM's half of the Duality Dice and the table's shared
-              dread meter, so it sits with the party tracker rather than being
-              hidden in a GM-only panel. Everyone sees it; only the GM spends it. */}
-          {isSwampy && effectiveCampaignId && !isSandbox && (
-            <div className="mt-1.5 rounded-lg border border-stone-700 bg-stone-900/85 backdrop-blur-sm px-2 py-1 pointer-events-auto w-fit">
-              <SwampyFearTrack
-                campaignId={effectiveCampaignId}
-                fear={Number((campaign as any)?.swampyFear) || 0}
-                isGm={role === 'gm'}
-              />
-            </div>
-          )}
         </div>
 
         {/* Right Side - panel tab icons. On desktop, a horizontal row pinned
@@ -13071,7 +13004,7 @@ export default function Campaign() {
 
            {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars
-               statsOnly={isAAV3 || isCA}
+               statsOnly={isAAV3 || isCA || isSwampy}
                onOpenCharacterSheet={() => {
                  const sheetChar = role === 'gm'
                    ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id))
@@ -13425,6 +13358,7 @@ export default function Campaign() {
                   members={(members as any[]) || []}
                   characters={(characters as any[]) || []}
                   currentUserId={user?.id}
+                  rollCharacterId={character?.id}
                 />
               )}
               {activeSidePanel === 'characters' && effectiveCampaignId && (
@@ -13868,8 +13802,28 @@ export default function Campaign() {
         </div>
       )}
       
-      {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3 and C.A. campaigns */}
-      {!spectatorMode && !isSandbox && (isAAV3 || isCA) && (
+      {/* Fear — the GM's half of the Duality Dice and the table's shared dread
+          meter. Bottom right, directly above the hotbars: it belongs with the
+          things you watch during play, not up with the party roster. Everyone
+          sees it; only the GM spends it. */}
+      {isSwampy && effectiveCampaignId && !isSandbox && !spectatorMode && (
+        <div
+          className="fixed right-2 sm:right-4 z-30 pointer-events-auto rounded-lg border border-stone-700 bg-stone-900/90 backdrop-blur-sm px-2 py-1 shadow-lg"
+          style={{ bottom: isMobile ? '10.5rem' : '7.5rem' }}
+          data-testid="swampy-fear-dock"
+        >
+          <SwampyFearTrack
+            campaignId={effectiveCampaignId}
+            fear={Number((campaign as any)?.swampyFear) || 0}
+            isGm={role === 'gm'}
+          />
+        </div>
+      )}
+
+      {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3, C.A. and
+          Swampy campaigns. Swampy uses it for the same reason C.A. does: it has
+          no per-character hotbar model of its own to slot into. */}
+      {!spectatorMode && !isSandbox && (isAAV3 || isCA || isSwampy) && (
         <V3FreeHotbar
           campaignId={campaignId!}
           isGM={role === 'gm'}
@@ -13894,7 +13848,7 @@ export default function Campaign() {
       )}
 
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!spectatorMode && !isSandbox && !isAAV3 && !isCA && role === 'gm' && !isMobile && (
+      {!spectatorMode && !isSandbox && !isAAV3 && !isCA && !isSwampy && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
