@@ -7088,18 +7088,16 @@ export default function Campaign() {
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'initiative' | 'chat' | 'notes' | 'settings' | 'scene' | 'ledger' | 'deck' | null;
 
-  // The map's select/ruler tools hang off the bottom of the top-left toolbar,
-  // so their offset has to follow however many buttons that toolbar has. It
-  // used to be hardcoded at 176px, tuned for a two-button toolbar, which left
-  // a 120px hole once the dice roller moved into the chat and would have left
-  // the tools sitting on top of Swampy's two extra buttons. Derived from the
-  // toolbar's own geometry now, so it can't drift again.
+  // The whole left edge is one column of buttons at one 8px rhythm, but it is
+  // built by three components that don't know about each other: this file's
+  // top-left toolbar, SelectionModeButtons, and BattleMap's own camera/token
+  // buttons. The last two used to carry hardcoded tops (176px and 272px)
+  // tuned for a two-button toolbar, so the moment that count changed - the
+  // dice roller leaving, Swampy's two arriving - the column grew holes.
+  // Everything below is derived from these three numbers now.
   const LEFT_TOOLBAR_TOP = 16;      // the column's own `top-4`
   const LEFT_TOOLBAR_BUTTON = 40;   // a size="icon" Button
   const LEFT_TOOLBAR_GAP = 8;       // the column's `gap-2`
-  // Twice the in-column gap: enough to read as a separate group of tools,
-  // not so much that it reads as a hole.
-  const LEFT_TOOLBAR_GROUP_BREAK = 16;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -7534,10 +7532,7 @@ export default function Campaign() {
   // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
   const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
   const selectionToolsTop =
-    LEFT_TOOLBAR_TOP +
-    leftToolbarButtons * LEFT_TOOLBAR_BUTTON +
-    (leftToolbarButtons - 1) * LEFT_TOOLBAR_GAP +
-    LEFT_TOOLBAR_GROUP_BREAK;
+    LEFT_TOOLBAR_TOP + leftToolbarButtons * (LEFT_TOOLBAR_BUTTON + LEFT_TOOLBAR_GAP);
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -12920,6 +12915,7 @@ export default function Campaign() {
              }}
              pinSnapToGrid={pinSnapToGrid}
              campaignSystem={(campaign as any)?.system}
+             selectionToolsTop={selectionToolsTop}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

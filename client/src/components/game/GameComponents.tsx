@@ -658,6 +658,9 @@ interface BattleMapProps {
   onPinPlaced?: (x: number, y: number) => void;
   onPinDragEnd?: (pinId: string, x: number, y: number) => void;
   campaignSystem?: string;
+  // Where the Select/Ruler column starts. The map's own button column
+  // continues below it, so it has to know.
+  selectionToolsTop?: number;
 }
 
 // Roll Item-Cost helpers. A roll can require the player to have specific
@@ -1098,7 +1101,7 @@ function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: Rule
   );
 }
 
-export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176 }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -2821,20 +2824,30 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           }] : []),
         ];
 
-        // Sits directly under the Select/Ruler buttons (which start at
-        // top-44 = 176px and are ~88px tall together). When Ruler mode is
-        // active it also shows up to 4 shape buttons below it, so this
-        // shifts further down to clear those instead of overlapping them.
+        // Continues the left column below the Select/Ruler buttons, at the
+        // same 8px gap they use between themselves - the whole left edge is
+        // meant to read as one strip of buttons. Their top used to be a
+        // hardcoded 176px and so was this; now it comes down as a prop,
+        // because how far down the column starts depends on how many buttons
+        // the top-left toolbar has (Swampy adds two).
+        // Ruler mode opens up to 4 shape buttons under the ruler, so clear
+        // those too rather than landing on top of them.
         // Anchored from the top, not the bottom: this container's own
         // height stretches with the 20000px scrollable map behind it, so a
         // `bottom` offset would resolve thousands of pixels below the
         // visible screen instead of near the actual bottom of the viewport.
-        const leftToolbarTop = selectionMode === 'ruler' ? 472 : 272;
+        const SELECT_AND_RULER_HEIGHT = 88;  // two 40px buttons, 8px apart
+        const RULER_SHAPES_HEIGHT = 200;     // the divider plus 4 more buttons
+        const leftToolbarTop =
+          selectionToolsTop +
+          SELECT_AND_RULER_HEIGHT +
+          (selectionMode === 'ruler' ? RULER_SHAPES_HEIGHT : 0) +
+          8;
 
         return (
           <div
             className="absolute z-40 flex flex-col gap-2 pointer-events-auto"
-            style={{ left: '8px', top: `${leftToolbarTop}px` }}
+            style={{ left: '16px', top: `${leftToolbarTop}px` }}
           >
             <HoldMenuButton
               testId="button-camera-controls"
@@ -11513,6 +11526,17 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const lastSeenIdRef = useRef<string | undefined>(rolls[0]?.id);
   const latest = rolls[0];
 
+  // A roll that landed while a panel was fullscreened over the tracker, kept
+  // so it can play the moment the player is back out and can actually see it.
+  const heldRollRef = useRef<PinnedRollFeedEntry | null>(null);
+  const isFullscreen = useAnyPanelFullscreen();
+  // The new-roll effect only depends on the roll id, so it can't read
+  // `isFullscreen` from its own closure without going stale. Written during
+  // render rather than in the effect below, so a roll landing in the same
+  // commit that opens the panel is still seen as arriving during fullscreen.
+  const isFullscreenRef = useRef(isFullscreen);
+  isFullscreenRef.current = isFullscreen;
+
   // Beacon color, when set, drives both the resting outline and the roll
   // glow; with no player assigned we fall back to the existing amber classes
   // (which render as the app's default purple under the current theme).
@@ -11525,9 +11549,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // (e.g. the assigned character or its portrait was updated).
   useEffect(() => { setImgFailed(false); }, [portraitSrc]);
 
-  useEffect(() => {
-    if (!latest || latest.id === lastSeenIdRef.current) return;
-    lastSeenIdRef.current = latest.id;
+  // The whole reveal - glow, tumbling total, the 3.2s window - as one call,
+  // so it can be started either when the roll lands or later, when the
+  // player comes back out of a fullscreen panel.
+  const playReveal = (entry: PinnedRollFeedEntry) => {
     setRevealed(true);
     setGlow(true);
     revealUntilRef.current = Date.now() + 3200;
@@ -11543,8 +11568,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     // on the real one, so the reveal feels like an actual roll landing.
     // Bounded to the actual die's face values (not the total, which can run
     // higher once modifiers are added) so a d6 never flashes a 17.
-    if (latest.total !== null) {
-      const dieMax = parseInt(latest.dieType?.replace(/^d/i, '') || '', 10) || 20;
+    if (entry.total !== null) {
+      const dieMax = parseInt(entry.dieType?.replace(/^d/i, '') || '', 10) || 20;
       setRolling(true);
       setRollDisplay(1 + Math.floor(Math.random() * dieMax));
       if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
@@ -11559,7 +11584,37 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     } else {
       setRolling(false);
     }
+  };
+
+  useEffect(() => {
+    if (!latest || latest.id === lastSeenIdRef.current) return;
+    lastSeenIdRef.current = latest.id;
+    // A fullscreened panel covers the tracker completely, so playing the
+    // reveal now would just burn the 3.2s window behind it and the player
+    // would come back out to an empty card. Hold the roll and play it when
+    // they leave fullscreen instead.
+    if (isFullscreenRef.current) {
+      heldRollRef.current = latest;
+      return;
+    }
+    playReveal(latest);
   }, [latest?.id]);
+
+  // Entering fullscreen holds whatever is on screen; leaving plays it.
+  useEffect(() => {
+    if (isFullscreen) {
+      if (revealed && latest) heldRollRef.current = latest;
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
+      return;
+    }
+    const held = heldRollRef.current;
+    if (!held) return;
+    heldRollRef.current = null;
+    playReveal(held);
+  }, [isFullscreen]);
 
   useEffect(() => () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
