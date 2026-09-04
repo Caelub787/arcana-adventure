@@ -16631,9 +16631,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // characters are stripped out server-side (never sent to the client at
   // all), replaced with a fixed block so the redaction is visible without
   // being recoverable by selecting/copying it.
+  const GM_SECRET_RE = /#([^#\n]*)#/g;
+  const REDACTION_RUN_RE = /█+/g;
+
   function redactGmSecrets(content: string, canSeeGmSecrets: boolean): string {
     if (canSeeGmSecrets || !content) return content;
-    return content.replace(/#([^#\n]*)#/g, (_match, inner: string) => '█'.repeat(Math.max(3, Math.min(inner.length, 24))));
+    return content.replace(GM_SECRET_RE, (_match, inner: string) => '█'.repeat(Math.max(3, Math.min(inner.length, 24))));
+  }
+
+  // The inverse of redactGmSecrets, for the write side.
+  //
+  // A player with edit access on a character can edit that character's linked
+  // note, but they only ever RECEIVED the redacted copy - so saving it back
+  // verbatim would overwrite every GM secret with the block characters that
+  // stood in for it. Every non-GM write is therefore re-merged against what is
+  // actually stored:
+  //
+  //   - each redaction run in what they sent is swapped back for the real
+  //     secret it stood for, in order, so edits around a secret are kept;
+  //   - any `#...#` they typed themselves is defused to plain text - a player
+  //     must not be able to author content their own party can't read;
+  //   - any secret whose run they deleted is re-appended rather than dropped,
+  //     because silently losing a GM's text to a player's edit is the one
+  //     outcome that must never happen. The GM can move it back; nothing is
+  //     destroyed.
+  //
+  // Net effect: a non-GM cannot edit, delete, move, or forge a GM secret,
+  // whatever they PUT.
+  function mergeGmSecretsOnWrite(stored: string, submitted: string, canSeeGmSecrets: boolean): string {
+    if (canSeeGmSecrets) return submitted;
+    const secrets = String(stored || '').match(GM_SECRET_RE) ?? [];
+    // Defuse any secret markup the writer added themselves. Their words are
+    // kept, just not as a secret.
+    let out = String(submitted ?? '').replace(GM_SECRET_RE, (_m, inner: string) => inner);
+    let restored = 0;
+    // A function replacement is substituted literally, so a secret containing
+    // `$&` (or any other `$` pattern) can't corrupt the merge.
+    out = out.replace(REDACTION_RUN_RE, () => (restored < secrets.length ? secrets[restored++] : ''));
+    if (restored < secrets.length) {
+      const tail = secrets.slice(restored).join('\n');
+      const body = out.replace(/\s+$/, '');
+      out = body ? body + '\n\n' + tail : tail;
+    }
+    return out;
   }
 
   // Records a knowledge-system change for the audit log / history feature.
@@ -17321,7 +17361,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canEdit) {
         return res.status(403).json({ error: "Edit permission required" });
       }
-      const updated = await storage.updateNote(req.params.id, req.body);
+      // A non-GM only ever saw the redacted copy, so re-merge their content
+      // against what's stored before it lands - otherwise their save writes
+      // the redaction blocks over the GM's real text.
+      const patch = { ...req.body };
+      if (typeof patch.content === 'string') {
+        patch.content = mergeGmSecretsOnWrite(note.content || '', patch.content, role.isGm);
+      }
+      const updated = await storage.updateNote(req.params.id, patch);
       if (updated?.campaignId) {
         broadcastToCampaign(updated.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: updated.campaignId });
         if (req.body.visibility !== undefined || req.body.visiblePlayerIds !== undefined) {
@@ -17351,7 +17398,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       sendToUser(req.session.userId!, { type: 'notes_changed', noteId: req.params.id });
-      res.json(updated);
+      // `updated` carries the merged content, real secrets included - never
+      // echo that back to someone who isn't allowed to read them.
+      res.json(updated ? { ...updated, content: redactGmSecrets(updated.content, role.isGm) } : updated);
     } catch (e) {
       console.error("Failed to update note:", e);
       res.status(500).json({ error: "Failed to update note" });
@@ -17450,11 +17499,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!entityAccess?.canEdit) {
           return res.status(403).json({ error: "Edit permission required" });
         }
-        const cleared = await storage.updateNote(req.params.id, { content: "" });
+        // Clearing is a content write like any other: a non-GM emptying the
+        // note must not take the GM's secrets with it, so they survive the
+        // wipe and the GM still has them.
+        const clearedContent = mergeGmSecretsOnWrite(note.content || '', "", role.isGm);
+        const cleared = await storage.updateNote(req.params.id, { content: clearedContent });
         if (cleared?.campaignId) {
           broadcastToCampaign(cleared.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: cleared.campaignId });
         }
-        return res.json(cleared);
+        return res.json(cleared ? { ...cleared, content: redactGmSecrets(cleared.content, role.isGm) } : cleared);
       }
       if (note.userId !== req.session.userId) {
         return res.status(403).json({ error: "Only the owner can delete this note" });
@@ -17636,7 +17689,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not authorized to edit this event" });
       }
       const before = { visibility: event.visibility, visiblePlayerIds: event.visiblePlayerIds };
-      const updated = await storage.updateTimelineEvent(req.params.id, req.body);
+      // Descriptions are redacted on read (see the timeline list route), so a
+      // non-GM editing their own event would otherwise save the blocks over
+      // whatever the GM had marked secret in it.
+      const eventPatch = { ...req.body };
+      if (typeof eventPatch.description === 'string') {
+        eventPatch.description = mergeGmSecretsOnWrite(event.description || '', eventPatch.description, role.isGm);
+      }
+      const updated = await storage.updateTimelineEvent(req.params.id, eventPatch);
       broadcastToCampaign(event.campaignId, { type: 'timeline_changed', campaignId: event.campaignId, timelineId: event.timelineId });
       if (updated && (req.body.visibility !== undefined || req.body.visiblePlayerIds !== undefined)) {
         await storage.createKnowledgeRevision({
@@ -17644,7 +17704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           action: 'visibility', before, after: { visibility: updated.visibility, visiblePlayerIds: updated.visiblePlayerIds },
         });
       }
-      res.json(updated);
+      res.json(updated ? { ...updated, description: redactGmSecrets(updated.description || '', role.isGm) } : updated);
     } catch (e) {
       console.error("Failed to update timeline event:", e);
       res.status(500).json({ error: "Failed to update timeline event" });

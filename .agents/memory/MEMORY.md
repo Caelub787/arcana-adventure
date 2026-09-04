@@ -20,4 +20,5 @@
 - [CR doc editor stale refetch](cr-doc-editor-stale-refetch.md) — never re-sync blocks from a refetch while a save is in flight or a block is focused; stale snapshot teleports the caret.
 - [App theme system](theme-system.md) — themes remap stone/amber vars under data-theme; the remap must exist in BOTH tailwind entry css files or static utilities win.
 - [Swampy system fork](swampy-system-fork.md) — Swampy is an independent copy of C.A.; the system slug is what separates their libraries, shared wound UI goes through woundSystemRules(), and library-dialogs keeps its own isWoundSystem() copy.
+- [GM secrets: merge on write](gm-secrets-write-side.md) — a non-GM holds a copy with `#...#` already replaced by blocks, so every route that redacts on read MUST merge on write, and re-redact the response afterwards.
 - [Library scoping semantics](library-scoping.md) — My Library (personal) lists are strictly owner-only; global admin rows appear only in campaign/non-personal views; /library route forces personal mode.

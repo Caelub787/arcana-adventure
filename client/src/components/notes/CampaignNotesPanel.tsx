@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, gameWs, globalWs, noteWs, NotePresence, KnowledgeRevision } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { editKeepsGmSecrets, hasRedactedGmSecrets } from "@/lib/gmSecretGuard";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
@@ -680,6 +681,8 @@ export function CampaignNotesPanel({
   const [notePickerTriggeredByTyping, setNotePickerTriggeredByTyping] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // One nudge per note is enough; repeating it on every keystroke is noise.
+  const gmSecretToastShownRef = useRef(false);
   const handleFormattingKeyDown = useFormattingShortcuts(textareaRef as React.RefObject<HTMLTextAreaElement>, noteContent, setNoteContent);
 
   const [entityDialogOpen, setEntityDialogOpen] = useState(false);
@@ -774,6 +777,7 @@ export function CampaignNotesPanel({
         }
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
+        gmSecretToastShownRef.current = false;
         lastLoadedNoteIdRef.current = currentNote.id;
         lastSavedContentRef.current = null;
         lastSavedCanvasRef.current = null;
@@ -1466,6 +1470,26 @@ export function CampaignNotesPanel({
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     const pos = e.target.selectionStart;
+
+    // GM secrets arrive as blocks of █ and are the GM's to change, not the
+    // reader's. Refuse any edit that would alter one and put the textarea
+    // back — the value is controlled, so with no state change React would
+    // otherwise leave the typed characters sitting in the DOM.
+    if (!editKeepsGmSecrets(noteContent, newContent)) {
+      const el = e.target;
+      el.value = noteContent;
+      const caret = Math.min(pos, noteContent.length);
+      requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+      if (!gmSecretToastShownRef.current) {
+        gmSecretToastShownRef.current = true;
+        toast({
+          title: "That part is GM-only",
+          description: "Hidden sections belong to the GM — you can edit everything around them.",
+        });
+      }
+      return;
+    }
+
     setNoteContent(newContent);
     setCursorPosition(pos);
 
@@ -2750,6 +2774,11 @@ export function CampaignNotesPanel({
                 initialSearch={notePickerInitialSearch}
               />
             </div>
+            {hasRedactedGmSecrets(noteContent) && (
+              <p className="text-xs text-stone-500 mt-1" data-testid="text-gm-secret-hint">
+                <span className="text-red-400/80">█</span> marks GM-only text. You can edit everything around it.
+              </p>
+            )}
             {updateNoteMutation.isPending && (
               <p className="text-xs text-stone-500 mt-1">Saving...</p>
             )}
