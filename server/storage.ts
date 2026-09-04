@@ -93,6 +93,9 @@ import {
   type V3AmmunitionType, type InsertV3AmmunitionType, v3AmmunitionTypes,
   type V3ActionTokenType, type InsertV3ActionTokenType, v3ActionTokenTypes,
   type AdvancedItemType, type InsertAdvancedItemType, advancedItemTypes,
+  type SwampyWarren, type InsertSwampyWarren, swampyWarrens,
+  type SwampyWorking, type InsertSwampyWorking, swampyWorkings,
+  type SwampyHouseCard, type InsertSwampyHouseCard, swampyHouseCards,
   type CharacterActionToken, characterActionTokens,
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
@@ -6346,6 +6349,111 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCharacterClassSkill(id: string): Promise<void> {
     await db.delete(characterClassSkills).where(eq(characterClassSkills.id, id));
+  }
+
+  // --- Swampy: Warrens ------------------------------------------------------
+  // Library rows (global or personal) and campaign-authored rows live in one
+  // table. A campaign asks for its own rows PLUS the library ones it can see,
+  // so a GM can pull a published Warren into play without copying it.
+
+  async getSwampyWarrens(opts?: { ownerScope?: string[]; personal?: boolean; campaignId?: string }): Promise<SwampyWarren[]> {
+    const ownerCond = buildOwnerScopeCondition(swampyWarrens.ownerUserId, opts);
+    const scopeCond = opts?.campaignId
+      ? or(eq(swampyWarrens.campaignId, opts.campaignId), isNull(swampyWarrens.campaignId))
+      : isNull(swampyWarrens.campaignId);
+    const conds = [eq(swampyWarrens.system, 'swampy'), scopeCond];
+    if (ownerCond) conds.push(ownerCond);
+    return await db.select().from(swampyWarrens)
+      .where(and(...conds))
+      .orderBy(swampyWarrens.name);
+  }
+
+  async getSwampyWarren(id: string): Promise<SwampyWarren | undefined> {
+    const [row] = await db.select().from(swampyWarrens)
+      .where(and(eq(swampyWarrens.id, id), eq(swampyWarrens.system, 'swampy')));
+    return row;
+  }
+
+  async createSwampyWarren(data: InsertSwampyWarren): Promise<SwampyWarren> {
+    const [row] = await db.insert(swampyWarrens).values({ ...data, system: 'swampy' }).returning();
+    return row;
+  }
+
+  async updateSwampyWarren(id: string, data: Partial<InsertSwampyWarren>): Promise<SwampyWarren | undefined> {
+    const { system: _ignored, ...rest } = data as any;
+    const [row] = await db.update(swampyWarrens).set({ ...rest, updatedAt: new Date() })
+      .where(and(eq(swampyWarrens.id, id), eq(swampyWarrens.system, 'swampy'))).returning();
+    return row;
+  }
+
+  async deleteSwampyWarren(id: string): Promise<void> {
+    await db.delete(swampyWarrens)
+      .where(and(eq(swampyWarrens.id, id), eq(swampyWarrens.system, 'swampy')));
+  }
+
+  // --- Swampy: the Working Ledger -------------------------------------------
+  // Precedents set during play, so these are campaign-scoped only - there is
+  // no library of pre-authored Workings by design.
+
+  async getSwampyWorkings(campaignId: string): Promise<SwampyWorking[]> {
+    return await db.select().from(swampyWorkings)
+      .where(eq(swampyWorkings.campaignId, campaignId))
+      .orderBy(swampyWorkings.name);
+  }
+
+  async getSwampyWorking(id: string): Promise<SwampyWorking | undefined> {
+    const [row] = await db.select().from(swampyWorkings).where(eq(swampyWorkings.id, id));
+    return row;
+  }
+
+  async createSwampyWorking(data: InsertSwampyWorking): Promise<SwampyWorking> {
+    const [row] = await db.insert(swampyWorkings).values(data).returning();
+    return row;
+  }
+
+  async updateSwampyWorking(id: string, data: Partial<InsertSwampyWorking>): Promise<SwampyWorking | undefined> {
+    const [row] = await db.update(swampyWorkings).set({ ...data, updatedAt: new Date() })
+      .where(eq(swampyWorkings.id, id)).returning();
+    return row;
+  }
+
+  async deleteSwampyWorking(id: string): Promise<void> {
+    await db.delete(swampyWorkings).where(eq(swampyWorkings.id, id));
+  }
+
+  // --- Swampy: Deck of Houses -----------------------------------------------
+
+  async getSwampyHouseCards(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<SwampyHouseCard[]> {
+    const ownerCond = buildOwnerScopeCondition(swampyHouseCards.ownerUserId, opts);
+    const cond = ownerCond
+      ? and(eq(swampyHouseCards.system, 'swampy'), ownerCond)
+      : eq(swampyHouseCards.system, 'swampy');
+    return await db.select().from(swampyHouseCards)
+      .where(cond)
+      .orderBy(swampyHouseCards.sortOrder, swampyHouseCards.name);
+  }
+
+  async getSwampyHouseCard(id: string): Promise<SwampyHouseCard | undefined> {
+    const [row] = await db.select().from(swampyHouseCards)
+      .where(and(eq(swampyHouseCards.id, id), eq(swampyHouseCards.system, 'swampy')));
+    return row;
+  }
+
+  async createSwampyHouseCard(data: InsertSwampyHouseCard): Promise<SwampyHouseCard> {
+    const [row] = await db.insert(swampyHouseCards).values({ ...data, system: 'swampy' }).returning();
+    return row;
+  }
+
+  async updateSwampyHouseCard(id: string, data: Partial<InsertSwampyHouseCard>): Promise<SwampyHouseCard | undefined> {
+    const { system: _ignored, ...rest } = data as any;
+    const [row] = await db.update(swampyHouseCards).set(rest)
+      .where(and(eq(swampyHouseCards.id, id), eq(swampyHouseCards.system, 'swampy'))).returning();
+    return row;
+  }
+
+  async deleteSwampyHouseCard(id: string): Promise<void> {
+    await db.delete(swampyHouseCards)
+      .where(and(eq(swampyHouseCards.id, id), eq(swampyHouseCards.system, 'swampy')));
   }
 }
 

@@ -14,6 +14,7 @@ import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveSt
 import { registerCanvasRealmsRoutes } from "./canvasrealms";
 import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
+import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread } from "@shared/swampy";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -8900,6 +8901,409 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[Advanced Item Types Delete] Error:", err?.message);
       res.status(500).json({ error: "Failed to delete advanced item type" });
+    }
+  });
+
+  // =========================================================================
+  // Swampy — "The Lanterns Beyond the Veil"
+  //
+  // Warrens and Deck of Houses cards are library content (global admin rows or
+  // personal "My Library" rows), scoped by system='swampy' so they never show
+  // up in another system's lists. The Working Ledger is campaign-scoped: it is
+  // a log of precedents set at one table, not a pre-authored list.
+  // =========================================================================
+
+  // Everything here is Swampy-only. Reject anything else outright rather than
+  // quietly returning an empty list, so a mis-scoped call is obvious.
+  const requireSwampyCampaign = async (req: any, res: any, campaignId: string) => {
+    const campaign = await storage.getCampaign(campaignId);
+    if (!campaign) {
+      res.status(404).json({ error: "Campaign not found" });
+      return null;
+    }
+    if ((campaign as any).system !== 'swampy') {
+      res.status(400).json({ error: "This is only available in Swampy campaigns" });
+      return null;
+    }
+    const role = await getKnowledgeRole(req.session.userId!, campaignId);
+    if (!role.isMember) {
+      res.status(403).json({ error: "Not a member of this campaign" });
+      return null;
+    }
+    return { campaign, role };
+  };
+
+  // --- Warrens -------------------------------------------------------------
+
+  app.get("/api/swampy/warrens", requireAuth, async (req, res) => {
+    try {
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.query.personal === 'true' || req.query.personal === '1';
+      const campaignId = req.query.campaignId as string | undefined;
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, campaignId, personal);
+      const opts = (isA && !personal && !campaignId)
+        ? { campaignId }
+        : { ownerScope: scope, personal, campaignId };
+      res.json(await storage.getSwampyWarrens(opts));
+    } catch (err: any) {
+      console.error("[Swampy Warrens List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load Warrens" });
+    }
+  });
+
+  app.get("/api/swampy/warrens/:id", requireAuth, async (req, res) => {
+    try {
+      const warren = await storage.getSwampyWarren(req.params.id);
+      if (!warren) return res.status(404).json({ error: "Warren not found" });
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      // A campaign-scoped Warren is readable by that campaign's members; a
+      // library one follows the normal owner rules.
+      if (warren.campaignId) {
+        const role = await getKnowledgeRole(req.session.userId!, warren.campaignId);
+        if (!role.isMember) return res.status(403).json({ error: "Not authorized to view this Warren" });
+      } else if (!await enforceLibraryRead(req, res, warren.ownerUserId)) {
+        return;
+      }
+      res.json(warren);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to load Warren" });
+    }
+  });
+
+  app.post("/api/swampy/warrens", requireAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!String(body.name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const isA = await isAdminUser(req.session.userId);
+      const isPersonal = body.personal === true;
+      const campaignId = typeof body.campaignId === 'string' ? body.campaignId : null;
+
+      // A Warren authored inside a campaign needs GM rights there; a global
+      // library Warren needs admin; anything else is a personal row.
+      if (campaignId) {
+        const ctx = await requireSwampyCampaign(req, res, campaignId);
+        if (!ctx) return;
+        if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can add a Warren to a campaign" });
+      } else if (!isA && !isPersonal) {
+        return res.status(403).json({ error: "Only admins can create global Warrens" });
+      }
+
+      const created = await storage.createSwampyWarren({
+        system: 'swampy',
+        name: String(body.name).trim(),
+        description: String(body.description ?? ""),
+        image: body.image ?? null,
+        condition: SWAMPY_WARREN_CONDITION_KEYS.includes(body.condition) ? body.condition : 'flourishing',
+        nature: String(body.nature ?? ""),
+        paths: Array.isArray(body.paths) ? body.paths : [],
+        houses: Array.isArray(body.houses) ? body.houses : [],
+        scars: Array.isArray(body.scars) ? body.scars : [],
+        gmNotes: String(body.gmNotes ?? ""),
+        campaignId,
+        ownerUserId: campaignId ? null : (isPersonal ? req.session.userId! : null),
+        createdByUserId: req.session.userId!,
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[Swampy Warren Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create Warren" });
+    }
+  });
+
+  app.patch("/api/swampy/warrens/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyWarren(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Warren not found" });
+      if (existing.campaignId) {
+        const ctx = await requireSwampyCampaign(req, res, existing.campaignId);
+        if (!ctx) return;
+        if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can edit this Warren" });
+      } else {
+        const { enforceLibraryWrite } = await import("./lib/library-acl");
+        if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      }
+      const body = req.body || {};
+      const patch: any = {};
+      for (const key of ['description', 'nature', 'gmNotes'] as const) {
+        if (body[key] !== undefined) patch[key] = String(body[key] ?? "");
+      }
+      if (body.name !== undefined) {
+        const name = String(body.name).trim();
+        if (!name) return res.status(400).json({ error: "A name is required" });
+        patch.name = name;
+      }
+      if (body.image !== undefined) patch.image = body.image ?? null;
+      if (body.condition !== undefined) {
+        if (!SWAMPY_WARREN_CONDITION_KEYS.includes(body.condition)) {
+          return res.status(400).json({ error: "Unknown Warren condition" });
+        }
+        patch.condition = body.condition;
+      }
+      for (const key of ['paths', 'houses', 'scars'] as const) {
+        if (body[key] !== undefined) patch[key] = Array.isArray(body[key]) ? body[key] : [];
+      }
+      const updated = await storage.updateSwampyWarren(req.params.id, patch);
+      if (!updated) return res.status(404).json({ error: "Warren not found" });
+      // A condition change moves every Working drawn from it, so tell the table.
+      if (updated.campaignId && body.condition !== undefined) {
+        broadcastToCampaign(updated.campaignId, { type: 'swampy_warren_changed', warrenId: updated.id, campaignId: updated.campaignId });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[Swampy Warren Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update Warren" });
+    }
+  });
+
+  app.delete("/api/swampy/warrens/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyWarren(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Warren not found" });
+      if (existing.campaignId) {
+        const ctx = await requireSwampyCampaign(req, res, existing.campaignId);
+        if (!ctx) return;
+        if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can delete this Warren" });
+      } else {
+        const { enforceLibraryWrite } = await import("./lib/library-acl");
+        if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      }
+      await storage.deleteSwampyWarren(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete Warren" });
+    }
+  });
+
+  // --- Working Ledger ------------------------------------------------------
+  //
+  // Readable by the whole table on purpose: the point of the Ledger is that
+  // players can rely on established techniques and learn, copy, counter, alter
+  // or improve each other's. Writing is GM-only - a precedent is a GM ruling.
+
+  app.get("/api/campaigns/:campaignId/swampy/workings", requireAuth, async (req, res) => {
+    try {
+      const ctx = await requireSwampyCampaign(req, res, req.params.campaignId);
+      if (!ctx) return;
+      res.json(await storage.getSwampyWorkings(req.params.campaignId));
+    } catch (err: any) {
+      console.error("[Swampy Workings List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load the Working Ledger" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/swampy/workings", requireAuth, async (req, res) => {
+    try {
+      const ctx = await requireSwampyCampaign(req, res, req.params.campaignId);
+      if (!ctx) return;
+      if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can record a Working" });
+      const body = req.body || {};
+      if (!String(body.name || "").trim()) return res.status(400).json({ error: "A name is required" });
+
+      // Keep the Warren's name alongside its id so the entry still reads
+      // correctly if that Warren is later removed.
+      let warrenName = String(body.warrenName ?? "");
+      if (body.warrenId) {
+        const warren = await storage.getSwampyWarren(body.warrenId);
+        if (warren) warrenName = warren.name;
+      }
+      const created = await storage.createSwampyWorking({
+        campaignId: req.params.campaignId,
+        name: String(body.name).trim(),
+        warrenId: body.warrenId || null,
+        warrenName,
+        method: String(body.method ?? ""),
+        effect: String(body.effect ?? ""),
+        cost: String(body.cost ?? ""),
+        limits: String(body.limits ?? ""),
+        conditionInteraction: String(body.conditionInteraction ?? ""),
+        risk: String(body.risk ?? ""),
+        characterId: body.characterId || null,
+        characterName: String(body.characterName ?? ""),
+        createdByUserId: req.session.userId!,
+      } as any);
+      broadcastToCampaign(req.params.campaignId, { type: 'swampy_ledger_changed', campaignId: req.params.campaignId });
+      res.json(created);
+    } catch (err: any) {
+      console.error("[Swampy Working Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to record the Working" });
+    }
+  });
+
+  app.patch("/api/swampy/workings/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyWorking(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Working not found" });
+      const ctx = await requireSwampyCampaign(req, res, existing.campaignId);
+      if (!ctx) return;
+      if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can edit a Working" });
+      const body = req.body || {};
+      const patch: any = {};
+      for (const key of ['method', 'effect', 'cost', 'limits', 'conditionInteraction', 'risk', 'characterName'] as const) {
+        if (body[key] !== undefined) patch[key] = String(body[key] ?? "");
+      }
+      if (body.name !== undefined) {
+        const name = String(body.name).trim();
+        if (!name) return res.status(400).json({ error: "A name is required" });
+        patch.name = name;
+      }
+      if (body.warrenId !== undefined) {
+        patch.warrenId = body.warrenId || null;
+        const warren = body.warrenId ? await storage.getSwampyWarren(body.warrenId) : null;
+        patch.warrenName = warren?.name ?? String(body.warrenName ?? "");
+      }
+      const updated = await storage.updateSwampyWorking(req.params.id, patch);
+      broadcastToCampaign(existing.campaignId, { type: 'swampy_ledger_changed', campaignId: existing.campaignId });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[Swampy Working Update] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update the Working" });
+    }
+  });
+
+  app.delete("/api/swampy/workings/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyWorking(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Working not found" });
+      const ctx = await requireSwampyCampaign(req, res, existing.campaignId);
+      if (!ctx) return;
+      if (!ctx.role.isGm) return res.status(403).json({ error: "Only the GM can delete a Working" });
+      await storage.deleteSwampyWorking(req.params.id);
+      broadcastToCampaign(existing.campaignId, { type: 'swampy_ledger_changed', campaignId: existing.campaignId });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete the Working" });
+    }
+  });
+
+  // --- Deck of Houses ------------------------------------------------------
+
+  app.get("/api/swampy/house-cards", requireAuth, async (req, res) => {
+    try {
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.query.personal === 'true' || req.query.personal === '1';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      res.json(await storage.getSwampyHouseCards(opts));
+    } catch (err: any) {
+      console.error("[Swampy House Cards List] Error:", err?.message);
+      res.status(500).json({ error: "Failed to load the Deck of Houses" });
+    }
+  });
+
+  app.post("/api/swampy/house-cards", requireAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!String(body.name || "").trim()) return res.status(400).json({ error: "A name is required" });
+      const isA = await isAdminUser(req.session.userId);
+      const isPersonal = body.personal === true;
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global cards" });
+      const created = await storage.createSwampyHouseCard({
+        system: 'swampy',
+        name: String(body.name).trim(),
+        house: String(body.house ?? ""),
+        image: body.image ?? null,
+        uprightMeaning: String(body.uprightMeaning ?? ""),
+        reversedMeaning: String(body.reversedMeaning ?? ""),
+        sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : 0,
+        ownerUserId: isPersonal ? req.session.userId! : null,
+        createdByUserId: req.session.userId!,
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      console.error("[Swampy House Card Create] Error:", err?.message);
+      res.status(500).json({ error: "Failed to create the card" });
+    }
+  });
+
+  app.patch("/api/swampy/house-cards/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyHouseCard(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Card not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      const body = req.body || {};
+      const patch: any = {};
+      for (const key of ['house', 'uprightMeaning', 'reversedMeaning'] as const) {
+        if (body[key] !== undefined) patch[key] = String(body[key] ?? "");
+      }
+      if (body.name !== undefined) {
+        const name = String(body.name).trim();
+        if (!name) return res.status(400).json({ error: "A name is required" });
+        patch.name = name;
+      }
+      if (body.image !== undefined) patch.image = body.image ?? null;
+      if (body.sortOrder !== undefined) patch.sortOrder = Number(body.sortOrder) || 0;
+      res.json(await storage.updateSwampyHouseCard(req.params.id, patch));
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update the card" });
+    }
+  });
+
+  app.delete("/api/swampy/house-cards/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getSwampyHouseCard(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Card not found" });
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      await storage.deleteSwampyHouseCard(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete the card" });
+    }
+  });
+
+  // Draw a reading. The deck is shuffled and cards are drawn server-side so a
+  // reading can't be re-rolled client-side until it says something nicer - a
+  // reading is meant to be feared.
+  app.post("/api/campaigns/:campaignId/swampy/reading", requireAuth, async (req, res) => {
+    try {
+      const ctx = await requireSwampyCampaign(req, res, req.params.campaignId);
+      if (!ctx) return;
+      const spread = swampyReadingSpread(req.body?.spread);
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, req.params.campaignId, false);
+      const isA = await isAdminUser(req.session.userId);
+      const deck = await storage.getSwampyHouseCards(isA ? undefined : { ownerScope: scope });
+      if (deck.length === 0) {
+        return res.status(400).json({ error: "The Deck of Houses is empty. Add cards in the library first." });
+      }
+      // Fisher-Yates over a copy, then take the spread's worth. Drawing without
+      // replacement matters: the same card twice in one reading is meaningless.
+      const pool = [...deck];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(0, i + 1);
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      const drawn = pool.slice(0, Math.min(spread.count, pool.length)).map((card, i) => {
+        // Orientation is rolled once and the meaning read from it - a reading
+        // must not be able to say "upright" and show the reversed meaning.
+        const upright = crypto.randomInt(0, 2) === 0;
+        return {
+          cardId: card.id,
+          name: card.name,
+          house: card.house,
+          image: card.image,
+          position: spread.positions[i] ?? `Card ${i + 1}`,
+          orientation: upright ? 'upright' : 'reversed',
+          meaning: upright ? card.uprightMeaning : card.reversedMeaning,
+        };
+      });
+      const reading = {
+        spread: spread.key,
+        spreadName: spread.name,
+        drawnAt: Date.now(),
+        readerUserId: req.session.userId!,
+        cards: drawn,
+      };
+      // A reading can make someone visible to powerful forces, so the table
+      // sees it happen rather than it being a private query.
+      broadcastToCampaign(req.params.campaignId, { type: 'swampy_reading', campaignId: req.params.campaignId, reading });
+      res.json(reading);
+    } catch (err: any) {
+      console.error("[Swampy Reading] Error:", err?.message);
+      res.status(500).json({ error: "Failed to draw a reading" });
     }
   });
 
