@@ -61,6 +61,8 @@ import {
   itemToDraft,
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
+import { isWoundSystem } from "@shared/systemRules";
+import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs } from "@shared/systems";
 
 type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
@@ -242,24 +244,35 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     }
     return localStorage.getItem('admin-selected-system') || 'Arcana Adventure';
   });
-  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : selectedSystem === 'A.A. V3' ? 'aa-v3' : selectedSystem === 'C.A.' ? 'ca' : 'arcana-adventure';
+  const systemSlug = toSystemSlug(selectedSystem);
+  // Systems this viewer may switch the library to. Non-admins are held to the
+  // live systems for the same reason they can't start a campaign in an older
+  // one - the rest are half-built.
+  const pickableSystems = selectableSystemSlugs(isAdmin);
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
-  // C.A. also uses the new @arcana/library-dialogs ItemDialog (blank
-  // customizable sheet), but is NOT a "personal library" system — it keeps
-  // the Classes dashboard card hidden and the "Feat Trees" label, unlike
-  // aa-v2/aa-v3. Scoped narrowly to the ItemDialog routing decision below.
-  const useLibraryItemDialog = isPersonalLibSystem || systemSlug === 'ca';
+  // The wound systems (C.A. / Swampy) also use the new @arcana/library-dialogs
+  // ItemDialog (blank customizable sheet), but are NOT "personal library"
+  // systems — they keep the Classes dashboard card hidden and the "Feat Trees"
+  // label, unlike aa-v2/aa-v3. Scoped narrowly to the ItemDialog routing
+  // decision below.
+  const useLibraryItemDialog = isPersonalLibSystem || isWoundSystem(systemSlug);
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
   useEffect(() => {
-    // My Library (forcePersonal) players/non-admins can freely pick any of
-    // the 4 systems - only the non-forcePersonal non-admin context (a
-    // non-admin GM's own admin panel) stays locked to A.A. V2/V3.
+    // A non-admin GM's own admin panel stays locked to A.A. V2/V3.
     if (forcePersonal || embedded || isAdmin) return;
     if (selectedSystem !== 'A.A. V2' && selectedSystem !== 'A.A. V3') setSelectedSystem('A.A. V2');
   }, [isAdmin, selectedSystem, embedded, forcePersonal]);
+  useEffect(() => {
+    // My Library (forcePersonal) remembers the last system across visits, so a
+    // stored choice can name a system this viewer may no longer pick (either
+    // it was hidden from non-admins, or they lost admin). Snap back rather
+    // than showing a library the picker can't represent.
+    if (!forcePersonal || embedded) return;
+    if (!pickableSystems.includes(systemSlug)) setSelectedSystem(systemLabel(pickableSystems[0]));
+  }, [forcePersonal, embedded, systemSlug, isAdmin]);
   useEffect(() => {
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
   }, [isAdmin, currentView]);
@@ -1108,10 +1121,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                   <SelectValue placeholder="Select System" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
-                  <SelectItem value="A.A. V2">A.A. V2</SelectItem>
-                  <SelectItem value="A.A. V3">A.A. V3</SelectItem>
-                  <SelectItem value="C.A.">C.A.</SelectItem>
+                  {pickableSystems.map((slug) => (
+                    <SelectItem key={slug} value={systemLabel(slug)} data-testid={`option-library-system-${slug}`}>
+                      {systemLabel(slug)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1179,11 +1193,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 archiveItemMutation.mutate(id);
               }
             }}
-            onCopyToSystem={systemSlug === 'ca' ? undefined : (id) => {
+            onCopyToSystem={isWoundSystem(systemSlug) ? undefined : (id) => {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copyItemToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'ca' ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
+            copyTargetLabel={isWoundSystem(systemSlug) ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 
@@ -1251,11 +1265,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 archiveSpellMutation.mutate(id);
               }
             }}
-            onCopyToSystem={systemSlug === 'ca' ? undefined : (id) => {
+            onCopyToSystem={isWoundSystem(systemSlug) ? undefined : (id) => {
               const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
               copySpellToSystemMutation.mutate({ id, targetSystem: target });
             }}
-            copyTargetLabel={systemSlug === 'ca' ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
+            copyTargetLabel={isWoundSystem(systemSlug) ? undefined : systemSlug === 'aa-v2' ? 'Arcana Adventure' : systemSlug === 'aa-v3' ? '' : 'A.A. V2'}
           />
         )}
 
@@ -12838,7 +12852,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                       </SelectContent>
                     </Select>
                   </div>
-                  {systemSlug !== 'aa-v3' && (
+                  {campaignSystem !== 'aa-v3' && (
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         <Checkbox
@@ -12880,7 +12894,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                         <SelectValue placeholder="Select slot" />
                       </SelectTrigger>
                       <SelectContent>
-                        {systemSlug === 'aa-v3' ? (
+                        {campaignSystem === 'aa-v3' ? (
                           <>
                             <SelectItem value="helm">Helm</SelectItem>
                             <SelectItem value="torso">Torso</SelectItem>

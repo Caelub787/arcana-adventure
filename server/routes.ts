@@ -13,6 +13,7 @@ import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } fr
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import { registerCanvasRealmsRoutes } from "./canvasrealms";
 import { isAdminUser } from "./lib/library-acl";
+import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -3427,7 +3428,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/campaigns", requireAuth, async (req, res) => {
     try {
       const { name, system, gridSize, currentMap } = req.body;
-      
+
+      // The older systems are incomplete, so only admins may start a campaign
+      // in one. The creation dropdown already hides them, but the check has to
+      // live here too or a hand-rolled request walks straight past the UI.
+      const requestedSystem = system || DEFAULT_SYSTEM_SLUG;
+      if (!isPublicSystem(requestedSystem) && !(await isAdminUser(req.session.userId))) {
+        return res.status(400).json({
+          error: `The ${systemLabel(requestedSystem)} system isn't available for new campaigns.`,
+        });
+      }
+
       const inviteCode = "ARCANA-" + Math.floor(1000 + Math.random() * 9000);
       
       const campaign = await storage.createCampaign({
@@ -3436,7 +3447,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         gmUserId: req.session.userId!,
         gridSize: gridSize || 50,
         currentMap,
-        system: system || "arcana-adventure"
+        system: requestedSystem
       });
 
       // Add GM as a member
@@ -5140,7 +5151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // species' default image (same rule the character sheet already
       // applies) so the hotbar never shows a bare placeholder icon for a
       // character that does have an image, just not one of their own.
-      const hotbarSpeciesSystemName = campaign.system === 'aa-v2' ? 'A.A. V2' : campaign.system === 'aa-v3' ? 'A.A. V3' : campaign.system === 'ca' ? 'C.A.' : 'Arcana Adventure';
+      const hotbarSpeciesSystemName = systemLabel(campaign.system);
       const [hotbarSystemSpecies, hotbarCampaignSpecies] = await Promise.all([
         storage.getSystemSpecies(hotbarSpeciesSystemName),
         storage.getCampaignSpecies(campaignId),

@@ -47,6 +47,14 @@ export function isAAv2OrV3(campaignSystem?: string | null): boolean {
   return campaignSystem === "aa-v2" || campaignSystem === "aa-v3";
 }
 
+// The host app's wound-based systems (C.A. and Swampy). Their items are blank
+// customizable sheets, so this package hides most fixed mechanical fields for
+// them. Duplicated from the host's shared/systemRules.ts rather than imported:
+// this package is standalone and deliberately has no dependency on @shared.
+export function isWoundSystem(campaignSystem?: string | null): boolean {
+  return campaignSystem === "ca" || campaignSystem === "swampy";
+}
+
 export function getEffectTypes(campaignSystem?: string | null): string[] {
   return isAAv2OrV3(campaignSystem) ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
 }

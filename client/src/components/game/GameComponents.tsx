@@ -9586,7 +9586,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="text-xs md:text-sm font-bold text-white truncate leading-tight">{character.name || 'Character'}</div>
 
-                {campaignSystem !== 'ca' ? (
+                {!isWoundSystem(campaignSystem) ? (
                   <div className="flex items-center gap-1">
                     <Heart className="h-3 w-3 text-red-500 shrink-0" />
                     <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">

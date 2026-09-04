@@ -16,7 +16,7 @@ import {
   Stack, Row, Grid2, Grid3, Section, Panel, Badge,
 } from "../ui/primitives";
 import { sortRollsForDisplay, collectFolderNames } from "../lib/rollSort";
-import { AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES, isAAv2 } from "../lib/effectTypes";
+import { AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES, isAAv2, isWoundSystem } from "../lib/effectTypes";
 import { uid, optionalNum } from "../lib/utils";
 import { NumberInput } from "./NumberInput";
 import type { HostAdapter } from "../types";
@@ -227,7 +227,7 @@ export const RollEntriesEditor: React.FC<RollEntriesEditorProps> = ({
         roll={roll}
         damageTypes={damageTypes}
         aav2={aav2}
-        isCA={campaignSystem === 'ca'}
+        isCA={isWoundSystem(campaignSystem)}
         adminItems={adminItems}
         ensureAdminItems={ensureAdminItems}
         knownFolders={folders}

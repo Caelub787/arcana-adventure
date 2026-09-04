@@ -25,7 +25,7 @@ import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRe
 import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
 import { EntityPickerModal } from "../components/EntityPickerModal";
-import { isAAv2, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
+import { isAAv2, isWoundSystem, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
 import { optionalNum } from "../lib/utils";
 import type { DialogProps } from "../types";
 
@@ -304,9 +304,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   const [ammunitionTypes, setAmmunitionTypes] = React.useState<{ id: string; name: string }[]>([]);
   const aav2 = isAAv2(campaignSystem ?? draft.system);
   const aav3 = (campaignSystem ?? draft.system) === "aa-v3";
-  // C.A. items are blank customizable sheets — most fixed mechanical fields
-  // below are hidden for this system in favor of Custom Fields + Rolls.
-  const isCA = (campaignSystem ?? draft.system) === "ca";
+  // C.A. and Swampy items are blank customizable sheets — most fixed mechanical
+  // fields below are hidden for these systems in favor of Custom Fields + Rolls.
+  const isCA = isWoundSystem(campaignSystem ?? draft.system);
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
   // Explicit `mode` prop wins; otherwise infer from initialValue.id.
   const editing = mode ? mode === "edit" : !!initialValue?.id;

@@ -78,4 +78,4 @@ export {
 
 // Helper utilities for re-implementations and tests
 export { sortRollsForDisplay, collectFolderNames } from "./lib/rollSort";
-export { AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES, isAAv2 } from "./lib/effectTypes";
+export { AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES, isAAv2, isWoundSystem } from "./lib/effectTypes";

@@ -5,6 +5,8 @@ import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
+import { isWoundSystem } from "@shared/systemRules";
+import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, type SystemSlug } from "@shared/systems";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
@@ -6732,7 +6734,19 @@ export default function Campaign() {
   
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
-  const [newCampaignSystem, setNewCampaignSystem] = useState("arcana-adventure");
+  // Admins keep the historical default; everyone else starts on the first
+  // system they're actually allowed to pick (see selectableSystemSlugs).
+  const [newCampaignSystem, setNewCampaignSystem] = useState<string>(
+    () => (isAdmin ? DEFAULT_SYSTEM_SLUG : PUBLIC_SYSTEM_SLUGS[0]),
+  );
+  const creatableSystems = selectableSystemSlugs(isAdmin);
+  // `isAdmin` resolves after mount, so a viewer who turns out not to be an
+  // admin can be sitting on a system that just disappeared from the list.
+  useEffect(() => {
+    if (!creatableSystems.includes(newCampaignSystem as SystemSlug)) {
+      setNewCampaignSystem(creatableSystems[0]);
+    }
+  }, [isAdmin, newCampaignSystem]);
   
   // Selection mode state for battlemap interactions
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('select');
@@ -7459,7 +7473,7 @@ export default function Campaign() {
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
-  const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'ca');
+  const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -8271,7 +8285,7 @@ export default function Campaign() {
   // Use public /api/species endpoint that all authenticated users can access - filtered by campaign system
   // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
   const campaignSystemSlugForSpecies = (campaign as any)?.system || 'arcana-adventure';
-  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : campaignSystemSlugForSpecies === 'aa-v3' ? 'A.A. V3' : campaignSystemSlugForSpecies === 'ca' ? 'C.A.' : 'Arcana Adventure';
+  const speciesSystemName = systemLabel(campaignSystemSlugForSpecies);
   const { data: systemSpecies } = useQuery({
     queryKey: ['/api/species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -10225,21 +10239,27 @@ export default function Campaign() {
                     <SelectValue placeholder="Select a system" />
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
-                    <SelectItem value="aa-v2" className="text-stone-200">A.A. V2</SelectItem>
-                    <SelectItem value="aa-v3" className="text-stone-200">A.A. V3</SelectItem>
-                    <SelectItem value="ca" className="text-stone-200">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>C.A.</span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                            <p>Cultivator's Adventure</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </SelectItem>
+                    {creatableSystems.map((slug) => {
+                      const fullName = SYSTEM_FULL_NAMES[slug];
+                      return (
+                        <SelectItem key={slug} value={slug} className="text-stone-200" data-testid={`option-system-${slug}`}>
+                          {fullName && fullName !== systemLabel(slug) ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span>{systemLabel(slug)}</span>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                                  <p>{fullName}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            systemLabel(slug)
+                          )}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
