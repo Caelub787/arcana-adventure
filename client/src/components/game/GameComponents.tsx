@@ -11248,6 +11248,12 @@ interface CampaignMenuProps {
 
 export type PinnedRollFeedEntry = {
   id: string;
+  // Who actually rolled. Matching on this rather than the display name is what
+  // makes "every roll by someone on the tracker shows under their card" hold:
+  // usernames get swapped for nicknames on some paths, and two characters can
+  // share a name. Older feed rows (and system rolls) have no userId, so the
+  // name comparison stays as the fallback.
+  userId?: string;
   username: string;
   characterName?: string;
   text: string;
@@ -11291,6 +11297,31 @@ export function characterTrackerColor(character: any, member?: any): string {
   const isGmMember = member?.role === 'gm' || member?.role === 'assistant_gm';
   if (member?.beaconColor && !isGmMember) return member.beaconColor;
   return stableColorForId(character?.id || member?.userId || member?.id || 'unknown');
+}
+
+// Mobile halves the whole tracker card. Scaling the rendered card rather than
+// re-specifying a second set of sizes keeps the roll tray hanging under it in
+// proportion automatically - the tray is a child of the card, so one transform
+// covers both and they can never drift apart.
+const MOBILE_TRACKER_SCALE = 0.5;
+
+/**
+ * Every roll in the feed that belongs to a tracked player or character.
+ *
+ * Prefers the roller's user id, since display names are not reliable keys: some
+ * paths substitute a nickname, and two characters can share a name. Older feed
+ * rows (and system-attributed rolls like token effects) carry no userId, so the
+ * name comparisons remain as fallbacks rather than replacements.
+ */
+export function rollsForTracked(
+  rollFeed: PinnedRollFeedEntry[],
+  target: { userId?: string; username?: string; characterName?: string },
+): PinnedRollFeedEntry[] {
+  return (rollFeed || []).filter((r) =>
+    (!!target.userId && r.userId === target.userId)
+    || (!!target.username && r.username === target.username)
+    || (!!target.characterName && r.characterName === target.characterName)
+  );
 }
 
 export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, onOpenCharacterSheet }: {
@@ -11349,9 +11380,11 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
     <>
       {pinnedMembers.map((member: any) => {
         const character = (characters || []).find((c: any) => c.id === member.assignedCharacterId);
-        const rolls = rollFeed.filter((r) =>
-          r.username === member.username || (character && r.characterName === character.name)
-        );
+        const rolls = rollsForTracked(rollFeed, {
+          userId: member.userId,
+          username: member.username,
+          characterName: character?.name,
+        });
         return (
           <PinnedRosterChip
             key={member.id}
@@ -11362,13 +11395,14 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character, member)}
+            scale={isMobile ? MOBILE_TRACKER_SCALE : 1}
             onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
             onNewRoll={handleNewRoll}
           />
         );
       })}
       {pinnedCharacters.map((character: any) => {
-        const rolls = rollFeed.filter((r) => r.characterName === character.name);
+        const rolls = rollsForTracked(rollFeed, { characterName: character.name });
         return (
           <PinnedRosterChip
             key={character.id}
@@ -11379,6 +11413,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character)}
+            scale={isMobile ? MOBILE_TRACKER_SCALE : 1}
             onOpenSheet={() => onOpenCharacterSheet?.(character)}
             onNewRoll={handleNewRoll}
           />
@@ -11423,7 +11458,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, onOpenSheet, onNewRoll }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, scale = 1, onOpenSheet, onNewRoll }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11431,6 +11466,9 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
   accentColor?: string;
+  // 1 on desktop, 0.5 on mobile. Applied as a transform on the whole card so
+  // the roll tray beneath it scales in lockstep and stays centred under it.
+  scale?: number;
   onOpenSheet?: () => void;
   // Called whenever a fresh roll lands, with this chip's own element and
   // accent color - lets the wrapping PinnedRosterBar (mobile only) detect
@@ -11562,11 +11600,17 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // sliver). Rendered identically on mobile and desktop; mobile-only
   // horizontal scrolling and off-screen roll glow are handled by the
   // wrapping PinnedRosterBar.
+  // The outer box reserves the SCALED footprint so the row lays out at the
+  // real on-screen size; the inner box keeps the card's natural 200x75 and is
+  // shrunk into it. containerRef stays on the outer box so the off-screen
+  // edge-glow check measures where the card actually is. The roll tray lives
+  // inside the scaled subtree, so it comes along for free.
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative shrink-0"
       data-testid={testId}
+      style={scale === 1 ? undefined : { width: 200 * scale, height: 75 * scale }}
       onMouseEnter={() => {
         hoveringRef.current = true;
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -11578,6 +11622,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
       }}
     >
+     <div
+       className="relative"
+       style={scale === 1 ? undefined : { width: 200, height: 75, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+     >
       <div
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
@@ -11673,6 +11721,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           {historyPopoverContent}
         </Popover>
       </div>
+     </div>
     </div>
   );
 }
@@ -11698,7 +11747,9 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
   const pinnedCharacters = (characters || []).filter((c: any) => c.pinned);
 
   const colorFor = (entry: PinnedRollFeedEntry): string => {
-    const member = pinnedMembers.find((m: any) => m.username === entry.username);
+    const member = pinnedMembers.find((m: any) =>
+      (entry.userId && m.userId === entry.userId) || m.username === entry.username
+    );
     const character = (characters || []).find((c: any) =>
       c.name === entry.characterName && (!member || c.id === member.assignedCharacterId)
     );
@@ -11710,7 +11761,11 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
     if (!latest || latest.id === lastSeenIdRef.current) return;
     lastSeenIdRef.current = latest.id;
     const isPinned =
-      pinnedMembers.some((m: any) => m.username === latest.username) ||
+      // userId first, for the same reason the tracker prefers it: a nicknamed
+      // roll would otherwise look like it belongs to nobody pinned.
+      pinnedMembers.some((m: any) =>
+        (latest.userId && m.userId === latest.userId) || m.username === latest.username
+      ) ||
       (!!latest.characterName && pinnedCharacters.some((c: any) => c.name === latest.characterName)) ||
       (!!latest.characterName && pinnedMembers.some((m: any) => {
         const c = (characters || []).find((ch: any) => ch.id === m.assignedCharacterId);

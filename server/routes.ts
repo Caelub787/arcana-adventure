@@ -485,6 +485,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const campaignRollFeeds = new Map<string, any[]>();
   const ROLL_FEED_LIMIT = 50;
 
+  // Push a roll onto this campaign's recent-rolls cache so the pinned
+  // roster tracker can rehydrate it on reload/reconnect. Persisted to the
+  // campaign row as well as kept in memory, so it survives a restart;
+  // cleared only when the GM clears chat. Shared by roll_notification and
+  // by the top-left dice roller, which used to bypass the feed entirely
+  // and so never showed up under anyone's tracker card.
+  const recordRollFeedEntry = async (campaignId: string, notification: any) => {
+    const stored = { ...notification, id: crypto.randomUUID(), ts: Date.now() };
+    let feed = campaignRollFeeds.get(campaignId);
+    if (!feed) {
+      // Cache miss (e.g. right after a server restart) - hydrate from
+      // the durable column first so older history isn't dropped.
+      const existingCampaign = await storage.getCampaign(campaignId);
+      feed = Array.isArray(existingCampaign?.rollFeed) ? [...existingCampaign.rollFeed] : [];
+    }
+    feed.unshift(stored);
+    if (feed.length > ROLL_FEED_LIMIT) feed.length = ROLL_FEED_LIMIT;
+    campaignRollFeeds.set(campaignId, feed);
+    storage.updateCampaign(campaignId, { rollFeed: feed }).catch((err) => {
+      console.error('Failed to persist roll feed:', err);
+    });
+    return stored;
+  };
+
   // Map to track world rooms (for standalone /worldbuilder collaboration with
   // no linked campaign — gives world-scoped broadcasts a place to land).
   const worldRooms = new Map<string, Set<any>>();
@@ -1821,13 +1845,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
+          // Record it in the campaign's roll feed, exactly like a
+          // roll_notification, so a roll from the top-left dice button shows
+          // up under the roller's pinned tracker card and survives a reload.
+          // It rides along on the dice_roll broadcast rather than being sent
+          // as a second roll_notification, which would double up the on-screen
+          // toast alongside the 3D dice overlay this already triggers.
+          const diceFeedEntry = await recordRollFeedEntry(campaignId, {
+            userId: authenticatedUserId,
+            username,
+            characterName: characterName || undefined,
+            label: purpose ? `${dieType.toUpperCase()} - ${purpose}` : dieType.toUpperCase(),
+            dieType,
+            result: rollResult.result,
+            modifier: rollResult.modifier,
+            total: rollResult.total,
+            type: 'dice',
+          });
+
           // Add characterName to the websocket message for notifications
           const wsMessage = {
             ...createWebSocketDiceRollMessage(rollResult),
             roll: {
               ...rollResult,
               characterName: characterName || undefined,
-            }
+            },
+            rollFeedEntry: diceFeedEntry,
           };
           
           // Format dice roll result for chat - show "Character Name (Player Name)" format
@@ -2489,25 +2532,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // to the campaign row (not just kept in memory) so it survives a
           // server restart/redeploy too - it's cleared only when the GM
           // clears chat.
-          const storedNotification = {
+          const storedNotification = await recordRollFeedEntry(campaignId, {
             ...notification,
             userId: authenticatedUserId,
             username,
-            id: crypto.randomUUID(),
-            ts: Date.now(),
-          };
-          let feed = campaignRollFeeds.get(campaignId);
-          if (!feed) {
-            // Cache miss (e.g. right after a server restart) - hydrate from
-            // the durable column first so older history isn't dropped.
-            const existingCampaign = await storage.getCampaign(campaignId);
-            feed = Array.isArray(existingCampaign?.rollFeed) ? [...existingCampaign.rollFeed] : [];
-          }
-          feed.unshift(storedNotification);
-          if (feed.length > ROLL_FEED_LIMIT) feed.length = ROLL_FEED_LIMIT;
-          campaignRollFeeds.set(campaignId, feed);
-          storage.updateCampaign(campaignId, { rollFeed: feed }).catch((err) => {
-            console.error('Failed to persist roll feed:', err);
           });
 
           // Broadcast roll notification to all OTHER campaign members

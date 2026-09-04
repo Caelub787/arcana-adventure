@@ -7233,6 +7233,7 @@ export default function Campaign() {
         .filter((n: any) => n && typeof n.username === 'string')
         .map((n: any) => ({
           id: n.id || crypto.randomUUID(),
+          userId: n.userId || undefined,
           username: n.username,
           characterName: n.characterName || undefined,
           text: n.label || '',
@@ -7249,6 +7250,7 @@ export default function Campaign() {
       if (!n || typeof n.username !== 'string') return;
       const entry: PinnedRollFeedEntry = {
         id: n.id || crypto.randomUUID(),
+        userId: n.userId || undefined,
         username: n.username,
         characterName: n.characterName || undefined,
         text: n.label || '',
@@ -7256,12 +7258,16 @@ export default function Campaign() {
         ts: typeof n.ts === 'number' ? n.ts : Date.now(),
         dieType: n.dieType || undefined,
       };
-      setRollFeed(prev => [entry, ...prev].slice(0, 50));
+      setRollFeed(prev => (prev.some(p => p.id === entry.id) ? prev : [entry, ...prev].slice(0, 50)));
     };
     const handleLocal = (e: any) => addEntry(e.detail);
     window.addEventListener('roll-notification', handleLocal);
     const unsubscribe = gameWs.onMessage((data: any) => {
       if (data.type === 'roll_notification' && data.notification) addEntry(data.notification);
+      // The top-left dice roller broadcasts `dice_roll` for the 3D animation
+      // and carries its feed entry along, so those rolls land under the
+      // roller's tracker card too instead of only spinning on the battlemap.
+      if (data.type === 'dice_roll' && data.rollFeedEntry) addEntry(data.rollFeedEntry);
       // GM cleared chat - the pinned tracker's roll memory clears with it.
       if (data.type === 'chat_cleared') setRollFeed([]);
     });
