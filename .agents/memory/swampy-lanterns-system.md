@@ -81,7 +81,18 @@ Don't "add the missing piece" — these are absent on purpose:
   V2 battle/GM hotbars — Swampy has no per-character hotbar model to slot into.
   Its stat bars are HP / Strain / Hope; C.A.'s are Wounds / Energy, so
   `CharStatBars` branches on `isSwampy` before the wound pack.
-- **Fear** docks bottom-right above the hotbars, not with the party tracker.
+- **Fear** docks bottom-right on top of the hotbar, not with the party tracker.
+  Its offset steps with the hotbar's own height, which changes twice (the slot
+  grid is 5 wide until `xl`, the slots grow at `sm`), and below `md` the hotbar
+  shares that right edge so it has to be cleared outright.
+- **Top-left toolbar**: Search in every system, then Swampy's **Working Ledger**
+  and **Deck of Houses**. Those two buttons are the *only* way into either
+  panel — `activeSidePanel` still accepts `'ledger'`/`'deck'` whether or not
+  anything can set them, so deleting the buttons silently orphans both panels
+  rather than breaking a build. The map's select/ruler tools sit under that
+  column and derive their top offset from its button count
+  (`selectionToolsTop` in `Campaign.tsx`); it used to be a hardcoded `top-44`
+  and left a 120px hole the moment the count changed.
 
 ## Items
 

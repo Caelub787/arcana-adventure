@@ -9778,6 +9778,11 @@ interface SelectionModeButtonsProps {
   rulerShape?: RulerShape;
   onRulerShapeChange?: (shape: RulerShape) => void;
   campaignSystem?: string;
+  // Distance from the top of the map to the first tool button. The caller
+  // owns this because what sits above these buttons is the top-left toolbar,
+  // and that toolbar's length depends on the system - Swampy adds two. A
+  // fixed offset left a visible hole the moment that count changed.
+  topOffset?: number;
 }
 
 const SelectionModeButtonsInner = function SelectionModeButtons({ 
@@ -9788,7 +9793,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   notesPanelWidth = 0,
   rulerShape = 'cone',
   onRulerShapeChange,
-  campaignSystem
+  campaignSystem,
+  topOffset = 176
 }: SelectionModeButtonsProps) {
   
   const getColorClasses = (color: string, isActive: boolean) => {
@@ -9803,8 +9809,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
 
   return (
     <div 
-      className="absolute top-44 z-50 pointer-events-auto transition-all duration-300 ease-in-out"
-      style={{ left: '8px' }}
+      className="absolute z-50 pointer-events-auto transition-all duration-300 ease-in-out"
+      style={{ left: '16px', top: topOffset }}
     >
       <div className="flex flex-col gap-2">
         <TooltipProvider>
@@ -9816,7 +9822,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 onClick={(e) => { e.stopPropagation(); onModeChange('select'); }}
                 style={{ touchAction: 'manipulation' }}
                 className={`
-                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                  w-10 h-10 rounded-lg border-2 flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('stone', selectionMode === 'select')}
                   ${selectionMode === 'select' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
@@ -9843,7 +9849,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 onClick={(e) => { e.stopPropagation(); onModeChange(selectionMode === 'ruler' ? 'select' : 'ruler'); }}
                 style={{ touchAction: 'manipulation' }}
                 className={`
-                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                  w-10 h-10 rounded-lg border-2 flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('amber', selectionMode === 'ruler')}
                   ${selectionMode === 'ruler' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
@@ -9878,7 +9884,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                       onClick={(e) => { e.stopPropagation(); onRulerShapeChange?.(shape); }}
                       style={{ touchAction: 'manipulation' }}
                       className={`
-                        w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                        w-10 h-10 rounded-lg border-2 flex items-center justify-center
                         transition-all duration-200 shadow-lg backdrop-blur-sm
                         ${getColorClasses('purple', rulerShape === shape)}
                         ${rulerShape === shape ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}

@@ -7087,6 +7087,19 @@ export default function Campaign() {
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'initiative' | 'chat' | 'notes' | 'settings' | 'scene' | 'ledger' | 'deck' | null;
+
+  // The map's select/ruler tools hang off the bottom of the top-left toolbar,
+  // so their offset has to follow however many buttons that toolbar has. It
+  // used to be hardcoded at 176px, tuned for a two-button toolbar, which left
+  // a 120px hole once the dice roller moved into the chat and would have left
+  // the tools sitting on top of Swampy's two extra buttons. Derived from the
+  // toolbar's own geometry now, so it can't drift again.
+  const LEFT_TOOLBAR_TOP = 16;      // the column's own `top-4`
+  const LEFT_TOOLBAR_BUTTON = 40;   // a size="icon" Button
+  const LEFT_TOOLBAR_GAP = 8;       // the column's `gap-2`
+  // Twice the in-column gap: enough to read as a separate group of tools,
+  // not so much that it reads as a hole.
+  const LEFT_TOOLBAR_GROUP_BREAK = 16;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -7517,6 +7530,14 @@ export default function Campaign() {
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
   const isSwampy = isSwampySystem((campaign as any)?.system);
+
+  // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
+  const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
+  const selectionToolsTop =
+    LEFT_TOOLBAR_TOP +
+    leftToolbarButtons * LEFT_TOOLBAR_BUTTON +
+    (leftToolbarButtons - 1) * LEFT_TOOLBAR_GAP +
+    LEFT_TOOLBAR_GROUP_BREAK;
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -10503,9 +10524,10 @@ export default function Campaign() {
           regardless of the side panel's width or open state. */}
       {!spectatorMode && (
       <div className={`absolute top-0 left-0 right-0 p-4 pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
-        {/* Left Side - quick search. The dice roller used to sit above this;
-            it now lives in the chat's input row, where its result already
-            lands. Search is the top-left button in every system. */}
+        {/* Left Side - quick search, then Swampy's two campaign panels. The
+            dice roller used to sit above this; it now lives in the chat's
+            input row, where its result already lands. Search is the top-left
+            button in every system. */}
         <div className="absolute left-4 top-4 pointer-events-auto flex flex-col gap-2">
           <TooltipProvider>
             <Tooltip>
@@ -10530,6 +10552,55 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          {/* Working Ledger and Deck of Houses. These are the only way into
+              either panel, so they can't live in the top-right row with the
+              panels every system has - they'd be the odd pair out there. */}
+          {isSwampy && !isSandbox && (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (activeSidePanel === 'ledger' && !sidePanelMinimized) setSidePanelMinimized(true);
+                        else { setActiveSidePanel('ledger'); setSidePanelMinimized(false); }
+                      }}
+                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      data-testid="button-panel-ledger"
+                    >
+                      <ScrollText className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Working Ledger</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (activeSidePanel === 'deck' && !sidePanelMinimized) setSidePanelMinimized(true);
+                        else { setActiveSidePanel('deck'); setSidePanelMinimized(false); }
+                      }}
+                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      data-testid="button-panel-deck"
+                    >
+                      <Layers className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Deck of Houses</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
         </div>
 
         {/* Center - GM-pinned party tracker (portraits, wound/energy bars, live roll totals) - always centered on screen */}
@@ -12864,6 +12935,7 @@ export default function Campaign() {
                rulerShape={rulerShape}
                onRulerShapeChange={setRulerShape}
                campaignSystem={(campaign as any)?.system}
+               topOffset={selectionToolsTop}
              />
            )}
            
