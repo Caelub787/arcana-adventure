@@ -478,6 +478,17 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: var(--t-amber-500);
   }
+
+  /* Fully hidden scrollbar for compact scroll-swipe UI (e.g. the mobile
+     pinned-player tracker row) where a visible track would be clutter. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Mobile browsers: 100vh includes area behind the browser chrome, forcing scroll.

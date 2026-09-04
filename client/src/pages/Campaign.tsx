@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -10274,6 +10274,16 @@ export default function Campaign() {
       
       {/* Roll Notification Container */}
       <RollNotificationContainer pinnedUsernames={pinnedUsernames} pinnedCharacterNames={pinnedCharacterNames} />
+
+      {/* Fallback for pinned-member rolls when the top tracker bar is
+          covered by a fullscreened panel (character sheet, item dialog,
+          etc.) - RollNotificationContainer above deliberately skips pinned
+          members since they normally already show live in the tracker. */}
+      <FullscreenRollFallback
+        members={(members as any[]) || []}
+        characters={(characters as any[]) || []}
+        rollFeed={rollFeed}
+      />
 
       {/* AA V3: GM spell authoring pop-up (listens for craft requests) */}
       {campaignSystemSlug === 'aa-v3' && effectiveCampaignId && (

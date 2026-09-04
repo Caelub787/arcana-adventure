@@ -20,6 +20,30 @@ export function isFloatingPanelOnTop(panelKey?: string): boolean {
   return !!panelKey && sharedZRegistry[panelKey] === sharedZCounter;
 }
 
+// --- Shared "is anything fullscreen" source of truth ------------------------
+// Any panel maximized via the fullscreen button (character sheets, item
+// dialogs, etc.) covers everything below its z-index, INCLUDING the
+// top-of-screen pinned-player roll tracker. Consumers elsewhere (e.g. a
+// fallback roll notification) need to know this without each wiring up
+// their own tracking - same module-level-counter-plus-subscribers shape as
+// the z-index counter above.
+let fullscreenPanelCount = 0;
+const fullscreenListeners = new Set<() => void>();
+
+export function isAnyPanelFullscreen(): boolean {
+  return fullscreenPanelCount > 0;
+}
+
+export function useAnyPanelFullscreen(): boolean {
+  const [, forceUpdate] = React.useState(0);
+  React.useEffect(() => {
+    const listener = () => forceUpdate((n) => n + 1);
+    fullscreenListeners.add(listener);
+    return () => { fullscreenListeners.delete(listener); };
+  }, []);
+  return fullscreenPanelCount > 0;
+}
+
 export function bringFloatingPanelToFront(panelKey?: string, baseline?: number, force = false): number {
   // Already the topmost panel and nothing (baseline) demands a higher slot:
   // return the existing z instead of bumping the counter. This keeps repeated
@@ -378,6 +402,18 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const [, forceRender] = React.useState(0);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
+
+  // Report this panel's fullscreen state into the shared registry so other UI
+  // (e.g. a fallback roll notification) knows something is covering the screen.
+  React.useEffect(() => {
+    if (!isFullscreen) return;
+    fullscreenPanelCount++;
+    fullscreenListeners.forEach((l) => l());
+    return () => {
+      fullscreenPanelCount = Math.max(0, fullscreenPanelCount - 1);
+      fullscreenListeners.forEach((l) => l());
+    };
+  }, [isFullscreen]);
   // For fitContent panels we render hidden until the one-time fit-to-content
   // has locked the size, so the user never sees the default size flash to the
   // fitted size. Panels that aren't waiting on a fit reveal immediately.

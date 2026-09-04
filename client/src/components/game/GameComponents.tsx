@@ -23,7 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { FloatingPanel, TopLayerOverlay } from "@/components/ui/floating-panel";
+import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -11290,6 +11290,40 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   isMobile?: boolean;
   onOpenCharacterSheet?: (character: any) => void;
 }) {
+  // Mobile only has room for a couple of cards at once, so the row scrolls
+  // horizontally instead of shrinking or wrapping. When a roll lands for a
+  // chip that's currently scrolled out of view, the edge of the tracker on
+  // that side glows in the roller's color for as long as the roll itself
+  // stays revealed, so a mobile player knows to scroll over and look.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [leftGlow, setLeftGlow] = useState<string | null>(null);
+  const [rightGlow, setRightGlow] = useState<string | null>(null);
+  const leftGlowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rightGlowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (leftGlowTimerRef.current) clearTimeout(leftGlowTimerRef.current);
+    if (rightGlowTimerRef.current) clearTimeout(rightGlowTimerRef.current);
+  }, []);
+
+  const handleNewRoll = (chipEl: HTMLDivElement | null, color: string) => {
+    const container = scrollContainerRef.current;
+    if (!isMobile || !container || !chipEl) return;
+    const containerRect = container.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+    // Matches the roll's own ~3200ms reveal window (PinnedRosterChip), so
+    // the glow fades out right alongside the roll it's pointing at.
+    if (chipRect.right < containerRect.left) {
+      if (leftGlowTimerRef.current) clearTimeout(leftGlowTimerRef.current);
+      setLeftGlow(color);
+      leftGlowTimerRef.current = setTimeout(() => setLeftGlow(null), 3200);
+    } else if (chipRect.left > containerRect.right) {
+      if (rightGlowTimerRef.current) clearTimeout(rightGlowTimerRef.current);
+      setRightGlow(color);
+      rightGlowTimerRef.current = setTimeout(() => setRightGlow(null), 3200);
+    }
+  };
+
   const pinnedMembers = (members || []).filter((m: any) => m.pinned);
   // Characters pinned directly (GM tool, mainly for NPCs with no owning
   // player) - always rendered after every pinned player. Skip any that are
@@ -11299,8 +11333,9 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
     c.pinned && !pinnedMembers.some((m: any) => m.assignedCharacterId === c.id)
   );
   if (pinnedMembers.length === 0 && pinnedCharacters.length === 0) return null;
-  return (
-    <div className="flex items-start gap-3 pointer-events-auto">
+
+  const chips = (
+    <>
       {pinnedMembers.map((member: any) => {
         const character = (characters || []).find((c: any) => c.id === member.assignedCharacterId);
         const rolls = rollFeed.filter((r) =>
@@ -11316,8 +11351,8 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character, member)}
-            isMobile={isMobile}
             onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
+            onNewRoll={handleNewRoll}
           />
         );
       })}
@@ -11333,16 +11368,51 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character)}
-            isMobile={isMobile}
             onOpenSheet={() => onOpenCharacterSheet?.(character)}
+            onNewRoll={handleNewRoll}
           />
         );
       })}
+    </>
+  );
+
+  if (!isMobile) {
+    return <div className="flex items-start gap-3 pointer-events-auto">{chips}</div>;
+  }
+
+  return (
+    <div className="relative pointer-events-auto" style={{ maxWidth: '412px' }}>
+      <div
+        ref={scrollContainerRef}
+        className="flex items-start gap-3 overflow-x-auto overflow-y-visible no-scrollbar"
+        style={{ maxWidth: '412px' }}
+      >
+        {chips}
+      </div>
+      {/* Edge glow strips - light up in the off-screen roller's beacon color
+          so a mobile player knows which direction to scroll to see the
+          roll that just landed. */}
+      <div
+        className="pointer-events-none absolute left-0 top-0 bottom-0 w-3 rounded-l-lg transition-opacity duration-300"
+        style={{
+          opacity: leftGlow ? 1 : 0,
+          background: leftGlow ? `linear-gradient(to right, ${leftGlow}, transparent)` : undefined,
+          boxShadow: leftGlow ? `0 0 10px 2px ${leftGlow}` : undefined,
+        }}
+      />
+      <div
+        className="pointer-events-none absolute right-0 top-0 bottom-0 w-3 rounded-r-lg transition-opacity duration-300"
+        style={{
+          opacity: rightGlow ? 1 : 0,
+          background: rightGlow ? `linear-gradient(to left, ${rightGlow}, transparent)` : undefined,
+          boxShadow: rightGlow ? `0 0 10px 2px ${rightGlow}` : undefined,
+        }}
+      />
     </div>
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, isMobile, onOpenSheet }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, onOpenSheet, onNewRoll }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11350,16 +11420,17 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
   accentColor?: string;
-  isMobile?: boolean;
   onOpenSheet?: () => void;
+  // Called whenever a fresh roll lands, with this chip's own element and
+  // accent color - lets the wrapping PinnedRosterBar (mobile only) detect
+  // whether the chip is currently scrolled off-screen and light up that
+  // edge of the tracker.
+  onNewRoll?: (chipEl: HTMLDivElement | null, color: string) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
-  // Mobile: a tap locks the last-roll strip visible (no hover on touch), and
-  // stays that way until the next tap anywhere outside the chip.
-  const [tapLocked, setTapLocked] = useState(false);
   // A new roll cycles a fake random number in the total's place for a beat
   // before settling on the real total, like a die still tumbling.
   const [rolling, setRolling] = useState(false);
@@ -11382,17 +11453,6 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // fresh roll that flashed once and vanished.
   const lastSeenIdRef = useRef<string | undefined>(rolls[0]?.id);
   const latest = rolls[0];
-
-  useEffect(() => {
-    if (!tapLocked) return;
-    const handleOutside = (e: PointerEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setTapLocked(false);
-      }
-    };
-    document.addEventListener('pointerdown', handleOutside);
-    return () => document.removeEventListener('pointerdown', handleOutside);
-  }, [tapLocked]);
 
   // Beacon color, when set, drives both the resting outline and the roll
   // glow; with no player assigned we fall back to the existing amber classes
@@ -11418,6 +11478,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     hideTimerRef.current = setTimeout(() => {
       if (!hoveringRef.current) setRevealed(false);
     }, 3200);
+    onNewRoll?.(containerRef.current, accentColor || '#3D77F0');
 
     // Tumble a fake number in the total's spot for a beat before settling
     // on the real one, so the reveal feels like an actual roll landing.
@@ -11457,7 +11518,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
   const dc = character?.naturalArmor;
   // Never reveal an empty box - there's nothing to show until a roll exists.
-  const visible = !!latest && (revealed || historyOpen || tapLocked);
+  const visible = !!latest && (revealed || historyOpen);
   const borderColor = accentColor || '#3D77F0';
   const rgbForBorder = accentRgb || '61, 119, 240';
 
@@ -11479,110 +11540,14 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     </PopoverContent>
   );
 
-  if (isMobile) {
-    return (
-      <div
-        ref={containerRef}
-        className="relative flex flex-col items-center"
-        data-testid={testId}
-        onMouseEnter={() => {
-          hoveringRef.current = true;
-          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-          setRevealed(true);
-        }}
-        onMouseLeave={() => {
-          hoveringRef.current = false;
-          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-          // A fresh roll stays visible for its full window even through a
-          // brief hover-then-leave - only a genuine "hovered to peek at an
-          // already-settled roll" gets the quick 400ms hide.
-          const delay = Math.max(400, revealUntilRef.current - Date.now());
-          hideTimerRef.current = setTimeout(() => setRevealed(false), delay);
-        }}
-        onClick={() => setTapLocked(true)}
-      >
-        <div
-          className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 shadow-lg bg-stone-900 transition-shadow ${accentRgb ? '' : (glow ? 'ring-4 ring-amber-400/80 border-amber-400' : 'border-stone-600')}`}
-          style={accentRgb ? {
-            borderColor: accentColor,
-            boxShadow: glow ? `0 0 0 4px rgba(${accentRgb}, 0.8)` : undefined,
-          } : undefined}
-        >
-          {portraitSrc && !imgFailed ? (
-            <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
-          ) : (
-            <div className="w-full h-full bg-stone-800" />
-          )}
-          {/* Name and vital bars overlaid directly on the portrait, like a token label + bars. */}
-          <div
-            className="absolute top-0 left-0 right-0 px-0.5 pt-0.5 text-[9px] leading-tight font-bold text-white truncate text-center pointer-events-none"
-            style={{ textShadow: '0 0 3px #000, 0 0 3px #000, 0 0 3px #000' }}
-          >
-            {displayName}
-          </div>
-          {character && primaryBar && energyBar && (
-            <div className="absolute bottom-0 left-0 right-0 px-0.5 pb-0.5 space-y-0.5 pointer-events-none">
-              <div className="h-1 bg-black/60 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-cyan-500"
-                  style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
-                />
-              </div>
-              <div className="h-1 bg-black/60 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-                  style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              onClick={() => rolls.length > 0 && setHistoryOpen(true)}
-              className="mt-0.5 overflow-hidden"
-              style={{
-                width: '72px',
-                height: visible ? '28px' : '0px',
-                opacity: visible ? 1 : 0,
-                transition: 'height 250ms ease, opacity 200ms ease',
-                pointerEvents: visible ? 'auto' : 'none',
-              }}
-              data-testid={`pinned-roll-${testId}`}
-            >
-              <div
-                className={`w-full h-7 flex items-center justify-center text-xs font-bold text-white ${accentRgb ? '' : (glow ? 'bg-amber-500 shadow-[0_0_12px_4px_rgba(251,191,36,0.7)]' : 'bg-stone-800/95 border border-stone-600')}`}
-                style={{
-                  clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
-                  transition: 'background-color 500ms ease, box-shadow 500ms ease, border-color 500ms ease',
-                  ...(accentRgb ? {
-                    backgroundColor: glow ? accentColor : 'rgba(28, 25, 23, 0.95)',
-                    border: `1px solid ${accentColor}`,
-                    boxShadow: glow ? `0 0 12px 4px rgba(${accentRgb}, 0.7)` : undefined,
-                  } : {}),
-                }}
-              >
-                <span className={rolling ? 'animate-pulse' : ''}>
-                  {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}
-                </span>
-              </div>
-            </button>
-          </PopoverTrigger>
-          {historyPopoverContent}
-        </Popover>
-      </div>
-    );
-  }
-
-  // Desktop: a compact ~200x75 horizontal player card - square portrait on
-  // the left, name/DC/HP/Energy stacked to its right, a chevron to open the
-  // roll history on the far right - border/glow tinted to the beacon color,
-  // with a floating roll callout hanging directly below it (a small square
-  // card of its own, opacity-only reveal so it never renders as a
-  // collapsed sliver).
+  // A compact ~200x75 horizontal player card - square portrait on the left,
+  // name/DC/HP/Energy stacked to its right, a chevron to open the roll
+  // history on the far right - border/glow tinted to the beacon color, with
+  // a floating roll callout hanging directly below it (a small square card
+  // of its own, opacity-only reveal so it never renders as a collapsed
+  // sliver). Rendered identically on mobile and desktop; mobile-only
+  // horizontal scrolling and off-screen roll glow are handled by the
+  // wrapping PinnedRosterBar.
   return (
     <div
       ref={containerRef}
@@ -11694,6 +11659,83 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           {historyPopoverContent}
         </Popover>
       </div>
+    </div>
+  );
+}
+
+// Fallback for when the top-of-screen PinnedRosterBar is covered by a
+// fullscreened panel (a character sheet, item dialog, etc.) - a pinned
+// member's roll otherwise has nowhere visible to show, since
+// RollNotificationContainer's bottom-left toasts deliberately skip pinned
+// members (they normally already show live in the tracker bar above). Only
+// rendered while something actually is fullscreen; each entry fades out
+// after ~3200ms, matching the tracker card's own reveal window.
+export function FullscreenRollFallback({ members, characters, rollFeed }: {
+  members: any[];
+  characters: any[];
+  rollFeed: PinnedRollFeedEntry[];
+}) {
+  const isFullscreen = useAnyPanelFullscreen();
+  const [active, setActive] = useState<PinnedRollFeedEntry[]>([]);
+  const lastSeenIdRef = useRef<string | undefined>(rollFeed[0]?.id);
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const pinnedMembers = (members || []).filter((m: any) => m.pinned);
+  const pinnedCharacters = (characters || []).filter((c: any) => c.pinned);
+
+  const colorFor = (entry: PinnedRollFeedEntry): string => {
+    const member = pinnedMembers.find((m: any) => m.username === entry.username);
+    const character = (characters || []).find((c: any) =>
+      c.name === entry.characterName && (!member || c.id === member.assignedCharacterId)
+    );
+    return characterTrackerColor(character, member) || '#3D77F0';
+  };
+
+  useEffect(() => {
+    const latest = rollFeed[0];
+    if (!latest || latest.id === lastSeenIdRef.current) return;
+    lastSeenIdRef.current = latest.id;
+    const isPinned =
+      pinnedMembers.some((m: any) => m.username === latest.username) ||
+      (!!latest.characterName && pinnedCharacters.some((c: any) => c.name === latest.characterName)) ||
+      (!!latest.characterName && pinnedMembers.some((m: any) => {
+        const c = (characters || []).find((ch: any) => ch.id === m.assignedCharacterId);
+        return c && c.name === latest.characterName;
+      }));
+    if (!isPinned) return;
+    setActive((prev) => [latest, ...prev].slice(0, 4));
+    const timer = setTimeout(() => {
+      setActive((prev) => prev.filter((r) => r.id !== latest.id));
+      timersRef.current.delete(latest.id);
+    }, 3200);
+    timersRef.current.set(latest.id, timer);
+  }, [rollFeed]);
+
+  useEffect(() => () => {
+    timersRef.current.forEach((t) => clearTimeout(t));
+  }, []);
+
+  if (!isFullscreen || active.length === 0) return null;
+
+  return (
+    <div
+      className="fixed top-2 left-1/2 -translate-x-1/2 z-[200001] flex flex-col items-center gap-1.5 pointer-events-none"
+      data-testid="fullscreen-roll-fallback"
+    >
+      {active.map((r) => {
+        const color = colorFor(r);
+        return (
+          <div
+            key={r.id}
+            className="px-3 py-1.5 rounded-lg bg-stone-900/95 border shadow-lg flex items-center gap-2"
+            style={{ borderColor: color }}
+          >
+            <span className="text-xs font-bold truncate max-w-[100px]" style={{ color }}>{r.characterName || r.username}</span>
+            <span className="text-xs text-stone-300 truncate max-w-[160px]">{r.text}</span>
+            {r.total !== null && <span className="text-sm font-bold" style={{ color }}>{r.total}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
