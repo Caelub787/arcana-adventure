@@ -1,24 +1,22 @@
-// Runtime resolver for the wound-based systems (C.A. and Swampy).
+// Runtime resolver for the wound-based systems.
 //
-// C.A. and Swampy are deliberately separate rulesets living in shared/ca.ts and
-// shared/swampy.ts — neither file imports the other, so either can be edited
-// without touching the other. They currently share a UI (Swampy started as a
-// copy of C.A.), and this module is the seam that lets that one UI serve both:
-// hand it a campaign's system slug and it hands back that system's constants,
-// helpers, and character column names.
+// C.A. is the only one right now. Swampy briefly shared this model while it was
+// a copy of C.A., then replaced it with Daggerheart's HP + damage thresholds +
+// Strain (see shared/swampy.ts), so it is no longer resolved here.
 //
-// When the two rulesets diverge, nothing here changes — the pack just starts
-// returning different values. If a system needs UI that the other doesn't have,
-// branch on `rules.slug` at that spot rather than widening this interface.
+// The seam is kept rather than inlined: the shared wound UI reads its
+// constants AND its character column names from the pack, so a second wound
+// system can be added by adding a pack, without hunting for `=== 'ca'` checks
+// again. If a system needs UI another doesn't have, branch on `rules.slug` at
+// that spot rather than widening this interface.
 
 import * as CA from "./ca";
-import * as SW from "./swampy";
 
-export type WoundSystemSlug = "ca" | "swampy";
+export type WoundSystemSlug = "ca";
 
 /** True for the systems that replace HP with the pinned-wound model. */
 export function isWoundSystem(slug?: string | null): boolean {
-  return slug === "ca" || slug === "swampy";
+  return slug === "ca";
 }
 
 export interface WoundEffectShape {
@@ -134,48 +132,13 @@ const CA_RULES: WoundSystemRules = {
   energyPoolOf: (c: any) => Number(c?.caEnergyPool) || 0,
 };
 
-const SWAMPY_RULES: WoundSystemRules = {
-  slug: "swampy",
-  label: "Swampy",
-
-  woundsField: "swampyWounds",
-  bodySexField: "swampyBodySex",
-  energyPoolField: "swampyEnergyPool",
-
-  ATTRIBUTES: SW.SWAMPY_ATTRIBUTES,
-  SKILLS: SW.SWAMPY_SKILLS,
-  WOUND_MAX: SW.SWAMPY_WOUND_MAX,
-  WOUND_SEVERITIES: SW.SWAMPY_WOUND_SEVERITIES,
-  WOUND_SEVERITY_LABELS: SW.SWAMPY_WOUND_SEVERITY_LABELS,
-  WOUND_SEVERITY_COST: SW.SWAMPY_WOUND_SEVERITY_COST,
-  WOUND_SEVERITY_RANK: SW.SWAMPY_WOUND_SEVERITY_RANK,
-  FIXED_STAT_TARGETS: SW.SWAMPY_FIXED_STAT_TARGETS,
-  FIXED_STAT_LABELS: SW.SWAMPY_FIXED_STAT_LABELS,
-  MAX_NEGATIVE_SKILL_POINTS: SW.SWAMPY_MAX_NEGATIVE_SKILL_POINTS,
-
-  attrValueToDieSides: SW.swampyAttrValueToDieSides,
-  attrDieType: SW.swampyAttrDieType,
-  attrPointBudget: SW.swampyAttrPointBudget,
-  skillPointBudget: SW.swampySkillPointBudget,
-  effectiveSkillMod: SW.swampyEffectiveSkillMod,
-  makeEmptySkills: SW.makeEmptySwampySkills,
-  makeWound: SW.makeSwampyWound,
-  makeWoundEffect: SW.makeSwampyWoundEffect,
-  normalizeWounds: SW.normalizeSwampyWounds,
-  woundStatEffectTotal: SW.swampyWoundStatEffectTotal,
-  woundTotalCost: SW.swampyWoundTotalCost,
-  woundEffectTargetLabel: SW.swampyWoundEffectTargetLabel,
-
-  woundsOf: (c: any) => c?.swampyWounds,
-  bodySexOf: (c: any) => SW.swampyBodySexOf(c),
-  energyPoolOf: (c: any) => Number(c?.swampyEnergyPool) || 0,
-};
-
 /**
- * Rule pack for a campaign's system slug. Falls back to C.A. for any
- * non-wound system so callers that only run inside a wound campaign don't
- * have to null-check; use `isWoundSystem()` to decide whether to call at all.
+ * Rule pack for a campaign's system slug. C.A. is currently the only wound
+ * system, so this always returns its pack; callers use `isWoundSystem()` to
+ * decide whether to call at all. The indirection stays because the shared
+ * wound UI reads its constants and character column names from here, and
+ * because Swampy proved a second wound system can appear and then leave.
  */
-export function woundSystemRules(slug?: string | null): WoundSystemRules {
-  return slug === "swampy" ? SWAMPY_RULES : CA_RULES;
+export function woundSystemRules(_slug?: string | null): WoundSystemRules {
+  return CA_RULES;
 }

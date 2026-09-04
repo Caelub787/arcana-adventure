@@ -1,311 +1,445 @@
-// Swampy — a fresh, independent 5th game system.
-// Nothing in this file is imported from or exported to shared/ca.ts,
-// shared/v3.ts, or any other system's constants. Swampy starts life as a
-// straight copy of C.A., but the two are fully independent from here on:
-// editing this file never touches C.A., and editing shared/ca.ts never
-// touches Swampy.
+// Swampy — "The Lanterns Beyond the Veil".
+//
+// Daggerheart's mechanical base (Duality Dice, Hope/Fear, HP + damage
+// thresholds, Armour Slots, Stress — renamed Strain here) with its fixed
+// classes, Domain Cards and spellcasting removed. In their place: freeform
+// actions for everyone, and magic ("Drawing") tied to living worlds called
+// Warrens rather than to spell lists or mana pools.
+//
+// This file imports nothing from shared/ca.ts, shared/v3.ts, or any other
+// system's constants, and nothing imports it back. Swampy began as a copy of
+// C.A. and has since replaced that ruleset wholesale; the two stay fully
+// independent, so editing either never touches the other.
 
 // ---------------------------------------------------------------------------
-// Wounds — replaces HP entirely for Swampy. A freeform pin on a body diagram,
-// not a fixed grid of slots: click "Add Wound", click a spot on the body,
-// and that becomes a wound with its own name, severity, and description.
-// A wound can carry multiple effects, each just a skill/stat target plus a
-// numeric amount (no free text per effect) — applied automatically to that
-// skill's rolls or that movement stat while the wound is active (untreated).
+// Traits
+//
+// A roll is Hope d12 + Fear d12 + the relevant trait (+ any Experience the
+// player spends Hope on). There is no skill list: what a character is good at
+// is expressed by traits plus their own freeform Experiences, which is what
+// keeps physical, social, crafting and exploration expertise valuable without
+// enumerating allowed actions.
 // ---------------------------------------------------------------------------
 
-export type SwampyWoundSeverity = "minor" | "moderate" | "serious";
+export type SwampyTraitKey =
+  | "agility"
+  | "strength"
+  | "finesse"
+  | "instinct"
+  | "presence"
+  | "knowledge";
 
-export const SWAMPY_WOUND_SEVERITIES: SwampyWoundSeverity[] = ["minor", "moderate", "serious"];
-
-export const SWAMPY_WOUND_SEVERITY_LABELS: Record<SwampyWoundSeverity, string> = {
-  minor: "Minor",
-  moderate: "Moderate",
-  serious: "Serious",
-};
-
-// How many points of Wound Capacity an active (untreated) wound of this
-// severity costs.
-export const SWAMPY_WOUND_SEVERITY_COST: Record<SwampyWoundSeverity, number> = {
-  minor: 1,
-  moderate: 2,
-  serious: 3,
-};
-
-// Sort weight for "most severe first" — higher sorts first.
-export const SWAMPY_WOUND_SEVERITY_RANK: Record<SwampyWoundSeverity, number> = {
-  serious: 3,
-  moderate: 2,
-  minor: 1,
-};
-
-// Movement stats a wound's effect can target besides a skill.
-export const SWAMPY_FIXED_STAT_TARGETS = ["speed", "flySpeed", "swimSpeed"] as const;
-export type SwampyFixedStatTarget = typeof SWAMPY_FIXED_STAT_TARGETS[number];
-export const SWAMPY_FIXED_STAT_LABELS: Record<SwampyFixedStatTarget, string> = {
-  speed: "Speed",
-  flySpeed: "Fly Speed",
-  swimSpeed: "Swim Speed",
-};
-
-export function swampyWoundEffectTargetLabel(target: string): string {
-  if ((SWAMPY_FIXED_STAT_TARGETS as readonly string[]).includes(target)) return SWAMPY_FIXED_STAT_LABELS[target as SwampyFixedStatTarget];
-  const skill = SWAMPY_SKILLS.find(s => s.key === target);
-  if (skill) return skill.name;
-  return target;
-}
-
-export interface SwampyWoundEffect {
-  id: string;
-  target: string; // a SWAMPY_SKILLS key or a SwampyFixedStatTarget — always set, no free-text per effect
-  amount: number;
-}
-
-export interface SwampyWound {
-  id: string;
-  x: number; // 0-100, percent position on the body diagram
-  y: number; // 0-100
+export interface SwampyTraitDef {
+  key: SwampyTraitKey;
   name: string;
-  severity: SwampyWoundSeverity;
+  abbr: string;
   description: string;
-  effects: SwampyWoundEffect[];
 }
 
-let swampyWoundIdCounter = 0;
-function makeSwampyWoundId(): string {
-  swampyWoundIdCounter += 1;
-  return `w${Date.now().toString(36)}${swampyWoundIdCounter}${Math.random().toString(36).slice(2, 6)}`;
+export const SWAMPY_TRAITS: SwampyTraitDef[] = [
+  { key: "agility",   name: "Agility",   abbr: "AGI", description: "Sprinting, leaping, manoeuvring, and staying on your feet." },
+  { key: "strength",  name: "Strength",  abbr: "STR", description: "Lifting, grappling, smashing, and holding ground." },
+  { key: "finesse",   name: "Finesse",   abbr: "FIN", description: "Control, stealth, precision, and delicate work." },
+  { key: "instinct",  name: "Instinct",  abbr: "INS", description: "Perceiving, sensing, navigating, and reacting." },
+  { key: "presence",  name: "Presence",  abbr: "PRE", description: "Charming, performing, intimidating, and negotiating." },
+  { key: "knowledge", name: "Knowledge", abbr: "KNO", description: "Recalling, deducing, and understanding how things work." },
+];
+
+export const SWAMPY_TRAIT_KEYS: SwampyTraitKey[] = SWAMPY_TRAITS.map(t => t.key);
+
+export function isSwampyTraitKey(key: string | null | undefined): key is SwampyTraitKey {
+  return !!key && (SWAMPY_TRAIT_KEYS as string[]).includes(key);
 }
 
-export function makeSwampyWoundEffect(): SwampyWoundEffect {
-  return { id: makeSwampyWoundId(), target: SWAMPY_FIXED_STAT_TARGETS[0], amount: 0 };
+export function makeEmptySwampyTraits(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of SWAMPY_TRAITS) out[t.key] = 0;
+  return out;
 }
 
-// A fresh wound pinned at (x, y) — percent coordinates on the body diagram,
-// clamped 0-100 so a click just outside the image can't store a marker
-// that renders off it.
-export function makeSwampyWound(x: number, y: number): SwampyWound {
-  return {
-    id: makeSwampyWoundId(),
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
-    name: "",
-    severity: "minor",
-    description: "",
-    effects: [],
-  };
+// ---------------------------------------------------------------------------
+// Experiences
+//
+// Freeform phrases ("Grew up on the docks", "Owes a favour to the Ash House")
+// rather than a fixed skill list. Spending a Hope adds the Experience's
+// modifier to a roll it plausibly applies to — the GM adjudicates relevance,
+// which is the same universal-action principle the rest of the system uses.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_EXPERIENCE_BONUS = 2;
+
+export interface SwampyExperience {
+  id: string;
+  name: string;
+  modifier: number;
 }
 
-// A target is required now — an effect with no target (an old free-text
-// effect line, or an old optional-target shape) can't be represented in
-// this model, so it's dropped rather than kept as a meaningless bullet.
-function normalizeSwampyWoundEffect(raw: unknown): SwampyWoundEffect | null {
-  if (!raw || typeof raw !== "object") return null;
-  const anyE = raw as any;
-  if (typeof anyE.target !== "string" || !anyE.target) return null;
-  return {
-    id: typeof anyE.id === "string" && anyE.id ? anyE.id : makeSwampyWoundId(),
-    target: anyE.target,
-    amount: Number.isFinite(Number(anyE.amount)) ? Math.trunc(Number(anyE.amount)) : 0,
-  };
+let swampyIdCounter = 0;
+function makeSwampyId(prefix: string): string {
+  swampyIdCounter += 1;
+  return `${prefix}${Date.now().toString(36)}${swampyIdCounter}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-// Tolerates missing/malformed data (a character predating this shape, an
-// old fixed-slot-era wounds array, or a plain corrupt value) by dropping
-// anything that doesn't look like a real wound rather than throwing.
-export function normalizeSwampyWounds(raw: unknown): SwampyWound[] {
+export function makeSwampyExperience(): SwampyExperience {
+  return { id: makeSwampyId("x"), name: "", modifier: SWAMPY_EXPERIENCE_BONUS };
+}
+
+export function normalizeSwampyExperiences(raw: unknown): SwampyExperience[] {
   if (!Array.isArray(raw)) return [];
-  const out: SwampyWound[] = [];
-  for (const w of raw) {
-    if (!w || typeof w !== "object") continue;
-    const anyW = w as any;
-    if (typeof anyW.x !== "number" && typeof anyW.y !== "number") continue; // old fixed-slot shape, drop it
-    const severity: SwampyWoundSeverity =
-      anyW.severity === "moderate" || anyW.severity === "serious" ? anyW.severity : "minor";
+  const out: SwampyExperience[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const anyE = e as any;
     out.push({
-      id: typeof anyW.id === "string" && anyW.id ? anyW.id : makeSwampyWoundId(),
-      x: Number.isFinite(Number(anyW.x)) ? Math.max(0, Math.min(100, Number(anyW.x))) : 50,
-      y: Number.isFinite(Number(anyW.y)) ? Math.max(0, Math.min(100, Number(anyW.y))) : 50,
-      name: typeof anyW.name === "string" ? anyW.name : "",
-      severity,
-      description: typeof anyW.description === "string" ? anyW.description : "",
-      effects: Array.isArray(anyW.effects)
-        ? anyW.effects.map(normalizeSwampyWoundEffect).filter((e: SwampyWoundEffect | null): e is SwampyWoundEffect => e !== null)
-        : [],
+      id: typeof anyE.id === "string" && anyE.id ? anyE.id : makeSwampyId("x"),
+      name: typeof anyE.name === "string" ? anyE.name : "",
+      modifier: Number.isFinite(Number(anyE.modifier)) ? Math.trunc(Number(anyE.modifier)) : SWAMPY_EXPERIENCE_BONUS,
     });
   }
   return out;
 }
 
-// Sums every wound's effects targeting `target` (a SWAMPY_SKILLS key or a
-// SwampyFixedStatTarget). Treating a wound removes it (and its effects)
-// entirely — see swampyWoundEffectTargetLabel's callers — so every wound in
-// the array is by definition active; this is always computed fresh from
-// the wounds array, never a separately stored total.
-export function swampyWoundStatEffectTotal(wounds: unknown, target: string): number {
-  if (!target) return 0;
-  const normalized = normalizeSwampyWounds(wounds);
-  let total = 0;
-  for (const w of normalized) {
-    for (const eff of w.effects) {
-      if (eff.target === target) total += eff.amount;
-    }
-  }
-  return total;
+// ---------------------------------------------------------------------------
+// Duality Dice
+//
+// Two d12 rolled together — one Hope, one Fear. Their sum plus modifiers is
+// compared to a GM-set Difficulty, and which die came up higher decides who
+// gains the meta-currency. Matching dice are a critical success: the best
+// plausible result, not a reality-breaking one.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_DUALITY_DIE_SIDES = 12;
+
+export type SwampyRollOutcome =
+  | "critical"
+  | "success-hope"
+  | "success-fear"
+  | "failure-hope"
+  | "failure-fear";
+
+export const SWAMPY_OUTCOME_LABELS: Record<SwampyRollOutcome, string> = {
+  critical: "Critical Success",
+  "success-hope": "Success with Hope",
+  "success-fear": "Success with Fear",
+  "failure-hope": "Failure with Hope",
+  "failure-fear": "Failure with Fear",
+};
+
+export const SWAMPY_OUTCOME_DESCRIPTIONS: Record<SwampyRollOutcome, string> = {
+  critical: "The best plausible result. Gain a Hope and clear a Strain.",
+  "success-hope": "You succeed cleanly and gain a Hope.",
+  "success-fear": "You succeed, but a consequence occurs and the GM gains a Fear.",
+  "failure-hope": "You fail or get a reduced result, but gain a Hope and avoid the worst of it.",
+  "failure-fear": "You fail and the situation worsens. The GM gains a Fear.",
+};
+
+export interface SwampyDualityResult {
+  hopeDie: number;
+  fearDie: number;
+  modifier: number;
+  total: number;
+  difficulty: number | null;
+  outcome: SwampyRollOutcome;
+  /** Matching dice — a critical succeeds regardless of Difficulty. */
+  isCritical: boolean;
+  /** True when the roll leaves the player with a Hope. */
+  gainsHope: boolean;
+  /** True when the roll hands the GM a Fear. */
+  gainsFear: boolean;
+  /** A critical also clears a Strain. */
+  clearsStrain: boolean;
 }
 
-// Total Wound Capacity spent by every wound currently on the character —
-// treating a wound removes it from this array entirely, so there's no
-// separate "treated but still present" state to exclude.
-export function swampyWoundTotalCost(wounds: unknown): number {
-  const normalized = normalizeSwampyWounds(wounds);
-  let total = 0;
-  for (const w of normalized) {
-    total += SWAMPY_WOUND_SEVERITY_COST[w.severity];
-  }
-  return total;
-}
+/**
+ * Resolve an already-rolled pair of dice.
+ *
+ * Kept separate from the rolling itself so the server can roll the dice and
+ * both sides can agree on what the result means.
+ */
+export function resolveSwampyDuality(
+  hopeDie: number,
+  fearDie: number,
+  modifier = 0,
+  difficulty: number | null = null,
+): SwampyDualityResult {
+  const hope = Math.max(1, Math.min(SWAMPY_DUALITY_DIE_SIDES, Math.trunc(hopeDie) || 1));
+  const fear = Math.max(1, Math.min(SWAMPY_DUALITY_DIE_SIDES, Math.trunc(fearDie) || 1));
+  const mod = Math.trunc(modifier) || 0;
+  const total = hope + fear + mod;
+  const isCritical = hope === fear;
+  // With no Difficulty set the GM is calling it; treat the roll as unresolved
+  // for success purposes and report only which die won.
+  const succeeded = isCritical || (difficulty !== null && total >= difficulty);
 
-// Every Swampy character has the same flat Wound Capacity — a full "HP" bar
-// of 20, drained by the point cost of each active (untreated) wound.
-export const SWAMPY_WOUND_MAX = 20;
+  let outcome: SwampyRollOutcome;
+  if (isCritical) outcome = "critical";
+  else if (succeeded) outcome = hope > fear ? "success-hope" : "success-fear";
+  else outcome = hope > fear ? "failure-hope" : "failure-fear";
 
-// Which body diagram renders behind the wound markers. Defaults to male.
-export type SwampyBodySex = "male" | "female";
-
-export function swampyBodySexOf(character: { swampyBodySex?: string | null } | null | undefined): SwampyBodySex {
-  return character?.swampyBodySex === "female" ? "female" : "male";
+  return {
+    hopeDie: hope,
+    fearDie: fear,
+    modifier: mod,
+    total,
+    difficulty,
+    outcome,
+    isCritical,
+    gainsHope: isCritical || hope > fear,
+    gainsFear: !isCritical && fear > hope,
+    clearsStrain: isCritical,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Attributes + skills — starts as a copy of C.A.'s 6 attributes and 19
-// attribute-linked skills, but is its own independent list: editing this
-// file never touches shared/ca.ts or shared/v3.ts, and vice versa.
-// Characters store their values in the same `might`/`finesse`/`will`/
-// `constitution`/`anemos`/`intelligence` columns and `v3Skills`/
-// `v3SkillBoosts` JSON columns that V3 and C.A. characters use — those are
-// per-character storage, and a character only ever belongs to one campaign
-// (and therefore one system), so reusing them creates no cross-system
-// leakage. Only the admin-authored constant lists here need to be forked.
-// The Swampy-only wound/body/pool state does get its own columns
-// (`swampy_wounds`, `swampy_body_sex`, `swampy_energy_pool`) so those
-// mechanics can diverge from C.A.'s freely.
+// Hope and Fear
 // ---------------------------------------------------------------------------
 
-export type SwampyAttributeKey =
-  | "might"
-  | "finesse"
-  | "constitution"
-  | "will"
-  | "anemos"
-  | "intelligence";
+export const SWAMPY_MAX_HOPE = 6;
+export const SWAMPY_MAX_FEAR = 12;
 
-export interface SwampyAttributeDef {
-  key: SwampyAttributeKey;
-  name: string;
-  abbr: string;
+export function clampSwampyHope(value: unknown): number {
+  return Math.max(0, Math.min(SWAMPY_MAX_HOPE, Math.trunc(Number(value)) || 0));
 }
 
-export const SWAMPY_ATTRIBUTES: SwampyAttributeDef[] = [
-  { key: "might",        name: "Might",        abbr: "MIG" },
-  { key: "finesse",      name: "Finesse",      abbr: "FIN" },
-  { key: "constitution", name: "Constitution", abbr: "CON" },
-  { key: "will",         name: "Will",         abbr: "WIL" },
-  { key: "anemos",       name: "Anemos",       abbr: "ANE" },
-  { key: "intelligence", name: "Intelligence", abbr: "INT" },
-];
-
-export const SWAMPY_ATTRIBUTE_KEYS: SwampyAttributeKey[] = SWAMPY_ATTRIBUTES.map(a => a.key);
-
-export interface SwampySkillDef {
-  key: string;
-  name: string;
-  parent: SwampyAttributeKey;
-  description: string;
+export function clampSwampyFear(value: unknown): number {
+  return Math.max(0, Math.min(SWAMPY_MAX_FEAR, Math.trunc(Number(value)) || 0));
 }
 
-export const SWAMPY_SKILLS: SwampySkillDef[] = [
-  // Might
-  { key: "athletics",     name: "Athletics",     parent: "might",        description: "Climbing, jumping, swimming, lifting, and physical exertion." },
-  { key: "intimidation",  name: "Intimidation",  parent: "might",        description: "Threatening, dominating, and forcing compliance." },
-  // Finesse
-  { key: "acrobatics",    name: "Acrobatics",    parent: "finesse",      description: "Balance, tumbling, climbing, and agile movement." },
-  { key: "stealth",       name: "Stealth",       parent: "finesse",      description: "Moving unseen, unheard, and unnoticed." },
-  { key: "sleightOfHand", name: "Sleight of Hand", parent: "finesse",    description: "Picking pockets, palming items, and delicate manipulation." },
-  // Constitution
-  { key: "endurance",     name: "Endurance",     parent: "constitution", description: "Resisting fatigue, harsh conditions, and exhaustion." },
-  { key: "fortitude",     name: "Fortitude",     parent: "constitution", description: "Resisting poison, disease, and bodily afflictions." },
-  { key: "perception",    name: "Perception",    parent: "constitution", description: "Noticing sights, sounds, and other physical details." },
-  // Will
-  { key: "focus",         name: "Focus",         parent: "will",         description: "Maintaining concentration under pressure." },
-  { key: "influence",     name: "Influence",     parent: "will",         description: "Persuading, deceiving, negotiating, and inspiring others." },
-  { key: "insight",       name: "Insight",       parent: "will",         description: "Reading intentions, lies, and emotional cues." },
-  // Anemos
-  { key: "arcana",        name: "Arcana",        parent: "anemos",       description: "Understanding spells, enchantments, and magical theory." },
-  { key: "sense",         name: "Sense",         parent: "anemos",       description: "Detecting magic, spirits, and Anemos currents." },
-  // Intelligence
-  { key: "animalHandling", name: "Animal Handling", parent: "intelligence", description: "Taming, calming, and handling animals and beasts." },
-  { key: "investigation", name: "Investigation", parent: "intelligence", description: "Finding clues, solving problems, and recognizing patterns." },
-  { key: "knowledge",     name: "Knowledge",     parent: "intelligence", description: "Recalling history, cultures, religions, and academic lore." },
-  { key: "medicine",      name: "Medicine",      parent: "intelligence", description: "Treating injuries, diagnosing illnesses, and providing care." },
-  { key: "naturecraft",   name: "Nature",        parent: "intelligence", description: "Understanding plants, wildlife, weather, and terrain." },
-  { key: "survival",      name: "Survival",      parent: "intelligence", description: "Tracking, foraging, navigating, and living off the land." },
-];
+// ---------------------------------------------------------------------------
+// Damage, thresholds and Armour Slots
+//
+// Damage is compared to the character's two thresholds rather than subtracted
+// from a pool: under Major costs 1 HP, at or over Major costs 2, at or over
+// Severe costs 3. Armour is limited — marking an Armour Slot pulls the damage
+// down one tier, which is how "armour reduces HP damage but is limited" works.
+// ---------------------------------------------------------------------------
 
-export const SWAMPY_SKILL_KEYS: string[] = SWAMPY_SKILLS.map(s => s.key);
-
-export function isSwampyAttributeKey(key: string | null | undefined): key is SwampyAttributeKey {
-  return !!key && (SWAMPY_ATTRIBUTE_KEYS as string[]).includes(key);
+export interface SwampyThresholds {
+  major: number;
+  severe: number;
 }
 
-export function isSwampySkillKey(key: string | null | undefined): key is string {
-  return !!key && SWAMPY_SKILL_KEYS.includes(key);
-}
+export const SWAMPY_DEFAULT_THRESHOLDS: SwampyThresholds = { major: 8, severe: 16 };
 
-export function makeEmptySwampySkills(): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const s of SWAMPY_SKILLS) out[s.key] = 0;
-  return out;
-}
-
-// Attribute value -> die sides: roll 1d{sides} + skillMod.
-// 0 -> d6, 1 -> d8, 2 -> d10, 3 -> d12, 4+ -> d20.
-export function swampyAttrValueToDieSides(value: number): number {
-  const v = Math.max(0, Math.floor(value || 0));
-  if (v <= 0) return 6;
-  if (v === 1) return 8;
-  if (v === 2) return 10;
-  if (v === 3) return 12;
-  return 20;
-}
-
-export function swampyAttrDieType(value: number): string {
-  return `d${swampyAttrValueToDieSides(value)}`;
-}
-
-// Effective Swampy skill modifier: base allocated skill value plus any
-// permanent boost, mirroring V3's boost mechanic but read from the same
-// underlying columns (see file header for why that's safe to share).
-export function swampyEffectiveSkillMod(
-  character: { v3Skills?: Record<string, number> | null; v3SkillBoosts?: Record<string, number> | null } | null | undefined,
-  skillKey: string | null | undefined,
+export function swampyHpCostForDamage(
+  damage: number,
+  thresholds: SwampyThresholds = SWAMPY_DEFAULT_THRESHOLDS,
+  armourSlotsUsed = 0,
 ): number {
-  if (!skillKey) return 0;
-  const base = Math.floor(Number(character?.v3Skills?.[skillKey]) || 0);
-  const boost = Math.floor(Number(character?.v3SkillBoosts?.[skillKey]) || 0);
-  return base + boost;
+  const dmg = Math.max(0, Math.trunc(Number(damage)) || 0);
+  if (dmg <= 0) return 0;
+  const severe = Math.max(1, Math.trunc(thresholds.severe) || SWAMPY_DEFAULT_THRESHOLDS.severe);
+  const major = Math.max(1, Math.min(severe, Math.trunc(thresholds.major) || SWAMPY_DEFAULT_THRESHOLDS.major));
+  let tier = dmg >= severe ? 3 : dmg >= major ? 2 : 1;
+  // Each Armour Slot marked steps the hit down one tier, never below 1 HP.
+  tier -= Math.max(0, Math.trunc(armourSlotsUsed) || 0);
+  return Math.max(1, tier);
 }
 
-// Level-up point budgets — same shape as V3's: attributes 4 + floor(level/3),
-// skills 8 + (level - 1), skills can go to -2 reclaiming up to 6 points.
-export function swampyAttrPointBudget(level: number): number {
-  const lv = Math.max(1, Math.floor(level || 1));
-  return 4 + Math.floor(lv / 3);
+export function swampyThresholdLabel(
+  damage: number,
+  thresholds: SwampyThresholds = SWAMPY_DEFAULT_THRESHOLDS,
+): "Minor" | "Major" | "Severe" {
+  const dmg = Math.max(0, Math.trunc(Number(damage)) || 0);
+  if (dmg >= thresholds.severe) return "Severe";
+  if (dmg >= thresholds.major) return "Major";
+  return "Minor";
 }
 
-export function swampySkillPointBudget(level: number): number {
-  const lv = Math.max(1, Math.floor(level || 1));
-  return 8 + (lv - 1);
+// ---------------------------------------------------------------------------
+// Strain
+//
+// Physical, mental, emotional and magical pressure in one track. At full
+// Strain a character is Vulnerable; forcing more Strain on them past that
+// point becomes HP damage instead.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_DEFAULT_MAX_STRAIN = 6;
+
+export function isSwampyVulnerable(strain: unknown, maxStrain: unknown): boolean {
+  const cur = Math.max(0, Math.trunc(Number(strain)) || 0);
+  const max = Math.max(1, Math.trunc(Number(maxStrain)) || SWAMPY_DEFAULT_MAX_STRAIN);
+  return cur >= max;
 }
 
-export const SWAMPY_MAX_NEGATIVE_SKILL_POINTS = 6;
+/**
+ * Apply Strain, spilling anything past the track into HP damage.
+ *
+ * Returns what actually landed so a caller can report "2 Strain, 1 HP" rather
+ * than silently dropping the overflow.
+ */
+export function applySwampyStrain(
+  current: unknown,
+  maxStrain: unknown,
+  amount: number,
+): { strain: number; hpDamage: number; becameVulnerable: boolean } {
+  const max = Math.max(1, Math.trunc(Number(maxStrain)) || SWAMPY_DEFAULT_MAX_STRAIN);
+  const before = Math.max(0, Math.min(max, Math.trunc(Number(current)) || 0));
+  const add = Math.max(0, Math.trunc(Number(amount)) || 0);
+  const strain = Math.min(max, before + add);
+  const hpDamage = Math.max(0, before + add - max);
+  return {
+    strain,
+    hpDamage,
+    becameVulnerable: strain >= max && before < max,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Warrens
+//
+// Real, living worlds beyond the Veil. A Warren's condition is the single
+// biggest lever on magic drawn from it, so it lives on the Warren rather than
+// on any spell.
+// ---------------------------------------------------------------------------
+
+export type SwampyWarrenCondition =
+  | "flourishing"
+  | "wounded"
+  | "poisoned"
+  | "starved"
+  | "bound"
+  | "sleeping"
+  | "dying"
+  | "shattered"
+  | "returning";
+
+export interface SwampyWarrenConditionDef {
+  key: SwampyWarrenCondition;
+  name: string;
+  /** What drawing from a Warren in this condition does to the magic. */
+  effect: string;
+  /** Tailwind text colour used wherever a condition is shown as a badge. */
+  color: string;
+}
+
+export const SWAMPY_WARREN_CONDITIONS: SwampyWarrenConditionDef[] = [
+  { key: "flourishing", name: "Flourishing", color: "text-emerald-400", effect: "Stable, normal magic." },
+  { key: "wounded",     name: "Wounded",     color: "text-orange-400", effect: "Magic is weaker, shorter, narrower, slower, or harder to control." },
+  { key: "poisoned",    name: "Poisoned",    color: "text-lime-400",   effect: "Magic works but carries sickness, corruption, marks, urges, or complications." },
+  { key: "starved",     name: "Starved",     color: "text-amber-400",  effect: "Magic demands more Strain, a bargain, reduced scope, or worsens the Warren." },
+  { key: "bound",       name: "Bound",       color: "text-sky-400",    effect: "Magic must obey an oath, rule, toll, taboo, or permission." },
+  { key: "sleeping",    name: "Sleeping",    color: "text-indigo-400", effect: "Magic needs ritual time, dreams, a specific place, or forceful exertion." },
+  { key: "dying",       name: "Dying",       color: "text-rose-400",   effect: "Magic is weak unless a serious personal or world cost is accepted." },
+  { key: "shattered",   name: "Shattered",   color: "text-stone-400",  effect: "The Warren is dead or broken; magic is fragmented and unstable." },
+  { key: "returning",   name: "Returning",   color: "text-teal-400",   effect: "The Warren is beginning to live again; magic can nurture it or exploit it." },
+];
+
+export const SWAMPY_WARREN_CONDITION_KEYS: SwampyWarrenCondition[] =
+  SWAMPY_WARREN_CONDITIONS.map(c => c.key);
+
+export function swampyWarrenCondition(key: string | null | undefined): SwampyWarrenConditionDef {
+  return SWAMPY_WARREN_CONDITIONS.find(c => c.key === key) ?? SWAMPY_WARREN_CONDITIONS[0];
+}
+
+// ---------------------------------------------------------------------------
+// Drawing: what the player declares, and what the GM answers before anyone
+// commits. Kept as data so the Working form can render them in order and
+// nothing gets skipped — "players always know the likely cost and main risk
+// before committing" is a stated design goal, not a suggestion.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_DRAW_DECLARATION = [
+  { key: "intent", name: "Intent", description: "What they want to achieve." },
+  { key: "warren", name: "Warren", description: "Where the power comes from." },
+  { key: "method", name: "Method", description: "How they open and shape the connection." },
+  { key: "limit",  name: "Limit",  description: "Target, area, duration, range, and scale requested." },
+] as const;
+
+export const SWAMPY_GM_RESPONSE = [
+  { key: "possible",  name: "Possible?",       description: "Whether it can be done at all." },
+  { key: "effect",    name: "Effect & Limits", description: "The actual effect, and its real limits." },
+  { key: "roll",      name: "Roll / Resistance", description: "Whether a roll or resistance is needed." },
+  { key: "cost",      name: "Cost",            description: "Usually Strain — perhaps time, materials, a bargain, attention, or a sacrifice." },
+  { key: "condition", name: "Condition Effect", description: "What the Warren's condition does to it." },
+  { key: "risk",      name: "Main Risk",       description: "The main risk on failure or Success with Fear." },
+] as const;
+
+/** The four checks the GM runs on every Status (magical effect). */
+export const SWAMPY_STATUS_CHECKS = [
+  { key: "access", name: "Access", description: "Can the character reach and open this Warren now?" },
+  { key: "nature", name: "Nature", description: "Does the effect fit the Warren's character, land, life, and history?" },
+  { key: "scale",  name: "Scale",  description: "How large, long, far-reaching, reliable, or permanent is it?" },
+  { key: "cost",   name: "Cost",   description: "What does it cost the caster, Warren, House, Path, place, or story?" },
+] as const;
+
+/** Routes forward the GM should offer when an effect can't happen right now. */
+export const SWAMPY_ROUTES_FORWARD = [
+  "Reduce the scope",
+  "Take more time",
+  "Perform a ritual",
+  "Find a threshold, relic, or Path",
+  "Gain another Warren",
+  "Seek a House",
+  "Bring allies",
+  "Accept a serious cost",
+];
+
+// ---------------------------------------------------------------------------
+// Overdrawing
+//
+// Forcing magic through at full Strain. The player must accept a serious cost
+// BEFORE the roll, which is why these are a fixed list to choose from rather
+// than something improvised after the fact.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_OVERDRAW_COSTS = [
+  "Direct HP damage",
+  "A lasting Warren Scar",
+  "The GM gains Fear",
+  "Worsen a Warren's condition",
+  "A House gains a claim on you",
+  "An open breach is left behind",
+  "Lose a memory, oath, item, or relationship",
+  "Unstable collateral magic",
+];
+
+// ---------------------------------------------------------------------------
+// Working Ledger
+//
+// A log of precedents created during play, not a prewritten spell list. These
+// are the fields every entry records, so a technique established in one
+// session can be relied on, learned, copied, countered, altered, or improved
+// in the next.
+// ---------------------------------------------------------------------------
+
+export const SWAMPY_WORKING_FIELDS = [
+  { key: "name",                 name: "Name",                  hint: "What this Working is called at the table." },
+  { key: "warrenName",           name: "Warren",                hint: "Which Warren the power is drawn from." },
+  { key: "method",               name: "Method",                hint: "How the connection is opened and shaped." },
+  { key: "effect",               name: "Effect",                hint: "What it actually does." },
+  { key: "cost",                 name: "Cost",                  hint: "Strain, time, materials, a bargain, a sacrifice." },
+  { key: "limits",               name: "Limits",                hint: "Target, area, duration, range, scale." },
+  { key: "conditionInteraction", name: "Condition Interaction", hint: "How the Warren's condition changes it." },
+  { key: "risk",                 name: "Risk",                  hint: "What goes wrong on a failure or Success with Fear." },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Deck of Houses
+//
+// A feared divination system. It does not set the future; it reveals movement
+// and pressure among Houses, gods, Seats, Ascendants, Paths, Warrens, debts,
+// and important people. A reading can make the reader visible to powerful
+// forces interested in the role they are beginning to fulfil.
+// ---------------------------------------------------------------------------
+
+export type SwampyReadingOrientation = "upright" | "reversed";
+
+export interface SwampyDrawnCard {
+  cardId: string;
+  name: string;
+  orientation: SwampyReadingOrientation;
+}
+
+/** Spreads a reading can be laid in. */
+export const SWAMPY_READING_SPREADS = [
+  { key: "single",   name: "Single Card",   count: 1, positions: ["The Pressure"] },
+  { key: "three",    name: "Three Cards",   count: 3, positions: ["What Moves", "What Presses", "What Watches"] },
+  { key: "house",    name: "House Spread",  count: 5, positions: ["The Seat", "The Ascendant", "The Path", "The Debt", "The Witness"] },
+] as const;
+
+export type SwampyReadingSpreadKey = typeof SWAMPY_READING_SPREADS[number]["key"];
+
+export function swampyReadingSpread(key: string | null | undefined) {
+  return SWAMPY_READING_SPREADS.find(s => s.key === key) ?? SWAMPY_READING_SPREADS[0];
+}

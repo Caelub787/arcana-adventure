@@ -4,7 +4,6 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
 import type { CAWound } from "./ca";
-import type { SwampyWound } from "./swampy";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -111,6 +110,9 @@ export const campaigns = pgTable("campaigns", {
   // survives a server restart/redeploy, not just a live in-memory cache -
   // it's cleared only when the GM clears chat.
   rollFeed: jsonb("roll_feed").$type<any[]>().notNull().default(sql`'[]'::jsonb`),
+  // Swampy only: the GM's Fear pool, the other half of the Duality Dice. It
+  // belongs to the table rather than to any character, so it lives here.
+  swampyFear: integer("swampy_fear").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
@@ -311,11 +313,29 @@ export const characters = pgTable("characters", {
   // bar on the Overview tab. Just a bare number a player sets directly —
   // no current/max/temp split like Energy has.
   caEnergyPool: integer("ca_energy_pool").notNull().default(0),
-  // Swampy only: the same three pieces of state C.A. keeps above, but on its
-  // own columns so the two systems' wound/body/pool mechanics can diverge
-  // without one ever reading or overwriting the other's data. See
-  // shared/swampy.ts for the SwampyWound shape.
-  swampyWounds: jsonb("swampy_wounds").$type<SwampyWound[]>().notNull().default(sql`'[]'::jsonb`),
+  // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
+  // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
+  // two damage thresholds rather than absorbing damage directly, Armour Slots
+  // are spent to step a hit down a tier, and Strain is one track covering
+  // physical, mental, emotional and magical pressure. Hope is the player's
+  // side of the Duality Dice; the GM's Fear pool lives on the campaign.
+  swampyHope: integer("swampy_hope").notNull().default(2),
+  swampyStrain: integer("swampy_strain").notNull().default(0),
+  swampyMaxStrain: integer("swampy_max_strain").notNull().default(6),
+  swampyArmourSlots: integer("swampy_armour_slots").notNull().default(0),
+  swampyMaxArmourSlots: integer("swampy_max_armour_slots").notNull().default(0),
+  swampyMajorThreshold: integer("swampy_major_threshold").notNull().default(8),
+  swampySevereThreshold: integer("swampy_severe_threshold").notNull().default(16),
+  // Freeform phrases the player can spend a Hope to add to a relevant roll,
+  // in place of a fixed skill list. See SwampyExperience in shared/swampy.ts.
+  swampyExperiences: jsonb("swampy_experiences").$type<{ id: string; name: string; modifier: number }[]>().notNull().default(sql`'[]'::jsonb`),
+  // Warrens this character can currently reach and draw from. The Access
+  // check is the first of the four run on every Status.
+  swampyWarrenIds: text("swampy_warren_ids").array().notNull().default(sql`ARRAY[]::text[]`),
+  // Left from when Swampy was a copy of C.A. and used its pinned-wound model.
+  // Daggerheart HP replaced that; the columns stay so no data is dropped from
+  // a character made before the change, but nothing reads them any more.
+  swampyWounds: jsonb("swampy_wounds").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
   swampyBodySex: text("swampy_body_sex").notNull().default("male"),
   swampyEnergyPool: integer("swampy_energy_pool").notNull().default(0),
   // AA V3 spell crafting: tokens spent to create spells; max = Anemos, refills on long rest
@@ -2812,3 +2832,107 @@ export const insertMapObjectSchema = createInsertSchema(mapObjects).omit({
 });
 export type InsertMapObject = z.infer<typeof insertMapObjectSchema>;
 export type MapObject = typeof mapObjects.$inferSelect;
+
+// ===========================================================================
+// Swampy — "The Lanterns Beyond the Veil"
+//
+// Three tables, all scoped by `system = 'swampy'` (or by campaign) so nothing
+// here is visible to any other system's library. See shared/swampy.ts for the
+// rules these carry.
+// ===========================================================================
+
+// Warrens: real, living worlds beyond the Veil. Authored in the admin/personal
+// library like any other system content, then reachable per character.
+// A Warren's condition is the single biggest lever on magic drawn from it.
+export const swampyWarrens = pgTable("swampy_warrens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  system: text("system").notNull().default("swampy"),
+  // Null for a global admin row; set for a personal ("My Library") row.
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  // Set when a GM authors a Warren inside one campaign rather than the library.
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  image: text("image"),
+  // One of SWAMPY_WARREN_CONDITIONS.
+  condition: text("condition").notNull().default("flourishing"),
+  // Free text: what this Warren is like, so the Nature check has something to
+  // check against.
+  nature: text("nature").default("").notNull(),
+  // Literal routes through the Warren's lands - roads, rivers, passes, root
+  // bridges, sea routes, tunnels. [{ id, name, description }]
+  paths: jsonb("paths").$type<{ id: string; name: string; description: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  // Houses connected to this Warren. A god can be connected to a Warren but
+  // does not own it, so this is a loose association, not ownership.
+  houses: jsonb("houses").$type<{ id: string; name: string; description: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  // Lasting damage from Overdrawing or from the story.
+  scars: jsonb("scars").$type<{ id: string; name: string; description: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  gmNotes: text("gm_notes").default("").notNull(),
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertSwampyWarrenSchema = createInsertSchema(swampyWarrens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSwampyWarren = z.infer<typeof insertSwampyWarrenSchema>;
+export type SwampyWarren = typeof swampyWarrens.$inferSelect;
+
+// The Working Ledger: a log of precedents created during play, NOT a
+// prewritten spell list. Campaign-scoped, because a precedent is set at a
+// particular table. Every field the brief lists is recorded so an established
+// technique can be relied on, learned, copied, countered, altered, or improved.
+export const swampyWorkings = pgTable("swampy_workings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  warrenId: varchar("warren_id").references(() => swampyWarrens.id, { onDelete: "set null" }),
+  // Kept alongside warrenId so a ledger entry still reads correctly if the
+  // Warren row is later removed - a precedent shouldn't lose its history.
+  warrenName: text("warren_name").default("").notNull(),
+  method: text("method").default("").notNull(),
+  effect: text("effect").default("").notNull(),
+  cost: text("cost").default("").notNull(),
+  limits: text("limits").default("").notNull(),
+  conditionInteraction: text("condition_interaction").default("").notNull(),
+  risk: text("risk").default("").notNull(),
+  // Who established it, and which character was Drawing at the time.
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  characterId: varchar("character_id").references(() => characters.id, { onDelete: "set null" }),
+  characterName: text("character_name").default("").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertSwampyWorkingSchema = createInsertSchema(swampyWorkings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSwampyWorking = z.infer<typeof insertSwampyWorkingSchema>;
+export type SwampyWorking = typeof swampyWorkings.$inferSelect;
+
+// Deck of Houses: the cards a reading is drawn from. Authored in the library
+// like Warrens are; a reading itself is transient and isn't stored.
+export const swampyHouseCards = pgTable("swampy_house_cards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  system: text("system").notNull().default("swampy"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  // Which House / god / Seat the card belongs to, if any.
+  house: text("house").default("").notNull(),
+  image: text("image"),
+  // A reading reveals movement and pressure, so each card reads two ways.
+  uprightMeaning: text("upright_meaning").default("").notNull(),
+  reversedMeaning: text("reversed_meaning").default("").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertSwampyHouseCardSchema = createInsertSchema(swampyHouseCards).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSwampyHouseCard = z.infer<typeof insertSwampyHouseCardSchema>;
+export type SwampyHouseCard = typeof swampyHouseCards.$inferSelect;
