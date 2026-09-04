@@ -55,3 +55,23 @@ detail: rejecting an edit must also reset `el.value`, because with no state
 change React never re-renders and the typed characters stay in the DOM.
 
 A GM's copy contains no `█` at all, so every guard here is inert for them.
+
+## How this relates to a note's "GM Only" visibility
+
+On an entity-linked (character/item sheet) note, a note-level "GM Only" lock
+does **not** override character EDIT access — whoever controls the character
+controls its sheet note. It still hides the note from someone with only VIEW
+access on the character. Hiding individual lines from the controller is exactly
+what `#...#` is for, which is why the write-side merge above had to exist first.
+
+This reverses commit 9e14e0e, which had made the lock beat character access
+outright; that shut a character's own controller out of its sheet note. The rule
+lives in two places that must stay in step: `getLinkedEntityNoteAccess` and the
+inline check in `POST /api/notes/for-entity`.
+
+## Members for the visibility/share pickers
+
+`CampaignNotesPanel` fetches campaign members itself when the host doesn't pass
+them (a caller that does still wins, so the main panel makes no extra request).
+The sheet-docked notes panels never passed them, so the "specific players"
+picker and the share dialog both claimed the campaign had no players.

@@ -583,7 +583,7 @@ export function CampaignNotesPanel({
   campaignId,
   onClose,
   isOpen,
-  campaignMembers = [],
+  campaignMembers: campaignMembersProp = [],
   onViewCharacter,
   initialNoteId,
   hideCloseButton = false,
@@ -740,6 +740,26 @@ export function CampaignNotesPanel({
     queryFn: () => api.getCampaignCharacters(campaignId),
     enabled: !!user && !!campaignId && isOpen,
   });
+
+  // Members drive the "specific players" visibility picker and the share
+  // dialog. Several hosts (the notes docked into a character or item sheet)
+  // render this panel without passing them, which made both lists claim the
+  // campaign had no players at all. The panel knows its own campaignId, so it
+  // fetches them itself rather than relying on every call site to remember;
+  // a caller that does pass them still wins, so the main panel makes no
+  // extra request.
+  const { data: fetchedMembers = [] } = useQuery({
+    queryKey: [`/api/campaigns/${campaignId}/members`],
+    queryFn: () => api.getCampaignMembers(campaignId),
+    enabled: !!user && !!campaignId && isOpen && campaignMembersProp.length === 0,
+  });
+  const campaignMembers = React.useMemo(() => {
+    const rows: any[] = campaignMembersProp.length > 0 ? campaignMembersProp : (fetchedMembers as any[]);
+    // Never offer the viewer themselves as someone to share with.
+    return rows
+      .filter((m: any) => m?.userId && m.userId !== user?.id)
+      .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }));
+  }, [campaignMembersProp, fetchedMembers, user?.id]);
 
 
   const { data: currentNote, isLoading: noteLoading } = useQuery<Note>({
@@ -2599,6 +2619,15 @@ export function CampaignNotesPanel({
                   <SelectItem value="players">Specific Players</SelectItem>
                 </SelectContent>
               </Select>
+            )}
+            {/* On a sheet note "GM Only" can't lock out whoever controls the
+                character - say so here rather than letting a GM believe they
+                hid something. Wrapping the line in # marks makes it a real
+                secret, which is redacted on the way out and can't be edited. */}
+            {isGm && currentNote && linkedEntityRef && (currentNote as any).visibility === "gm" && (
+              <span className="text-[10px] text-amber-500/80" data-testid="text-sheet-note-visibility-hint">
+                Players with edit access on this sheet can still see it — use #…# to hide a line.
+              </span>
             )}
             {isGm && currentNote && (
               <Button

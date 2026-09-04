@@ -5766,15 +5766,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Same as above, but resolved from an existing note's own reference rows
-  // instead of a known entityType/entityId pair - and, unlike
-  // checkEntityNoteAccess, respects the note's own "GM Only" visibility
-  // lock: a GM can explicitly mark an entity-linked note GM-only (the same
-  // visibility dropdown every note has), and that lock always wins over
-  // character edit/view access. `isRealGm` must come from the campaign
-  // membership role (getKnowledgeRole), NOT checkCharacterAccess's isGM -
-  // that one also returns true for a trusted player's self-elevation on
-  // their own sheet, which must NOT be able to see/edit their own GM-only
-  // notes just because they're trusted to edit their own stats.
+  // instead of a known entityType/entityId pair.
+  //
+  // How the note's own "GM Only" visibility interacts with character access:
+  // whoever can EDIT the character controls its sheet note, and a note-level
+  // lock no longer overrides that. Hiding individual lines from that player is
+  // what `#...#` GM secrets are for - those are redacted on read and re-merged
+  // on write (see mergeGmSecretsOnWrite), so GM-only *content* is protected
+  // without locking the character's controller out of their own sheet note.
+  // A GM Only lock still hides the note from someone who can merely VIEW the
+  // character - they are looking at someone else's sheet, not running it.
+  //
+  // `isRealGm` must come from the campaign membership role (getKnowledgeRole),
+  // NOT checkCharacterAccess's isGM - that one also returns true for a trusted
+  // player's self-elevation on their own sheet.
   const getLinkedEntityNoteAccess = async (
     userId: string,
     note: { id: string; visibility?: string | null },
@@ -5785,7 +5790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!entityRef) return null;
     const entityAccess = await checkEntityNoteAccess(userId, entityRef.entityType, entityRef.entityId);
     if (!entityAccess) return null;
-    if (note.visibility === 'gm' && !isRealGm) {
+    if (note.visibility === 'gm' && !isRealGm && !entityAccess.canEdit) {
       return { canView: false, canEdit: false };
     }
     return { canView: entityAccess.canView, canEdit: entityAccess.canEdit };
@@ -16996,12 +17001,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const note = await storage.getNote(link.noteId);
         if (!note || note.campaignId !== campaignId) continue;
         if (entityAccess) {
-          // Entity-linked note: entity access alone grants it, so the GM
-          // and every player who can see the character land on the exact
-          // same note - UNLESS the GM has explicitly locked this specific
-          // note to "GM Only" via its visibility dropdown, which always
-          // wins over character access.
-          if ((note as any).visibility === 'gm' && !role.isGm) {
+          // Entity-linked note: entity access alone grants it, so the GM and
+          // every player who can see the character land on the exact same
+          // note. Keep this rule identical to getLinkedEntityNoteAccess - a
+          // "GM Only" lock hides the note from someone who can merely VIEW
+          // the character, but not from whoever can EDIT it; individual
+          // GM-only lines are handled by `#...#` secrets instead.
+          if ((note as any).visibility === 'gm' && !role.isGm && !entityAccess.canEdit) {
             return res.status(403).json({ error: "This note is GM-only" });
           }
           return res.json({ ...note, content: redactGmSecrets(note.content, role.isGm) });

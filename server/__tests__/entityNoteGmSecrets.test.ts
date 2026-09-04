@@ -41,6 +41,7 @@ const h = vi.hoisted(() => {
     getCampaignMembers: fn(),
     getCampaignMembership: fn(),
     getKnowledgeRevisionsForEntity: fn(),
+    getBacklinks: fn(),
     deleteExpiredSpectatorTokens: fn(),
     unbanUser: fn(),
   };
@@ -150,6 +151,7 @@ beforeEach(() => {
   h.storage.getNoteShares.mockResolvedValue([]);
   h.storage.canAccessNote.mockResolvedValue({ canAccess: false, permission: null });
   h.storage.getKnowledgeRevisionsForEntity.mockResolvedValue([]);
+  h.storage.getBacklinks.mockResolvedValue([{ noteId, entityType: "character-sheet", entityId: characterId }]);
   h.storage.getCharacter.mockResolvedValue({
     id: characterId, campaignId, userId: "someone-else", isTemplate: false, name: "Mara",
   });
@@ -207,6 +209,45 @@ describe("entity-linked note: who may edit", () => {
   it("refuses a player with only VIEW access on the character", async () => {
     const res = await api(`/api/notes/${noteId}`, {
       method: "PUT", user: viewer, body: { content: "hijacked" },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+// A note-level "GM Only" lock used to beat character access outright, which
+// shut the character's own controller out of its sheet note. Hiding individual
+// lines is what `#...#` is for; the lock now only holds off view-only players.
+describe("a GM Only lock vs character access", () => {
+  beforeEach(() => { noteRow.visibility = "gm"; });
+
+  it("still lets the player with EDIT access open it", async () => {
+    const res = await api(`/api/notes/${noteId}`, { user: editor });
+    expect(res.status).toBe(200);
+    expect((await res.json()).content).not.toContain(SECRET);
+  });
+
+  it("still lets the player with EDIT access save it", async () => {
+    const res = await api(`/api/notes/${noteId}`, {
+      method: "PUT", user: editor, body: { content: "Rewritten by the player." },
+    });
+    expect(res.status).toBe(200);
+    expect(noteRow.content).toContain(`#${SECRET}#`);
+  });
+
+  it("opens the same note from the sheet's Notes button", async () => {
+    const res = await api(`/api/notes/for-entity`, {
+      method: "POST", user: editor,
+      body: { campaignId, entityType: "character-sheet", entityId: characterId, title: "Mara" },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).id).toBe(noteId);
+  });
+
+  it("still hides it from a player with only VIEW access", async () => {
+    expect((await api(`/api/notes/${noteId}`, { user: viewer })).status).toBe(403);
+    const res = await api(`/api/notes/for-entity`, {
+      method: "POST", user: viewer,
+      body: { campaignId, entityType: "character-sheet", entityId: characterId, title: "Mara" },
     });
     expect(res.status).toBe(403);
   });
