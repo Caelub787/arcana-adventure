@@ -1,5 +1,85 @@
 // API client for backend communication
 
+// --- Swampy ("The Lanterns Beyond the Veil") types -------------------------
+// Hand-written like the rest of this file's types: a schema column does NOT
+// flow through to here automatically (see the client-item-types memory note).
+
+export interface SwampyWarrenEntry {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface SwampyWarren {
+  id: string;
+  system: string;
+  ownerUserId: string | null;
+  campaignId: string | null;
+  name: string;
+  description: string;
+  image: string | null;
+  condition: string;
+  nature: string;
+  paths: SwampyWarrenEntry[];
+  houses: SwampyWarrenEntry[];
+  scars: SwampyWarrenEntry[];
+  gmNotes: string;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SwampyWorking {
+  id: string;
+  campaignId: string;
+  name: string;
+  warrenId: string | null;
+  warrenName: string;
+  method: string;
+  effect: string;
+  cost: string;
+  limits: string;
+  conditionInteraction: string;
+  risk: string;
+  createdByUserId: string | null;
+  characterId: string | null;
+  characterName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SwampyHouseCard {
+  id: string;
+  system: string;
+  ownerUserId: string | null;
+  name: string;
+  house: string;
+  image: string | null;
+  uprightMeaning: string;
+  reversedMeaning: string;
+  sortOrder: number;
+  createdByUserId: string | null;
+  createdAt: string;
+}
+
+export interface SwampyReadingCard {
+  cardId: string;
+  name: string;
+  house: string;
+  image: string | null;
+  position: string;
+  orientation: 'upright' | 'reversed';
+  meaning: string;
+}
+
+export interface SwampyReading {
+  spread: string;
+  spreadName: string;
+  drawnAt: number;
+  readerUserId: string;
+  cards: SwampyReadingCard[];
+}
+
 export interface GoogleDocInfo {
   id: string;
   name: string;
@@ -1550,6 +1630,72 @@ class ApiClient {
   }
 
   // Admin System Items
+  // --- Swampy ("The Lanterns Beyond the Veil") -----------------------------
+
+  async getSwampyWarrens(opts: { campaignId?: string; personal?: boolean } = {}): Promise<SwampyWarren[]> {
+    const qs = new URLSearchParams();
+    if (opts.campaignId) qs.set('campaignId', opts.campaignId);
+    if (opts.personal) qs.set('personal', 'true');
+    const q = qs.toString();
+    return this.request(`/swampy/warrens${q ? `?${q}` : ''}`);
+  }
+
+  async createSwampyWarren(data: Partial<SwampyWarren> & { name: string; personal?: boolean }): Promise<SwampyWarren> {
+    return this.request('/swampy/warrens', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateSwampyWarren(id: string, data: Partial<SwampyWarren>): Promise<SwampyWarren> {
+    return this.request(`/swampy/warrens/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteSwampyWarren(id: string): Promise<void> {
+    return this.request(`/swampy/warrens/${id}`, { method: 'DELETE' });
+  }
+
+  async getSwampyWorkings(campaignId: string): Promise<SwampyWorking[]> {
+    return this.request(`/campaigns/${campaignId}/swampy/workings`);
+  }
+
+  async createSwampyWorking(campaignId: string, data: Partial<SwampyWorking> & { name: string }): Promise<SwampyWorking> {
+    return this.request(`/campaigns/${campaignId}/swampy/workings`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateSwampyWorking(id: string, data: Partial<SwampyWorking>): Promise<SwampyWorking> {
+    return this.request(`/swampy/workings/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteSwampyWorking(id: string): Promise<void> {
+    return this.request(`/swampy/workings/${id}`, { method: 'DELETE' });
+  }
+
+  async getSwampyHouseCards(personal?: boolean): Promise<SwampyHouseCard[]> {
+    return this.request(`/swampy/house-cards${personal ? '?personal=true' : ''}`);
+  }
+
+  async createSwampyHouseCard(data: Partial<SwampyHouseCard> & { name: string; personal?: boolean }): Promise<SwampyHouseCard> {
+    return this.request('/swampy/house-cards', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateSwampyHouseCard(id: string, data: Partial<SwampyHouseCard>): Promise<SwampyHouseCard> {
+    return this.request(`/swampy/house-cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteSwampyHouseCard(id: string): Promise<void> {
+    return this.request(`/swampy/house-cards/${id}`, { method: 'DELETE' });
+  }
+
+  async drawSwampyReading(campaignId: string, spread: string): Promise<SwampyReading> {
+    return this.request(`/campaigns/${campaignId}/swampy/reading`, {
+      method: 'POST', body: JSON.stringify({ spread }),
+    });
+  }
+
+  async adjustSwampyFear(campaignId: string, delta: number): Promise<{ fear: number }> {
+    return this.request(`/campaigns/${campaignId}/swampy/fear`, {
+      method: 'PATCH', body: JSON.stringify({ delta }),
+    });
+  }
+
   async getSystemItems(system?: string, campaignId?: string, personal?: boolean, worldId?: string): Promise<Item[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);

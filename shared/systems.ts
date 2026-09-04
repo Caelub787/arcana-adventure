@@ -71,6 +71,11 @@ export function isPublicSystem(slug?: string | null): boolean {
   return PUBLIC_SYSTEM_SLUGS.includes(slug as SystemSlug);
 }
 
+/** True for Swampy ("The Lanterns Beyond the Veil"). */
+export function isSwampySystem(slug?: string | null): boolean {
+  return slug === "swampy";
+}
+
 /** Systems offered in a campaign-creation / library picker for this viewer. */
 export function selectableSystemSlugs(isAdmin: boolean): SystemSlug[] {
   return isAdmin ? [...SYSTEM_SLUGS] : [...PUBLIC_SYSTEM_SLUGS];

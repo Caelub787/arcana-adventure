@@ -10,7 +10,8 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { systemLabel } from "@shared/systems";
+import { systemLabel, isSwampySystem } from "@shared/systems";
+import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -18889,6 +18890,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // the two the campaign runs, including which character columns to read.
   const isCA = isWoundSystem(campaignSystem);
   const woundRules = woundSystemRules(campaignSystem);
+  // Swampy runs Daggerheart: HP behind thresholds, Armour Slots, Strain and
+  // Hope, with no skill list, no spell list and no classes. Its tabs are its
+  // own rather than a variation on V2's.
+  const isSwampy = isSwampySystem(campaignSystem);
   // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
   const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
   const canEditAsGM = isGM || isTrustedSelf;
@@ -21401,7 +21406,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   // Tab configuration matching battlemap sidebar icons and colors
   // C.A. is a fresh, minimal system: exactly 4 tabs, none of the v1/v2/v3 extras.
-  const tabConfig = isCA
+  const tabConfig = isSwampy
+    ? [
+        { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
+        { value: 'skills', icon: BarChart3, color: 'blue', label: 'Traits' },
+        { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+        { value: 'traits', icon: Sparkles, color: 'purple', label: 'Drawing' },
+      ]
+    : isCA
     ? [
         { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
         { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
@@ -21549,7 +21561,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${(isAAV3 || isCA) ? 'grid-cols-4' : 'grid-cols-7'}`}>
+        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${(isAAV3 || isCA || isSwampy) ? 'grid-cols-4' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -21573,7 +21585,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 custom-scrollbar">
           {/* OVERVIEW TAB */}
           <TabsContent value="overview" className="space-y-4 mt-0" data-testid="content-overview">
-            {isCA ? (
+            {isSwampy ? (
+              <SwampyOverviewTab
+                character={liveCharacter}
+                canEdit={canEdit}
+                onUpdate={onUpdate ? (updates) => onUpdate(updates as any) : undefined}
+              />
+            ) : isCA ? (
               <>
               <Card className="bg-stone-800 border-stone-700">
                 <CardContent className="pt-6 space-y-4 relative">
@@ -23404,7 +23422,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
           {/* SKILLS TAB */}
           <TabsContent value="skills" className={`${isAAV3 ? 'flex flex-col gap-4' : 'space-y-4'} mt-0`} data-testid="content-skills">
-            {isCA ? (
+            {isSwampy ? (
+              <SwampyTraitsTab
+                character={liveCharacter}
+                campaignId={campaignId}
+                canEdit={canEdit}
+                onUpdate={onUpdate ? (updates) => onUpdate(updates as any) : undefined}
+              />
+            ) : isCA ? (
               <CAAttrsAndSkillsTab
                 liveCharacter={liveCharacter}
                 canEditSheet={canEditSheet}
@@ -24455,6 +24480,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           {/* TRAITS TAB — C.A. only */}
           {isCA && (
           <TabsContent value="traits" className="space-y-4 mt-0" data-testid="content-traits">
+            {isSwampy ? (
+              <SwampyDrawingTab
+                character={liveCharacter}
+                campaignId={campaignId}
+                isGm={isGM}
+                canEdit={canEdit}
+                onUpdate={onUpdate ? (updates) => onUpdate(updates as any) : undefined}
+              />
+            ) : (<>
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -24592,6 +24626,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 </div>
               </FloatingPanel>
             )}
+            </>)}
           </TabsContent>
           )}
 

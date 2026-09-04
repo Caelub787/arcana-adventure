@@ -14,7 +14,7 @@ import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveSt
 import { registerCanvasRealmsRoutes } from "./canvasrealms";
 import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
-import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread } from "@shared/swampy";
+import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -9072,6 +9072,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to delete Warren" });
+    }
+  });
+
+  // --- Fear ----------------------------------------------------------------
+  //
+  // The GM's pool, but any member can add to it: a player's own roll landing
+  // Fear-side is the commonest way it grows, and making that a GM chore would
+  // mean it silently never happens. Spending it is GM-only.
+
+  app.patch("/api/campaigns/:campaignId/swampy/fear", requireAuth, async (req, res) => {
+    try {
+      const ctx = await requireSwampyCampaign(req, res, req.params.campaignId);
+      if (!ctx) return;
+      const delta = Math.trunc(Number(req.body?.delta));
+      if (!Number.isFinite(delta) || delta === 0) {
+        return res.status(400).json({ error: "A non-zero delta is required" });
+      }
+      if (delta < 0 && !ctx.role.isGm) {
+        return res.status(403).json({ error: "Only the GM can spend Fear" });
+      }
+      const current = Number((ctx.campaign as any).swampyFear) || 0;
+      const next = clampSwampyFear(current + delta);
+      await storage.updateCampaign(req.params.campaignId, { swampyFear: next } as any);
+      broadcastToCampaign(req.params.campaignId, {
+        type: 'swampy_fear_changed', campaignId: req.params.campaignId, fear: next,
+      });
+      res.json({ fear: next });
+    } catch (err: any) {
+      console.error("[Swampy Fear] Error:", err?.message);
+      res.status(500).json({ error: "Failed to update Fear" });
     }
   });
 

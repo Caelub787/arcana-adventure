@@ -6,7 +6,8 @@ import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
-import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, type SystemSlug } from "@shared/systems";
+import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, isSwampySystem, type SystemSlug } from "@shared/systems";
+import { SwampyLedgerPanel, SwampyDeckPanel, SwampyFearTrack } from "@/components/game/SwampyPanels";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
@@ -7050,7 +7051,7 @@ export default function Campaign() {
   const [searchPreviewSpells, setSearchPreviewSpells] = useState<any[]>([]);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
-  type SidePanelTab = 'characters' | 'initiative' | 'chat' | 'notes' | 'settings' | 'scene' | null;
+  type SidePanelTab = 'characters' | 'initiative' | 'chat' | 'notes' | 'settings' | 'scene' | 'ledger' | 'deck' | null;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -7480,6 +7481,7 @@ export default function Campaign() {
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
+  const isSwampy = isSwampySystem((campaign as any)?.system);
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -9226,6 +9228,27 @@ export default function Campaign() {
             queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${data.campaignId}/initiative`] });
           }
         }
+        // Swampy: the Fear pool, the Working Ledger and a Warren's condition are
+        // all shared table state, so a change by anyone has to reach everyone.
+        if (data.type === 'swampy_fear_changed' && data.campaignId === effectiveCampaignId) {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+        }
+        if (data.type === 'swampy_ledger_changed' && data.campaignId === effectiveCampaignId) {
+          queryClientRef.current.invalidateQueries({ queryKey: ['swampy-workings', effectiveCampaignId] });
+        }
+        if (data.type === 'swampy_warren_changed' && data.campaignId === effectiveCampaignId) {
+          queryClientRef.current.invalidateQueries({ queryKey: ['swampy-warrens', effectiveCampaignId] });
+        }
+        // A reading can make the reader visible to powerful forces - the table
+        // is told it happened rather than it being a private query.
+        if (data.type === 'swampy_reading' && data.campaignId === effectiveCampaignId) {
+          const count = data.reading?.cards?.length ?? 0;
+          toast({
+            title: 'The Deck of Houses was read',
+            description: `${data.reading?.spreadName || 'A reading'} — ${count} card${count === 1 ? '' : 's'} drawn.`,
+          });
+        }
+
         if (data.type === 'dice_roll' && data.roll) {
           // Trigger battlemap dice notification - use nickname if available
           const rollWithNickname = {
@@ -10492,6 +10515,53 @@ export default function Campaign() {
             </div>
           )}
 
+          {isSwampy && !isSandbox && (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (activeSidePanel === 'ledger' && !sidePanelMinimized) setSidePanelMinimized(true);
+                        else { setActiveSidePanel('ledger'); setSidePanelMinimized(false); }
+                      }}
+                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      data-testid="button-panel-ledger"
+                    >
+                      <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Working Ledger</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (activeSidePanel === 'deck' && !sidePanelMinimized) setSidePanelMinimized(true);
+                        else { setActiveSidePanel('deck'); setSidePanelMinimized(false); }
+                      }}
+                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      data-testid="button-panel-deck"
+                    >
+                      <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Deck of Houses</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -10531,6 +10601,18 @@ export default function Campaign() {
               openCharacterSheet(char);
             }}
           />
+          {/* Fear is the GM's half of the Duality Dice and the table's shared
+              dread meter, so it sits with the party tracker rather than being
+              hidden in a GM-only panel. Everyone sees it; only the GM spends it. */}
+          {isSwampy && effectiveCampaignId && !isSandbox && (
+            <div className="mt-1.5 rounded-lg border border-stone-700 bg-stone-900/85 backdrop-blur-sm px-2 py-1 pointer-events-auto w-fit">
+              <SwampyFearTrack
+                campaignId={effectiveCampaignId}
+                fear={Number((campaign as any)?.swampyFear) || 0}
+                isGm={role === 'gm'}
+              />
+            </div>
+          )}
         </div>
 
         {/* Right Side - panel tab icons. On desktop, a horizontal row pinned
@@ -13423,6 +13505,12 @@ export default function Campaign() {
                     allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
                   />
                 </div>
+              )}
+              {activeSidePanel === 'ledger' && effectiveCampaignId && isSwampy && (
+                <SwampyLedgerPanel campaignId={effectiveCampaignId} isGm={role === 'gm'} />
+              )}
+              {activeSidePanel === 'deck' && effectiveCampaignId && isSwampy && (
+                <SwampyDeckPanel campaignId={effectiveCampaignId} />
               )}
               {activeSidePanel === 'notes' && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
