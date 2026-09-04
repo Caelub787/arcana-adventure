@@ -11300,11 +11300,15 @@ export function characterTrackerColor(character: any, member?: any): string {
   return stableColorForId(character?.id || member?.userId || member?.id || 'unknown');
 }
 
-// Mobile halves the whole tracker card. Scaling the rendered card rather than
-// re-specifying a second set of sizes keeps the roll tray hanging under it in
-// proportion automatically - the tray is a child of the card, so one transform
-// covers both and they can never drift apart.
-const MOBILE_TRACKER_SCALE = 0.5;
+// Mobile halves the tracker card's WIDTH only. A uniform transform was the
+// first attempt and it shrank the type along with everything else, which made
+// the card unreadable rather than compact. So the compact card is a real
+// layout instead: same 75px height and the same font sizes, laid out as a
+// stack (portrait + name on top, bars full width beneath) so the bars get the
+// full 92px rather than the ~40px a squeezed horizontal row would leave them.
+const TRACKER_WIDTH = 200;
+const TRACKER_COMPACT_WIDTH = 100;
+const TRACKER_HEIGHT = 75;
 
 /**
  * Every roll in the feed that belongs to a tracked player or character.
@@ -11396,7 +11400,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character, member)}
-            scale={isMobile ? MOBILE_TRACKER_SCALE : 1}
+            compact={!!isMobile}
             onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
             onNewRoll={handleNewRoll}
           />
@@ -11414,7 +11418,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             campaignSystem={campaignSystem}
             rolls={rolls}
             accentColor={characterTrackerColor(character)}
-            scale={isMobile ? MOBILE_TRACKER_SCALE : 1}
+            compact={!!isMobile}
             onOpenSheet={() => onOpenCharacterSheet?.(character)}
             onNewRoll={handleNewRoll}
           />
@@ -11459,7 +11463,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, scale = 1, onOpenSheet, onNewRoll }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, compact = false, onOpenSheet, onNewRoll }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11467,9 +11471,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   campaignSystem?: string;
   rolls: PinnedRollFeedEntry[];
   accentColor?: string;
-  // 1 on desktop, 0.5 on mobile. Applied as a transform on the whole card so
-  // the roll tray beneath it scales in lockstep and stays centred under it.
-  scale?: number;
+  // Mobile: half-width card and roll tray, full height and full-size text.
+  compact?: boolean;
   onOpenSheet?: () => void;
   // Called whenever a fresh roll lands, with this chip's own element and
   // accent color - lets the wrapping PinnedRosterBar (mobile only) detect
@@ -11601,17 +11604,17 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // sliver). Rendered identically on mobile and desktop; mobile-only
   // horizontal scrolling and off-screen roll glow are handled by the
   // wrapping PinnedRosterBar.
-  // The outer box reserves the SCALED footprint so the row lays out at the
-  // real on-screen size; the inner box keeps the card's natural 200x75 and is
-  // shrunk into it. containerRef stays on the outer box so the off-screen
-  // edge-glow check measures where the card actually is. The roll tray lives
-  // inside the scaled subtree, so it comes along for free.
+  const cardWidth = compact ? TRACKER_COMPACT_WIDTH : TRACKER_WIDTH;
+  // The tray sits just inside the card's width so it reads as hanging under it.
+  const trayWidth = cardWidth - 15;
+  const trayHeight = compact ? 56 : 70;
+
   return (
     <div
       ref={containerRef}
       className="relative shrink-0"
       data-testid={testId}
-      style={scale === 1 ? undefined : { width: 200 * scale, height: 75 * scale }}
+      style={{ width: cardWidth, height: TRACKER_HEIGHT }}
       onMouseEnter={() => {
         hoveringRef.current = true;
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -11623,20 +11626,77 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         hideTimerRef.current = setTimeout(() => setRevealed(false), 400);
       }}
     >
-     <div
-       className="relative"
-       style={scale === 1 ? undefined : { width: 200, height: 75, transform: `scale(${scale})`, transformOrigin: 'top left' }}
-     >
+     <div className="relative" style={{ width: cardWidth, height: TRACKER_HEIGHT }}>
       <div
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
         onClick={onOpenSheet}
-        className={`flex items-center gap-1.5 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-[200px] h-[75px] transition-shadow ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
+        className={`rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
+          compact ? 'flex flex-col gap-0.5 p-1' : 'flex items-center gap-1.5 p-1.5'
+        } ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
         style={{
+          width: cardWidth,
+          height: TRACKER_HEIGHT,
           borderColor,
           boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
         }}
       >
+       {compact ? (
+        <>
+          {/* Portrait and name on one row, then the bars full width beneath —
+              at 100px there is no room to put them side by side and still have
+              a bar worth reading. */}
+          <div className="flex items-center gap-1">
+            <div className="relative w-6 h-6 rounded overflow-hidden bg-stone-800 shrink-0">
+              {portraitSrc && !imgFailed ? (
+                <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-stone-600">
+                  <Users className="h-3 w-3" />
+                </div>
+              )}
+            </div>
+            <span className="text-[11px] font-bold text-white truncate leading-tight flex-1 min-w-0">{displayName}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}
+              className="shrink-0 text-stone-500 hover:text-stone-200 transition-colors"
+              aria-label={`${displayName}'s roll history`}
+              data-testid={`pinned-history-${testId}`}
+            >
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </div>
+          {character && typeof dc === 'number' && (
+            <div className="text-[9px] text-stone-400 font-semibold leading-none">DC {dc}</div>
+          )}
+          {character && primaryBar && (
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] font-bold text-red-400 shrink-0">HP</span>
+              <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
+                />
+              </div>
+              <span className="text-[8px] text-stone-400 shrink-0">{primaryBar.value}</span>
+            </div>
+          )}
+          {character && energyBar && (
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] font-bold text-cyan-400 shrink-0">EN</span>
+              <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500"
+                  style={{ width: `${Math.max(0, Math.min(100, (energyBar.value / Math.max(1, energyBar.max)) * 100))}%` }}
+                />
+              </div>
+              <span className="text-[8px] text-stone-400 shrink-0">{energyBar.value}</span>
+            </div>
+          )}
+        </>
+       ) : (
+        <>
         <div className="relative w-[58px] h-[58px] rounded-md overflow-hidden bg-stone-800 shrink-0">
           {portraitSrc && !imgFailed ? (
             <img src={portraitSrc} alt="" className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
@@ -11687,6 +11747,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         >
           <ChevronDown className="h-3.5 w-3.5" />
         </button>
+        </>
+       )}
       </div>
 
       {/* Clipped to the revealed height so the card looks like it's sliding
@@ -11695,8 +11757,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       <div
         className="absolute left-1/2 -translate-x-1/2 top-full overflow-hidden z-10 transition-[height] duration-300 ease-out"
         style={{
-          width: '185px',
-          height: visible ? '78px' : '0px',
+          width: trayWidth,
+          height: visible ? trayHeight + 8 : 0,
           pointerEvents: visible ? 'auto' : 'none',
         }}
       >
@@ -11705,8 +11767,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-              className="mt-2 w-[185px] h-[70px] rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
+              className="mt-2 rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
               style={{
+                width: trayWidth,
+                height: trayHeight,
                 backgroundColor: 'rgba(19, 20, 28, 0.95)',
                 borderColor,
                 boxShadow: glow ? `0 0 12px 2px rgba(${rgbForBorder}, 0.55)` : undefined,
@@ -11714,7 +11778,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
               data-testid={`pinned-roll-${testId}`}
             >
               <div className="text-[9px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
-              <div className={`text-xl font-bold leading-tight ${rolling ? 'animate-pulse' : ''}`} style={{ color: borderColor }}>
+              <div className={`${compact ? 'text-lg' : 'text-xl'} font-bold leading-tight ${rolling ? 'animate-pulse' : ''}`} style={{ color: borderColor }}>
                 {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}
               </div>
             </button>

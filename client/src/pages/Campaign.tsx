@@ -13803,13 +13803,19 @@ export default function Campaign() {
       )}
       
       {/* Fear — the GM's half of the Duality Dice and the table's shared dread
-          meter. Bottom right, directly above the hotbars: it belongs with the
-          things you watch during play, not up with the party roster. Everyone
-          sees it; only the GM spends it. */}
+          meter. Bottom right, sitting directly on top of the free hotbar: it
+          belongs with the things you watch during play, not up with the party
+          roster. Everyone sees it; only the GM spends it.
+
+          The offsets track the hotbar's own height rather than a single number,
+          because that height changes twice: the slot grid is 5 wide until xl
+          (so two rows below it, one row at xl and up), and the slots themselves
+          grow at sm. Below md the hotbar is pinned to the same right edge as
+          this dock, so those two steps have to clear it outright; from md up it
+          is centred and the offset is only about sitting just above it. */}
       {isSwampy && effectiveCampaignId && !isSandbox && !spectatorMode && (
         <div
-          className="fixed right-2 sm:right-4 z-30 pointer-events-auto rounded-lg border border-stone-700 bg-stone-900/90 backdrop-blur-sm px-2 py-1 shadow-lg"
-          style={{ bottom: isMobile ? '10.5rem' : '7.5rem' }}
+          className="fixed right-2 sm:right-4 bottom-[6.75rem] sm:bottom-[10rem] xl:bottom-[6rem] z-30 pointer-events-auto rounded-lg border border-stone-700 bg-stone-900/90 backdrop-blur-sm px-2 py-1 shadow-lg"
           data-testid="swampy-fear-dock"
         >
           <SwampyFearTrack

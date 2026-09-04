@@ -34,6 +34,10 @@ const h = vi.hoisted(() => {
     getCampaignMembership: fn(),
     getCharacterPermission: fn(),
     isCampaignMember: fn(),
+    // The route resolves each character's species so it can fall back to the
+    // species default portrait; without these two the whole endpoint 500s.
+    getSystemSpecies: fn(),
+    getCampaignSpecies: fn(),
     getFreeHotbarEntries: fn(),
     getFreeHotbarEntry: fn(),
     upsertFreeHotbarEntry: fn(),
@@ -121,6 +125,8 @@ beforeEach(() => {
     bannedAt: null,
   }));
   h.storage.deleteExpiredSpectatorTokens.mockResolvedValue(0);
+  h.storage.getSystemSpecies.mockResolvedValue([]);
+  h.storage.getCampaignSpecies.mockResolvedValue([]);
   h.storage.getCampaign.mockResolvedValue(campaign);
   h.storage.isCampaignMember.mockResolvedValue(true);
   h.storage.getCampaignMembership.mockImplementation(async (userId: string) =>
