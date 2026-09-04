@@ -16,7 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
 import { LazyItemImage } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
-import { caWoundTotalCost, CA_WOUND_MAX } from "@shared/ca";
+import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -31,7 +31,11 @@ export interface FreeHotbarCharView {
   maxEnergy?: number;
   mana?: number;
   maxMana?: number;
+  // Wound-system (C.A. / Swampy) state. Each system stores its wounds on its
+  // own column, so both are carried and the active system's rules pack picks
+  // the one to read.
   caWounds?: unknown;
+  swampyWounds?: unknown;
   canEdit?: boolean;
 }
 
@@ -59,13 +63,19 @@ function StatBar({ value, max, color, thin, medium }: { value: number; max: numb
   );
 }
 
-function CharStatBars({ char, thin, isCA }: { char: FreeHotbarCharView; thin?: boolean; isCA?: boolean }) {
-  // C.A. has no HP/mana — show Wound Capacity remaining + Energy instead.
-  if (isCA) {
-    const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost(char.caWounds));
+// Wound Capacity left on a character, read through the active system's own
+// wounds column so C.A. and Swampy never see each other's data.
+function woundCapacityRemaining(char: FreeHotbarCharView, rules: WoundSystemRules): number {
+  return Math.max(0, rules.WOUND_MAX - rules.woundTotalCost(rules.woundsOf(char)));
+}
+
+function CharStatBars({ char, thin, woundRules }: { char: FreeHotbarCharView; thin?: boolean; woundRules?: WoundSystemRules | null }) {
+  // C.A. and Swampy have no HP/mana — show Wound Capacity remaining + Energy instead.
+  if (woundRules) {
+    const remaining = woundCapacityRemaining(char, woundRules);
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={CA_WOUND_MAX} color={vitalBarColor(remaining, CA_WOUND_MAX)} thin={thin} medium={thin} />
+        <StatBar value={remaining} max={woundRules.WOUND_MAX} color={vitalBarColor(remaining, woundRules.WOUND_MAX)} thin={thin} medium={thin} />
         <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-cyan-500" thin={thin} medium={thin} />
       </div>
     );
@@ -85,13 +95,14 @@ interface V3FreeHotbarProps {
   isGM: boolean;
   onOpenCharacterSheet: (characterId: string) => void;
   onOpenItem: (item: any, sourceCharacterId: string | null) => void;
-  // Campaign system slug ('aa-v3', 'ca', ...) — swaps the HP/Energy/Mana
-  // stat-bar display for C.A.'s Wounds/Energy display where relevant.
+  // Campaign system slug ('aa-v3', 'ca', 'swampy', ...) — swaps the
+  // HP/Energy/Mana stat-bar display for the wound systems' Wounds/Energy
+  // display where relevant.
   campaignSystem?: string;
 }
 
 export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
-  const isCA = campaignSystem === 'ca';
+  const woundRules = isWoundSystem(campaignSystem) ? woundSystemRules(campaignSystem) : null;
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -173,6 +184,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       mana: live.mana ?? char.mana,
       maxMana: live.maxMana ?? char.maxMana,
       caWounds: live.caWounds ?? char.caWounds,
+      swampyWounds: live.swampyWounds ?? char.swampyWounds,
       // live.portrait can be a genuine null (no portrait set) while char.portrait
       // already carries the species-default fallback resolved server-side —
       // an empty live value must not clobber that fallback.
@@ -315,7 +327,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         </div>
                       )}
                       <div className="absolute bottom-0 left-0 right-0" data-testid={`free-hotbar-slot-${slotIndex}-bars`}>
-                        <CharStatBars char={liveEntryChar} thin isCA={isCA} />
+                        <CharStatBars char={liveEntryChar} thin woundRules={woundRules} />
                       </div>
                     </div>
                     );
@@ -397,14 +409,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )}
                   </div>
                   <div className="flex-1 space-y-2 pt-0.5">
-                    {isCA ? (
+                    {woundRules ? (
                       <>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Wounds</span>
-                            <span data-testid="text-peek-wounds">{Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} / {CA_WOUND_MAX}</span>
+                            <span data-testid="text-peek-wounds">{woundCapacityRemaining(c, woundRules)} / {woundRules.WOUND_MAX}</span>
                           </div>
-                          <StatBar value={Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds))} max={CA_WOUND_MAX} color={vitalBarColor(Math.max(0, CA_WOUND_MAX - caWoundTotalCost(c.caWounds)), CA_WOUND_MAX)} />
+                          <StatBar value={woundCapacityRemaining(c, woundRules)} max={woundRules.WOUND_MAX} color={vitalBarColor(woundCapacityRemaining(c, woundRules), woundRules.WOUND_MAX)} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

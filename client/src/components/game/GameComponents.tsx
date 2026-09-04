@@ -9,7 +9,8 @@ import { getEffectTypes, getEffectTypeLabel, isAAv2 } from "@/lib/effectTypes";
 import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3AttrPointBudget, v3SkillPointBudget, V3_MAX_NEGATIVE_SKILL_POINTS, V3_BOOST_TARGETS, computeV3ArmorBoosts, isV3AttributeKey, isV3SkillKey, v3RuneSlotCount, aggregateRuneWeaponDamageLevelBonus, aggregateRuneStatEffects, v3RuneStatTargetLabel, v3EffectiveSkillMod, V3_EXHAUSTION_EFFECTS, V3_EXHAUSTION_MAX, v3ExhaustionCostMultiplier, v3WeaponRequiresAmmo, v3HasEquippedAmmo, v3DurabilityAdjustedValue, formatV3AdjustedValue, formatV3OriginalValue, type V3AttributeKey, type V3ArmorBoost, type V3SocketedRune } from "@shared/v3";
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
-import { normalizeCAWounds, makeCAWound, makeCAWoundEffect, caWoundTotalCost, caWoundStatEffectTotal, caWoundEffectTargetLabel, CA_WOUND_MAX, CA_WOUND_SEVERITIES, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_COST, CA_WOUND_SEVERITY_RANK, CA_FIXED_STAT_TARGETS, CA_FIXED_STAT_LABELS, type CAWound, type CAWoundSeverity, type CAWoundEffect, type CAFixedStatTarget, caBodySexOf, CA_ATTRIBUTES, CA_SKILLS, caAttrValueToDieSides, caAttrPointBudget, caSkillPointBudget, CA_MAX_NEGATIVE_SKILL_POINTS, makeEmptyCASkills, caEffectiveSkillMod } from "@shared/ca";
+import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
+import { systemLabel } from "@shared/systems";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
 import { resolveLiveOwnedItemId, dedupeLibraryTemplates } from "@/lib/itemResolve";
 import { applyOptimisticItemUpdate, applyOptimisticItemDelete, resolveLivePanelItem } from "@/lib/detachedPanels";
@@ -47,8 +48,7 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
-import caWoundBodyMale from "@/assets/ca_wound_body_male.png";
-import caWoundBodyFemale from "@/assets/ca_wound_body_female.png";
+import { woundBodyImage } from "@/lib/woundBodyImages";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
 import { CampaignNotesPanel } from '../notes/CampaignNotesPanel';
@@ -126,13 +126,14 @@ function resolveDcCheck(
   return { dc, checkValue, success: checkValue >= dc, checkLabel };
 }
 
-// Resolves a roll entry's fixed-attribute mod plus (C.A. only) its
+// Resolves a roll entry's fixed-attribute mod plus (wound systems only) its
 // linkedSkillKey mod, and a human-readable breakdown line for each
-// contribution present. Shared between item/spell roll execution and C.A.
-// trait roll execution so the two never drift apart.
+// contribution present. Shared between item/spell roll execution and trait
+// roll execution so the two never drift apart.
 function resolveRollAttrAndSkillMod(
   rollEntry: any,
   character: any,
+  campaignSystem?: string,
 ): { mod: number; breakdownParts: string[] } {
   let mod = 0;
   const breakdownParts: string[] = [];
@@ -142,9 +143,10 @@ function resolveRollAttrAndSkillMod(
     breakdownParts.push(`${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}`);
   }
   if (rollEntry?.linkedSkillKey && character) {
-    const skillMod = caEffectiveSkillMod(character, rollEntry.linkedSkillKey);
+    const skillRules = woundSystemRules(campaignSystem);
+    const skillMod = skillRules.effectiveSkillMod(character, rollEntry.linkedSkillKey);
     mod += skillMod;
-    const skillDef = CA_SKILLS.find(s => s.key === rollEntry.linkedSkillKey);
+    const skillDef = skillRules.SKILLS.find(s => s.key === rollEntry.linkedSkillKey);
     breakdownParts.push(`${skillDef?.name || rollEntry.linkedSkillKey}: ${skillMod >= 0 ? '+' : ''}${skillMod}`);
   }
   return { mod, breakdownParts };
@@ -2804,7 +2806,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             onSelect: () => setShowNametags(!showNametags),
             active: !showNametags,
           },
-          ...((campaignSystem === 'aa-v3' || campaignSystem === 'ca') ? [{
+          ...((campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) ? [{
             key: 'bars',
             label: showBars ? 'Hide resource bars' : 'Show resource bars',
             icon: (
@@ -3283,9 +3285,15 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
-          // C.A. tracks remaining Wound Capacity (a flat 20) minus the
-          // point cost of active (untreated) wounds.
-          const woundPercent = (character && campaignSystem === 'ca') ? Math.max(0, 100 - (caWoundTotalCost((character as any).caWounds) / CA_WOUND_MAX) * 100) : null;
+          // The wound systems (C.A. / Swampy) track remaining Wound Capacity
+          // minus the point cost of active (untreated) wounds. Each reads its
+          // own wounds column via its rules pack.
+          const woundPercent = (character && isWoundSystem(campaignSystem))
+            ? (() => {
+                const wr = woundSystemRules(campaignSystem);
+                return Math.max(0, 100 - (wr.woundTotalCost(wr.woundsOf(character)) / wr.WOUND_MAX) * 100);
+              })()
+            : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -3703,13 +3711,13 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               */}
               {(() => {
                 const isV3Bars = campaignSystem === 'aa-v3';
-                const isCABars = campaignSystem === 'ca';
+                const isCABars = isWoundSystem(campaignSystem);
                 const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
-                // In V3 and C.A., the showBars toggle controls all bars; in V1/V2, per-character flags apply.
+                // In V3 and the wound systems, the showBars toggle controls all bars; in V1/V2, per-character flags apply.
                 const barsToggleControlled = isV3Bars || isCABars;
                 const showMana = character && manaPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showManaBar ?? true) : showBars);
                 const showEnergy = character && energyPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showEnergyBar ?? true) : showBars);
-                // C.A. replaces HP with Wounds entirely — never show the HP bar for it.
+                // The wound systems replace HP with Wounds entirely — never show the HP bar for them.
                 const showHp = character && hpPercent !== null && canSeeBars && !isCABars && (!barsToggleControlled ? (character.showHpBar ?? true) : showBars);
                 const showWound = character && isCABars && woundPercent !== null && canSeeBars && showBars;
                 if (isV3Bars) {
@@ -9503,9 +9511,9 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
   };
 
   const equippedArmorBonus = calculateArmorBonus();
-  // C.A. doesn't derive DC from size/armor/feats — it's a direct GM-set
-  // number (the Overview tab's DC field, riding on the naturalArmor column).
-  const totalDC = campaignSystem === 'ca'
+  // The wound systems don't derive DC from size/armor/feats — it's a direct
+  // GM-set number (the Overview tab's DC field, riding on the naturalArmor column).
+  const totalDC = isWoundSystem(campaignSystem)
     ? (character?.naturalArmor ?? 5)
     : (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
 
@@ -9535,9 +9543,12 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         const cardAccentColor = characterTrackerColor(character, ownerMember);
         const accentMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(cardAccentColor);
         const accentRgb = accentMatch ? `${parseInt(accentMatch[1], 16)}, ${parseInt(accentMatch[2], 16)}, ${parseInt(accentMatch[3], 16)}` : '61, 119, 240';
-        const isCABars = campaignSystem === 'ca';
+        const isCABars = isWoundSystem(campaignSystem);
         const primaryBar = isCABars
-          ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost((character as any).caWounds)), max: CA_WOUND_MAX }
+          ? (() => {
+              const wr = woundSystemRules(campaignSystem);
+              return { value: Math.max(0, wr.WOUND_MAX - wr.woundTotalCost(wr.woundsOf(character))), max: wr.WOUND_MAX };
+            })()
           : { value: Math.min(character.hp ?? 10, effectiveMaxHp), max: effectiveMaxHp };
         const energyValue = Math.min(character.energy ?? 10, effectiveMaxEnergy);
 
@@ -9904,7 +9915,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
   const [selectedRace, setSelectedRace] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const systemNameForQuery = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : campaignSystem === 'ca' ? 'C.A.' : 'Arcana Adventure';
+  const systemNameForQuery = systemLabel(campaignSystem);
   const { data: systemSpeciesList = [] } = useQuery({
     queryKey: ['species', systemNameForQuery],
     queryFn: () => api.getSpecies(systemNameForQuery),
@@ -11509,10 +11520,13 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
   }, []);
 
-  const isCA = campaignSystem === 'ca';
+  const isCA = isWoundSystem(campaignSystem);
   const primaryBar = character
     ? (isCA
-      ? { value: Math.max(0, CA_WOUND_MAX - caWoundTotalCost(character.caWounds)), max: CA_WOUND_MAX }
+      ? (() => {
+          const wr = woundSystemRules(campaignSystem);
+          return { value: Math.max(0, wr.WOUND_MAX - wr.woundTotalCost(wr.woundsOf(character))), max: wr.WOUND_MAX };
+        })()
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
@@ -18071,12 +18085,13 @@ function V3AttrsAndSkillsTab({
 }
 
 // =============================================================
-// C.A. Attributes + Skills tab — forked from V3AttrsAndSkillsTab. Same
-// point-budget/roll/skill-boost machinery (reusing the same v3Skills/
-// v3SkillBoosts columns and adjustV3SkillBoost endpoint), reading from
-// shared/ca.ts's independent CA_ATTRIBUTES/CA_SKILLS instead of V3's.
-// No species-attribute-bonus or armor-boost machinery — out of scope for
-// C.A. for now.
+// Wound-system Attributes + Skills tab — forked from V3AttrsAndSkillsTab and
+// shared by C.A. and Swampy. Same point-budget/roll/skill-boost machinery
+// (reusing the same v3Skills/v3SkillBoosts columns and adjustV3SkillBoost
+// endpoint), reading the attribute and skill lists from whichever of
+// shared/ca.ts / shared/swampy.ts the campaign's system owns. No
+// species-attribute-bonus or armor-boost machinery — out of scope for both
+// systems for now.
 // =============================================================
 function CAAttrsAndSkillsTab({
   liveCharacter,
@@ -18085,6 +18100,7 @@ function CAAttrsAndSkillsTab({
   updateCharacterMutation,
   handleRoll,
   openRollPanel,
+  campaignSystem,
 }: {
   liveCharacter: any;
   canEditSheet: boolean;
@@ -18092,7 +18108,9 @@ function CAAttrsAndSkillsTab({
   updateCharacterMutation: any;
   handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
   openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
+  campaignSystem?: string;
 }) {
+  const rules = woundSystemRules(campaignSystem);
   const skillBoostQueryClient = useQueryClient();
   const skillBoostMutation = useMutation({
     mutationFn: ({ skillKey, action }: { skillKey: string; action: 'decrement' | 'clear' }) =>
@@ -18110,19 +18128,19 @@ function CAAttrsAndSkillsTab({
 
   const level = liveCharacter.level || 1;
 
-  const attrPointBudget = caAttrPointBudget(level);
-  const attrPointsUsed = CA_ATTRIBUTES.reduce((sum, at) => {
+  const attrPointBudget = rules.attrPointBudget(level);
+  const attrPointsUsed = rules.ATTRIBUTES.reduce((sum, at) => {
     const stored = editing ? (attrData[at.key] ?? 0) : ((liveCharacter[at.key] as number) || 0);
     return sum + Math.max(0, stored);
   }, 0);
 
-  const skillBaseBudget = caSkillPointBudget(level);
-  const skillValues = CA_SKILLS.map(s =>
+  const skillBaseBudget = rules.skillPointBudget(level);
+  const skillValues = rules.SKILLS.map(s =>
     editing ? (skillData[s.key] ?? 0) : ((liveCharacter.v3Skills?.[s.key] as number) ?? 0)
   );
   const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((a, v) => a + v, 0);
   const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((a, v) => a + v, 0));
-  const skillReclaimed = Math.min(negativeSkillUsed, CA_MAX_NEGATIVE_SKILL_POINTS);
+  const skillReclaimed = Math.min(negativeSkillUsed, rules.MAX_NEGATIVE_SKILL_POINTS);
   const skillPointBudget = skillBaseBudget + skillReclaimed;
 
   const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -18187,10 +18205,10 @@ function CAAttrsAndSkillsTab({
 
   const startEdit = () => {
     const a: Record<string, number> = {};
-    for (const at of CA_ATTRIBUTES) {
+    for (const at of rules.ATTRIBUTES) {
       a[at.key] = (liveCharacter[at.key] as number) || 0;
     }
-    const s: Record<string, number> = { ...makeEmptyCASkills(), ...(liveCharacter.v3Skills || {}) };
+    const s: Record<string, number> = { ...rules.makeEmptySkills(), ...(liveCharacter.v3Skills || {}) };
     setAttrData(a);
     setSkillData(s);
     setEditing(true);
@@ -18259,11 +18277,11 @@ function CAAttrsAndSkillsTab({
               <div className="flex justify-between items-center mt-1">
                 <span className="text-stone-500 text-[10px]">Reclaimed from negatives</span>
                 <span
-                  className={negativeSkillUsed > CA_MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
+                  className={negativeSkillUsed > rules.MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
                   data-testid="text-ca-skill-neg-points"
                 >
-                  {negativeSkillUsed} / {CA_MAX_NEGATIVE_SKILL_POINTS}
-                  {negativeSkillUsed > CA_MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
+                  {negativeSkillUsed} / {rules.MAX_NEGATIVE_SKILL_POINTS}
+                  {negativeSkillUsed > rules.MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
                 </span>
               </div>
             </div>
@@ -18272,9 +18290,9 @@ function CAAttrsAndSkillsTab({
 
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {CA_ATTRIBUTES.map(attr => {
+          {rules.ATTRIBUTES.map(attr => {
             const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
-            const dieType = `d${caAttrValueToDieSides(attrVal)}`;
+            const dieType = `d${rules.attrValueToDieSides(attrVal)}`;
             return (
               <Card
                 key={attr.key}
@@ -18314,13 +18332,13 @@ function CAAttrsAndSkillsTab({
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 pb-2 space-y-1">
-            {[...CA_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
-              const parent = CA_ATTRIBUTES.find(a => a.key === skill.parent);
+            {[...rules.SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
+              const parent = rules.ATTRIBUTES.find(a => a.key === skill.parent);
               const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
-              const dieType = `d${caAttrValueToDieSides(attrVal)}`;
+              const dieType = `d${rules.attrValueToDieSides(attrVal)}`;
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
-              const skillWoundEffect = editing ? 0 : caWoundStatEffectTotal(liveCharacter.caWounds, skill.key);
+              const skillWoundEffect = editing ? 0 : rules.woundStatEffectTotal(rules.woundsOf(liveCharacter), skill.key);
               const skillMax = 5 + skillScrollBoost;
               const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect);
               const skillBaseVal = rawSkillVal;
@@ -18812,7 +18830,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
-  const isCA = (campaignSystem === 'ca');
+  // C.A. and Swampy share this sheet; `woundRules` resolves to whichever of
+  // the two the campaign runs, including which character columns to read.
+  const isCA = isWoundSystem(campaignSystem);
+  const woundRules = woundSystemRules(campaignSystem);
   // A trusted player (set via Players tab toggle) can edit their own sheet like a GM in AA V2 campaigns
   const isTrustedSelf = !!trustedPlayer && isOwner && !isGM;
   const canEditAsGM = isGM || isTrustedSelf;
@@ -18903,11 +18924,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const caEnergyPoolPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openCAEnergyPoolEdit = () => {
     if (!canQuickEdit) return;
-    setCaEnergyPoolDraft((liveCharacter as any)?.caEnergyPool ?? 0);
+    setCaEnergyPoolDraft(woundRules.energyPoolOf(liveCharacter));
     setCaEditingEnergyPool(true);
   };
   const saveCAEnergyPool = () => {
-    onUpdate?.({ caEnergyPool: Math.max(0, caEnergyPoolDraft) } as any);
+    onUpdate?.({ [woundRules.energyPoolField]: Math.max(0, caEnergyPoolDraft) } as any);
     setCaEditingEnergyPool(false);
   };
 
@@ -18939,7 +18960,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // wound can be in edit mode at a time; the rest render as a compact,
   // read-only summary (name, description, effect bullets).
   const [editingCAWoundId, setEditingCAWoundId] = useState<string | null>(null);
-  const [caWoundDraft, setCaWoundDraft] = useState<CAWound | null>(null);
+  const [caWoundDraft, setCaWoundDraft] = useState<WoundShape | null>(null);
   // Clicking anywhere outside the diagram+list clears the highlight, same
   // as clicking the already-highlighted marker/card again.
   const caWoundsSectionRef = useRef<HTMLDivElement | null>(null);
@@ -18954,7 +18975,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [selectedCAWoundId]);
 
-  const startEditingCAWound = (w: CAWound) => {
+  const startEditingCAWound = (w: WoundShape) => {
     setEditingCAWoundId(w.id);
     setCaWoundDraft({ ...w, effects: w.effects.map((e) => ({ ...e })) });
     setSelectedCAWoundId(w.id);
@@ -18966,20 +18987,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
 
   const addCAWound = (x: number, y: number) => {
-    const wound = makeCAWound(x, y);
+    const wound = woundRules.makeWound(x, y);
     queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
-      return { caWounds: [...wounds, wound] };
+      const wounds = woundRules.normalizeWounds(woundRules.woundsOf(cur));
+      return { [woundRules.woundsField]: [...wounds, wound] };
     });
     setIsPlacingCAWound(false);
     startEditingCAWound(wound);
   };
 
-  const updateCAWound = (id: string, patch: Partial<CAWound>) => {
+  const updateCAWound = (id: string, patch: Partial<WoundShape>) => {
     queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
+      const wounds = woundRules.normalizeWounds(woundRules.woundsOf(cur));
       const updated = wounds.map((w) => (w.id === id ? { ...w, ...patch } : w));
-      return { caWounds: updated };
+      return { [woundRules.woundsField]: updated };
     });
   };
 
@@ -18996,10 +19017,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   };
 
   const addDraftCAWoundEffect = () => {
-    setCaWoundDraft((prev) => (prev ? { ...prev, effects: [...prev.effects, makeCAWoundEffect()] } : prev));
+    setCaWoundDraft((prev) => (prev ? { ...prev, effects: [...prev.effects, woundRules.makeWoundEffect()] } : prev));
   };
 
-  const updateDraftCAWoundEffect = (effectId: string, patch: Partial<CAWoundEffect>) => {
+  const updateDraftCAWoundEffect = (effectId: string, patch: Partial<WoundEffectShape>) => {
     setCaWoundDraft((prev) => (prev ? { ...prev, effects: prev.effects.map((e) => (e.id === effectId ? { ...e, ...patch } : e)) } : prev));
   };
 
@@ -19009,8 +19030,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   const removeCAWound = (id: string) => {
     queueCharacterUpdate((cur: any) => {
-      const wounds = normalizeCAWounds(cur?.caWounds);
-      return { caWounds: wounds.filter((w) => w.id !== id) };
+      const wounds = woundRules.normalizeWounds(woundRules.woundsOf(cur));
+      return { [woundRules.woundsField]: wounds.filter((w) => w.id !== id) };
     });
     setSelectedCAWoundId((prev) => (prev === id ? null : prev));
     if (editingCAWoundId === id) cancelEditingCAWound();
@@ -19148,7 +19169,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     skillWisdom: character?.skillWisdom || 0
   });
   
-  const speciesSystemName = campaignSystem === 'aa-v3' ? 'A.A. V3' : campaignSystem === 'aa-v2' ? 'A.A. V2' : campaignSystem === 'ca' ? 'C.A.' : 'Arcana Adventure';
+  const speciesSystemName = systemLabel(campaignSystem);
   const { data: fetchedSpecies = [] } = useQuery({
     queryKey: ['species', speciesSystemName],
     queryFn: () => api.getSpecies(speciesSystemName),
@@ -20534,7 +20555,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     if (rollEntry.mod && rollEntry.mod !== 0) {
       formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
     }
-    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character);
+    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character, campaignSystem);
     if (attrMod !== 0) {
       formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
     }
@@ -21665,7 +21686,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               />
                             ) : (() => {
                               const baseVal = liveCharacter[key] || 0;
-                              const woundEffect = caWoundStatEffectTotal(liveCharacter.caWounds, key);
+                              const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
                               const woundAdjusted = Math.max(0, baseVal + woundEffect);
                               const exh = liveCharacter.exhaustion || 0;
                               const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
@@ -21737,7 +21758,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           onTouchMove={() => { if (caEnergyPoolPressTimerRef.current) { clearTimeout(caEnergyPoolPressTimerRef.current); caEnergyPoolPressTimerRef.current = null; } }}
                           title="Double-click (PC) or long-press (mobile) to edit"
                         >
-                          {(liveCharacter as any).caEnergyPool ?? 0}
+                          {woundRules.energyPoolOf(liveCharacter)}
                         </span>
                       )}
                     </div>
@@ -21779,21 +21800,24 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <Label className="text-sm text-stone-300">Wounds</Label>
                       <span className="text-xs text-stone-500" data-testid="text-ca-wound-count">
                         {(() => {
-                          const remaining = Math.max(0, CA_WOUND_MAX - caWoundTotalCost((liveCharacter as any).caWounds));
-                          return `${remaining} / ${CA_WOUND_MAX}`;
+                          const remaining = Math.max(0, woundRules.WOUND_MAX - woundRules.woundTotalCost(woundRules.woundsOf(liveCharacter)));
+                          return `${remaining} / ${woundRules.WOUND_MAX}`;
                         })()}
                       </span>
                     </div>
                     {(() => {
-                      const allWounds = normalizeCAWounds((liveCharacter as any).caWounds);
+                      const allWounds = woundRules.normalizeWounds(woundRules.woundsOf(liveCharacter));
                       const canEditWounds = !!canEdit && !!onUpdate;
-                      const sortedWounds = [...allWounds].sort((a, b) => CA_WOUND_SEVERITY_RANK[b.severity] - CA_WOUND_SEVERITY_RANK[a.severity]);
-                      const severityDot: Record<CAWoundSeverity, string> = {
+                      const sortedWounds = [...allWounds].sort((a, b) => (woundRules.WOUND_SEVERITY_RANK[b.severity] ?? 0) - (woundRules.WOUND_SEVERITY_RANK[a.severity] ?? 0));
+                      // Keyed by severity string rather than a system's severity
+                      // union, so a system that adds a severity falls back to the
+                      // neutral styling instead of rendering undefined classes.
+                      const severityDot: Record<string, string> = {
                         minor: 'bg-stone-400',
                         moderate: 'bg-orange-700',
                         serious: 'bg-red-800',
                       };
-                      const severityBorder: Record<CAWoundSeverity, string> = {
+                      const severityBorder: Record<string, string> = {
                         minor: 'border-stone-500',
                         moderate: 'border-orange-700',
                         serious: 'border-red-800',
@@ -21808,9 +21832,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         const y = ((e.clientY - rect.top) / rect.height) * 100;
                         addCAWound(x, y);
                       };
-                      const bodySex = caBodySexOf(liveCharacter);
+                      const bodySex = woundRules.bodySexOf(liveCharacter);
                       const toggleBodySex = () => {
-                        queueCharacterUpdate((cur: any) => ({ caBodySex: caBodySexOf(cur) === 'female' ? 'male' : 'female' }));
+                        queueCharacterUpdate((cur: any) => ({
+                          [woundRules.bodySexField]: woundRules.bodySexOf(cur) === 'female' ? 'male' : 'female',
+                        }));
                       };
                       return (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3" ref={caWoundsSectionRef}>
@@ -21822,7 +21848,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               data-testid="area-ca-wound-diagram"
                             >
                               <img
-                                src={bodySex === 'female' ? caWoundBodyFemale : caWoundBodyMale}
+                                src={woundBodyImage(woundRules.slug, bodySex)}
                                 alt=""
                                 className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
                                 style={{ filter: 'brightness(1.6) contrast(1.1)' }}
@@ -21867,10 +21893,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               {isPlacingCAWound ? 'Click the body to place...' : 'Add Wound'}
                             </Button>
                             <div className="flex flex-col gap-1 text-[10px] text-stone-400">
-                              {CA_WOUND_SEVERITIES.map((sev) => (
+                              {woundRules.WOUND_SEVERITIES.map((sev) => (
                                 <div key={sev} className="flex items-center gap-1.5">
                                   <span className={`w-2.5 h-2.5 rounded-full ${severityDot[sev]}`} />
-                                  <span>{CA_WOUND_SEVERITY_LABELS[sev]} = {CA_WOUND_SEVERITY_COST[sev]} {CA_WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
+                                  <span>{woundRules.WOUND_SEVERITY_LABELS[sev]} = {woundRules.WOUND_SEVERITY_COST[sev]} {woundRules.WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
                                 </div>
                               ))}
                             </div>
@@ -21902,14 +21928,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     />
                                     <Select
                                       value={caWoundDraft.severity}
-                                      onValueChange={(v) => setCaWoundDraft((prev) => (prev ? { ...prev, severity: v as CAWoundSeverity } : prev))}
+                                      onValueChange={(v) => setCaWoundDraft((prev) => (prev ? { ...prev, severity: v } : prev))}
                                     >
                                       <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700" data-testid={`select-ca-wound-${w.id}-severity`}>
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {CA_WOUND_SEVERITIES.map((sev) => (
-                                          <SelectItem key={sev} value={sev}>{CA_WOUND_SEVERITY_LABELS[sev]} ({CA_WOUND_SEVERITY_COST[sev]})</SelectItem>
+                                        {woundRules.WOUND_SEVERITIES.map((sev) => (
+                                          <SelectItem key={sev} value={sev}>{woundRules.WOUND_SEVERITY_LABELS[sev]} ({woundRules.WOUND_SEVERITY_COST[sev]})</SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
@@ -21933,11 +21959,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                             <SelectContent>
                                               <SelectGroup>
                                                 <SelectLabel>Movement</SelectLabel>
-                                                {CA_FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{CA_FIXED_STAT_LABELS[t]}</SelectItem>)}
+                                                {woundRules.FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{woundRules.FIXED_STAT_LABELS[t]}</SelectItem>)}
                                               </SelectGroup>
                                               <SelectGroup>
                                                 <SelectLabel>Skills</SelectLabel>
-                                                {CA_SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
+                                                {woundRules.SKILLS.map(s => <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>)}
                                               </SelectGroup>
                                             </SelectContent>
                                           </Select>
@@ -22008,7 +22034,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${severityDot[w.severity]}`} />
                                     <span className="text-xs font-semibold text-stone-200 truncate flex-1">{w.name || 'Unnamed Wound'}</span>
                                     <span className="text-[10px] text-stone-500 shrink-0">
-                                      {CA_WOUND_SEVERITY_LABELS[w.severity].toUpperCase()} {CA_WOUND_SEVERITY_COST[w.severity]}
+                                      {(woundRules.WOUND_SEVERITY_LABELS[w.severity] ?? w.severity).toUpperCase()} {woundRules.WOUND_SEVERITY_COST[w.severity] ?? 0}
                                     </span>
                                     {canEditWounds && (
                                       <div className="flex items-center gap-1.5 shrink-0">
@@ -22041,7 +22067,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       {w.effects.map((eff) => (
                                         <li key={eff.id} className="text-[11px] text-stone-300 flex items-center gap-1">
                                           <span className="text-stone-600">•</span>
-                                          <span>{caWoundEffectTargetLabel(eff.target)} {eff.amount >= 0 ? '+' : ''}{eff.amount}</span>
+                                          <span>{woundRules.woundEffectTargetLabel(eff.target)} {eff.amount >= 0 ? '+' : ''}{eff.amount}</span>
                                         </li>
                                       ))}
                                     </ul>
@@ -22065,7 +22091,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       Treat Wound
                     </AlertDialogTitle>
                     <AlertDialogDescription className="text-stone-300">
-                      Treat <span className="font-bold text-amber-400">"{normalizeCAWounds((liveCharacter as any).caWounds).find((w) => w.id === treatingCAWoundId)?.name || 'this wound'}"</span>? This heals it and removes it from the character entirely. This can't be undone.
+                      Treat <span className="font-bold text-amber-400">"{woundRules.normalizeWounds(woundRules.woundsOf(liveCharacter)).find((w) => w.id === treatingCAWoundId)?.name || 'this wound'}"</span>? This heals it and removes it from the character entirely. This can't be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -23331,6 +23357,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 updateCharacterMutation={updateCharacterMutation}
                 handleRoll={handleRoll}
                 openRollPanel={openRollPanel}
+                campaignSystem={campaignSystem}
               />
             ) : (
             <>
@@ -31477,7 +31504,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
     }
     
-    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character);
+    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character, campaignSystem);
     if (attrMod !== 0) {
       formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
     }
@@ -32573,17 +32600,17 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 </div>
               </div>
             )}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && !isEditing && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && !isEditing && (
               <CraftSection item={currentData} character={character} canCraft={isOwner} isGM={isGM} />
             )}
             {/* Recipe editing only on library templates (no characterId).
                 Server admin endpoints reject edits on inventory copies, so
                 hide the editor there to avoid a misleading edit surface. */}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && isEditing && !currentData.characterId && isGM && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && isEditing && !currentData.characterId && isGM && (
               <div className="pt-4 border-t border-stone-700">
                 <CraftRecipesEditor
                   itemId={currentData.id}
-                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : campaignSystem === 'ca' ? 'ca' : 'aa-v2'}
+                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : isWoundSystem(campaignSystem) ? (campaignSystem as string) : 'aa-v2'}
                 />
               </div>
             )}

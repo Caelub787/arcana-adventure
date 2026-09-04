@@ -10,7 +10,7 @@ import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, 
 import { useToast } from "@/hooks/use-toast";
 import { sortRollsForDisplay, collectFolderNames, type RollDisplayNode } from "@/lib/rollSort";
 import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
-import { CA_SKILLS } from "@shared/ca";
+import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
 
 interface RollEntry {
   id: string;
@@ -23,7 +23,8 @@ interface RollEntry {
   mod?: number;
   damageType?: string;
   attribute?: string;
-  // C.A. only: links this roll's mod to a shared/ca.ts CA_SKILLS key.
+  // Wound systems (C.A. / Swampy) only: links this roll's mod to a skill key
+  // from that system's own skill list.
   linkedSkillKey?: string | null;
   applyToStat?: string;
   sortOrder: number;
@@ -213,10 +214,12 @@ function getRollSummary(roll: RollEntry): string {
   return parts.filter(Boolean).join(" ");
 }
 
-function getRollDetails(roll: RollEntry): string[] {
+function getRollDetails(roll: RollEntry, campaignSystem?: string): string[] {
   const details: string[] = [];
   if (roll.linkedSkillKey) {
-    const skill = CA_SKILLS.find((s) => s.key === roll.linkedSkillKey);
+    // Only the wound systems (C.A. / Swampy) set linkedSkillKey, and each owns
+    // its own skill list; fall back to the raw key if the roll outlives it.
+    const skill = woundSystemRules(campaignSystem).SKILLS.find((s) => s.key === roll.linkedSkillKey);
     details.push(`Linked Skill: ${skill?.name || roll.linkedSkillKey}`);
   }
   if (roll.range) details.push(`Range: ${roll.range}ft`);
@@ -729,7 +732,7 @@ function RollForm({
             </SelectContent>
           </Select>
         </div>
-        {campaignSystem === 'ca' && (
+        {isWoundSystem(campaignSystem) && (
           <div>
             <Label className="text-xs text-stone-400">Linked Skill</Label>
             <Select value={form.linkedSkillKey || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, linkedSkillKey: v === "_none" ? null : v }))}>
@@ -738,7 +741,7 @@ function RollForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_none">None</SelectItem>
-                {CA_SKILLS.map((s) => (
+                {woundSystemRules(campaignSystem).SKILLS.map((s) => (
                   <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -1653,7 +1656,7 @@ const RollCard = React.memo(function RollCard({
   onReorder: (rollId: string, direction: 'up' | 'down') => void;
 }) {
         const summary = getRollSummary(roll);
-        const details = getRollDetails(roll);
+        const details = getRollDetails(roll, campaignSystem);
         const badgeClass = ROLL_TYPE_COLORS[roll.rollType] || "bg-stone-600 text-stone-200";
 
         const hiddenSkillName = roll.isHidden && roll.requiredSkillId
