@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, isV3SpellConflict, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell } from '@/lib/api';
+import { api, isV3SpellConflict, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell, type SwampyWarren, type SwampyHouseCard } from '@/lib/api';
 import {
   V3_ELEMENT_MAP,
   V3_ROLE_MAP,
@@ -47,7 +47,7 @@ import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair, Globe } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -62,9 +62,10 @@ import {
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 import { isWoundSystem } from "@shared/systemRules";
+import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
 import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs } from "@shared/systems";
 
-type AdminView = 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
+type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -250,16 +251,17 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // one - the rest are half-built.
   const pickableSystems = selectableSystemSlugs(isAdmin);
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
-  // The wound systems (C.A. / Swampy) also use the new @arcana/library-dialogs
-  // ItemDialog (blank customizable sheet), but are NOT "personal library"
-  // systems — they keep the Classes dashboard card hidden and the "Feat Trees"
-  // label, unlike aa-v2/aa-v3. Scoped narrowly to the ItemDialog routing
-  // decision below.
-  const useLibraryItemDialog = isPersonalLibSystem || isWoundSystem(systemSlug);
+  // C.A. and Swampy also use the new @arcana/library-dialogs ItemDialog (a
+  // blank customizable sheet) rather than the legacy form, which is built
+  // around V1/V2's fixed mechanical fields. Neither is a "personal library"
+  // system though — they keep the Classes dashboard card hidden and the "Feat
+  // Trees" label, unlike aa-v2/aa-v3. Scoped narrowly to the ItemDialog
+  // routing decision below.
+  const useLibraryItemDialog = isPersonalLibSystem || isWoundSystem(systemSlug) || systemSlug === 'swampy';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their private library
-  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'swampy-warrens', 'swampy-deck', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
   useEffect(() => {
     // A non-admin GM's own admin panel stays locked to A.A. V2/V3.
     if (forcePersonal || embedded || isAdmin) return;
@@ -1110,6 +1112,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'action-tokens' ? 'Action Tokens (A.A. V3)' :
                currentView === 'advanced-item-types' ? 'Advanced Item Types (A.A. V3)' :
                currentView === 'ammunition-types' ? 'Ammunition Types (A.A. V3)' :
+               currentView === 'swampy-warrens' ? 'Warrens' :
+               currentView === 'swampy-deck' ? 'Deck of Houses' :
                currentView === 'classes' ? 'Classes (A.A. V2)' : 
                (currentView === 'feat-trees' && isPersonalLibSystem) ? 'Skill Trees' : 'Feat Trees'}
             </p>
@@ -1136,6 +1140,9 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         {currentView === 'dashboard' && (
           <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} personalMode={personalMode} />
         )}
+
+        {currentView === 'swampy-warrens' && <SwampyWarrensView personalMode={personalMode} />}
+        {currentView === 'swampy-deck' && <SwampyDeckView personalMode={personalMode} />}
 
         {currentView === 'v3-spells' && (
           <V3SpellsApprovalView personal={personalMode} />
@@ -3673,8 +3680,384 @@ function DashSection({
   );
 }
 
+// ===========================================================================
+// Swampy library: Warrens and the Deck of Houses
+//
+// Both follow the same library rules as the rest of the admin surface - an
+// admin authors global rows, anyone authors their own personal ones - and both
+// are scoped to system='swampy' server-side, so nothing here can surface in
+// another system's lists.
+// ===========================================================================
+
+const EMPTY_WARREN = {
+  name: '', description: '', condition: 'flourishing', nature: '', gmNotes: '',
+};
+
+function SwampyWarrensView({ personalMode }: { personalMode?: boolean }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SwampyWarren | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({ ...EMPTY_WARREN });
+
+  const { data: warrens = [], isLoading } = useQuery<SwampyWarren[]>({
+    queryKey: ['swampy-warrens-library', personalMode],
+    queryFn: () => api.getSwampyWarrens({ personal: personalMode }),
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['swampy-warrens-library'] });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const payload: any = { ...draft, personal: !!personalMode };
+      return editing ? api.updateSwampyWarren(editing.id, payload) : api.createSwampyWarren(payload);
+    },
+    onSuccess: () => { invalidate(); setOpen(false); setEditing(null); setDraft({ ...EMPTY_WARREN }); },
+    onError: (e: any) => toast({ title: "Couldn't save", description: e?.message, variant: 'destructive' }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteSwampyWarren(id),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ title: "Couldn't delete", description: e?.message, variant: 'destructive' }),
+  });
+
+  const startNew = () => { setEditing(null); setDraft({ ...EMPTY_WARREN }); setOpen(true); };
+  const startEdit = (w: SwampyWarren) => {
+    setEditing(w);
+    setDraft({
+      name: w.name, description: w.description, condition: w.condition,
+      nature: w.nature, gmNotes: w.gmNotes,
+    });
+    setOpen(true);
+  };
+
+  return (
+    <div className="space-y-4" data-testid="view-swampy-warrens">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-stone-400">
+          Real, living worlds beyond the Veil. A Warren's condition is the biggest lever on any magic drawn from it.
+        </p>
+        <Button onClick={startNew} data-testid="button-add-warren">
+          <Plus className="h-4 w-4 mr-1" /> New Warren
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-stone-500">Loading…</div>
+      ) : warrens.length === 0 ? (
+        <div className="text-sm text-stone-500">No Warrens yet.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {warrens.map((w) => {
+            const cond = swampyWarrenCondition(w.condition);
+            return (
+              <Card key={w.id} className="bg-stone-900 border-stone-700" data-testid={`warren-${w.id}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-emerald-500 text-base">{w.name}</CardTitle>
+                    <span className={`text-[10px] font-bold uppercase ${cond.color}`} title={cond.effect}>
+                      {cond.name}
+                    </span>
+                  </div>
+                  <CardDescription className="text-stone-400 text-xs">{w.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-[11px] text-stone-500 italic">{cond.effect}</p>
+                  {w.nature && <p className="text-[11px] text-stone-400"><span className="font-bold">Nature:</span> {w.nature}</p>}
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => startEdit(w)} data-testid={`button-edit-warren-${w.id}`}>
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                    <Button
+                      size="sm" variant="ghost"
+                      className="text-stone-500 hover:text-red-400"
+                      onClick={() => { if (confirm(`Delete "${w.name}"?`)) remove.mutate(w.id); }}
+                      data-testid={`button-delete-warren-${w.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-emerald-500">{editing ? 'Edit Warren' : 'New Warren'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                className="bg-stone-800 border-stone-600"
+                data-testid="input-warren-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Condition</Label>
+              <Select value={draft.condition} onValueChange={(v) => setDraft({ ...draft, condition: v })}>
+                <SelectTrigger className="bg-stone-800 border-stone-600" data-testid="select-warren-condition">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SWAMPY_WARREN_CONDITIONS.map((c) => (
+                    <SelectItem key={c.key} value={c.key}>{c.name} — {c.effect}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                className="bg-stone-800 border-stone-600 text-sm"
+                data-testid="input-warren-description"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Nature</Label>
+              <Textarea
+                value={draft.nature}
+                onChange={(e) => setDraft({ ...draft, nature: e.target.value })}
+                placeholder="What this Warren is like — the Nature check is run against this."
+                className="bg-stone-800 border-stone-600 text-sm"
+                data-testid="input-warren-nature"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">GM Notes</Label>
+              <Textarea
+                value={draft.gmNotes}
+                onChange={(e) => setDraft({ ...draft, gmNotes: e.target.value })}
+                className="bg-stone-800 border-stone-600 text-sm"
+                data-testid="input-warren-gm-notes"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={!draft.name.trim() || save.isPending} onClick={() => save.mutate()} data-testid="button-save-warren">
+              {editing ? 'Save' : 'Create'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+const EMPTY_CARD = { name: '', house: '', uprightMeaning: '', reversedMeaning: '' };
+
+function SwampyDeckView({ personalMode }: { personalMode?: boolean }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SwampyHouseCard | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({ ...EMPTY_CARD });
+
+  const { data: cards = [], isLoading } = useQuery<SwampyHouseCard[]>({
+    queryKey: ['swampy-deck-library', personalMode],
+    queryFn: () => api.getSwampyHouseCards(personalMode),
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['swampy-deck-library'] });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const payload: any = { ...draft, personal: !!personalMode };
+      return editing ? api.updateSwampyHouseCard(editing.id, payload) : api.createSwampyHouseCard(payload);
+    },
+    onSuccess: () => { invalidate(); setOpen(false); setEditing(null); setDraft({ ...EMPTY_CARD }); },
+    onError: (e: any) => toast({ title: "Couldn't save", description: e?.message, variant: 'destructive' }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteSwampyHouseCard(id),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ title: "Couldn't delete", description: e?.message, variant: 'destructive' }),
+  });
+
+  return (
+    <div className="space-y-4" data-testid="view-swampy-deck">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-stone-400">
+          Each card reads two ways. A reading reveals movement and pressure among Houses, Paths and debts — it does not set the future.
+        </p>
+        <Button
+          onClick={() => { setEditing(null); setDraft({ ...EMPTY_CARD }); setOpen(true); }}
+          data-testid="button-add-house-card"
+        >
+          <Plus className="h-4 w-4 mr-1" /> New Card
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-stone-500">Loading…</div>
+      ) : cards.length === 0 ? (
+        <div className="text-sm text-stone-500">
+          The deck is empty. A reading can't be drawn until it has cards.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {cards.map((c) => (
+            <Card key={c.id} className="bg-stone-900 border-stone-700" data-testid={`house-card-${c.id}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-emerald-500 text-base">{c.name}</CardTitle>
+                {c.house && <CardDescription className="text-amber-500 text-xs">{c.house}</CardDescription>}
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                <p className="text-[11px] text-stone-300"><span className="font-bold text-emerald-400">Upright:</span> {c.uprightMeaning || '—'}</p>
+                <p className="text-[11px] text-stone-300"><span className="font-bold text-rose-400">Reversed:</span> {c.reversedMeaning || '—'}</p>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => {
+                      setEditing(c);
+                      setDraft({ name: c.name, house: c.house, uprightMeaning: c.uprightMeaning, reversedMeaning: c.reversedMeaning });
+                      setOpen(true);
+                    }}
+                    data-testid={`button-edit-house-card-${c.id}`}
+                  >
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    size="sm" variant="ghost"
+                    className="text-stone-500 hover:text-red-400"
+                    onClick={() => { if (confirm(`Delete "${c.name}"?`)) remove.mutate(c.id); }}
+                    data-testid={`button-delete-house-card-${c.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-emerald-500">{editing ? 'Edit Card' : 'New Card'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                className="bg-stone-800 border-stone-600"
+                data-testid="input-house-card-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">House</Label>
+              <Input
+                value={draft.house}
+                onChange={(e) => setDraft({ ...draft, house: e.target.value })}
+                placeholder="The god, Seat or House this card belongs to"
+                className="bg-stone-800 border-stone-600"
+                data-testid="input-house-card-house"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Upright meaning</Label>
+              <Textarea
+                value={draft.uprightMeaning}
+                onChange={(e) => setDraft({ ...draft, uprightMeaning: e.target.value })}
+                className="bg-stone-800 border-stone-600 text-sm"
+                data-testid="input-house-card-upright"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-400">Reversed meaning</Label>
+              <Textarea
+                value={draft.reversedMeaning}
+                onChange={(e) => setDraft({ ...draft, reversedMeaning: e.target.value })}
+                className="bg-stone-800 border-stone-600 text-sm"
+                data-testid="input-house-card-reversed"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={!draft.name.trim() || save.isPending} onClick={() => save.mutate()} data-testid="button-save-house-card">
+              {editing ? 'Save' : 'Create'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNavigate: (view: AdminView) => void; systemSlug: string; isAdmin: boolean; personalMode?: boolean }) {
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
+
+  // Swampy authors almost nothing the other systems do - no classes, no
+  // spells, no feat trees, no skills - so its dashboard is only the pieces
+  // the brief actually calls for, plus the shared item library.
+  if (systemSlug === 'swampy') {
+    return (
+      <div className="space-y-8" data-testid="dashboard-swampy">
+        <DashSection title="Beyond the Veil" icon={Sparkles} color="text-emerald-400">
+          <DashCard
+            onClick={() => onNavigate('swampy-warrens')}
+            testId="card-swampy-warrens"
+            icon={Globe}
+            title="Warrens"
+            description="Living worlds beyond the Veil. Set each one's condition, nature, Paths, Houses and Scars - the condition is what shapes every Working drawn from it."
+            hoverBorder="hover:border-emerald-600"
+            iconBg="bg-emerald-700/20"
+            iconColor="text-emerald-500"
+            titleColor="text-emerald-500"
+          />
+          <DashCard
+            onClick={() => onNavigate('swampy-deck')}
+            testId="card-swampy-deck"
+            icon={Layers}
+            title="Deck of Houses"
+            description="The cards a reading is drawn from, each with an upright and a reversed meaning. A reading reveals movement and pressure, it does not set the future."
+            hoverBorder="hover:border-emerald-600"
+            iconBg="bg-emerald-700/20"
+            iconColor="text-emerald-500"
+            titleColor="text-emerald-500"
+          />
+        </DashSection>
+
+        <DashSection title="Items & Characters" icon={Package} color="text-amber-400">
+          <DashCard
+            onClick={() => onNavigate('items')}
+            testId="card-system-items"
+            icon={Package}
+            title="System Items"
+            description="Gear, relics and anything else a character can carry. Items work the same way here as elsewhere - the brief changes magic, not equipment."
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+          <DashCard
+            onClick={() => onNavigate('characters')}
+            testId="card-character-templates"
+            icon={Users}
+            title="Character Templates"
+            description="Pre-built characters and NPCs to drop into a campaign"
+            hoverBorder="hover:border-amber-600"
+            iconBg="bg-amber-700/20"
+            iconColor="text-amber-500"
+            titleColor="text-amber-500"
+          />
+        </DashSection>
+
+        {/* The Working Ledger is deliberately absent: it is a log of
+            precedents set at one table, not library content, so it lives in
+            the campaign rather than here. */}
+      </div>
+    );
+  }
 
   if (systemSlug === 'aa-v3') {
     return (

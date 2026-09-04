@@ -3,10 +3,15 @@ name: Swampy system fork (of C.A.)
 description: How Swampy is separated from C.A., what the two still share on purpose, and where to branch when they diverge.
 ---
 
-# Swampy: a fork of C.A.
+# Swampy: a fork of C.A. (historical)
+
+> **Out of date on the ruleset.** Swampy has since replaced C.A.'s rules
+> wholesale with Daggerheart + Warrens — see `swampy-lanterns-system.md`. It is
+> no longer a wound system, and `shared/swampy.ts` no longer resembles
+> `shared/ca.ts`. The **scoping** described below still holds: the system slug
+> is what keeps the two libraries apart.
 
 Swampy (slug `swampy`, label `Swampy`) started as a byte-for-byte copy of C.A.
-The two are now independent rulesets that happen to look identical.
 
 ## Where the separation actually lives
 

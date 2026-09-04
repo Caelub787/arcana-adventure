@@ -47,11 +47,19 @@ export function isAAv2OrV3(campaignSystem?: string | null): boolean {
   return campaignSystem === "aa-v2" || campaignSystem === "aa-v3";
 }
 
-// The host app's wound-based systems (C.A. and Swampy). Their items are blank
-// customizable sheets, so this package hides most fixed mechanical fields for
-// them. Duplicated from the host's shared/systemRules.ts rather than imported:
-// this package is standalone and deliberately has no dependency on @shared.
+// The host app's wound-based system. Duplicated from the host's
+// shared/systemRules.ts rather than imported: this package is standalone and
+// deliberately has no dependency on @shared. Swampy was one of these while it
+// was a copy of C.A. and no longer is, so keep the two predicates below apart -
+// they answer different questions and now have different answers.
 export function isWoundSystem(campaignSystem?: string | null): boolean {
+  return campaignSystem === "ca";
+}
+
+// Systems whose items are blank customizable sheets rather than a fixed set of
+// V1/V2 mechanical fields. C.A. and Swampy both are: neither has a fixed
+// damage/effect model for gear to plug into.
+export function isBlankItemSheetSystem(campaignSystem?: string | null): boolean {
   return campaignSystem === "ca" || campaignSystem === "swampy";
 }
 
