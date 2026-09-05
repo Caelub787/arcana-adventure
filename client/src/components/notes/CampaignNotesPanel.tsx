@@ -61,6 +61,7 @@ import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePic
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID, TIMELINES_TAB_ID } from "@/components/notes/NoteTabs";
+import { clickEndsNoteEditing } from "@/lib/noteEditFocus";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { SceneNoteCard, type SceneNoteLink } from "@/components/notes/SceneNoteCard";
 
@@ -604,6 +605,11 @@ export function CampaignNotesPanel({
   const [showHomeView, setShowHomeView] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
+  // "read" is the rendered note, "edit" is the textarea. There is no Edit or
+  // Done button any more: clicking into the note's body starts editing and
+  // clicking anywhere outside it goes back to the rendered view. Nothing is
+  // saved on the way out - edits already persist as they're typed, over the
+  // collaboration socket with a debounced REST write behind it.
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
   const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -687,6 +693,12 @@ export function CampaignNotesPanel({
   const [notePickerTriggeredByTyping, setNotePickerTriggeredByTyping] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // The editor's outer element, so a click landing anywhere else can drop
+  // back to the rendered view.
+  const noteEditorRef = useRef<HTMLDivElement>(null);
+  // Set when entering edit mode by clicking the note body, so the caret lands
+  // in the textarea instead of the player having to click a second time.
+  const focusEditorOnRenderRef = useRef(false);
   // One nudge per note is enough; repeating it on every keystroke is noise.
   const gmSecretToastShownRef = useRef(false);
   // Whether the last edit went out over the live channel. When it did, the
@@ -844,9 +856,16 @@ export function CampaignNotesPanel({
         queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         
-        if (data.type === 'note_deleted' && data.noteId === selectedNoteId) {
-          setSelectedNoteId(null);
-          setShowHomeView(true);
+        // A deleted note's tab has to go, whoever deleted it. Closing it only
+        // for the person who pressed Delete left everyone else's tab open on
+        // a note that no longer exists, and even for them it depended on the
+        // delete going through this client's own mutation.
+        if (data.type === 'note_deleted' && data.noteId) {
+          closeTab(data.noteId);
+          if (data.noteId === selectedNoteId) {
+            setSelectedNoteId(null);
+            setShowHomeView(true);
+          }
         }
       }
       if (data.type === 'note_folder_changed') {
@@ -864,7 +883,7 @@ export function CampaignNotesPanel({
     const unsub1 = gameWs.onMessage(handleMessage);
     const unsub2 = globalWs.onMessage(handleMessage);
     return () => { unsub1(); unsub2(); };
-  }, [campaignId, isOpen, queryClient, selectedNoteId]);
+  }, [campaignId, isOpen, queryClient, selectedNoteId, closeTab]);
 
   // Join/leave note rooms for live collaboration
   useEffect(() => {
@@ -1298,6 +1317,12 @@ export function CampaignNotesPanel({
       queryClient.refetchQueries({ queryKey: ["/api/notes"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
+      // Follow the note into whichever folder it landed in. The sidebar's
+      // list is scoped to the selected folder, so a note created at root
+      // while a folder was open was filed somewhere the sidebar wasn't
+      // looking and read as "my new note didn't appear".
+      const landedIn = (newNote as any).folderId ?? null;
+      if (landedIn !== selectedFolderId) setSelectedFolderId(landedIn);
       setSelectedNoteId(newNote.id);
       toast({ title: "Note created" });
     },
@@ -1388,6 +1413,37 @@ export function CampaignNotesPanel({
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  // Clicking into the note body starts editing; clicking anywhere outside the
+  // editor ends it. Canvas notes are always in their own editor and opt out.
+  const beginInlineEdit = () => {
+    if (currentNote?.type === "canvas") return;
+    focusEditorOnRenderRef.current = true;
+    setNoteMode("edit");
+  };
+
+  useEffect(() => {
+    if (noteMode !== "edit" || !focusEditorOnRenderRef.current) return;
+    focusEditorOnRenderRef.current = false;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    // Land at the end rather than the start - clicking a note you're about to
+    // add to is the common case.
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, [noteMode, selectedNoteId]);
+
+  useEffect(() => {
+    if (noteMode !== "edit" || !selectedNoteId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (clickEndsNoteEditing(e.target as Element | null, noteEditorRef.current)) {
+        setNoteMode("read");
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [noteMode, selectedNoteId]);
 
   useEffect(() => {
     if (!selectedNoteId || !currentNote) return;
@@ -2543,14 +2599,6 @@ export function CampaignNotesPanel({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0 text-amber-400"
-            onClick={() => setNoteMode("edit")}
-          >
-            <Edit className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
             className="h-6 w-6 p-0"
             onClick={() => selectedNoteId && openShareDialog(selectedNoteId)}
           >
@@ -2577,11 +2625,21 @@ export function CampaignNotesPanel({
         </div>
       ) : (
         <ScrollArea className="flex-1 p-3">
-          <div className="bg-stone-900/40 border border-stone-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.25)] p-4">
+          {/* The whole card is the click target, including the empty space
+              under a short note - an empty note would otherwise have almost
+              nothing to click. */}
+          <div
+            role="textbox"
+            tabIndex={0}
+            onClick={beginInlineEdit}
+            onFocus={beginInlineEdit}
+            className="bg-stone-900/40 border border-stone-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.25)] p-4 min-h-[40vh] cursor-text outline-none focus:border-stone-700"
+            data-testid="panel-note-read-surface"
+          >
             <h1 className="text-lg font-bold text-stone-100 mb-1 font-display" data-testid="panel-text-note-read-title">
               {currentNote?.title}
             </h1>
-            {renderTagRow()}
+            <div onClick={(e) => e.stopPropagation()}>{renderTagRow()}</div>
             <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
               {formatEntityReferences(currentNote?.content || "")}
             </div>
@@ -2616,16 +2674,8 @@ export function CampaignNotesPanel({
     }
     
     return (
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <div className="flex items-center justify-between p-2 border-b border-stone-700">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-xs"
-            onClick={() => setNoteMode("read")}
-          >
-            <ChevronLeft className="h-3 w-3 mr-1" /> Done
-          </Button>
+      <div ref={noteEditorRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="flex items-center justify-end p-2 border-b border-stone-700">
           <div className="flex items-center gap-1">
             {remotePresence.length > 0 && (
               <div className="flex items-center gap-0.5 mr-1" data-testid="panel-presence-indicators-edit">
@@ -3017,7 +3067,10 @@ export function CampaignNotesPanel({
           <TimelinePanel campaignId={campaignId} isGm={isGm} campaignMembers={campaignMembers} />
         ) : (
           <div className="flex h-full min-h-0 overflow-hidden w-full">
-            {showSidebar && !(selectedNoteId && noteMode === "edit" && currentNote?.type !== "canvas") && (
+            {/* The sidebar used to be hidden while a note was being edited.
+                Now that clicking into the body IS editing, that would make it
+                vanish the moment you started typing. */}
+            {showSidebar && (
               <>
                 <div
                   style={{ width: `${sidebarWidth}px`, minWidth: '120px', maxWidth: '50%' }}
