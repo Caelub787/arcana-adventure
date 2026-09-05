@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 /**
- * A roll that lands while a panel is fullscreened over the tracker has to
- * wait. Playing it right away burns the 3.2s reveal window behind the panel,
- * so the player comes back out to an empty card and never sees the roll -
- * which is exactly what a mobile player does all the time, since a character
- * sheet or item dialog covers the whole screen.
+ * The tracker's roll reveal runs on its own clock and is not aware of what's
+ * covering it. A panel fullscreened over the tracker neither pauses it nor
+ * defers it: the tumble and the total play behind the panel, and closing the
+ * panel while the 3.2s window is still open shows whatever is left of it.
+ *
+ * This is worth pinning down because the tempting "fix" is to hold the roll
+ * until the player is back out, and that is explicitly not wanted - a roll
+ * from four minutes ago should not come tumbling out of a card the moment
+ * you close a character sheet.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import React from "react";
@@ -33,7 +37,7 @@ vi.mock("@/components/ui/floating-panel", async (importOriginal) => ({
   isAnyPanelFullscreen: () => fullscreen,
 }));
 
-import { PinnedRosterBar, type PinnedRollFeedEntry } from "./GameComponents";
+import { PinnedRosterBar, FullscreenRollFallback, type PinnedRollFeedEntry } from "./GameComponents";
 
 const members = [{ id: "m1", userId: "u1", username: "Reed", pinned: true, assignedCharacterId: "c1" }];
 const characters = [{ id: "c1", name: "Mara", hp: 10, maxHp: 10, energy: 5, maxEnergy: 5, naturalArmor: 12 }];
@@ -47,9 +51,14 @@ function tray() {
 }
 const revealed = () => tray().style.height !== "0px";
 
+// Both halves of what a player sees during a fullscreened panel: the tracker
+// itself, covered but still running, and the banner that stands in for it.
 function Harness({ rollFeed }: { rollFeed: PinnedRollFeedEntry[] }) {
   return (
-    <PinnedRosterBar members={members} characters={characters} campaignSystem="swampy" rollFeed={rollFeed} isMobile />
+    <>
+      <FullscreenRollFallback members={members} characters={characters} rollFeed={rollFeed} />
+      <PinnedRosterBar members={members} characters={characters} campaignSystem="swampy" rollFeed={rollFeed} isMobile />
+    </>
   );
 }
 
@@ -84,51 +93,59 @@ describe("tracker rolls and fullscreen panels", () => {
     expect(revealed()).toBe(true);
   });
 
-  it("holds a roll that lands while a panel is fullscreen, then plays it on exit", () => {
+  it("reveals a roll that lands while a panel is fullscreen", () => {
     const { rerender } = render(<Harness rollFeed={[]} />);
     act(() => { setFullscreen(true); });
 
     act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
-    expect(revealed()).toBe(false);
+    expect(revealed()).toBe(true);
+  });
 
-    // However long the player stays in the sheet, the roll is still waiting.
-    act(() => { vi.advanceTimersByTime(30_000); });
-    expect(revealed()).toBe(false);
+  it("is still showing the roll when the panel closes mid-window", () => {
+    const { rerender } = render(<Harness rollFeed={[]} />);
+    act(() => { setFullscreen(true); });
+    act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
 
+    act(() => { vi.advanceTimersByTime(1500); });
     act(() => { setFullscreen(false); });
+
     expect(revealed()).toBe(true);
     expect(screen.getByTestId("pinned-roll-pinned-chip-u1").textContent).toContain("Longsword");
+
+    // and then hides on the roll's own schedule, not the panel's
+    act(() => { vi.advanceTimersByTime(1800); });
+    expect(revealed()).toBe(false);
   });
 
-  it("replays a reveal that was still on screen when the panel opened", () => {
-    const { rerender } = render(<Harness rollFeed={[]} />);
-    act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
-    expect(revealed()).toBe(true);
-
-    act(() => { setFullscreen(true); });
-    act(() => { vi.advanceTimersByTime(30_000); });
-    act(() => { setFullscreen(false); });
-    expect(revealed()).toBe(true);
-  });
-
-  it("plays only the newest of several rolls held during fullscreen", () => {
+  it("does not resurrect a roll whose window ran out behind the panel", () => {
     const { rerender } = render(<Harness rollFeed={[]} />);
     act(() => { setFullscreen(true); });
     act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
-    act(() => {
-      rerender(<Harness rollFeed={[{ ...roll("r2"), text: "Stealth", total: 4 }, roll("r1")]} />);
-    });
-    act(() => { setFullscreen(false); });
 
-    expect(revealed()).toBe(true);
-    expect(screen.getByTestId("pinned-roll-pinned-chip-u1").textContent).toContain("Stealth");
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(revealed()).toBe(false);
+
+    act(() => { setFullscreen(false); });
+    expect(revealed()).toBe(false);
   });
 
-  it("still hides the roll on its own once the player is back out", () => {
+  // Also proves the fullscreen flag in this file's mock actually reaches the
+  // code under test - without something that reads it, the tests above would
+  // pass whether or not the mock were wired up at all.
+  it("stands the roll in as a banner over the panel while the tracker is covered", () => {
     const { rerender } = render(<Harness rollFeed={[]} />);
     act(() => { setFullscreen(true); });
     act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
+
+    expect(screen.getByTestId("fullscreen-roll-fallback").textContent).toContain("Longsword");
+
     act(() => { setFullscreen(false); });
+    expect(screen.queryByTestId("fullscreen-roll-fallback")).toBeNull();
+  });
+
+  it("hides on its own schedule with no panel involved", () => {
+    const { rerender } = render(<Harness rollFeed={[]} />);
+    act(() => { rerender(<Harness rollFeed={[roll("r1")]} />); });
     expect(revealed()).toBe(true);
 
     act(() => { vi.advanceTimersByTime(3300); });

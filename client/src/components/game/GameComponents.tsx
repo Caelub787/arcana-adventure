@@ -11526,17 +11526,6 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const lastSeenIdRef = useRef<string | undefined>(rolls[0]?.id);
   const latest = rolls[0];
 
-  // A roll that landed while a panel was fullscreened over the tracker, kept
-  // so it can play the moment the player is back out and can actually see it.
-  const heldRollRef = useRef<PinnedRollFeedEntry | null>(null);
-  const isFullscreen = useAnyPanelFullscreen();
-  // The new-roll effect only depends on the roll id, so it can't read
-  // `isFullscreen` from its own closure without going stale. Written during
-  // render rather than in the effect below, so a roll landing in the same
-  // commit that opens the panel is still seen as arriving during fullscreen.
-  const isFullscreenRef = useRef(isFullscreen);
-  isFullscreenRef.current = isFullscreen;
-
   // Beacon color, when set, drives both the resting outline and the roll
   // glow; with no player assigned we fall back to the existing amber classes
   // (which render as the app's default purple under the current theme).
@@ -11549,9 +11538,12 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // (e.g. the assigned character or its portrait was updated).
   useEffect(() => { setImgFailed(false); }, [portraitSrc]);
 
-  // The whole reveal - glow, tumbling total, the 3.2s window - as one call,
-  // so it can be started either when the roll lands or later, when the
-  // player comes back out of a fullscreen panel.
+  // The reveal runs on its own clock, whatever is on top of the tracker at
+  // the time. A panel fullscreened over it doesn't pause or defer anything:
+  // close the panel while the 3.2s window is still open and you catch the
+  // tail of the tumble, or the settled total, and then it hides itself as
+  // normal. FullscreenRollFallback is what covers the rest, showing the roll
+  // as a banner above the panel while it's up.
   const playReveal = (entry: PinnedRollFeedEntry) => {
     setRevealed(true);
     setGlow(true);
@@ -11589,32 +11581,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   useEffect(() => {
     if (!latest || latest.id === lastSeenIdRef.current) return;
     lastSeenIdRef.current = latest.id;
-    // A fullscreened panel covers the tracker completely, so playing the
-    // reveal now would just burn the 3.2s window behind it and the player
-    // would come back out to an empty card. Hold the roll and play it when
-    // they leave fullscreen instead.
-    if (isFullscreenRef.current) {
-      heldRollRef.current = latest;
-      return;
-    }
     playReveal(latest);
   }, [latest?.id]);
-
-  // Entering fullscreen holds whatever is on screen; leaving plays it.
-  useEffect(() => {
-    if (isFullscreen) {
-      if (revealed && latest) heldRollRef.current = latest;
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
-      if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
-      return;
-    }
-    const held = heldRollRef.current;
-    if (!held) return;
-    heldRollRef.current = null;
-    playReveal(held);
-  }, [isFullscreen]);
 
   useEffect(() => () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
