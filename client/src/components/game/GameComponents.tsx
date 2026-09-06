@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE } from "@shared/ca";
+import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -28,6 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark } from "@/components/game/CAPanels";
+import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -17930,7 +17931,8 @@ function V3AttrsAndSkillsTab({
   // The single-click roll is deferred so a double-click can cancel it before it
   // fires (onClick fires before onDoubleClick in the DOM).
   const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
-    if (editing) return {};
+    // Rolling and editing don't collide: these ride on the skill's NAME, and
+    // the double-click that opens an editor rides on its VALUE.
     return {
       onClick: () => {
         if (skillPressFiredRef.current) {
@@ -18174,8 +18176,7 @@ function V3AttrsAndSkillsTab({
                 >
                   <button
                     type="button"
-                    className="flex-1 text-left disabled:cursor-default group"
-                    disabled={editing}
+                    className="flex-1 text-left group"
                     title={skill.description}
                     {...skillPressHandlers(skill.name, skillVal, dieType)}
                     data-testid={`button-roll-v3-skill-${skill.key}`}
@@ -18297,33 +18298,66 @@ function CAAttrsAndSkillsTab({
       }
     },
   });
-  const [editing, setEditing] = React.useState(false);
-  const [attrData, setAttrData] = React.useState<Record<string, number>>({});
-  const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+  // No edit mode: each attribute and skill is edited on its own, in place.
+  // The budget is enforced as you type rather than checked on a Save that no
+  // longer exists - the editor for one value can't be raised past what is
+  // actually left to spend, so the totals can never go over in the first
+  // place.
+  const caEdit = useCaInlineEdit(
+    (updates) => {
+      // Attributes are their own columns and go straight through. Skills all
+      // live in one v3Skills map, so a skill edit has to be merged into the
+      // whole map rather than written under its own key - the field name is
+      // prefixed so the two can be told apart here.
+      const patch: Record<string, any> = {};
+      const skillEdits = Object.entries(updates).filter(([key]) => key.startsWith('skill:'));
+      for (const [key, value] of Object.entries(updates)) {
+        if (!key.startsWith('skill:')) patch[key] = value;
+      }
+      if (skillEdits.length > 0) {
+        const skills: Record<string, number> = {
+          ...rules.makeEmptySkills(),
+          ...(liveCharacter.v3Skills || {}),
+        };
+        for (const [key, value] of skillEdits) {
+          skills[key.slice('skill:'.length)] = Number(value) || 0;
+        }
+        patch.v3Skills = skills;
+      }
+      updateCharacterMutation.mutate(patch);
+    },
+    canEditSheet,
+  );
 
   const level = liveCharacter.level || 1;
 
   const attrPointBudget = rules.attrPointBudget(level);
   const attrPointsUsed = rules.ATTRIBUTES.reduce((sum, at) => {
-    const stored = editing ? (attrData[at.key] ?? 0) : ((liveCharacter[at.key] as number) || 0);
-    return sum + Math.max(0, stored);
+    return sum + Math.max(0, (liveCharacter[at.key] as number) || 0);
   }, 0);
+  const attrPointsLeft = attrPointBudget - attrPointsUsed;
 
   const skillBaseBudget = rules.skillPointBudget(level);
-  const skillValues = rules.SKILLS.map(s =>
-    editing ? (skillData[s.key] ?? 0) : ((liveCharacter.v3Skills?.[s.key] as number) ?? 0)
-  );
+  const skillValues = rules.SKILLS.map(s => ((liveCharacter.v3Skills?.[s.key] as number) ?? 0));
   const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((a, v) => a + v, 0);
   const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((a, v) => a + v, 0));
   const skillReclaimed = Math.min(negativeSkillUsed, rules.MAX_NEGATIVE_SKILL_POINTS);
   const skillPointBudget = skillBaseBudget + skillReclaimed;
+  const skillPointsLeft = skillPointBudget - positiveSkillUsed;
+
+  // The bounds maths lives in shared/ca.ts so it can be tested without
+  // mounting a 30k-line sheet.
+  const skillBounds = (key: string) =>
+    caSkillBounds(liveCharacter.v3Skills, key, level, Number(liveCharacter.v3SkillBoosts?.[key] || 0));
+  const attrBounds = (key: string) => caAttributeBounds(liveCharacter, key, level);
 
   const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillPressFiredRef = React.useRef(false);
 
   const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
-    if (editing) return {};
+    // Rolling and editing don't collide: these ride on the skill's NAME, and
+    // the double-click that opens an editor rides on its VALUE.
     return {
       onClick: () => {
         if (skillPressFiredRef.current) {
@@ -18378,40 +18412,18 @@ function CAAttrsAndSkillsTab({
     };
   };
 
-  const startEdit = () => {
-    const a: Record<string, number> = {};
-    for (const at of rules.ATTRIBUTES) {
-      a[at.key] = (liveCharacter[at.key] as number) || 0;
-    }
-    const s: Record<string, number> = { ...rules.makeEmptySkills(), ...(liveCharacter.v3Skills || {}) };
-    setAttrData(a);
-    setSkillData(s);
-    setEditing(true);
-  };
-
-  const save = () => {
-    updateCharacterMutation.mutate({
-      ...attrData,
-      v3Skills: skillData,
-    });
-    setEditing(false);
-  };
-
   return (
     <Card className="bg-stone-800 border-stone-700" data-testid="card-ca-attrs-skills">
       <CardContent className="pt-4 space-y-3">
-        {canEditSheet && !editing && (
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={startEdit} data-testid="button-edit-ca-attrs">
-              Edit
-            </Button>
-          </div>
-        )}
         <p className="text-xs text-stone-500">
           Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+          {canEditSheet && ' Double-click (or long-press) a number to change it.'}
         </p>
 
-        {editing && (
+        {/* The budgets are always on screen now rather than only inside an
+            edit mode, because they are what tells you whether there is
+            anything left to spend before you go looking for it. */}
+        {(
           <div className="grid grid-cols-2 gap-2" data-testid="ca-point-budgets">
             <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
               <div className="flex justify-between items-center">
@@ -18466,12 +18478,14 @@ function CAAttrsAndSkillsTab({
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {rules.ATTRIBUTES.map(attr => {
-            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
+            const attrVal = (liveCharacter[attr.key] as number) || 0;
             const dieType = `d${rules.attrValueToDieSides(attrVal)}`;
+            const open = caEdit.field === attr.key;
+            const bounds = attrBounds(attr.key);
             return (
               <Card
                 key={attr.key}
-                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600'}`}
+                className={`bg-stone-900 ${open ? 'border-amber-700' : 'border-stone-600'}`}
                 data-testid={`card-ca-attr-${attr.key}`}
               >
                 <CardContent className="p-3 text-center">
@@ -18479,16 +18493,23 @@ function CAAttrsAndSkillsTab({
                     <Label className="text-xs text-stone-400">{attr.name}</Label>
                     <span className="text-[10px] text-stone-500">({attr.abbr})</span>
                   </div>
-                  {editing ? (
-                    <NumberInput
-                      min={0} max={5} value={attrData[attr.key] ?? 0} fallback={0}
-                      onChange={v => setAttrData({ ...attrData, [attr.key]: v ?? 0 })}
-                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                      className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
-                      data-testid={`input-ca-attr-${attr.key}`}
-                    />
+                  {open ? (
+                    <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <NumberInput
+                        min={bounds.min} max={bounds.max} value={caEdit.draft} fallback={bounds.min}
+                        onChange={v => caEdit.setDraft(v ?? bounds.min)}
+                        className="text-xl font-bold text-amber-500 text-center bg-stone-800 border-amber-700 min-w-0"
+                        data-testid={`input-ca-attr-${attr.key}`}
+                        {...caEdit.keyHandlers(attr.key, (d) => clampToBounds(d, bounds))}
+                      />
+                      <CaInlineActions edit={caEdit} field={attr.key} transform={(d) => clampToBounds(d, bounds)} />
+                    </div>
                   ) : (
-                    <div className="mt-1" data-testid={`text-ca-attr-${attr.key}`}>
+                    <div
+                      className={`mt-1 ${canEditSheet ? 'cursor-pointer select-none' : ''}`}
+                      data-testid={`text-ca-attr-${attr.key}`}
+                      {...caEdit.pressHandlers(attr.key, attrVal)}
+                    >
                       <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
                     </div>
@@ -18509,20 +18530,21 @@ function CAAttrsAndSkillsTab({
           <CardContent className="pt-0 pb-2 space-y-1">
             {[...rules.SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = rules.ATTRIBUTES.find(a => a.key === skill.parent);
-              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
+              const attrVal = (liveCharacter[skill.parent] as number) || 0;
               const dieType = `d${rules.attrValueToDieSides(attrVal)}`;
-              const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
+              const rawSkillVal = (liveCharacter.v3Skills?.[skill.key] as number) ?? 0;
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
-              const skillWoundEffect = editing ? 0 : rules.woundStatEffectTotal(rules.woundsOf(liveCharacter), skill.key);
+              const skillWoundEffect = rules.woundStatEffectTotal(rules.woundsOf(liveCharacter), skill.key);
               // Overload works exactly like a wound's effect, except it is
               // live only while the pool is over the Physique - so it appears
               // and clears on its own as the pool moves, with no state of its
               // own to keep in sync.
-              const skillOverloadEffect = editing ? 0 : caPhysiqueStatEffectTotal(liveCharacter as any, skill.key);
-              const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect + skillOverloadEffect);
+              const skillOverloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, skill.key);
+              const skillVal = rawSkillVal + skillScrollBoost + skillWoundEffect + skillOverloadEffect;
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect + skillOverloadEffect);
+              const skillTempBoost = skillScrollBoost + skillWoundEffect + skillOverloadEffect;
+              const skillOpen = caEdit.field === `skill:${skill.key}`;
+              const skillLimits = skillBounds(skill.key);
               const skillTempSources = [
                 skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
                 skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
@@ -18536,8 +18558,7 @@ function CAAttrsAndSkillsTab({
                 >
                   <button
                     type="button"
-                    className="flex-1 text-left disabled:cursor-default group"
-                    disabled={editing}
+                    className="flex-1 text-left group"
                     title={skill.description}
                     {...skillPressHandlers(skill.name, skillVal, dieType)}
                     data-testid={`button-roll-ca-skill-${skill.key}`}
@@ -18549,21 +18570,28 @@ function CAAttrsAndSkillsTab({
                     </div>
                     <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
                   </button>
-                  {editing ? (
-                    <div className="flex flex-col items-end shrink-0">
+                  {skillOpen ? (
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <NumberInput
-                        min={-2} max={skillMax} value={skillData[skill.key] ?? 0} fallback={0}
-                        onChange={v => setSkillData({ ...skillData, [skill.key]: v ?? 0 })}
+                        min={skillLimits.min} max={skillLimits.max} value={caEdit.draft} fallback={0}
+                        onChange={v => caEdit.setDraft(v ?? 0)}
                         className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
                         data-testid={`input-ca-skill-${skill.key}`}
+                        {...caEdit.keyHandlers(`skill:${skill.key}`, (d) => clampToBounds(d, skillLimits))}
                       />
-                      {skillScrollBoost > 0 && (
-                        <span className="text-[10px] text-sky-400/80 mt-0.5" data-testid={`text-ca-skill-scroll-${skill.key}`}>+{skillScrollBoost} bonus</span>
-                      )}
+                      <CaInlineActions
+                        edit={caEdit}
+                        field={`skill:${skill.key}`}
+                        transform={(d) => clampToBounds(d, skillLimits)}
+                      />
                     </div>
                   ) : (
                     <div className="flex flex-col items-end shrink-0">
-                      <span className="text-xs font-semibold text-right text-amber-400" data-testid={`text-ca-skill-${skill.key}`}>
+                      <span
+                        className={`text-xs font-semibold text-right text-amber-400 ${canEditSheet ? 'cursor-pointer select-none' : ''}`}
+                        data-testid={`text-ca-skill-${skill.key}`}
+                        {...caEdit.pressHandlers(`skill:${skill.key}`, rawSkillVal)}
+                      >
                         {skillBaseVal >= 0 ? `+${skillBaseVal}` : skillBaseVal}
                         {skillTempBoost !== 0 && (
                           <span
@@ -18610,12 +18638,6 @@ function CAAttrsAndSkillsTab({
             })}
           </CardContent>
         </Card>
-        {editing && (
-          <div className="flex gap-2 pt-2 border-t border-stone-700">
-            <Button size="sm" onClick={save} data-testid="button-save-ca-attrs">Save Changes</Button>
-            <Button size="sm" variant="outline" onClick={() => setEditing(false)} data-testid="button-cancel-ca-attrs">Cancel</Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -19086,7 +19108,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
 
-  // C.A.'s Overview tab has no edit mode at all - see caInlineField below.
+  // C.A.'s Overview tab has no edit mode at all - see caEdit below.
   // `dc` rides on the existing `naturalArmor` column (no schema change):
   // C.A. doesn't compute DC from size/armor/feats like v1/v2/v3 do, it's
   // just a direct GM-set number, so the column is repurposed wholesale.
@@ -19796,88 +19818,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // C.A. race change: same species auto-fill idea as applyRaceChange, but
   // only touches the fundamentals draft (size/naturalArmor/speed/flySpeed/
   // swimSpeed) — no hp/energy, since C.A. doesn't derive those from species.
-  // C.A. Overview has no Edit button. Every value is its own inline editor,
+  // C.A. has no edit mode on any tab. Every value is its own inline editor,
   // opened by double-clicking it (or long-pressing on touch) - the same
-  // gesture the Energy Pool and the stat bars already used, applied to the
-  // whole tab so there is one way in rather than two.
-  const [caInlineField, setCaInlineField] = useState<string | null>(null);
-  const [caInlineDraft, setCaInlineDraft] = useState<any>(null);
-  const caInlinePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const caCanEditOverview = !!onUpdate && (isOwner || isGM);
-
-  const openCaInline = (field: string, current: any) => {
-    if (!caCanEditOverview) return;
-    setCaInlineDraft(current);
-    setCaInlineField(field);
-  };
-  const closeCaInline = () => {
-    setCaInlineField(null);
-    setCaInlineDraft(null);
-  };
-  /**
-   * Writes one field and closes. `transform` turns the draft into what the
-   * column wants (a trimmed string, a nulled-out empty, a floored number).
-   */
-  const saveCaInline = (field: string, transform?: (draft: any) => any) => {
-    const value = transform ? transform(caInlineDraft) : caInlineDraft;
-    onUpdate?.({ [field]: value } as any);
-    closeCaInline();
-  };
-
-  /** Double-click on desktop, long-press on touch — same as the stat bars. */
-  const caInlinePressHandlers = (field: string, current: any) => {
-    if (!caCanEditOverview) return {};
-    const cancel = () => {
-      if (caInlinePressTimerRef.current) {
-        clearTimeout(caInlinePressTimerRef.current);
-        caInlinePressTimerRef.current = null;
-      }
-    };
-    return {
-      onDoubleClick: (e: React.MouseEvent) => { e.stopPropagation(); openCaInline(field, current); },
-      onTouchStart: () => {
-        cancel();
-        caInlinePressTimerRef.current = setTimeout(() => openCaInline(field, current), 500);
-      },
-      onTouchEnd: cancel,
-      onTouchMove: cancel,
-      onTouchCancel: cancel,
-      title: 'Double-click (PC) or long-press (mobile) to edit',
-    };
-  };
-
-  // Every inline editor looks the same: the input, a tick and a cross, with
-  // Enter and Escape doing the same two things.
-  const caInlineKeys = (field: string, transform?: (draft: any) => any) => ({
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); saveCaInline(field, transform); }
-      if (e.key === 'Escape') { e.preventDefault(); closeCaInline(); }
-    },
-  });
-
-  const caInlineActions = (field: string, transform?: (draft: any) => any) => (
-    <>
-      <Button
-        size="sm"
-        className="h-7 w-7 p-0 bg-emerald-700 hover:bg-emerald-600 text-white shrink-0"
-        onClick={(e) => { e.stopPropagation(); saveCaInline(field, transform); }}
-        aria-label="Save"
-        data-testid={`button-ca-save-${field}`}
-      >
-        <Check className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-        onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
-        aria-label="Cancel"
-        data-testid={`button-ca-cancel-${field}`}
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
-    </>
+  // gesture the Energy Pool and the stat bars already used. The machinery
+  // lives in CASheetUI so the Skills tab, which is a separate component, can
+  // use exactly the same one.
+  const caEdit = useCaInlineEdit(
+    (updates) => onUpdate?.(updates as any),
+    !!onUpdate && (isOwner || isGM),
   );
 
   // Age is the one number that can be genuinely empty rather than zero.
@@ -19885,39 +19833,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     const raw = String(draft ?? '').trim();
     return raw === '' ? null : Math.max(0, Math.floor(Number(raw) || 0));
   };
-
-  const caInlineNumberEditor = (field: string, testid: string) => (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <NumberInput
-        min={0}
-        value={caInlineDraft}
-        onChange={(v) => setCaInlineDraft(v ?? 0)}
-        className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
-        data-testid={`input-ca-edit-${testid}`}
-        {...caInlineKeys(field, (d) => Math.max(0, Math.floor(Number(d) || 0)))}
-      />
-      {caInlineActions(field, (d) => Math.max(0, Math.floor(Number(d) || 0)))}
-    </div>
-  );
-
-  const caInlineTextEditor = (field: string, testid: string, placeholder?: string) => (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <Input
-        autoFocus
-        value={caInlineDraft ?? ''}
-        onChange={(e) => setCaInlineDraft(e.target.value)}
-        placeholder={placeholder}
-        className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
-        data-testid={`input-ca-edit-${testid}`}
-        {...caInlineKeys(field, (d) => (String(d ?? '').trim() || null))}
-      />
-      {caInlineActions(field, (d) => (String(d ?? '').trim() || null))}
-    </div>
-  );
-
-  useEffect(() => () => {
-    if (caInlinePressTimerRef.current) clearTimeout(caInlinePressTimerRef.current);
-  }, []);
 
   // Changing race pulls the species' own numbers along with it, the way the
   // old whole-tab editor did - otherwise picking a species inline would set
@@ -19932,7 +19847,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       ...(raceData?.flySpeed != null ? { flySpeed: raceData.flySpeed } : {}),
       ...((raceData as any)?.swimSpeed != null ? { swimSpeed: (raceData as any).swimSpeed } : {}),
     } as any);
-    closeCaInline();
+    caEdit.close();
   };
 
   // Inventory state
@@ -21942,9 +21857,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                         <div>
                           <Label className="text-xs text-stone-400">Race</Label>
-                          {caInlineField === 'race' ? (
+                          {caEdit.field === 'race' ? (
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <Select value={caInlineDraft ?? ''} onValueChange={saveCaInlineRace}>
+                              <Select value={caEdit.draft ?? ''} onValueChange={saveCaInlineRace}>
                                 <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm min-w-0" data-testid="select-ca-race">
                                   <SelectValue placeholder="Select race" />
                                 </SelectTrigger>
@@ -21958,7 +21873,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 size="sm"
                                 variant="outline"
                                 className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-                                onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
+                                onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
                                 aria-label="Cancel"
                                 data-testid="button-ca-cancel-race"
                               >
@@ -21969,7 +21884,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <p
                               className="text-stone-200 text-sm truncate cursor-pointer select-none"
                               data-testid="text-ca-race"
-                              {...caInlinePressHandlers('race', liveCharacter.race || '')}
+                              {...caEdit.pressHandlers('race', liveCharacter.race || '')}
                             >
                               {liveCharacter.race || 'Unset'}
                             </p>
@@ -21977,11 +21892,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                         <div>
                           <Label className="text-xs text-stone-400">DC</Label>
-                          {caInlineField === 'naturalArmor' ? caInlineNumberEditor('naturalArmor', 'dc') : (
+                          {caEdit.field === 'naturalArmor' ? <CaInlineNumber edit={caEdit} field="naturalArmor" testId="dc" /> : (
                             <p
                               className="text-stone-200 text-sm cursor-pointer select-none"
                               data-testid="text-ca-dc"
-                              {...caInlinePressHandlers('naturalArmor', liveCharacter.naturalArmor ?? 5)}
+                              {...caEdit.pressHandlers('naturalArmor', liveCharacter.naturalArmor ?? 5)}
                             >
                               {liveCharacter.naturalArmor ?? 5}
                             </p>
@@ -21994,7 +21909,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ] as const).map(({ key, label, testid }) => (
                           <div key={key}>
                             <Label className="text-xs text-stone-400">{label}</Label>
-                            {caInlineField === key ? caInlineNumberEditor(key, testid) : (() => {
+                            {caEdit.field === key ? <CaInlineNumber edit={caEdit} field={key} testId={testid} /> : (() => {
                               const baseVal = liveCharacter[key] || 0;
                               const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
                               const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
@@ -22006,7 +21921,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 <p
                                   className="text-stone-200 text-sm cursor-pointer select-none"
                                   data-testid={`text-ca-${testid}`}
-                                  {...caInlinePressHandlers(key, baseVal)}
+                                  {...caEdit.pressHandlers(key, baseVal)}
                                 >
                                   {isReduced ? (
                                     <>
@@ -22033,11 +21948,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ))}
                         <div>
                           <Label className="text-xs text-stone-400">Size</Label>
-                          {caInlineField === 'size' ? caInlineTextEditor('size', 'size', 'Medium') : (
+                          {caEdit.field === 'size' ? <CaInlineText edit={caEdit} field="size" testId="size" placeholder="Medium" /> : (
                             <p
                               className="text-stone-200 text-sm cursor-pointer select-none"
                               data-testid="text-ca-size"
-                              {...caInlinePressHandlers('size', liveCharacter.size || '')}
+                              {...caEdit.pressHandlers('size', liveCharacter.size || '')}
                             >
                               {liveCharacter.size || 'Medium'}
                             </p>
@@ -22050,25 +21965,25 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             date picker or a lookup list. */}
                         <div>
                           <Label className="text-xs text-stone-400">Age</Label>
-                          {caInlineField === 'caAge' ? (
+                          {caEdit.field === 'caAge' ? (
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                               <Input
                                 autoFocus
                                 type="number"
                                 min={0}
-                                value={caInlineDraft ?? ''}
-                                onChange={(e) => setCaInlineDraft(e.target.value)}
+                                value={caEdit.draft ?? ''}
+                                onChange={(e) => caEdit.setDraft(e.target.value)}
                                 className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
                                 data-testid="input-ca-edit-age"
-                                {...caInlineKeys('caAge', caAgeFromDraft)}
+                                {...caEdit.keyHandlers('caAge', caAgeFromDraft)}
                               />
-                              {caInlineActions('caAge', caAgeFromDraft)}
+                              <CaInlineActions edit={caEdit} field="caAge" transform={caAgeFromDraft} />
                             </div>
                           ) : (
                             <p
                               className="text-stone-200 text-sm cursor-pointer select-none"
                               data-testid="text-ca-age"
-                              {...caInlinePressHandlers('caAge', (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge))}
+                              {...caEdit.pressHandlers('caAge', (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge))}
                             >
                               {(liveCharacter as any).caAge ?? '—'}
                             </p>
@@ -22076,11 +21991,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                         <div>
                           <Label className="text-xs text-stone-400">Birthday</Label>
-                          {caInlineField === 'caBirthday' ? caInlineTextEditor('caBirthday', 'birthday', 'February 11') : (
+                          {caEdit.field === 'caBirthday' ? <CaInlineText edit={caEdit} field="caBirthday" testId="birthday" placeholder="February 11" /> : (
                             <p
                               className="text-stone-200 text-sm cursor-pointer select-none"
                               data-testid="text-ca-birthday"
-                              {...caInlinePressHandlers('caBirthday', (liveCharacter as any).caBirthday || '')}
+                              {...caEdit.pressHandlers('caBirthday', (liveCharacter as any).caBirthday || '')}
                             >
                               {(liveCharacter as any).caBirthday || '—'}
                             </p>
@@ -22088,11 +22003,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                         <div className="col-span-2">
                           <Label className="text-xs text-stone-400">Languages</Label>
-                          {caInlineField === 'caLanguages' ? caInlineTextEditor('caLanguages', 'languages', 'English, Tana Ornis') : (
+                          {caEdit.field === 'caLanguages' ? <CaInlineText edit={caEdit} field="caLanguages" testId="languages" placeholder="English, Tana Ornis" /> : (
                             <p
                               className="text-stone-200 text-sm cursor-pointer select-none"
                               data-testid="text-ca-languages"
-                              {...caInlinePressHandlers('caLanguages', (liveCharacter as any).caLanguages || '')}
+                              {...caEdit.pressHandlers('caLanguages', (liveCharacter as any).caLanguages || '')}
                             >
                               {(liveCharacter as any).caLanguages || '—'}
                             </p>
@@ -22106,16 +22021,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             alike. */}
                         <div className="col-span-2">
                           <Label className="text-xs text-stone-400">Aura</Label>
-                          {caInlineField === 'aura' ? (
+                          {caEdit.field === 'aura' ? (
                             <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                               {/* The aura is two values, so it writes on every
                                   change rather than waiting for a tick - there
                                   is nothing to get half-committed. */}
                               <CaAuraEditor
-                                color={caInlineDraft?.color}
-                                shape={caInlineDraft?.shape}
+                                color={caEdit.draft?.color}
+                                shape={caEdit.draft?.shape}
                                 onChange={({ color, shape }) => {
-                                  setCaInlineDraft({ color, shape });
+                                  caEdit.setDraft({ color, shape });
                                   onUpdate?.({ caAuraColor: color, caAuraShape: shape } as any);
                                 }}
                               />
@@ -22123,7 +22038,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 size="sm"
                                 variant="outline"
                                 className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-                                onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
+                                onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
                                 aria-label="Done"
                                 data-testid="button-ca-cancel-aura"
                               >
@@ -22134,7 +22049,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <div
                               className="flex items-center gap-2 mt-0.5 cursor-pointer select-none"
                               data-testid="text-ca-aura"
-                              {...caInlinePressHandlers('aura', {
+                              {...caEdit.pressHandlers('aura', {
                                 color: (liveCharacter as any).caAuraColor || '',
                                 shape: (liveCharacter as any).caAuraShape || 'none',
                               })}
@@ -22166,23 +22081,23 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <div className="space-y-1">
                     <div className="flex justify-between items-center">
                       <Label className="text-xs text-stone-300">Physique</Label>
-                      {caInlineField === 'caPhysique' ? (
+                      {caEdit.field === 'caPhysique' ? (
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <NumberInput
                             min={0}
-                            value={caInlineDraft}
-                            onChange={(v) => setCaInlineDraft(v ?? 0)}
+                            value={caEdit.draft}
+                            onChange={(v) => caEdit.setDraft(v ?? 0)}
                             className="w-24 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                             data-testid="input-ca-physique"
-                            {...caInlineKeys('caPhysique', (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+                            {...caEdit.keyHandlers('caPhysique', caWholeNumber)}
                           />
-                          {caInlineActions('caPhysique', (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+                          <CaInlineActions edit={caEdit} field="caPhysique" transform={caWholeNumber} />
                         </div>
                       ) : (
                         <span
                           className="text-xs font-bold text-stone-200 cursor-pointer select-none"
                           data-testid="text-ca-physique"
-                          {...caInlinePressHandlers('caPhysique', caPhysique.physique)}
+                          {...caEdit.pressHandlers('caPhysique', caPhysique.physique)}
                         >
                           {caPhysique.physique.toLocaleString()}
                           {caPhysique.over && (
@@ -24955,28 +24870,24 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 onUpdate={onUpdate ? (updates) => onUpdate(updates as any) : undefined}
               />
             ) : (<>
-            <Card className="bg-stone-800 border-stone-700">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-rose-500 text-sm font-medium flex items-center gap-2">
-                    <Star className="h-4 w-4" />
-                    Traits
-                  </CardTitle>
-                  {isGM && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowAddTrait(true)}
-                      className="h-7 text-xs"
-                      data-testid="button-add-ca-trait"
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Trait
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="pt-2 space-y-2">
+            <CaCard
+              title="Traits"
+              icon={<Star className="h-4 w-4" />}
+              accentClass="text-rose-500"
+              action={isGM && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowAddTrait(true)}
+                  className="h-7 text-xs"
+                  data-testid="button-add-ca-trait"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Trait
+                </Button>
+              )}
+            >
+              <div className="space-y-2">
                 {characterTraits.length === 0 ? (
                   <p className="text-stone-400 text-sm text-center py-4" data-testid="text-ca-traits-empty">No traits added yet.</p>
                 ) : (
@@ -25042,8 +24953,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     );
                   })
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </CaCard>
 
             {/* Add Trait Dialog */}
             <FloatingPanel

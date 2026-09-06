@@ -583,3 +583,68 @@ export const CA_STARTING_ENERGY = 10;
  * before Physique existed keeps their 0 and simply never overloads.
  */
 export const CA_STARTING_PHYSIQUE = 100;
+
+// ---------------------------------------------------------------------------
+// Point budgets
+//
+// Attributes and skills are bought from per-level budgets. The sheet has no
+// Save button to check a whole allocation against, so instead each value's
+// editor is bounded by what is actually left — you cannot type a number that
+// would put the total over, which means the total can never be over.
+// ---------------------------------------------------------------------------
+
+export interface CAPointBounds {
+  current: number;
+  min: number;
+  max: number;
+}
+
+/**
+ * How far one attribute can move. Up is what's left in the budget on top of
+ * what this attribute already holds, capped at 5; down is 0.
+ */
+export function caAttributeBounds(
+  values: Record<string, number> | null | undefined,
+  key: string,
+  level: number,
+): CAPointBounds {
+  const read = (k: string) => Math.max(0, Math.floor(Number(values?.[k]) || 0));
+  const used = CA_ATTRIBUTE_KEYS.reduce((sum, k) => sum + read(k), 0);
+  const left = caAttrPointBudget(level) - used;
+  const current = read(key);
+  return { current, min: 0, max: Math.min(5, current + Math.max(0, left)) };
+}
+
+/**
+ * How far one skill can move. Up is what's left in the budget plus whatever
+ * scroll bonus this skill carries; down is bounded both by the -2 floor and
+ * by how much of the negative allowance the OTHER skills have already taken,
+ * since reclaiming past the cap would be spending points that don't exist.
+ */
+export function caSkillBounds(
+  skills: Record<string, number> | null | undefined,
+  key: string,
+  level: number,
+  scrollBoost = 0,
+): CAPointBounds {
+  const read = (k: string) => Math.floor(Number(skills?.[k]) || 0);
+  const all = CA_SKILL_KEYS.map(read);
+  const positiveUsed = all.filter((v) => v > 0).reduce((a, v) => a + v, 0);
+  const negativeUsed = Math.abs(all.filter((v) => v < 0).reduce((a, v) => a + v, 0));
+  const reclaimed = Math.min(negativeUsed, CA_MAX_NEGATIVE_SKILL_POINTS);
+  const budget = caSkillPointBudget(level) + reclaimed;
+  const left = budget - positiveUsed;
+
+  const current = read(key);
+  const negativesElsewhere = negativeUsed - Math.max(0, -current);
+  const negativeRoom = Math.max(0, CA_MAX_NEGATIVE_SKILL_POINTS - negativesElsewhere);
+
+  // `|| 0` rather than plain negation: with no negative room left this would
+  // otherwise be -0, which is a real value a NumberInput will happily show.
+  const floor = -Math.min(2, negativeRoom) || 0;
+  return {
+    current,
+    min: floor,
+    max: Math.min(5 + Math.max(0, Math.floor(scrollBoost)), current + Math.max(0, left)),
+  };
+}

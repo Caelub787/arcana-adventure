@@ -65,13 +65,38 @@ but has not been run; ask before touching live data.
 New C.A. characters also start at `CA_STARTING_ENERGY` (10) rather than their
 species' figure, because C.A.'s species lists carry the other systems' numbers.
 
-## The Overview tab has no edit mode
+## No edit mode anywhere on the C.A. sheet
 
-There is no pencil button and no Save/Cancel on C.A.'s Overview tab. Every
-value is its own inline editor, opened by double-clicking it (desktop) or
-long-pressing it (touch) — the same gesture the Energy Pool and the stat bars
-already used, `caInlinePressHandlers` in `CharacterSheet`. Enter saves, Escape
-cancels, and each field writes only itself.
+No tab has a pencil button or a Save/Cancel. Every value is its own inline
+editor, opened by double-clicking it (desktop) or long-pressing it (touch) —
+the same gesture the Energy Pool and the stat bars already used. Enter saves,
+Escape cancels, and each field writes only itself.
+
+The machinery is `useCaInlineEdit` in `client/src/components/game/CASheetUI.tsx`,
+which also holds the sheet's layout primitives (`CaCard`, `CaFieldGrid`,
+`CaField`, `CaStatRow`, `CaValue`) so every tab is built from the same pieces.
+The hook takes its own `write` callback because the Overview persists through
+`onUpdate` and the Skills tab through a mutation.
+
+### The Skills tab is the one with teeth
+
+Attributes and skills are bought from per-level budgets, and there is no Save
+to validate a whole allocation against any more. So **the budget is enforced
+at the edge of each editor instead**: `caAttributeBounds` / `caSkillBounds` in
+`shared/ca.ts` cap what one value can be set to by what is actually left, so
+the totals can never go over rather than being caught afterwards. The budget
+meters are now always on screen rather than only inside an edit mode, because
+they are what tells you whether there is anything left to spend.
+
+`caSkillBounds` has two subtleties worth keeping: a skill's floor moves with
+how much of the negative allowance the OTHER skills have taken (a skill's own
+negative must not count against its own floor, or it could never stay where it
+is), and the floor is normalised through `|| 0` because `-Math.min(2, 0)` is
+`-0`, which a NumberInput will happily display.
+
+Rolling and editing don't collide on the Skills tab: click/double-click/long-
+press on a skill's **name** roll it and open the roll panel, and the
+double-click that opens an editor is on its **value**.
 
 Two fields don't follow the tick-to-save shape, for good reasons:
 
