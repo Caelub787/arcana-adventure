@@ -572,12 +572,19 @@ hr,
 [role="tablist"] {
   border-color: var(--ca-gilt-line-soft);
 }
+/* The active tab is the metal on a dark ground.
+
+   Each tab carries its own colour class for its active state - a filled
+   green block for Skills, magenta for Traits, blue for Inventory - and four
+   saturated blocks in a gilt strip looked like four different apps. The
+   colour is kept for the INACTIVE tabs, where it reads as an icon tint and
+   tells them apart; selecting one shouldn't repaint half the header.
+
+   This block is unlayered and Tailwind's utilities are in @layer utilities,
+   so it wins on the cascade without needing !important. */
 [role="tab"][data-state="active"] {
+  background-color: rgb(28 25 23 / 0.9);
   border-color: var(--ca-gilt-line);
-  /* The active tab is the metal. Inactive tabs keep their own colours - the
-     sheet gives each tab one and that variety is worth keeping - but the
-     selected one reading blue inside a gold outline just looked like a
-     mistake. */
   color: var(--ca-gilt-bright);
 }
 
@@ -616,4 +623,48 @@ hr,
 [data-slot="select-trigger"]:focus {
   border-color: var(--ca-gilt-line);
   --tw-ring-color: var(--ca-gilt-line);
+}
+
+/* Filled primary buttons. `bg-amber-*` is the app's "this is the main action"
+   fill, and amber is remapped per theme - it comes out blue here, so an
+   Add Item button was a blue slab in a gold panel. Primary actions take the
+   metal instead. Destructive and success fills (red, emerald) are left alone:
+   those colours are the message. */
+[data-slot="button"][class*="bg-amber-"] {
+  background-color: var(--ca-gilt);
+  color: rgb(28 25 23);
+  border-color: var(--ca-gilt-bright);
+}
+[data-slot="button"][class*="bg-amber-"]:hover {
+  background-color: var(--ca-gilt-bright);
+}
+
+/* The rest of the app's chrome.
+
+   Sheets and dialogs were only ever part of it: the side panel, the hotbar,
+   the roll trays, the pinned tracker and every floating badge on the
+   battlemap are plain bordered boxes drawn inline. There is no component to
+   hook, so this matches on how they are built - a stone panel with a border -
+   and gilds the border only. Backgrounds, sizes and layout are untouched.
+
+   `border-amber-*` is included because amber is remapped per theme and comes
+   out blue here, so anything already trying to look gilded was the most
+   obviously wrong thing on screen. */
+.glass-panel,
+[class*="bg-stone-900/9"][class*="border"],
+[class*="bg-stone-900/8"][class*="border"],
+[class*="bg-stone-800"][class*="border-stone-7"],
+[class*="border-amber-7"],
+[class*="border-amber-8"],
+[class*="border-amber-6"] {
+  border-color: var(--ca-gilt-line-soft);
+}
+
+/* Anything that leans on amber for a heading or a highlight. Same reason:
+   amber is this theme's blue, and a blue heading over a gold rule reads as a
+   mistake rather than a choice. */
+.text-amber-500,
+.text-amber-400,
+.text-amber-300 {
+  color: var(--ca-gilt-bright);
 }

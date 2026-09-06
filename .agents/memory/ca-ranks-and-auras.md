@@ -221,3 +221,29 @@ Drift is seeded off the particle index, not `Math.random`, so a re-render
 doesn't teleport every particle. Below `PARTICLE_MIN_SIZE` (20px) there is no
 room for any of it — at 12px a particle is two pixels — so small uses like the
 party tracker fall back to the single centred shape.
+
+### Why "app-wide" kept not being app-wide
+
+Three rounds of this missed, each for its own reason. Worth knowing before
+adding a fourth patch:
+
+1. **Amber is this theme's blue.** `amber-*` is remapped per theme, so every
+   heading, border and filled button already reaching for amber came out
+   blue - the most obviously wrong thing on screen, and it looked like the
+   theme "hadn't been applied" when it had. The gilt block now also overrides
+   `.text-amber-{300,400,500}` and `border-amber-{6,7,8}00`.
+2. **Tabs carry their own active colour.** `getTabColorClasses` gives each tab
+   a saturated filled background when active - green for Skills, magenta for
+   Traits, blue for Inventory. Setting border and text was not enough; the
+   background had to be neutralised too, or four filled blocks sat in a gilt
+   strip. Inactive tabs keep their colour, which is what tells them apart.
+3. **Not every panel is a component.** The side panel, hotbar, roll trays and
+   battlemap badges are bordered boxes written inline, with nothing to hook.
+   Those are matched on how they are built (`bg-stone-900/9*` plus a border,
+   `.glass-panel`) and only their border colour is changed.
+
+The gilt block is unlayered and Tailwind's utilities live in `@layer
+utilities`, so it wins the cascade without `!important`. That is load-bearing.
+
+**The aura belongs to the sheet root, not a tab's frame.** It was passed into
+the Overview's `CaSheetFrame`, so it vanished on every other tab.

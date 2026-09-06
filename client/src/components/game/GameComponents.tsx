@@ -21705,11 +21705,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   return (
     <div
       className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden"
-      // C.A.'s aura tints the sheet's own frame (see CaSheetFrame), so the
-      // root only carries it for the other systems' plain border.
-      style={!isCA && caSheetAuraSet && caSheetAura ? {
-        border: `2px solid ${caSheetAura.color}`,
-        boxShadow: `inset 0 0 24px -6px ${caSheetAura.color}`,
+      // The aura glows around the whole sheet, not around one tab's frame.
+      // It used to be passed into the Overview's CaSheetFrame, which is why it
+      // vanished the moment you switched to Skills or Traits.
+      style={caSheetAuraSet && caSheetAura ? {
+        boxShadow: `0 0 0 1px ${caSheetAura.color}66, 0 0 22px -4px ${caSheetAura.color}`,
       } : undefined}
       data-testid="character-sheet-root"
     >
@@ -21788,7 +21788,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               />
             ) : isCA ? (
               <>
-              <CaSheetFrame auraColor={caSheetAuraSet ? caSheetAura?.color : null}>
+              <CaSheetFrame>
                 <div className="p-4 space-y-3">
                   {/* No Edit button anywhere. Every value opens its own editor
                       on a double-click (or a long-press on touch), the same
@@ -24673,8 +24673,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
           {/* INVENTORY TAB */}
           <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
-            <Card className="bg-stone-800 border-stone-700">
-              <CardContent className="space-y-4 pt-4">
+            {/* Same frame as every other tab. This one was still a plain Card,
+                which is why Inventory looked like a different app next to the
+                three tabs that had been rebuilt. */}
+            <CaSheetFrame>
+              <div className="p-4 space-y-4">
                 {(liveCharacter.exhaustion || 0) >= 3 && (
                   <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="inventory-exhaustion-warning">
                     <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
@@ -24890,8 +24893,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CaSheetFrame>
           </TabsContent>
 
           {/* TRAITS TAB — C.A. only */}

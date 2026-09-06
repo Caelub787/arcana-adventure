@@ -315,6 +315,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
         <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
           <span
             className="truncate"
+            data-panel-title
             onDoubleClick={onTitleDoubleClick}
           >
             {title}
