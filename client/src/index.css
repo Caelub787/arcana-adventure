@@ -75,8 +75,13 @@
   --card-foreground: 220 20% 95%;
   --popover: 226 22% 13%;
   --popover-foreground: 220 20% 95%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 0 0% 100%;
+  /* The app's primary is the gilt, not a blue. This is the actual root of
+     "the buttons don't match": every variant="default" button, every focus
+     ring and every primary accent in the app draws from these, so themeing
+     them here is what makes buttons match by construction rather than by a
+     selector chasing each one. #c9a227 as HSL. */
+  --primary: 46 68% 47%;
+  --primary-foreground: 30 12% 10%;
   --secondary: 222 20% 16%;
   --secondary-foreground: 217 91% 85%;
   --muted: 226 22% 13%;
@@ -85,9 +90,14 @@
   --accent-foreground: 217 91% 90%;
   --destructive: 352 60% 52%;
   --destructive-foreground: 0 0% 98%;
-  --border: 222 16% 24%;
+  --border: 44 30% 26%;
   --input: 224 20% 11%;
-  --ring: 217 91% 65%;
+  --ring: 46 68% 52%;
+  /* The outline variant's border, read straight by buttonVariants. */
+  --button-outline: rgba(201, 162, 39, 0.42);
+  --primary-border: 46 68% 58%;
+  --secondary-border: 44 24% 24%;
+  --destructive-border: 352 50% 40%;
 
   --radius: 0.6rem;
 

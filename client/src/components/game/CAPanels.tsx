@@ -410,3 +410,106 @@ export function CaAuraEditor({
     </div>
   );
 }
+
+/**
+ * The aura as an edge treatment for a whole surface: a glow that hugs every
+ * side, with the character's shape drifting faintly along the edges.
+ *
+ * The sheet's glow used to be a plain outer `box-shadow` on the root, which a
+ * scroll container or a full-screen dialog clips - on a phone that left a
+ * bright line under the header and nothing down the sides. This is an inset
+ * ring plus its own absolutely positioned layer, so there is nothing to clip.
+ *
+ * Faint on purpose. It is meant to be noticed the way a colour is, not read
+ * the way an icon is.
+ */
+export function AuraEdgeField({
+  color,
+  shape,
+  count = 7,
+  className = "",
+}: {
+  color: string;
+  shape: CAAuraShape;
+  count?: number;
+  className?: string;
+}) {
+  const rawId = useId();
+  const animId = `auraedge-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  // Particles ride the perimeter rather than the middle: the interior is where
+  // the sheet's content is, and shapes drifting behind text is noise.
+  const marks = Array.from({ length: count }, (_, i) => {
+    const t = i / count;
+    const edge = Math.floor(t * 4);
+    const along = (t * 4) % 1;
+    const inset = 4 + ((i * 3) % 7);
+    const pos =
+      edge === 0 ? { left: `${along * 100}%`, top: `${inset}%` }
+      : edge === 1 ? { left: `${100 - inset}%`, top: `${along * 100}%` }
+      : edge === 2 ? { left: `${100 - along * 100}%`, top: `${100 - inset}%` }
+      : { left: `${inset}%`, top: `${100 - along * 100}%` };
+    return {
+      pos,
+      size: 14 + ((i * 5) % 12),
+      duration: 11 + ((i * 2.6) % 9),
+      delay: -((i * 3.1) % 11),
+      drift: 6 + ((i * 2) % 10),
+    };
+  });
+
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
+      data-testid="aura-edge-field"
+    >
+      {/* The glow itself, as an inset ring so no ancestor can clip it. */}
+      <span
+        className="absolute inset-0 rounded-[inherit]"
+        style={{ boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 26px -6px ${color}` }}
+      />
+      {shape !== "none" && (
+        <>
+          <style>
+            {marks
+              .map((m, i) =>
+                `@keyframes ${animId}${i}{` +
+                `0%{opacity:0;transform:translate(-50%,-50%) translate(0,0)}` +
+                `25%{opacity:.5}` +
+                `75%{opacity:.4}` +
+                `100%{opacity:0;transform:translate(-50%,-50%) translate(${m.drift}px,${-m.drift}px)}}`,
+              )
+              .join("")}
+          </style>
+          {marks.map((m, i) => (
+            <svg
+              key={i}
+              viewBox="0 0 24 24"
+              width={m.size}
+              height={m.size}
+              style={{
+                position: "absolute",
+                ...m.pos,
+                transform: "translate(-50%, -50%)",
+                overflow: "visible",
+                opacity: 0,
+                animation: `${animId}${i} ${m.duration}s ease-in-out ${m.delay}s infinite alternate`,
+              }}
+            >
+              <path
+                d={AURA_SHAPE_PATHS[shape]}
+                fill={shape === "ring" ? "none" : color}
+                fillOpacity={0.18}
+                stroke={color}
+                strokeOpacity={0.55}
+                strokeWidth={1.4}
+                strokeLinejoin="round"
+              />
+            </svg>
+          ))}
+        </>
+      )}
+    </span>
+  );
+}

@@ -13174,9 +13174,26 @@ export default function Campaign() {
         <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => { if (!open) { setOpenCharacterSheets([]); setMobileNotesFor(null); } }}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
-              <DialogTitle className="text-lg text-amber-500 font-display truncate pr-8">
-                {mobileNotesFor ? `${openCharacterSheets[0]?.name} — Notes` : openCharacterSheets[0]?.name}
-              </DialogTitle>
+              <div className="flex items-center gap-2 pr-8">
+                {/* On mobile the notes REPLACE the sheet, so the sheet's own
+                    Notes button is off screen and there was no way back at
+                    all. This is it. */}
+                {mobileNotesFor && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 shrink-0"
+                    onClick={() => setMobileNotesFor(null)}
+                    data-testid="button-mobile-notes-back"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Sheet
+                  </Button>
+                )}
+                <DialogTitle className="text-lg font-display truncate" style={{ color: 'var(--ca-gilt-bright)' }}>
+                  {mobileNotesFor ? `${openCharacterSheets[0]?.name} — Notes` : openCharacterSheets[0]?.name}
+                </DialogTitle>
+              </div>
             </DialogHeader>
             {openCharacterSheets[0] && mobileNotesFor ? (
               <div className="flex-1 min-h-0 overflow-hidden">

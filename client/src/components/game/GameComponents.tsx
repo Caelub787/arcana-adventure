@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
-import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark } from "@/components/game/CAPanels";
+import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField } from "@/components/game/CAPanels";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -21704,15 +21704,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
   return (
     <div
-      className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden"
-      // The aura glows around the whole sheet, not around one tab's frame.
-      // It used to be passed into the Overview's CaSheetFrame, which is why it
-      // vanished the moment you switched to Skills or Traits.
-      style={caSheetAuraSet && caSheetAura ? {
-        boxShadow: `0 0 0 1px ${caSheetAura.color}66, 0 0 22px -4px ${caSheetAura.color}`,
-      } : undefined}
+      className="relative w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden"
       data-testid="character-sheet-root"
     >
+      {/* The aura wraps the whole sheet on every side and every tab. It was an
+          outer box-shadow on this element, which the mobile dialog clips -
+          hence a bright line under the header and nothing down the sides. An
+          inset ring with its own layer can't be clipped. */}
+      {caSheetAuraSet && caSheetAura && (
+        <AuraEdgeField color={caSheetAura.color} shape={caSheetAura.shape} />
+      )}
       {/* Back button header for template/admin view */}
       {isTemplate && onClose && (
         <div className="flex items-center gap-3 px-4 py-3 bg-stone-950 border-b border-stone-700 shrink-0">
@@ -24917,7 +24918,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               value={isGM && (
                 <Button
                   size="sm"
-                  variant="outline"
                   onClick={() => setShowAddTrait(true)}
                   className="h-7 text-xs"
                   data-testid="button-add-ca-trait"

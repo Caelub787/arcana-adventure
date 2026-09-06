@@ -247,3 +247,23 @@ utilities`, so it wins the cascade without `!important`. That is load-bearing.
 
 **The aura belongs to the sheet root, not a tab's frame.** It was passed into
 the Overview's `CaSheetFrame`, so it vanished on every other tab.
+
+### The actual root of "the buttons don't match"
+
+Not the classes — the **theme variables**. `buttonVariants` builds every button
+in the app from `--primary`, `--primary-foreground`, `--primary-border`,
+`--button-outline`, `--ring` and `--border`, and `--primary` was a blue
+(`217 91% 60%`). Chasing individual buttons with attribute selectors was
+patching symptoms; setting `--primary` to the gilt (`46 68% 47%`) themes every
+default button, focus ring and primary accent in the app by construction.
+
+If a button ever looks wrong again, check whether its call site hardcodes a
+`bg-*` class before adding another selector.
+
+### The aura is an inset ring, not an outer shadow
+
+An outer `box-shadow` on the sheet root is clipped by any scrolling ancestor
+or full-screen dialog — on a phone that showed as a bright line under the
+header and nothing down the sides. `AuraEdgeField` is an absolutely positioned
+layer with an **inset** ring plus faint shapes drifting along the perimeter
+(the interior is where the content is, and shapes behind text are noise).
