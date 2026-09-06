@@ -22326,9 +22326,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               <img
                                 src={woundBodyImage(woundRules.slug, bodySex)}
                                 alt=""
-                                className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+                                className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
                                 style={woundBodyImageStyle(woundRules.slug)}
                                 draggable={false}
+                                data-testid="img-ca-wound-body"
                               />
                               {/* Body-type switch — intentionally understated: a
                                   small corner glyph, not a labeled control. It

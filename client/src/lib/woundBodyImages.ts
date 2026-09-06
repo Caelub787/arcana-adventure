@@ -49,9 +49,24 @@ export function woundBodyArtStyle(systemSlug: string | null | undefined): WoundB
   return setFor(systemSlug).style;
 }
 
-/** The style applied to the <img> so the art reads on a dark panel. */
+/**
+ * How to paint one of these on a dark panel.
+ *
+ * `light-on-transparent` art is already white ink on transparency, so it just
+ * goes in an <img> as-is - no lifting needed, unlike the old assets whose
+ * drawing was black and effectively invisible here.
+ *
+ * `dark-on-light` art is opaque white throughout, so painting it directly
+ * gives a white block. Inverting it produces light lines on black, and
+ * `screen` blending drops that black out.
+ *
+ * A CSS mask filled with a colour token was tried, so the ink colour could be
+ * switched between white and the gilt without regenerating the files. It
+ * rendered nothing at all - so the colour is baked into the asset instead,
+ * which is verifiable by looking at the file.
+ */
 export function woundBodyImageStyle(systemSlug: string | null | undefined): React.CSSProperties {
   return woundBodyArtStyle(systemSlug) === "dark-on-light"
     ? { filter: "invert(1) brightness(1.15) contrast(1.15)", mixBlendMode: "screen" }
-    : { filter: "brightness(1.6) contrast(1.1)" };
+    : {};
 }
