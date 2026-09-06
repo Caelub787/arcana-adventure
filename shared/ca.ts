@@ -422,20 +422,91 @@ export function caUsableEnergy(pool: number | null | undefined): number {
   return Math.floor(Math.max(0, Math.floor(Number(pool) || 0)) / 2);
 }
 
+// ---------------------------------------------------------------------------
+// Physique — how much energy a body is built to carry.
+//
+// It does NOT stop the pool going higher. A character can hold more energy
+// than their Physique; that is the interesting case, not an invalid one. What
+// it does is put them in overload, and the GM hangs effects off that the same
+// way they hang effects off a wound — same target list, same numbers, applied
+// the same way. The difference is that a wound's effects are always live
+// while the wound is, and overload effects are only live while the pool is
+// actually over the Physique, so they come and go on their own as the pool
+// moves.
+//
+// A Physique of 0 means "not set yet" rather than a Physique of zero, so a
+// character created before the field existed isn't permanently in overload.
+// ---------------------------------------------------------------------------
+
+/** Overload effects reuse the wound effect shape - target plus an amount. */
+export type CAPhysiqueEffect = CAWoundEffect;
+
+export function makeCAPhysiqueEffect(): CAPhysiqueEffect {
+  return makeCAWoundEffect();
+}
+
+export function normalizeCAPhysiqueEffects(value: unknown): CAPhysiqueEffect[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((e) => ({
+      id: typeof e.id === "string" ? e.id : makeCAWoundId(),
+      target: typeof e.target === "string" ? e.target : CA_FIXED_STAT_TARGETS[0],
+      amount: Number.isFinite(Number(e.amount)) ? Number(e.amount) : 0,
+    }));
+}
+
+export interface CAPhysiqueState {
+  physique: number;
+  energyPool: number;
+  /** Whether the pool is currently over what the body is built to carry. */
+  over: boolean;
+  /** How far over, or 0. */
+  excess: number;
+}
+
+export function caPhysiqueState(
+  character:
+    | { caPhysique?: number | null; caEnergyPool?: number | null }
+    | null
+    | undefined,
+): CAPhysiqueState {
+  const physique = Math.max(0, Math.floor(Number(character?.caPhysique) || 0));
+  const energyPool = Math.max(0, Math.floor(Number(character?.caEnergyPool) || 0));
+  // An unset Physique is not an overload of the whole pool.
+  const over = physique > 0 && energyPool > physique;
+  return { physique, energyPool, over, excess: over ? energyPool - physique : 0 };
+}
+
+export function caIsOverPhysique(
+  character: { caPhysique?: number | null; caEnergyPool?: number | null } | null | undefined,
+): boolean {
+  return caPhysiqueState(character).over;
+}
+
 /**
- * Physique is the ceiling on the Energy Pool - a character cannot hold more
- * energy than their body can carry. A Physique of 0 is treated as "not set
- * yet" rather than as a hard zero, so a character created before Physique
- * existed isn't retroactively pinned to an empty pool.
+ * What overload is doing to one skill or movement stat right now — zero
+ * whenever the character is inside their Physique, however many effects the
+ * GM has set up.
  */
-export function caClampEnergyPoolToPhysique(
-  pool: number | null | undefined,
-  physique: number | null | undefined,
+export function caPhysiqueStatEffectTotal(
+  character:
+    | {
+        caPhysique?: number | null;
+        caEnergyPool?: number | null;
+        caPhysiqueEffects?: unknown;
+      }
+    | null
+    | undefined,
+  target: string,
 ): number {
-  const value = Math.max(0, Math.floor(Number(pool) || 0));
-  const cap = Math.max(0, Math.floor(Number(physique) || 0));
-  if (cap <= 0) return value;
-  return Math.min(value, cap);
+  if (!target) return 0;
+  if (!caIsOverPhysique(character)) return 0;
+  let total = 0;
+  for (const eff of normalizeCAPhysiqueEffects(character?.caPhysiqueEffects)) {
+    if (eff.target === target) total += eff.amount;
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------------------

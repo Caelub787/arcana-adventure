@@ -35,17 +35,28 @@ source table and deliberately absent here — C.A. replaced HP with wounds.
 Lifespan and the absorption limit are carried as flavour, shown in the rank
 reference dialog.
 
-## Physique caps the pool
+## Physique does NOT cap the pool
 
-`characters.ca_physique` is a ceiling on `ca_energy_pool`: a body can only
-carry so much energy. Because the rank is read off the pool, letting a pool
-past the cap would hand out unearned ranks, so it is clamped on the **server**
-in the character PATCH handler as well as in the sheet — and lowering Physique
-drags an existing pool down with it.
+`characters.ca_physique` is how much energy the body is built to carry, and it
+is **not** a limit. A character can hold more, the rank follows the pool up
+with it, and nothing anywhere clamps it — this was tried and explicitly
+reversed by the user, so don't reintroduce a clamp in the sheet, in
+`saveCAEnergyPool`, or in the character PATCH handler.
 
-**A Physique of 0 means "not set", not "a cap of zero"**
-(`caClampEnergyPoolToPhysique`). Characters created before the column existed
-default to 0 and must not be retroactively pinned to an empty pool.
+What going over does instead is put the character in **overload**, and the GM
+hangs effects off that: `characters.ca_physique_effects`, the same shape as a
+wound's effects (a skill or movement target plus an amount) and applied the
+same way, alongside them. GM-only, via `gmOnlyFields` in the PATCH validator.
+
+The one difference from a wound: a wound's effects are live while the wound
+is, and overload effects are live **only while the pool is actually over the
+Physique** (`caPhysiqueStatEffectTotal` returns 0 otherwise). They come and go
+on their own as the pool moves, so there is no state to keep in sync and
+nothing to clear when the character comes back under.
+
+**A Physique of 0 means "not set", not a Physique of zero** (`caPhysiqueState`).
+Characters created before the column existed default to 0 and must not read as
+permanently overloaded.
 
 ## Auras replaced beacon colours
 
@@ -73,7 +84,7 @@ screen sharing a name would make the second one's colour win for both.
 
 ## Schema
 
-New `characters` columns: `ca_physique`, `ca_age`, `ca_birthday`,
+New `characters` columns: `ca_physique`, `ca_physique_effects`, `ca_age`, `ca_birthday`,
 `ca_languages`, `ca_aura_color`, `ca_aura_shape`. Applied by `db:push` on
 deploy like the rest of the recent schema — see `v3-schema-migrations.md`,
 including its warning about push silently skipping a new column when it

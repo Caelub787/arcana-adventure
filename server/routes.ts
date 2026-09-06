@@ -16,7 +16,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf, caClampEnergyPoolToPhysique } from "@shared/ca";
+import { caAuraOf } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -3101,6 +3101,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const gmOnlyFields = [
       'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor',
+      // C.A.: what carrying more energy than your body is built for does to
+      // you is a GM ruling, the same way a wound's effects are.
+      'caPhysiqueEffects',
       'isTemplate', 'campaignId', 'userId', 'folderId', 'pinned',
       // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
       'maxHp', 'maxEnergy', 'maxMana',
@@ -4595,26 +4598,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const charData = access.character;
       const updates = req.body;
 
-      // C.A.: Physique is a hard ceiling on the Energy Pool, and the rank is
-      // read off that pool, so letting a pool over the cap through here would
-      // hand out ranks the character hasn't earned. Applied on the server
-      // whether or not the client already clamped, and against whichever of
-      // the two is being written - lowering Physique has to bring an existing
-      // pool down with it.
-      if (isWoundSystem((access.campaign as any)?.system)) {
-        const writingPool = 'caEnergyPool' in updates;
-        const writingPhysique = 'caPhysique' in updates;
-        if (writingPool || writingPhysique) {
-          const physique = writingPhysique
-            ? Math.max(0, Math.floor(Number(updates.caPhysique) || 0))
-            : ((charData as any)?.caPhysique ?? 0);
-          const pool = writingPool
-            ? Number(updates.caEnergyPool)
-            : ((charData as any)?.caEnergyPool ?? 0);
-          if (writingPhysique) updates.caPhysique = physique;
-          updates.caEnergyPool = caClampEnergyPoolToPhysique(pool, physique);
-        }
-      }
       
       const attrs = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
       const skills = ['skillAgility', 'skillArcana', 'skillCharisma', 'skillConcentration', 'skillCulture', 'skillDeception', 'skillHistory', 'skillIntimidation', 'skillInvestigation', 'skillMedicine', 'skillPerception', 'skillSleightOfHand', 'skillStealth', 'skillStrength', 'skillWisdom'];

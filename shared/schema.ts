@@ -3,7 +3,7 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
-import type { CAWound } from "./ca";
+import type { CAWound, CAPhysiqueEffect } from "./ca";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -313,11 +313,17 @@ export const characters = pgTable("characters", {
   // bar on the Overview tab. Just a bare number a player sets directly —
   // no current/max/temp split like Energy has.
   caEnergyPool: integer("ca_energy_pool").notNull().default(0),
-  // C.A. only: Physique is the ceiling on the Energy Pool - a body can only
-  // carry so much. 0 means "not set", not "a cap of zero", so characters that
-  // predate the field keep the pool they already had. See
-  // caClampEnergyPoolToPhysique in shared/ca.ts.
+  // C.A. only: how much energy the body is built to carry. It does NOT cap
+  // the pool - a character can hold more, and being over it puts them in
+  // overload, which the GM hangs effects off (caPhysiqueEffects below).
+  // 0 means "not set", not a Physique of zero, so characters that predate the
+  // field aren't permanently in overload. See caPhysiqueState in shared/ca.ts.
   caPhysique: integer("ca_physique").notNull().default(0),
+  // C.A. only: what being over your Physique does to you. Same shape as a
+  // wound's effects (a skill or movement target plus an amount) and applied
+  // the same way, but only while the pool is actually over the Physique -
+  // so they come and go on their own as the pool moves. GM-set.
+  caPhysiqueEffects: jsonb("ca_physique_effects").$type<CAPhysiqueEffect[]>().notNull().default(sql`'[]'::jsonb`),
   // C.A. only: the bio block from the sheet. Birthday and languages are free
   // text on purpose - "February 11" and "English, Tana Ornis" are how players
   // write them, and neither wants a picker or a lookup table.

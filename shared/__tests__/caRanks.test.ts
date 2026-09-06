@@ -5,7 +5,9 @@ import {
   caRankForEnergyPool,
   caRankLabel,
   caUsableEnergy,
-  caClampEnergyPoolToPhysique,
+  caPhysiqueState,
+  caIsOverPhysique,
+  caPhysiqueStatEffectTotal,
   caAuraOf,
   caAuraShapeOf,
   CA_AURA_DEFAULT_COLOR,
@@ -79,23 +81,76 @@ describe("the C.A. rank ladder", () => {
   });
 });
 
-describe("Physique caps the Energy Pool", () => {
-  it("holds the pool at the character's Physique", () => {
-    expect(caClampEnergyPoolToPhysique(5_000, 3_733)).toBe(3_733);
-    expect(caClampEnergyPoolToPhysique(1_000, 3_733)).toBe(1_000);
-    expect(caClampEnergyPoolToPhysique(3_733, 3_733)).toBe(3_733);
+describe("Physique and overload", () => {
+  // Physique deliberately does NOT cap the pool. Carrying more energy than
+  // your body is built for is the interesting case, not an invalid one.
+  it("lets the pool go over Physique and reports by how much", () => {
+    const over = caPhysiqueState({ caPhysique: 3_733, caEnergyPool: 5_000 });
+    expect(over).toMatchObject({ over: true, excess: 1_267, energyPool: 5_000 });
+    expect(caIsOverPhysique({ caPhysique: 3_733, caEnergyPool: 5_000 })).toBe(true);
   });
 
-  // A character made before Physique existed has 0, and shouldn't lose the
-  // pool they already had because of it.
-  it("treats an unset Physique as no cap rather than a cap of zero", () => {
-    expect(caClampEnergyPoolToPhysique(4_288, 0)).toBe(4_288);
-    expect(caClampEnergyPoolToPhysique(4_288, null)).toBe(4_288);
-    expect(caClampEnergyPoolToPhysique(4_288, undefined)).toBe(4_288);
+  it("is not overloaded at or under Physique", () => {
+    expect(caIsOverPhysique({ caPhysique: 3_733, caEnergyPool: 3_733 })).toBe(false);
+    expect(caIsOverPhysique({ caPhysique: 3_733, caEnergyPool: 100 })).toBe(false);
+    expect(caPhysiqueState({ caPhysique: 3_733, caEnergyPool: 3_733 }).excess).toBe(0);
   });
 
-  it("never returns a negative pool", () => {
-    expect(caClampEnergyPoolToPhysique(-50, 100)).toBe(0);
+  // A character made before Physique existed has 0, and must not read as
+  // permanently overloaded because of it.
+  it("treats an unset Physique as no limit rather than a limit of zero", () => {
+    expect(caIsOverPhysique({ caPhysique: 0, caEnergyPool: 4_288 })).toBe(false);
+    expect(caIsOverPhysique({ caPhysique: null, caEnergyPool: 4_288 })).toBe(false);
+    expect(caIsOverPhysique(null)).toBe(false);
+  });
+
+  it("rank still follows the pool once it is over Physique", () => {
+    // The pool is what the rank is read from, and nothing clamps it, so going
+    // over Physique carries the rank up with it.
+    expect(caRankLabel(caPhysiqueState({ caPhysique: 100, caEnergyPool: 5_000 }).energyPool))
+      .toBe("Gold 5");
+  });
+});
+
+describe("overload effects", () => {
+  const character = {
+    caPhysique: 1_000,
+    caEnergyPool: 2_000,
+    caPhysiqueEffects: [
+      { id: "a", target: "speed", amount: -10 },
+      { id: "b", target: "speed", amount: -5 },
+      { id: "c", target: "skillStealth", amount: -2 },
+    ],
+  };
+
+  it("totals every effect on one target", () => {
+    expect(caPhysiqueStatEffectTotal(character, "speed")).toBe(-15);
+    expect(caPhysiqueStatEffectTotal(character, "skillStealth")).toBe(-2);
+  });
+
+  it("is zero for a target nothing targets", () => {
+    expect(caPhysiqueStatEffectTotal(character, "flySpeed")).toBe(0);
+    expect(caPhysiqueStatEffectTotal(character, "")).toBe(0);
+  });
+
+  // This is the whole difference from a wound: a wound's effects are live
+  // while the wound is, and these are live only while the pool is over.
+  it("goes quiet the moment the pool is back inside Physique", () => {
+    expect(caPhysiqueStatEffectTotal({ ...character, caEnergyPool: 1_000 }, "speed")).toBe(0);
+    expect(caPhysiqueStatEffectTotal({ ...character, caPhysique: 5_000 }, "speed")).toBe(0);
+  });
+
+  it("does nothing with an unset Physique, however many effects are set", () => {
+    expect(caPhysiqueStatEffectTotal({ ...character, caPhysique: 0 }, "speed")).toBe(0);
+  });
+
+  it("survives junk in the stored array", () => {
+    expect(caPhysiqueStatEffectTotal({ ...character, caPhysiqueEffects: null }, "speed")).toBe(0);
+    expect(caPhysiqueStatEffectTotal({ ...character, caPhysiqueEffects: "nope" as any }, "speed")).toBe(0);
+    expect(caPhysiqueStatEffectTotal({
+      ...character,
+      caPhysiqueEffects: [null, { target: "speed", amount: "-4" }, { target: "speed" }],
+    } as any, "speed")).toBe(-4);
   });
 });
 

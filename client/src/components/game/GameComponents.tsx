@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caClampEnergyPoolToPhysique, caUsableEnergy, caAuraOf } from "@shared/ca";
+import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -18510,13 +18510,19 @@ function CAAttrsAndSkillsTab({
               const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
               const skillWoundEffect = editing ? 0 : rules.woundStatEffectTotal(rules.woundsOf(liveCharacter), skill.key);
+              // Overload works exactly like a wound's effect, except it is
+              // live only while the pool is over the Physique - so it appears
+              // and clears on its own as the pool moves, with no state of its
+              // own to keep in sync.
+              const skillOverloadEffect = editing ? 0 : caPhysiqueStatEffectTotal(liveCharacter as any, skill.key);
               const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect);
+              const skillVal = rawSkillVal + (editing ? 0 : skillScrollBoost + skillWoundEffect + skillOverloadEffect);
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect);
+              const skillTempBoost = editing ? 0 : (skillScrollBoost + skillWoundEffect + skillOverloadEffect);
               const skillTempSources = [
                 skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
                 skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
+                skillOverloadEffect !== 0 ? `${skillOverloadEffect > 0 ? '+' : ''}${skillOverloadEffect} over Physique` : null,
               ].filter(Boolean).join(', ');
               return (
                 <div
@@ -19101,21 +19107,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [caEditingEnergyPool, setCaEditingEnergyPool] = useState(false);
   const [caEnergyPoolDraft, setCaEnergyPoolDraft] = useState(0);
   const caEnergyPoolPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const openCAEnergyPoolEdit = () => {
     if (!canQuickEdit) return;
     setCaEnergyPoolDraft(woundRules.energyPoolOf(liveCharacter));
     setCaEditingEnergyPool(true);
   };
   const saveCAEnergyPool = () => {
-    // Physique is the ceiling: a body can only carry so much energy, so the
-    // pool is clamped on the way in rather than being allowed over and
-    // corrected somewhere else later.
-    onUpdate?.({
-      [woundRules.energyPoolField]: caClampEnergyPoolToPhysique(
-        caEnergyPoolDraft,
-        (liveCharacter as any).caPhysique,
-      ),
-    } as any);
+    // Deliberately not clamped to Physique. Carrying more energy than your
+    // body is built for is allowed - it puts the character into overload,
+    // which the GM hangs effects off, rather than being refused.
+    onUpdate?.({ [woundRules.energyPoolField]: Math.max(0, caEnergyPoolDraft) } as any);
     setCaEditingEnergyPool(false);
   };
 
@@ -19241,6 +19243,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   
   // Live character data state (for real-time updates)
   const [liveCharacter, setLiveCharacter] = useState(character);
+  // Physique overload — the pool being over what the body is built to carry.
+  // The effects hung off it are GM-set and only bite while the pool is
+  // actually over, so they come and go on their own as the pool moves.
+  const caPhysique = caPhysiqueState(liveCharacter as any);
+  const caPhysiqueEffects = normalizeCAPhysiqueEffects((liveCharacter as any)?.caPhysiqueEffects);
+  const writeCaPhysiqueEffects = (next: ReturnType<typeof normalizeCAPhysiqueEffects>) => {
+    onUpdate?.({ caPhysiqueEffects: next } as any);
+  };
+  const addCaPhysiqueEffect = () => writeCaPhysiqueEffects([...caPhysiqueEffects, makeCAPhysiqueEffect()]);
+  const updateCaPhysiqueEffect = (id: string, patch: Partial<{ target: string; amount: number }>) =>
+    writeCaPhysiqueEffects(caPhysiqueEffects.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  const removeCaPhysiqueEffect = (id: string) =>
+    writeCaPhysiqueEffects(caPhysiqueEffects.filter((e) => e.id !== id));
   const pendingMutationRef = useRef(false);
   
   // Update live character and cancelled points when prop changes
@@ -21745,7 +21760,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         <Button
                           size="sm"
                           onClick={() => {
-                            const nextPhysique = Math.max(0, Math.floor(caFundamentalsDraft.physique || 0));
                             onUpdate?.({
                               race: caFundamentalsDraft.race,
                               size: caFundamentalsDraft.size,
@@ -21753,19 +21767,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               speed: caFundamentalsDraft.speed,
                               flySpeed: caFundamentalsDraft.flySpeed,
                               swimSpeed: caFundamentalsDraft.swimSpeed,
-                              caPhysique: nextPhysique,
+                              caPhysique: Math.max(0, Math.floor(caFundamentalsDraft.physique || 0)),
                               caAge: caFundamentalsDraft.age === '' ? null : Math.max(0, Math.floor(Number(caFundamentalsDraft.age) || 0)),
                               caBirthday: caFundamentalsDraft.birthday.trim() || null,
                               caLanguages: caFundamentalsDraft.languages.trim() || null,
                               caAuraColor: caFundamentalsDraft.auraColor || null,
                               caAuraShape: caFundamentalsDraft.auraShape,
-                              // Lowering Physique below the pool has to bring
-                              // the pool down with it, or the character sits
-                              // over their own cap until they next edit it.
-                              [woundRules.energyPoolField]: caClampEnergyPoolToPhysique(
-                                woundRules.energyPoolOf(liveCharacter),
-                                nextPhysique,
-                              ),
                             } as any);
                             setCaEditingOverview(false);
                           }}
@@ -21921,7 +21928,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             ) : (() => {
                               const baseVal = liveCharacter[key] || 0;
                               const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
-                              const woundAdjusted = Math.max(0, baseVal + woundEffect);
+                              const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
+                              const woundAdjusted = Math.max(0, baseVal + woundEffect + overloadEffect);
                               const exh = liveCharacter.exhaustion || 0;
                               const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
                               const isReduced = effectiveVal < baseVal;
@@ -21938,6 +21946,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                   {woundEffect !== 0 && (
                                     <span className="ml-1 text-[10px] text-stone-500" data-testid={`text-ca-${testid}-wound-effect`}>
                                       ({woundEffect > 0 ? '+' : ''}{woundEffect} wounds)
+                                    </span>
+                                  )}
+                                  {overloadEffect !== 0 && (
+                                    <span className="ml-1 text-[10px] text-red-400/80" data-testid={`text-ca-${testid}-overload-effect`}>
+                                      ({overloadEffect > 0 ? '+' : ''}{overloadEffect} over Physique)
                                     </span>
                                   )}
                                 </p>
@@ -22069,10 +22082,76 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         />
                       ) : (
                         <span className="text-xs font-bold text-stone-200" data-testid="text-ca-physique">
-                          {((liveCharacter as any).caPhysique ?? 0).toLocaleString()}
+                          {caPhysique.physique.toLocaleString()}
+                          {caPhysique.over && (
+                            <span className="ml-1 text-[10px] text-red-400" data-testid="text-ca-physique-overloaded">
+                              overloaded
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
+
+                    {/* Overload effects. Physique doesn't stop the pool going
+                        higher - what going higher costs you is a GM ruling,
+                        set the same way a wound's effects are, and live only
+                        while the pool is actually over. */}
+                    {isGM && (
+                      <div className="rounded border border-stone-700 bg-stone-900/50 p-1.5 space-y-1" data-testid="ca-physique-effects-editor">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-stone-400">
+                            While over Physique
+                          </span>
+                          <span className={`text-[10px] ${caPhysique.over ? 'text-red-400' : 'text-stone-600'}`} data-testid="text-ca-physique-effects-state">
+                            {caPhysique.over ? 'active' : 'inactive'}
+                          </span>
+                        </div>
+                        {caPhysiqueEffects.map((eff) => (
+                          <div key={eff.id} className="flex items-center gap-1">
+                            <Select
+                              value={eff.target}
+                              onValueChange={(v) => updateCaPhysiqueEffect(eff.id, { target: v })}
+                            >
+                              <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700 flex-1" data-testid={`select-ca-physique-effect-${eff.id}-target`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectLabel>Movement</SelectLabel>
+                                  {woundRules.FIXED_STAT_TARGETS.map(t => <SelectItem key={t} value={t}>{woundRules.FIXED_STAT_LABELS[t]}</SelectItem>)}
+                                </SelectGroup>
+                                <SelectGroup>
+                                  <SelectLabel>Skills</SelectLabel>
+                                  {woundRules.SKILLS.map(sk => <SelectItem key={sk.key} value={sk.key}>{sk.name}</SelectItem>)}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <NumberInput
+                              value={eff.amount}
+                              onChange={(v) => updateCaPhysiqueEffect(eff.id, { amount: v ?? 0 })}
+                              className="w-16 h-7 text-xs bg-stone-800 border-stone-700 shrink-0"
+                              data-testid={`input-ca-physique-effect-${eff.id}-amount`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeCaPhysiqueEffect(eff.id)}
+                              className="text-stone-500 hover:text-red-400 shrink-0"
+                              data-testid={`button-remove-ca-physique-effect-${eff.id}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="text-[10px] text-amber-500 hover:text-amber-400"
+                          onClick={addCaPhysiqueEffect}
+                          data-testid="button-add-ca-physique-effect"
+                        >
+                          + Add Effect
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Energy Pool — a standalone number, closed until
@@ -22106,15 +22185,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           title="Double-click (PC) or long-press (mobile) to edit"
                         >
                           {woundRules.energyPoolOf(liveCharacter).toLocaleString()}
-                          {(() => {
-                            const cap = (liveCharacter as any).caPhysique ?? 0;
-                            if (!cap || woundRules.energyPoolOf(liveCharacter) < cap) return null;
-                            return (
-                              <span className="ml-1 text-[10px] text-amber-500" data-testid="text-ca-energy-pool-at-cap">
-                                at Physique
-                              </span>
-                            );
-                          })()}
+                          {caPhysique.over && (
+                            <span className="ml-1 text-[10px] text-red-400" data-testid="text-ca-energy-pool-overload">
+                              +{caPhysique.excess.toLocaleString()} over Physique
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
