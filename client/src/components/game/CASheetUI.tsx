@@ -428,14 +428,40 @@ export function CaChip({
 }
 
 /** A row of chips that share one bordered box, split by hairlines. */
+/**
+ * A row of chips sharing one box, split by hairlines.
+ *
+ * Four cells across is fine on a sheet and far too tight on a phone - "Langua…"
+ * truncated to nothing was the giveaway - so a four-cell group wraps to two by
+ * two below `sm`.
+ *
+ * The columns are Tailwind classes rather than an inline
+ * `grid-template-columns`, because an inline style cannot carry a breakpoint.
+ * That is also why `cols` is a lookup rather than an interpolation: Tailwind
+ * only emits classes it can see written out.
+ */
+const CHIP_GROUP_COLS: Record<number, string> = {
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  // Two rows of two on a phone, one row of four from sm up.
+  4: "grid-cols-2 sm:grid-cols-4",
+};
+
 export function CaChipGroup({ children, cols = 4 }: { children: React.ReactNode; cols?: number }) {
   return (
     <div
-      className="grid rounded-lg border bg-stone-800/40 overflow-hidden [&>*+*]:border-l [&>*+*]:border-[color:var(--ca-gilt-line-soft)]"
-      style={{
-        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        borderColor: "var(--ca-gilt-line-soft)",
-      }}
+      className={[
+        "grid rounded-lg border bg-stone-800/40 overflow-hidden",
+        CHIP_GROUP_COLS[cols] ?? "grid-cols-2",
+        // Hairlines have to follow the wrap: while the group is two wide the
+        // second row needs a rule above it, and only the right-hand cell needs
+        // one to its left. Once it is a single row that flips to "every cell
+        // but the first".
+        "[&>*]:border-[color:var(--ca-gilt-line-soft)]",
+        "[&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t",
+        "sm:[&>*]:border-t-0 sm:[&>*:not(:first-child)]:border-l",
+      ].join(" ")}
+      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
     >
       {children}
     </div>
