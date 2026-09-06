@@ -153,6 +153,16 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_body_sex text NOT NULL DEFAULT 'male'`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_energy_pool integer NOT NULL DEFAULT 0`,
+    // C.A. ranks, Physique and auras. Physique is 0 = "not set" rather than a
+    // Physique of zero, so the default is safe for existing characters; the
+    // overload effects it triggers use the wound effect shape.
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_physique integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_physique_effects jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_age integer`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_birthday text`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_languages text`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_color text`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_shape text`,
     // Swampy keeps its own copies of the three C.A.-shaped columns so the two
     // systems' wound/body/pool mechanics can diverge independently.
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS swampy_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,
