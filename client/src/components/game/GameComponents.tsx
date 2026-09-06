@@ -28,7 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark } from "@/components/game/CAPanels";
-import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds } from "@/components/game/CASheetUI";
+import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -21708,7 +21708,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   return (
     <div
       className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden"
-      style={caSheetAuraSet && caSheetAura ? {
+      // C.A.'s aura tints the sheet's own frame (see CaSheetFrame), so the
+      // root only carries it for the other systems' plain border.
+      style={!isCA && caSheetAuraSet && caSheetAura ? {
         border: `2px solid ${caSheetAura.color}`,
         boxShadow: `inset 0 0 24px -6px ${caSheetAura.color}`,
       } : undefined}
@@ -21749,7 +21751,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${(isAAV3 || isCA || isSwampy) ? 'grid-cols-4' : 'grid-cols-7'}`}>
+        {/* C.A. sets its tab bar into a framed strip rather than sitting it
+            flush against a divider, so it reads as part of the same tooled
+            cover as the sheet below it. */}
+        <TabsList className={`grid shrink-0 h-auto ${
+          isCA
+            ? 'w-[calc(100%-1.5rem)] mx-3 mt-3 mb-1 rounded-xl bg-stone-950/80 border border-[color:var(--ca-gilt-line-soft)] p-1.5 gap-1'
+            : 'w-full bg-stone-950 border-b border-stone-700 p-1 gap-0.5 sm:gap-1'
+        } ${(isAAV3 || isCA || isSwampy) ? 'grid-cols-4' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -21760,6 +21769,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 w-full flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
                 transition-all duration-200 min-h-[44px] sm:min-h-[56px]
                 data-[state=active]:shadow-md
+                ${isCA ? 'data-[state=active]:border-[color:var(--ca-gilt-line)]' : ''}
                 ${getTabColorClasses(color)}
               `}
             >
@@ -21781,21 +21791,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               />
             ) : isCA ? (
               <>
-              <Card className="bg-stone-800 border-stone-700">
-                <CardContent className="pt-6 space-y-4 relative">
-                  {/* No Edit button. Every value on this tab opens its own
-                      editor on a double-click (or a long-press on touch), the
-                      same gesture the Energy Pool and the stat bars already
-                      used - one way in rather than a mode you have to enter
-                      and leave. */}
-                  <div className="flex flex-row gap-3 sm:gap-4">
-                    {/* Portrait — a fixed-width column so it stays beside the
-                        info at any screen width instead of stacking on
-                        mobile. Library/Upload live in a popup over the image
-                        itself (double-click / long-press) instead of a
-                        permanent button row, so this tab is just the info. */}
+              <CaSheetFrame auraColor={caSheetAuraSet ? caSheetAura?.color : null}>
+                <div className="p-4 space-y-3">
+                  {/* No Edit button anywhere. Every value opens its own editor
+                      on a double-click (or a long-press on touch), the same
+                      gesture the stat bars already used. */}
+
+                  {/* Identity. The chip is this sheet's unit of information:
+                      an icon, the value, and the field's name in small caps
+                      under it, so a row of them reads at a glance instead of
+                      needing a column of labels down the left. */}
+                  <div className="flex flex-row gap-3 sm:gap-4 items-start">
                     <div
-                      className="relative w-28 h-28 sm:w-36 sm:h-36 shrink-0"
+                      className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0"
                       onDoubleClick={() => { if (canEdit && onUpdate) setShowCaPortraitMenu(v => !v); }}
                       onTouchStart={() => {
                         if (!canEdit || !onUpdate) return;
@@ -21805,18 +21813,32 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       onTouchMove={() => { if (caPortraitLongPressRef.current) clearTimeout(caPortraitLongPressRef.current); }}
                       data-testid="container-ca-portrait"
                     >
-                      {character.portrait ? (
-                        <div className="w-full h-full rounded-xl overflow-hidden border-4 border-amber-600/50 shadow-lg">
-                          <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+                      {/* Round and ringed rather than a square tile - it reads
+                          as a portrait medallion set into the page. */}
+                      <div
+                        className="w-full h-full rounded-full p-[2px]"
+                        style={{ background: 'linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)' }}
+                      >
+                        <div className="w-full h-full rounded-full overflow-hidden bg-stone-800 flex items-center justify-center">
+                          {character.portrait ? (
+                            <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
+                          ) : (
+                            <User className="h-9 w-9 text-stone-600" />
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-full h-full rounded-xl bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
-                          <User className="h-10 w-10 text-stone-500" />
-                        </div>
+                      </div>
+                      {canEdit && onUpdate && (
+                        <span
+                          aria-hidden
+                          className="absolute bottom-1 right-1 w-6 h-6 rounded-full border bg-stone-900 flex items-center justify-center"
+                          style={{ borderColor: 'var(--ca-gilt-line)', color: 'var(--ca-gilt)' }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </span>
                       )}
                       {showCaPortraitMenu && canEdit && onUpdate && (
                         <div
-                          className="absolute inset-0 rounded-xl bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
+                          className="absolute inset-0 rounded-full bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
                           onClick={() => setShowCaPortraitMenu(false)}
                         >
                           <Button
@@ -21843,245 +21865,242 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                     </div>
 
-                    {/* Fundamentals — one grid throughout (Race | DC, then
-                        Speed | Fly Speed, then Swim Speed | Size) so every
-                        row shares the same two columns and DC actually lines
-                        up beside Race instead of floating on its own row.
-                        No section title or per-block edit control here —
-                        both live on the single pencil button up in the
-                        header, which edits name + all of this together.
-                        Starts flush with the top of the portrait. Movement
-                        speeds shown are EFFECTIVE (base + active wound stat
-                        effects + exhaustion). */}
-                    <div className="flex-1 min-w-0">
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                        <div>
-                          <Label className="text-xs text-stone-400">Race</Label>
-                          {caEdit.field === 'race' ? (
-                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <Select value={caEdit.draft ?? ''} onValueChange={saveCaInlineRace}>
-                                <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm min-w-0" data-testid="select-ca-race">
-                                  <SelectValue placeholder="Select race" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {systemSpecies.map((species: any) => (
-                                    <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-                                onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
-                                aria-label="Cancel"
-                                data-testid="button-ca-cancel-race"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <p
-                              className="text-stone-200 text-sm truncate cursor-pointer select-none"
-                              data-testid="text-ca-race"
-                              {...caEdit.pressHandlers('race', liveCharacter.race || '')}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <h2 className="font-display text-3xl font-bold text-stone-100 truncate leading-none" data-testid="text-ca-name">
+                        {liveCharacter.name}
+                      </h2>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {caEdit.field === 'race' ? (
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Select value={caEdit.draft ?? ''} onValueChange={saveCaInlineRace}>
+                              <SelectTrigger className="bg-stone-900 border-stone-700 h-9 text-sm min-w-0" data-testid="select-ca-race">
+                                <SelectValue placeholder="Select race" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {systemSpecies.map((species: any) => (
+                                  <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+                              onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
+                              aria-label="Cancel"
+                              data-testid="button-ca-cancel-race"
                             >
-                              {liveCharacter.race || 'Unset'}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs text-stone-400">DC</Label>
-                          {caEdit.field === 'naturalArmor' ? <CaInlineNumber edit={caEdit} field="naturalArmor" testId="dc" /> : (
-                            <p
-                              className="text-stone-200 text-sm cursor-pointer select-none"
-                              data-testid="text-ca-dc"
-                              {...caEdit.pressHandlers('naturalArmor', liveCharacter.naturalArmor ?? 5)}
-                            >
-                              {liveCharacter.naturalArmor ?? 5}
-                            </p>
-                          )}
-                        </div>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <CaChip
+                            icon={<Dna className="h-4 w-4" />}
+                            label="Race"
+                            editable={caEdit.canEdit}
+                            testId="text-ca-race"
+                            {...caEdit.pressHandlers('race', liveCharacter.race || '')}
+                          >
+                            {liveCharacter.race || 'Unset'}
+                          </CaChip>
+                        )}
+                        {caEdit.field === 'naturalArmor' ? (
+                          <CaInlineNumber edit={caEdit} field="naturalArmor" testId="dc" />
+                        ) : (
+                          <CaChip
+                            icon={<Shield className="h-4 w-4" />}
+                            label="DC"
+                            editable={caEdit.canEdit}
+                            testId="text-ca-dc"
+                            {...caEdit.pressHandlers('naturalArmor', liveCharacter.naturalArmor ?? 5)}
+                          >
+                            {liveCharacter.naturalArmor ?? 5}
+                          </CaChip>
+                        )}
+                      </div>
+
+                      {/* Movement and size. The speeds shown are EFFECTIVE:
+                          base plus wound effects plus overload plus
+                          exhaustion. */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {([
                           { key: 'speed', label: 'Speed', testid: 'speed' },
                           { key: 'flySpeed', label: 'Fly Speed', testid: 'fly-speed' },
                           { key: 'swimSpeed', label: 'Swim Speed', testid: 'swim-speed' },
-                        ] as const).map(({ key, label, testid }) => (
-                          <div key={key}>
-                            <Label className="text-xs text-stone-400">{label}</Label>
-                            {caEdit.field === key ? <CaInlineNumber edit={caEdit} field={key} testId={testid} /> : (() => {
-                              const baseVal = liveCharacter[key] || 0;
-                              const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
-                              const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
-                              const woundAdjusted = Math.max(0, baseVal + woundEffect + overloadEffect);
-                              const exh = liveCharacter.exhaustion || 0;
-                              const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
-                              const isReduced = effectiveVal < baseVal;
-                              return (
-                                <p
-                                  className="text-stone-200 text-sm cursor-pointer select-none"
-                                  data-testid={`text-ca-${testid}`}
-                                  {...caEdit.pressHandlers(key, baseVal)}
-                                >
-                                  {isReduced ? (
-                                    <>
-                                      <span className="line-through text-stone-500">{baseVal} ft</span>{' '}
-                                      <span className="text-red-400">{effectiveVal} ft</span>
-                                    </>
-                                  ) : (
-                                    <>{effectiveVal} ft</>
-                                  )}
-                                  {woundEffect !== 0 && (
-                                    <span className="ml-1 text-[10px] text-stone-500" data-testid={`text-ca-${testid}-wound-effect`}>
-                                      ({woundEffect > 0 ? '+' : ''}{woundEffect} wounds)
-                                    </span>
-                                  )}
-                                  {overloadEffect !== 0 && (
-                                    <span className="ml-1 text-[10px] text-red-400/80" data-testid={`text-ca-${testid}-overload-effect`}>
-                                      ({overloadEffect > 0 ? '+' : ''}{overloadEffect} over Physique)
-                                    </span>
-                                  )}
-                                </p>
-                              );
-                            })()}
-                          </div>
-                        ))}
-                        <div>
-                          <Label className="text-xs text-stone-400">Size</Label>
-                          {caEdit.field === 'size' ? <CaInlineText edit={caEdit} field="size" testId="size" placeholder="Medium" /> : (
-                            <p
-                              className="text-stone-200 text-sm cursor-pointer select-none"
-                              data-testid="text-ca-size"
-                              {...caEdit.pressHandlers('size', liveCharacter.size || '')}
+                        ] as const).map(({ key, label, testid }) => {
+                          if (caEdit.field === key) {
+                            return <CaInlineNumber key={key} edit={caEdit} field={key} testId={testid} />;
+                          }
+                          const baseVal = liveCharacter[key] || 0;
+                          const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
+                          const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
+                          const woundAdjusted = Math.max(0, baseVal + woundEffect + overloadEffect);
+                          const exh = liveCharacter.exhaustion || 0;
+                          const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
+                          const isReduced = effectiveVal < baseVal;
+                          return (
+                            <CaChip
+                              key={key}
+                              icon={<Zap className="h-4 w-4" />}
+                              label={label}
+                              editable={caEdit.canEdit}
+                              testId={`text-ca-${testid}`}
+                              {...caEdit.pressHandlers(key, baseVal)}
                             >
-                              {liveCharacter.size || 'Medium'}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Bio. Birthday and languages are free text on
-                            purpose - "February 11" and "English, Tana Ornis"
-                            are how players write them, and neither wants a
-                            date picker or a lookup list. */}
-                        <div>
-                          <Label className="text-xs text-stone-400">Age</Label>
-                          {caEdit.field === 'caAge' ? (
-                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <Input
-                                autoFocus
-                                type="number"
-                                min={0}
-                                value={caEdit.draft ?? ''}
-                                onChange={(e) => caEdit.setDraft(e.target.value)}
-                                className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
-                                data-testid="input-ca-edit-age"
-                                {...caEdit.keyHandlers('caAge', caAgeFromDraft)}
-                              />
-                              <CaInlineActions edit={caEdit} field="caAge" transform={caAgeFromDraft} />
-                            </div>
-                          ) : (
-                            <p
-                              className="text-stone-200 text-sm cursor-pointer select-none"
-                              data-testid="text-ca-age"
-                              {...caEdit.pressHandlers('caAge', (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge))}
-                            >
-                              {(liveCharacter as any).caAge ?? '—'}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs text-stone-400">Birthday</Label>
-                          {caEdit.field === 'caBirthday' ? <CaInlineText edit={caEdit} field="caBirthday" testId="birthday" placeholder="February 11" /> : (
-                            <p
-                              className="text-stone-200 text-sm cursor-pointer select-none"
-                              data-testid="text-ca-birthday"
-                              {...caEdit.pressHandlers('caBirthday', (liveCharacter as any).caBirthday || '')}
-                            >
-                              {(liveCharacter as any).caBirthday || '—'}
-                            </p>
-                          )}
-                        </div>
-                        <div className="col-span-2">
-                          <Label className="text-xs text-stone-400">Languages</Label>
-                          {caEdit.field === 'caLanguages' ? <CaInlineText edit={caEdit} field="caLanguages" testId="languages" placeholder="English, Tana Ornis" /> : (
-                            <p
-                              className="text-stone-200 text-sm cursor-pointer select-none"
-                              data-testid="text-ca-languages"
-                              {...caEdit.pressHandlers('caLanguages', (liveCharacter as any).caLanguages || '')}
-                            >
-                              {(liveCharacter as any).caLanguages || '—'}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Aura — this character's colour and shape, used
-                            everywhere C.A. used to use the player's beacon
-                            colour. It belongs to the character, so two
-                            characters run by the same player look nothing
-                            alike. */}
-                        <div className="col-span-2">
-                          <Label className="text-xs text-stone-400">Aura</Label>
-                          {caEdit.field === 'aura' ? (
-                            <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              {/* The aura is two values, so it writes on every
-                                  change rather than waiting for a tick - there
-                                  is nothing to get half-committed. */}
-                              <CaAuraEditor
-                                color={caEdit.draft?.color}
-                                shape={caEdit.draft?.shape}
-                                onChange={({ color, shape }) => {
-                                  caEdit.setDraft({ color, shape });
-                                  onUpdate?.({ caAuraColor: color, caAuraShape: shape } as any);
-                                }}
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-                                onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
-                                aria-label="Done"
-                                data-testid="button-ca-cancel-aura"
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div
-                              className="flex items-center gap-2 mt-0.5 cursor-pointer select-none"
-                              data-testid="text-ca-aura"
-                              {...caEdit.pressHandlers('aura', {
-                                color: (liveCharacter as any).caAuraColor || '',
-                                shape: (liveCharacter as any).caAuraShape || 'none',
-                              })}
-                            >
-                              <CharacterAuraMark character={liveCharacter as any} size={18} />
-                              <span className="text-stone-200 text-sm">
-                                {(liveCharacter as any).caAuraColor || 'Default'}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                              {isReduced ? (
+                                <>
+                                  <span className="line-through text-stone-500 font-normal">{baseVal}</span>{' '}
+                                  <span className="text-red-400">{effectiveVal} ft</span>
+                                </>
+                              ) : (
+                                <>{effectiveVal} ft</>
+                              )}
+                            </CaChip>
+                          );
+                        })}
+                        {caEdit.field === 'size' ? (
+                          <CaInlineText edit={caEdit} field="size" testId="size" placeholder="Medium" />
+                        ) : (
+                          <CaChip
+                            icon={<Ruler className="h-4 w-4" />}
+                            label="Size"
+                            editable={caEdit.canEdit}
+                            testId="text-ca-size"
+                            {...caEdit.pressHandlers('size', liveCharacter.size || '')}
+                          >
+                            {liveCharacter.size || 'Medium'}
+                          </CaChip>
+                        )}
                       </div>
                     </div>
                   </div>
 
+                  {/* Bio. One box split into cells rather than four loose
+                      chips - it is a block of who they are, not four unrelated
+                      numbers. */}
+                  <CaChipGroup cols={4}>
+                    {caEdit.field === 'caAge' ? (
+                      <div className="p-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                          autoFocus
+                          type="number"
+                          min={0}
+                          value={caEdit.draft ?? ''}
+                          onChange={(e) => caEdit.setDraft(e.target.value)}
+                          className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
+                          data-testid="input-ca-edit-age"
+                          {...caEdit.keyHandlers('caAge', caAgeFromDraft)}
+                        />
+                        <CaInlineActions edit={caEdit} field="caAge" transform={caAgeFromDraft} />
+                      </div>
+                    ) : (
+                      <CaChipCell
+                        icon={<Moon className="h-3 w-3" />}
+                        label="Age"
+                        editable={caEdit.canEdit}
+                        testId="text-ca-age"
+                        {...caEdit.pressHandlers('caAge', (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge))}
+                      >
+                        {(liveCharacter as any).caAge ?? '—'}
+                      </CaChipCell>
+                    )}
+                    {caEdit.field === 'caBirthday' ? (
+                      <div className="p-1.5" onClick={(e) => e.stopPropagation()}>
+                        <CaInlineText edit={caEdit} field="caBirthday" testId="birthday" placeholder="February 11" />
+                      </div>
+                    ) : (
+                      <CaChipCell
+                        icon={<Star className="h-3 w-3" />}
+                        label="Birthday"
+                        editable={caEdit.canEdit}
+                        testId="text-ca-birthday"
+                        {...caEdit.pressHandlers('caBirthday', (liveCharacter as any).caBirthday || '')}
+                      >
+                        {(liveCharacter as any).caBirthday || '—'}
+                      </CaChipCell>
+                    )}
+                    {caEdit.field === 'caLanguages' ? (
+                      <div className="p-1.5" onClick={(e) => e.stopPropagation()}>
+                        <CaInlineText edit={caEdit} field="caLanguages" testId="languages" placeholder="English, Tana Ornis" />
+                      </div>
+                    ) : (
+                      <CaChipCell
+                        icon={<MessageSquare className="h-3 w-3" />}
+                        label="Languages"
+                        editable={caEdit.canEdit}
+                        testId="text-ca-languages"
+                        {...caEdit.pressHandlers('caLanguages', (liveCharacter as any).caLanguages || '')}
+                      >
+                        {(liveCharacter as any).caLanguages || '—'}
+                      </CaChipCell>
+                    )}
+                    {caEdit.field === 'aura' ? (
+                      <div className="p-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        {/* The aura is two values, so it writes on every change
+                            rather than waiting for a tick - there is nothing to
+                            get half-committed. */}
+                        <CaAuraEditor
+                          color={caEdit.draft?.color}
+                          shape={caEdit.draft?.shape}
+                          onChange={({ color, shape }) => {
+                            caEdit.setDraft({ color, shape });
+                            onUpdate?.({ caAuraColor: color, caAuraShape: shape } as any);
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+                          onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
+                          aria-label="Done"
+                          data-testid="button-ca-cancel-aura"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <CaChipCell
+                        icon={<Sparkles className="h-3 w-3" />}
+                        label="Aura"
+                        editable={caEdit.canEdit}
+                        testId="text-ca-aura"
+                        {...caEdit.pressHandlers('aura', {
+                          color: (liveCharacter as any).caAuraColor || '',
+                          shape: (liveCharacter as any).caAuraShape || 'none',
+                        })}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <CharacterAuraMark character={liveCharacter as any} size={14} />
+                          <span className="truncate">{(liveCharacter as any).caAuraColor || 'Default'}</span>
+                        </span>
+                      </CaChipCell>
+                    )}
+                  </CaChipGroup>
+
+                  <CaDivider />
+
                   {/* Rank — read straight off the Energy Pool, never set by
                       hand, so the info button opens the whole ladder rather
                       than leaving a player to guess what the next rung costs. */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-xs text-stone-300">Rank</Label>
-                      <CaRankBadge energyPool={woundRules.energyPoolOf(liveCharacter)} />
-                    </div>
-                  </div>
+                  <CaSection
+                    icon={<Star className="h-3.5 w-3.5" />}
+                    title="Rank"
+                    value={<CaRankBadge energyPool={woundRules.energyPoolOf(liveCharacter)} />}
+                    testId="ca-section-rank"
+                  />
+
+                  <CaDivider />
 
                   {/* Physique — how much energy the body is built to carry.
                       It doesn't cap the pool; going over it is what arms the
                       overload effects below. */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-xs text-stone-300">Physique</Label>
-                      {caEdit.field === 'caPhysique' ? (
+                  <CaSection
+                    icon={<TrendingUp className="h-3.5 w-3.5" />}
+                    title="Physique"
+                    testId="ca-section-physique"
+                    value={
+                      caEdit.field === 'caPhysique' ? (
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <NumberInput
                             min={0}
@@ -22095,7 +22114,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                       ) : (
                         <span
-                          className="text-xs font-bold text-stone-200 cursor-pointer select-none"
+                          className="text-base font-bold text-stone-100 cursor-pointer select-none tabular-nums"
                           data-testid="text-ca-physique"
                           {...caEdit.pressHandlers('caPhysique', caPhysique.physique)}
                         >
@@ -22106,15 +22125,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </span>
                           )}
                         </span>
-                      )}
-                    </div>
-
+                      )
+                    }
+                  >
                     {/* Overload effects. Physique doesn't stop the pool going
                         higher - what going higher costs you is a GM ruling,
                         set the same way a wound's effects are, and live only
                         while the pool is actually over. */}
                     {isGM && (
-                      <div className="rounded border border-stone-700 bg-stone-900/50 p-1.5 space-y-1" data-testid="ca-physique-effects-editor">
+                      <CaInset className="space-y-1" testId="ca-physique-effects-editor">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-stone-400">
                             While over Physique
@@ -22167,16 +22186,21 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         >
                           + Add Effect
                         </button>
-                      </div>
+                      </CaInset>
                     )}
-                  </div>
+                  </CaSection>
 
-                  {/* Energy Pool — a standalone number, closed until
-                      double-clicked (or long-pressed on mobile). */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-xs text-stone-300">Energy Pool</Label>
-                      {caEditingEnergyPool ? (
+                  <CaDivider />
+
+                  {/* Energy Pool and the Energy bar it feeds, in one section:
+                      the pool is the total, and the bar is the half of it you
+                      actually spend. */}
+                  <CaSection
+                    icon={<Zap className="h-3.5 w-3.5" />}
+                    title="Energy Pool"
+                    testId="ca-section-energy"
+                    value={
+                      caEditingEnergyPool ? (
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <NumberInput
                             min={0}
@@ -22190,7 +22214,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                       ) : (
                         <span
-                          className="text-xs font-bold cursor-pointer select-none"
+                          className="text-base font-bold text-stone-100 cursor-pointer select-none tabular-nums"
                           data-testid="text-ca-energy-pool"
                           onDoubleClick={(e) => { e.stopPropagation(); openCAEnergyPoolEdit(); }}
                           onTouchStart={() => {
@@ -22208,37 +22232,40 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             </span>
                           )}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-stone-500" data-testid="text-ca-usable-energy">
+                      )
+                    }
+                  >
+                    <p className="text-[10px] text-stone-500 -mt-1" data-testid="text-ca-usable-energy">
                       Usable Energy {caUsableEnergy(woundRules.energyPoolOf(liveCharacter)).toLocaleString()} — half the pool
                     </p>
-                  </div>
 
-                  {/* Energy Bar — C.A. has no HP, no mana; Energy only */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-xs text-stone-300 flex items-center gap-1">
-                        <Zap className="h-3 w-3 text-blue-500" />
-                        Energy
-                      </Label>
-                      <span
-                        className="text-xs font-bold"
-                        data-testid="text-ca-energy"
-                        {...quickPressHandlers('energy')}
-                      >
-                        {liveCharacter.energy} / {effectiveMaxEnergy}
-                        {bonusMaxEnergy > 0 && (
-                          <span className="ml-1 text-emerald-300" data-testid="text-ca-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
-                        )}
-                        {(liveCharacter.tempEnergy ?? 0) > 0 && (
-                          <span className="ml-1 text-amber-300" data-testid="text-ca-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
-                        )}
-                      </span>
+                    {/* C.A. has no HP and no mana; Energy is the only bar. */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-stone-300 flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-cyan-400" />
+                          Energy
+                        </span>
+                        <span
+                          className="text-sm font-bold text-stone-100 tabular-nums"
+                          data-testid="text-ca-energy"
+                          {...quickPressHandlers('energy')}
+                        >
+                          {liveCharacter.energy} / {effectiveMaxEnergy}
+                          {bonusMaxEnergy > 0 && (
+                            <span className="ml-1 text-emerald-300" data-testid="text-ca-bonus-energy">(+{bonusMaxEnergy} bonus)</span>
+                          )}
+                          {(liveCharacter.tempEnergy ?? 0) > 0 && (
+                            <span className="ml-1 text-amber-300" data-testid="text-ca-temp-energy">(+{liveCharacter.tempEnergy} temp)</span>
+                          )}
+                        </span>
+                      </div>
+                      {quickEditPanel('energy')}
+                      <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2 [&>div]:bg-cyan-500" data-testid="progress-ca-energy" />
                     </div>
-                    {quickEditPanel('energy')}
-                    <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2 [&>div]:bg-cyan-500" data-testid="progress-ca-energy" />
-                  </div>
+                  </CaSection>
+
+                  <CaDivider />
 
                   {/* Wounds — replaces HP entirely for C.A. Freeform: "Add
                       Wound" arms placement mode, the next click on the body
@@ -22246,16 +22273,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       descriptive (name/location/severity/description/effect
                       lines) — no auto-derived mechanical stat penalties,
                       severity only costs points against Wound Capacity. */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm text-stone-300">Wounds</Label>
-                      <span className="text-xs text-stone-500" data-testid="text-ca-wound-count">
+                  <CaSection
+                    icon={<Plus className="h-3.5 w-3.5" />}
+                    title="Wounds"
+                    testId="ca-section-wounds"
+                    value={
+                      <span className="text-sm font-bold text-stone-100 tabular-nums" data-testid="text-ca-wound-count">
                         {(() => {
                           const remaining = Math.max(0, woundRules.WOUND_MAX - woundRules.woundTotalCost(woundRules.woundsOf(liveCharacter)));
                           return `${remaining} / ${woundRules.WOUND_MAX}`;
                         })()}
                       </span>
-                    </div>
+                    }
+                  >
                     {(() => {
                       const allWounds = woundRules.normalizeWounds(woundRules.woundsOf(liveCharacter));
                       const canEditWounds = !!canEdit && !!onUpdate;
@@ -22533,9 +22563,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         </div>
                       );
                     })()}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CaSection>
+                </div>
+              </CaSheetFrame>
 
               <AlertDialog open={!!treatingCAWoundId} onOpenChange={(open) => !open && setTreatingCAWoundId(null)}>
                 <AlertDialogContent className="bg-stone-900 border-stone-700">

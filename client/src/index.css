@@ -113,6 +113,23 @@
   --t-amber-800: #1E3E8C;
   --t-amber-900: #1A3270;
   --t-amber-950: #0F1E48;
+  /* C.A. sheet gilding.
+
+     The ornamental frame, medallions and rules on the C.A. character sheet
+     are deliberately NOT the active theme's accent. The sheet is meant to
+     read as a tooled book cover, and `amber-*` is remapped per theme (it is
+     blue in this one), so building the ornament from it turned the gilding
+     blue along with everything else.
+
+     These are their own tokens so the metal lives in one place: a theme that
+     wants silver or copper overrides them below rather than every component
+     being edited. */
+  --ca-gilt: #c9a227;
+  --ca-gilt-bright: #e2c163;
+  --ca-gilt-dim: #7a5f1c;
+  --ca-gilt-line: rgba(201, 162, 39, 0.55);
+  --ca-gilt-line-soft: rgba(201, 162, 39, 0.32);
+
   --theme-background: #13141C;
   --theme-background-secondary: #1A1C27;
   --theme-surface: #1F2230;

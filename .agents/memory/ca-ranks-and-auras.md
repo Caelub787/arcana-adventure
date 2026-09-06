@@ -142,3 +142,25 @@ New `characters` columns: `ca_physique`, `ca_physique_effects`, `ca_age`, `ca_bi
 deploy like the rest of the recent schema — see `v3-schema-migrations.md`,
 including its warning about push silently skipping a new column when it
 offers a rename instead.
+
+
+## The sheet's look
+
+The C.A. Overview is built from the chrome in
+`client/src/components/game/CASheetUI.tsx`: `CaSheetFrame` (the gilt border
+with its corner marks), `CaChip` / `CaChipGroup` / `CaChipCell` (icon, value,
+field name in small caps — the sheet's unit of information), `CaSection` +
+`CaMedallion` for the headed blocks, `CaDivider` for the flourish between
+them, and `CaInset` for the wells inside a section.
+
+**The gilding is its own token, not `amber-*`.** `--ca-gilt`, `--ca-gilt-bright`,
+`--ca-gilt-dim`, `--ca-gilt-line` and `--ca-gilt-line-soft` are defined in
+`client/src/index.css`. This matters: `amber-*` is remapped per theme and is
+**blue** in the default one (see `theme-system.md`), so an ornament built from
+it turns the frame, the medallions and the rules blue along with everything
+else. The surfaces underneath still use `stone-*` and follow the theme — only
+the metal is fixed, and a theme that wants silver overrides those five tokens
+rather than every component being edited.
+
+The aura tints the frame rather than the sheet root in C.A.; the root style is
+only for the other systems.

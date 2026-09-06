@@ -310,3 +310,247 @@ export function clampToBounds(draft: any, bounds: { min: number; max: number }):
   const n = Math.floor(Number(draft) || 0);
   return Math.min(bounds.max, Math.max(bounds.min, n));
 }
+
+// ---------------------------------------------------------------------------
+// Chrome
+//
+// The ornate half of the sheet: the gilt frame, the chips, the section
+// headers with their medallions, the flourish between sections.
+//
+// The gilding is its own token (`--ca-gilt*`, defined in index.css) rather
+// than `amber-*`. Amber is remapped per theme — it is blue in the default one
+// — so building the ornament from it turned the frame, the medallions and the
+// rules blue along with everything else. The surfaces underneath still use
+// `stone-*` and follow the theme; only the metal is fixed.
+// ---------------------------------------------------------------------------
+
+/** The corner flourishes on the frame — two hairlines and a dot. */
+function CaCorner({ at }: { at: "tl" | "tr" | "bl" | "br" }) {
+  const pos = {
+    tl: "top-1.5 left-1.5 border-t border-l rounded-tl",
+    tr: "top-1.5 right-1.5 border-t border-r rounded-tr",
+    bl: "bottom-1.5 left-1.5 border-b border-l rounded-bl",
+    br: "bottom-1.5 right-1.5 border-b border-r rounded-br",
+  }[at];
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute w-4 h-4 ${pos}`}
+      style={{ borderColor: "var(--ca-gilt-line)" }}
+    />
+  );
+}
+
+/**
+ * The gilt frame around the whole sheet. A gradient hairline rather than a
+ * flat border, so the edge catches light down its length the way a tooled
+ * cover does, with the four corners picked out.
+ */
+export function CaSheetFrame({
+  children,
+  className = "",
+  auraColor,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** C.A. characters tint their own frame with their aura. */
+  auraColor?: string | null;
+}) {
+  return (
+    <div
+      className={`relative rounded-xl p-[1.5px] ${className}`}
+      style={{
+        background:
+          "linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 38%, var(--ca-gilt-bright) 62%, var(--ca-gilt-dim) 100%)",
+        ...(auraColor ? { boxShadow: `0 0 0 1px ${auraColor}55, 0 0 18px -6px ${auraColor}` } : {}),
+      }}
+      data-testid="ca-sheet-frame"
+    >
+      <div className="relative rounded-[10px] bg-stone-900/95 h-full overflow-hidden">
+        <CaCorner at="tl" />
+        <CaCorner at="tr" />
+        <CaCorner at="bl" />
+        <CaCorner at="br" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** A hairline with a turned square in the middle, between sections. */
+export function CaDivider() {
+  return (
+    <div className="flex items-center gap-2 py-0.5" aria-hidden data-testid="ca-divider">
+      <span className="h-px flex-1" style={{ background: "linear-gradient(to right, transparent, var(--ca-gilt-line))" }} />
+      <span className="w-1.5 h-1.5 rotate-45 border" style={{ borderColor: "var(--ca-gilt)" }} />
+      <span className="h-px flex-1" style={{ background: "linear-gradient(to left, transparent, var(--ca-gilt-line))" }} />
+    </div>
+  );
+}
+
+/**
+ * One fact, boxed: an icon, the value, and the field's name beneath it in
+ * small caps. This is the sheet's unit of information — the fundamentals and
+ * the bio are both rows of these.
+ */
+export function CaChip({
+  icon,
+  label,
+  children,
+  className = "",
+  editable = false,
+  testId,
+  ...rest
+}: {
+  icon?: React.ReactNode;
+  label: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  editable?: boolean;
+  testId?: string;
+} & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border bg-stone-800/60 px-2.5 py-1.5 min-w-0 ${
+        editable ? "cursor-pointer select-none transition-colors" : ""
+      } ${className}`}
+      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+      data-testid={testId}
+      {...rest}
+    >
+      {icon && <span className="shrink-0" style={{ color: "var(--ca-gilt)" }}>{icon}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold text-stone-100 truncate leading-tight">{children}</span>
+        <span className="block text-[9px] uppercase tracking-[0.14em] text-stone-500 leading-tight">{label}</span>
+      </span>
+    </div>
+  );
+}
+
+/** A row of chips that share one bordered box, split by hairlines. */
+export function CaChipGroup({ children, cols = 4 }: { children: React.ReactNode; cols?: number }) {
+  return (
+    <div
+      className="grid rounded-lg border bg-stone-800/40 overflow-hidden [&>*+*]:border-l [&>*+*]:border-[color:var(--ca-gilt-line-soft)]"
+      style={{
+        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+        borderColor: "var(--ca-gilt-line-soft)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A cell inside a CaChipGroup — same shape as a chip, without its own box. */
+export function CaChipCell({
+  icon,
+  label,
+  children,
+  editable = false,
+  testId,
+  ...rest
+}: {
+  icon?: React.ReactNode;
+  label: React.ReactNode;
+  children: React.ReactNode;
+  editable?: boolean;
+  testId?: string;
+} & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={`px-2.5 py-1.5 min-w-0 ${editable ? "cursor-pointer select-none hover:bg-stone-800/60 transition-colors" : ""}`}
+      data-testid={testId}
+      {...rest}
+    >
+      <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.14em] text-stone-500 leading-tight">
+        {icon && <span className="shrink-0" style={{ color: "var(--ca-gilt)" }}>{icon}</span>}
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="block text-sm font-bold text-stone-100 truncate leading-tight mt-0.5">{children}</span>
+    </div>
+  );
+}
+
+/** The medallion an ornate section header wears. */
+export function CaMedallion({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="shrink-0 w-7 h-7 rounded-full border bg-stone-800 flex items-center justify-center shadow-[inset_0_0_8px_-4px_rgba(0,0,0,0.9)]"
+      style={{ borderColor: "var(--ca-gilt-line)", color: "var(--ca-gilt)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Medallion, name in display type, and the value hard right. */
+export function CaSectionHeader({
+  icon,
+  title,
+  value,
+  testId,
+}: {
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  value?: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2" data-testid={testId}>
+      <span className="flex items-center gap-2 min-w-0">
+        {icon && <CaMedallion>{icon}</CaMedallion>}
+        <span className="font-display text-base font-bold text-stone-100 truncate">{title}</span>
+      </span>
+      {value}
+    </div>
+  );
+}
+
+/** A section: framed, with its header and a body. */
+export function CaSection({
+  icon,
+  title,
+  value,
+  children,
+  testId,
+}: {
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  value?: React.ReactNode;
+  children?: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      className="rounded-lg border bg-stone-800/40 px-3 py-2 space-y-2"
+      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+      data-testid={testId}
+    >
+      <CaSectionHeader icon={icon} title={title} value={value} />
+      {children}
+    </div>
+  );
+}
+
+/** A darker well inside a section — the overload editor, the wound diagram. */
+export function CaInset({
+  children,
+  className = "",
+  testId,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  testId?: string;
+}) {
+  return (
+    <div
+      className={`rounded-lg border bg-stone-900/70 p-2 ${className}`}
+      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
