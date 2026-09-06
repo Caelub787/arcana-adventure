@@ -586,3 +586,34 @@ hr,
 [data-testid="character-sheet-root"] {
   border: 1px solid var(--ca-gilt-line-soft);
 }
+
+/* Buttons and fields. These are what made one tab look like a different app:
+   the sheet tabs that were rebuilt use the themed pieces, and every other tab
+   was still drawing plain shadcn controls next to them. Styling the shared
+   primitives is what makes the two match without touching either call site.
+
+   Outlined and ghost buttons take the metal; filled ones (a Save, a
+   destructive Delete) keep their own colour, because those are meant to stand
+   out from the frame rather than blend into it. */
+[data-slot="button"].border,
+[data-slot="button"][class*="border-stone"],
+[data-slot="button"][class*="border-input"] {
+  border-color: var(--ca-gilt-line-soft);
+}
+[data-slot="button"]:hover.border,
+[data-slot="button"][class*="border-stone"]:hover,
+[data-slot="button"][class*="border-input"]:hover {
+  border-color: var(--ca-gilt-line);
+}
+
+[data-slot="input"],
+[data-slot="textarea"],
+[data-slot="select-trigger"] {
+  border-color: var(--ca-gilt-line-soft);
+}
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus-visible,
+[data-slot="select-trigger"]:focus {
+  border-color: var(--ca-gilt-line);
+  --tw-ring-color: var(--ca-gilt-line);
+}

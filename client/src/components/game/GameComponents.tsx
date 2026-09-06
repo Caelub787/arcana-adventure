@@ -22059,7 +22059,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         })}
                       >
                         <span className="flex items-center gap-1.5">
-                          <CharacterAuraMark character={liveCharacter as any} size={14} />
+                          <CharacterAuraMark character={liveCharacter as any} size={26} />
                           <span className="truncate">{(liveCharacter as any).caAuraColor || 'Default'}</span>
                         </span>
                       </CaChipCell>

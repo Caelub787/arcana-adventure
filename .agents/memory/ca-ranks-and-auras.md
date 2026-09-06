@@ -196,3 +196,28 @@ the CSS is what reaches everything else without every call site opting in.
 `--ca-gilt*` and the components live in `CASheetUI.tsx`, but neither is C.A.
 specific any more. Renaming was left alone rather than churn every call site
 mid-change.
+
+### Buttons and fields
+
+`data-slot` hooks were added to the shared Button, Input, Textarea and Select
+trigger (Card already had one) and the gilt block styles those. This is what
+stopped one tab looking like a different app: the rebuilt sheet tabs used the
+themed pieces while every other tab drew plain shadcn controls beside them.
+
+**Only outlined and ghost buttons take the metal.** Filled ones — a Save, a
+destructive Delete — keep their own colour, because they are meant to stand
+out from the frame rather than blend into it.
+
+### The aura is a particle field
+
+`AuraShapeMark` renders the colour as a field with `PARTICLE_COUNT` copies of
+the shape drifting inside it, fading in as they leave the middle and out again
+before they reach the edge, so nothing pops at a boundary. A radial mask would
+be the obvious way to do that fade; masks did not render at all when tested
+(same finding as `woundBodyImages.ts`), so it is each particle's own opacity
+keyframes.
+
+Drift is seeded off the particle index, not `Math.random`, so a re-render
+doesn't teleport every particle. Below `PARTICLE_MIN_SIZE` (20px) there is no
+room for any of it — at 12px a particle is two pixels — so small uses like the
+party tracker fall back to the single centred shape.

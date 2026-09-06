@@ -2633,10 +2633,11 @@ export function CampaignNotesPanel({
             tabIndex={0}
             onClick={beginInlineEdit}
             onFocus={beginInlineEdit}
-            className="bg-stone-900/40 border border-stone-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.25)] p-4 min-h-[40vh] cursor-text outline-none focus:border-stone-700"
+            className="rounded-lg shadow-[0_0_24px_rgba(0,0,0,0.35)] p-4 min-h-[40vh] cursor-text outline-none bg-stone-900/40"
+            style={{ border: '1px solid var(--ca-gilt-line-soft)' }}
             data-testid="panel-note-read-surface"
           >
-            <h1 className="text-lg font-bold text-stone-100 mb-1 font-display" data-testid="panel-text-note-read-title">
+            <h1 className="text-2xl font-bold text-stone-100 mb-1 font-display" data-testid="panel-text-note-read-title">
               {currentNote?.title}
             </h1>
             <div onClick={(e) => e.stopPropagation()}>{renderTagRow()}</div>
@@ -2935,7 +2936,27 @@ export function CampaignNotesPanel({
   );
 
   return (
-    <div className="h-full bg-stone-900/98 border-l border-stone-700 flex flex-col shadow-2xl">
+    // The notes panel reads as a page rather than another slab of chrome: a
+    // gilt rule down its edge, a warmer ground than the sheet beside it, and
+    // a vignette so the middle sits forward the way a spread does.
+    <div
+      className="h-full flex flex-col shadow-2xl relative"
+      data-testid="notes-panel-root"
+      style={{
+        borderLeft: '1px solid var(--ca-gilt-line-soft)',
+        background:
+          'radial-gradient(120% 90% at 50% 0%, rgb(41 37 36 / 0.55) 0%, transparent 60%), ' +
+          'radial-gradient(100% 80% at 50% 100%, rgb(28 25 23 / 0.5) 0%, transparent 55%), ' +
+          'rgb(var(--notes-page-rgb, 20 20 27) / 0.98)',
+      }}
+    >
+      {/* The page's own inner rule, inset from the panel edge the way a tooled
+          border sits in from the edge of a cover. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-2 rounded-md"
+        style={{ border: '1px solid var(--ca-gilt-line-soft)', opacity: 0.55 }}
+      />
       <div className="flex items-center justify-between p-2 border-b border-stone-700 bg-stone-900">
         <div className="flex items-center gap-2 min-w-0">
           {/* The sidebar-toggle/title header only applies to the two-pane
@@ -2957,7 +2978,7 @@ export function CampaignNotesPanel({
           {!navOnly && (
             <>
               <FileText className="h-4 w-4 text-amber-500 flex-shrink-0" />
-              <h2 className="text-sm font-bold text-amber-500 truncate">
+              <h2 className="text-sm font-bold truncate font-display" style={{ color: 'var(--ca-gilt-bright)' }}>
                 {contentOnly ? (currentNote?.title || "Note") : "Campaign Notes"}
               </h2>
             </>

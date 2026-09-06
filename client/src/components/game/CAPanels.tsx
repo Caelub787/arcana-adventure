@@ -152,12 +152,47 @@ const AURA_SHAPE_PATHS: Record<Exclude<CAAuraShape, "none">, string> = {
 };
 
 /**
- * The aura's shape, pulsing in its colour. `none` renders a plain filled dot
- * so a character with no shape still reads as having an aura at all.
- *
- * The animation is inline rather than a Tailwind class because the glow has
- * to be keyed to the aura's own colour, which isn't known at build time.
+ * Deterministic per-particle drift. Seeded off the particle's index rather
+ * than Math.random so a re-render doesn't teleport every particle - they have
+ * to keep drifting from wherever they were, not restart somewhere new.
  */
+function particleDrift(i: number) {
+  const golden = 0.6180339887;
+  const a = ((i * golden) % 1) * Math.PI * 2;
+  const b = (((i + 1) * golden * 3) % 1) * Math.PI * 2;
+  const c = (((i + 2) * golden * 7) % 1) * Math.PI * 2;
+  // Percentages of the field, kept inside it so a particle drifts rather than
+  // slams into the wall.
+  const p = (angle: number, r: number) => ({
+    x: 50 + Math.cos(angle) * r,
+    y: 50 + Math.sin(angle) * r,
+  });
+  return {
+    from: p(a, 30),
+    via: p(b, 34),
+    to: p(c, 28),
+    duration: 7 + ((i * 1.7) % 5),
+    delay: -((i * 2.3) % 7),
+    scale: 0.75 + ((i * 0.37) % 0.5),
+  };
+}
+
+/**
+ * The aura: the character's colour as a field, with their shape drifting
+ * around inside it like something suspended in it.
+ *
+ * The particles fade in as they come out of the middle and fade out again as
+ * they reach the edge, so nothing ever hits a hard boundary - a radial mask
+ * would be the obvious way to do that, but masks did not render at all when
+ * this was checked (see woundBodyImages.ts for the same finding), so the fade
+ * is in each particle's own opacity keyframes instead.
+ *
+ * Below `PARTICLE_MIN_SIZE` there is no room for any of this - at 12px a
+ * particle is two pixels - so it falls back to the single centred shape.
+ */
+const PARTICLE_MIN_SIZE = 20;
+const PARTICLE_COUNT = 4;
+
 export function AuraShapeMark({
   color,
   shape,
@@ -174,65 +209,144 @@ export function AuraShapeMark({
   title?: string;
 }) {
   // Unique per instance: two auras on screen at once must not share a
-  // keyframes name, or the second one's colour wins for both.
+  // keyframes name, or the second one's animation wins for both.
   const rawId = useId();
   const animId = `aura-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
 
-  if (shape === "none") {
-    return (
-      <span
-        className={className}
-        title={title}
-        aria-hidden={title ? undefined : true}
-        data-testid="aura-mark"
-        data-aura-shape="none"
-        style={{
-          display: "inline-block",
-          width: size,
-          height: size,
-          borderRadius: "9999px",
-          backgroundColor: color,
-          boxShadow: `0 0 ${size / 2}px ${color}`,
-          ...(animate ? { animation: `${animId} 2.4s ease-in-out infinite` } : {}),
-        }}
-      >
-        {animate && (
-          <style>{`@keyframes ${animId}{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}`}</style>
-        )}
-      </span>
-    );
-  }
-
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
+  const field = (children: React.ReactNode, extraStyle?: React.CSSProperties) => (
+    <span
       className={className}
-      role={title ? "img" : "presentation"}
+      title={title}
       aria-hidden={title ? undefined : true}
       data-testid="aura-mark"
       data-aura-shape={shape}
       style={{
-        overflow: "visible",
-        filter: `drop-shadow(0 0 ${Math.max(2, size / 5)}px ${color})`,
-        ...(animate ? { animation: `${animId} 2.4s ease-in-out infinite` } : {}),
+        position: "relative",
+        display: "inline-block",
+        width: size,
+        height: size,
+        borderRadius: "9999px",
+        overflow: "hidden",
+        // The colour itself, densest in the middle - the "space" the shapes
+        // are suspended in.
+        background: `radial-gradient(circle at 50% 50%, ${color}66 0%, ${color}22 55%, transparent 78%)`,
+        boxShadow: `0 0 ${Math.max(3, size / 3)}px ${color}55`,
+        ...extraStyle,
       }}
     >
-      {title && <title>{title}</title>}
-      {animate && (
-        <style>{`@keyframes ${animId}{0%,100%{opacity:.7;transform:scale(.94)}50%{opacity:1;transform:scale(1.06)}}`}</style>
-      )}
-      <path
-        d={AURA_SHAPE_PATHS[shape]}
-        // The ring is the one shape that shouldn't be filled in - it's a ring.
-        fill={shape === "ring" ? "none" : color}
-        fillOpacity={0.35}
-        stroke={color}
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    </svg>
+      {children}
+    </span>
+  );
+
+  // No shape, or too small for particles to read: the plain pulsing dot.
+  if (shape === "none" || size < PARTICLE_MIN_SIZE) {
+    if (shape === "none") {
+      return field(
+        <>
+          <span
+            style={{
+              position: "absolute",
+              inset: "22%",
+              borderRadius: "9999px",
+              backgroundColor: color,
+              ...(animate ? { animation: `${animId}pulse 2.4s ease-in-out infinite` } : {}),
+            }}
+          />
+          {animate && (
+            <style>{`@keyframes ${animId}pulse{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.14)}}`}</style>
+          )}
+        </>,
+      );
+    }
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        className={className}
+        role={title ? "img" : "presentation"}
+        aria-hidden={title ? undefined : true}
+        data-testid="aura-mark"
+        data-aura-shape={shape}
+        style={{
+          overflow: "visible",
+          filter: `drop-shadow(0 0 ${Math.max(2, size / 5)}px ${color})`,
+          ...(animate ? { animation: `${animId} 2.4s ease-in-out infinite` } : {}),
+        }}
+      >
+        {title && <title>{title}</title>}
+        {animate && (
+          <style>{`@keyframes ${animId}{0%,100%{opacity:.7;transform:scale(.94)}50%{opacity:1;transform:scale(1.06)}}`}</style>
+        )}
+        <path
+          d={AURA_SHAPE_PATHS[shape]}
+          fill={shape === "ring" ? "none" : color}
+          fillOpacity={0.35}
+          stroke={color}
+          strokeWidth={1.6}
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  const particleSize = Math.round(size * 0.34);
+  const drifts = Array.from({ length: PARTICLE_COUNT }, (_, i) => particleDrift(i));
+
+  return field(
+    <>
+      <style>
+        {drifts
+          .map((d, i) => {
+            const name = `${animId}p${i}`;
+            // Opacity is the fade: nothing at the extremes of the path, full
+            // in the middle of it, so a particle arrives and leaves rather
+            // than popping at the edge of the field.
+            return (
+              `@keyframes ${name}{` +
+              `0%{opacity:0;transform:translate(-50%,-50%) scale(${d.scale * 0.6})}` +
+              `18%{opacity:.95}` +
+              `50%{opacity:1;left:${d.via.x}%;top:${d.via.y}%;transform:translate(-50%,-50%) scale(${d.scale})}` +
+              `82%{opacity:.9}` +
+              `100%{opacity:0;left:${d.to.x}%;top:${d.to.y}%;transform:translate(-50%,-50%) scale(${d.scale * 0.6})}` +
+              `}`
+            );
+          })
+          .join("")}
+      </style>
+      {drifts.map((d, i) => (
+        <svg
+          key={i}
+          viewBox="0 0 24 24"
+          width={particleSize}
+          height={particleSize}
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: `${d.from.x}%`,
+            top: `${d.from.y}%`,
+            transform: "translate(-50%, -50%)",
+            overflow: "visible",
+            opacity: 0,
+            ...(animate
+              ? {
+                  animation: `${animId}p${i} ${d.duration}s ease-in-out ${d.delay}s infinite alternate`,
+                }
+              : { opacity: 0.9 }),
+          }}
+        >
+          <path
+            d={AURA_SHAPE_PATHS[shape]}
+            fill={shape === "ring" ? "none" : color}
+            fillOpacity={0.4}
+            stroke={color}
+            strokeWidth={2}
+            strokeLinejoin="round"
+          />
+        </svg>
+      ))}
+      {title && <span className="sr-only">{title}</span>}
+    </>,
   );
 }
 
@@ -289,7 +403,7 @@ export function CaAuraEditor({
           <option key={s} value={s}>{CA_AURA_SHAPE_LABELS[s]}</option>
         ))}
       </select>
-      <AuraShapeMark color={resolved.color} shape={resolved.shape} size={22} />
+      <AuraShapeMark color={resolved.color} shape={resolved.shape} size={30} />
       {resolved.color.toLowerCase() === CA_AURA_DEFAULT_COLOR.toLowerCase() && !color && (
         <span className="text-[10px] text-stone-500">default</span>
       )}
