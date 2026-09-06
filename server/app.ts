@@ -156,7 +156,7 @@ async function ensureKnowledgeSystemSchema() {
     // C.A. ranks, Physique and auras. Physique is 0 = "not set" rather than a
     // Physique of zero, so the default is safe for existing characters; the
     // overload effects it triggers use the wound effect shape.
-    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_physique integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_physique integer NOT NULL DEFAULT 100`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_physique_effects jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_age integer`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_birthday text`,

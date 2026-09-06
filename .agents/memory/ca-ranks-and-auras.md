@@ -56,7 +56,35 @@ nothing to clear when the character comes back under.
 
 **A Physique of 0 means "not set", not a Physique of zero** (`caPhysiqueState`).
 Characters created before the column existed default to 0 and must not read as
-permanently overloaded.
+permanently overloaded. New characters start at `CA_STARTING_PHYSIQUE` (100),
+which is a real Physique they can exceed — so existing characters sit at 0 and
+never overload until a GM gives them one. A blanket
+`UPDATE characters SET ca_physique = 100 WHERE ca_physique = 0` would fix that
+but has not been run; ask before touching live data.
+
+New C.A. characters also start at `CA_STARTING_ENERGY` (10) rather than their
+species' figure, because C.A.'s species lists carry the other systems' numbers.
+
+## The Overview tab has no edit mode
+
+There is no pencil button and no Save/Cancel on C.A.'s Overview tab. Every
+value is its own inline editor, opened by double-clicking it (desktop) or
+long-pressing it (touch) — the same gesture the Energy Pool and the stat bars
+already used, `caInlinePressHandlers` in `CharacterSheet`. Enter saves, Escape
+cancels, and each field writes only itself.
+
+Two fields don't follow the tick-to-save shape, for good reasons:
+
+- **Race** writes the moment a species is picked, and pulls that species'
+  size/DC/speeds along with it — otherwise picking a species inline would set
+  the name and leave every stat behind, which the old whole-tab editor did not
+  do.
+- **Aura** is two values (colour and shape) and writes on every change, so
+  there is nothing to get half-committed.
+
+The body-type switch on the wound diagram used to appear only while the tab
+was in edit mode. There is no such mode now, so it shows for anyone who could
+have entered one.
 
 ## Auras replaced beacon colours
 

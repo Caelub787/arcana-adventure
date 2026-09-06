@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects } from "@shared/ca";
+import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -10011,8 +10011,10 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       portrait: selectedSpecies.defaultImage || null,
       hp: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxHp : selectedSpecies.startingHp) || 10,
       maxHp: selectedSpecies.startingMaxHp || 10,
-      energy: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxEnergy : selectedSpecies.startingEnergy) || 10,
-      maxEnergy: selectedSpecies.startingMaxEnergy || 10,
+      energy: isWoundSystem(campaignSystem)
+        ? CA_STARTING_ENERGY
+        : ((campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxEnergy : selectedSpecies.startingEnergy) || 10),
+      maxEnergy: isWoundSystem(campaignSystem) ? CA_STARTING_ENERGY : (selectedSpecies.startingMaxEnergy || 10),
       mana: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxMana : selectedSpecies.startingMana) || 0,
       maxMana: selectedSpecies.startingMaxMana || 0,
       bonusHpFromLevelUps: 0,
@@ -10039,6 +10041,8 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       skillStealth: 0,
       skillStrength: 0,
       skillWisdom: 0,
+      // C.A. only: a real starting Physique, not the 0 that means "not set".
+      ...(isWoundSystem(campaignSystem) ? { caPhysique: CA_STARTING_PHYSIQUE } : {}),
       skillCulture: 0,
       inventory: []
     });
@@ -19082,23 +19086,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
 
-  // C.A.'s minimal Overview tab edits name + fundamentals (race/DC/size/
-  // movement speeds) together under one pencil button and one Save/Cancel,
-  // separate from the v1/v2/v3 overviewData flow (which carries a much
-  // larger stat payload). `dc` rides on the existing `naturalArmor` column
-  // (no schema change) — C.A. doesn't compute DC from size/armor/feats like
-  // v1/v2/v3 do, it's just a direct GM-set number, so the column is
-  // repurposed wholesale. Nothing is written until Save; selecting a race
-  // while editing auto-fills the rest of the fundamentals draft from the
-  // species (mirrors applyRaceChange).
-  const [caEditingOverview, setCaEditingOverview] = useState(false);
-  const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
-    race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
-    // Physique caps the Energy Pool; the rest is the sheet's bio block, and
-    // the aura is what replaces the beacon colour for this character.
-    physique: 0, age: '', birthday: '', languages: '',
-    auraColor: '' as string, auraShape: 'none' as string,
-  });
+  // C.A.'s Overview tab has no edit mode at all - see caInlineField below.
+  // `dc` rides on the existing `naturalArmor` column (no schema change):
+  // C.A. doesn't compute DC from size/armor/feats like v1/v2/v3 do, it's
+  // just a direct GM-set number, so the column is repurposed wholesale.
 
   // Energy Pool — a standalone number above the Energy bar, just a closed
   // display until double-clicked (matches the desktop double-click /
@@ -19805,17 +19796,143 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // C.A. race change: same species auto-fill idea as applyRaceChange, but
   // only touches the fundamentals draft (size/naturalArmor/speed/flySpeed/
   // swimSpeed) — no hp/energy, since C.A. doesn't derive those from species.
-  const applyCARaceChange = (raceName: string) => {
+  // C.A. Overview has no Edit button. Every value is its own inline editor,
+  // opened by double-clicking it (or long-pressing on touch) - the same
+  // gesture the Energy Pool and the stat bars already used, applied to the
+  // whole tab so there is one way in rather than two.
+  const [caInlineField, setCaInlineField] = useState<string | null>(null);
+  const [caInlineDraft, setCaInlineDraft] = useState<any>(null);
+  const caInlinePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const caCanEditOverview = !!onUpdate && (isOwner || isGM);
+
+  const openCaInline = (field: string, current: any) => {
+    if (!caCanEditOverview) return;
+    setCaInlineDraft(current);
+    setCaInlineField(field);
+  };
+  const closeCaInline = () => {
+    setCaInlineField(null);
+    setCaInlineDraft(null);
+  };
+  /**
+   * Writes one field and closes. `transform` turns the draft into what the
+   * column wants (a trimmed string, a nulled-out empty, a floored number).
+   */
+  const saveCaInline = (field: string, transform?: (draft: any) => any) => {
+    const value = transform ? transform(caInlineDraft) : caInlineDraft;
+    onUpdate?.({ [field]: value } as any);
+    closeCaInline();
+  };
+
+  /** Double-click on desktop, long-press on touch — same as the stat bars. */
+  const caInlinePressHandlers = (field: string, current: any) => {
+    if (!caCanEditOverview) return {};
+    const cancel = () => {
+      if (caInlinePressTimerRef.current) {
+        clearTimeout(caInlinePressTimerRef.current);
+        caInlinePressTimerRef.current = null;
+      }
+    };
+    return {
+      onDoubleClick: (e: React.MouseEvent) => { e.stopPropagation(); openCaInline(field, current); },
+      onTouchStart: () => {
+        cancel();
+        caInlinePressTimerRef.current = setTimeout(() => openCaInline(field, current), 500);
+      },
+      onTouchEnd: cancel,
+      onTouchMove: cancel,
+      onTouchCancel: cancel,
+      title: 'Double-click (PC) or long-press (mobile) to edit',
+    };
+  };
+
+  // Every inline editor looks the same: the input, a tick and a cross, with
+  // Enter and Escape doing the same two things.
+  const caInlineKeys = (field: string, transform?: (draft: any) => any) => ({
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveCaInline(field, transform); }
+      if (e.key === 'Escape') { e.preventDefault(); closeCaInline(); }
+    },
+  });
+
+  const caInlineActions = (field: string, transform?: (draft: any) => any) => (
+    <>
+      <Button
+        size="sm"
+        className="h-7 w-7 p-0 bg-emerald-700 hover:bg-emerald-600 text-white shrink-0"
+        onClick={(e) => { e.stopPropagation(); saveCaInline(field, transform); }}
+        aria-label="Save"
+        data-testid={`button-ca-save-${field}`}
+      >
+        <Check className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+        onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
+        aria-label="Cancel"
+        data-testid={`button-ca-cancel-${field}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+    </>
+  );
+
+  // Age is the one number that can be genuinely empty rather than zero.
+  const caAgeFromDraft = (draft: any) => {
+    const raw = String(draft ?? '').trim();
+    return raw === '' ? null : Math.max(0, Math.floor(Number(raw) || 0));
+  };
+
+  const caInlineNumberEditor = (field: string, testid: string) => (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <NumberInput
+        min={0}
+        value={caInlineDraft}
+        onChange={(v) => setCaInlineDraft(v ?? 0)}
+        className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
+        data-testid={`input-ca-edit-${testid}`}
+        {...caInlineKeys(field, (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+      />
+      {caInlineActions(field, (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+    </div>
+  );
+
+  const caInlineTextEditor = (field: string, testid: string, placeholder?: string) => (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <Input
+        autoFocus
+        value={caInlineDraft ?? ''}
+        onChange={(e) => setCaInlineDraft(e.target.value)}
+        placeholder={placeholder}
+        className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
+        data-testid={`input-ca-edit-${testid}`}
+        {...caInlineKeys(field, (d) => (String(d ?? '').trim() || null))}
+      />
+      {caInlineActions(field, (d) => (String(d ?? '').trim() || null))}
+    </div>
+  );
+
+  useEffect(() => () => {
+    if (caInlinePressTimerRef.current) clearTimeout(caInlinePressTimerRef.current);
+  }, []);
+
+  // Changing race pulls the species' own numbers along with it, the way the
+  // old whole-tab editor did - otherwise picking a species inline would set
+  // the name and leave every stat behind.
+  const saveCaInlineRace = (raceName: string) => {
     const raceData = systemSpecies.find((r: any) => r.name === raceName);
-    setCaFundamentalsDraft(prev => ({
-      ...prev,
+    onUpdate?.({
       race: raceName,
-      size: raceData?.size ?? prev.size,
-      dc: raceData?.naturalArmor ?? prev.dc,
-      speed: raceData?.speed ?? prev.speed,
-      flySpeed: raceData?.flySpeed ?? prev.flySpeed,
-      swimSpeed: (raceData as any)?.swimSpeed ?? prev.swimSpeed,
-    }));
+      ...(raceData?.size != null ? { size: raceData.size } : {}),
+      ...(raceData?.naturalArmor != null ? { naturalArmor: raceData.naturalArmor } : {}),
+      ...(raceData?.speed != null ? { speed: raceData.speed } : {}),
+      ...(raceData?.flySpeed != null ? { flySpeed: raceData.flySpeed } : {}),
+      ...((raceData as any)?.swimSpeed != null ? { swimSpeed: (raceData as any).swimSpeed } : {}),
+    } as any);
+    closeCaInline();
   };
 
   // Inventory state
@@ -21751,67 +21868,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               <>
               <Card className="bg-stone-800 border-stone-700">
                 <CardContent className="pt-6 space-y-4 relative">
-                  {/* Edit control sits level with the Race/DC row instead of
-                      its own header bar above the portrait - the portrait
-                      is the first thing in the card now. */}
-                  {(isOwner || isGM) && onUpdate && (
-                    caEditingOverview ? (
-                      <div className="absolute top-4 right-4 z-10 flex gap-1.5 shrink-0">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            onUpdate?.({
-                              race: caFundamentalsDraft.race,
-                              size: caFundamentalsDraft.size,
-                              naturalArmor: caFundamentalsDraft.dc,
-                              speed: caFundamentalsDraft.speed,
-                              flySpeed: caFundamentalsDraft.flySpeed,
-                              swimSpeed: caFundamentalsDraft.swimSpeed,
-                              caPhysique: Math.max(0, Math.floor(caFundamentalsDraft.physique || 0)),
-                              caAge: caFundamentalsDraft.age === '' ? null : Math.max(0, Math.floor(Number(caFundamentalsDraft.age) || 0)),
-                              caBirthday: caFundamentalsDraft.birthday.trim() || null,
-                              caLanguages: caFundamentalsDraft.languages.trim() || null,
-                              caAuraColor: caFundamentalsDraft.auraColor || null,
-                              caAuraShape: caFundamentalsDraft.auraShape,
-                            } as any);
-                            setCaEditingOverview(false);
-                          }}
-                          data-testid="button-ca-save-overview"
-                        >
-                          Save
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setCaEditingOverview(false)} data-testid="button-ca-cancel-overview">
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="absolute top-4 right-4 z-10 h-7 w-7 p-0 shrink-0"
-                        onClick={() => {
-                          setCaFundamentalsDraft({
-                            race: liveCharacter.race || '',
-                            size: liveCharacter.size || '',
-                            dc: liveCharacter.naturalArmor ?? 5,
-                            speed: liveCharacter.speed || 0,
-                            flySpeed: liveCharacter.flySpeed || 0,
-                            swimSpeed: liveCharacter.swimSpeed || 0,
-                            physique: (liveCharacter as any).caPhysique ?? 0,
-                            age: (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge),
-                            birthday: (liveCharacter as any).caBirthday || '',
-                            languages: (liveCharacter as any).caLanguages || '',
-                            auraColor: (liveCharacter as any).caAuraColor || '',
-                            auraShape: (liveCharacter as any).caAuraShape || 'none',
-                          });
-                          setCaEditingOverview(true);
-                        }}
-                        data-testid="button-ca-edit-overview"
-                      >
-                        <Pencil className="h-4 w-4 text-stone-400" />
-                      </Button>
-                    )
-                  )}
+                  {/* No Edit button. Every value on this tab opens its own
+                      editor on a double-click (or a long-press on touch), the
+                      same gesture the Energy Pool and the stat bars already
+                      used - one way in rather than a mode you have to enter
+                      and leave. */}
                   <div className="flex flex-row gap-3 sm:gap-4">
                     {/* Portrait — a fixed-width column so it stays beside the
                         info at any screen width instead of stacking on
@@ -21881,33 +21942,49 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                         <div>
                           <Label className="text-xs text-stone-400">Race</Label>
-                          {caEditingOverview ? (
-                            <Select value={caFundamentalsDraft.race} onValueChange={applyCARaceChange}>
-                              <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm" data-testid="select-ca-race">
-                                <SelectValue placeholder="Select race" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {systemSpecies.map((species: any) => (
-                                  <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          {caInlineField === 'race' ? (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Select value={caInlineDraft ?? ''} onValueChange={saveCaInlineRace}>
+                                <SelectTrigger className="bg-stone-900 border-stone-700 h-8 text-sm min-w-0" data-testid="select-ca-race">
+                                  <SelectValue placeholder="Select race" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {systemSpecies.map((species: any) => (
+                                    <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+                                onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
+                                aria-label="Cancel"
+                                data-testid="button-ca-cancel-race"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           ) : (
-                            <p className="text-stone-200 text-sm truncate" data-testid="text-ca-race">{liveCharacter.race || 'Unset'}</p>
+                            <p
+                              className="text-stone-200 text-sm truncate cursor-pointer select-none"
+                              data-testid="text-ca-race"
+                              {...caInlinePressHandlers('race', liveCharacter.race || '')}
+                            >
+                              {liveCharacter.race || 'Unset'}
+                            </p>
                           )}
                         </div>
                         <div>
                           <Label className="text-xs text-stone-400">DC</Label>
-                          {caEditingOverview ? (
-                            <NumberInput
-                              min={0}
-                              value={caFundamentalsDraft.dc}
-                              onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, dc: v ?? 0 }))}
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-dc"
-                            />
-                          ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-dc">{liveCharacter.naturalArmor ?? 5}</p>
+                          {caInlineField === 'naturalArmor' ? caInlineNumberEditor('naturalArmor', 'dc') : (
+                            <p
+                              className="text-stone-200 text-sm cursor-pointer select-none"
+                              data-testid="text-ca-dc"
+                              {...caInlinePressHandlers('naturalArmor', liveCharacter.naturalArmor ?? 5)}
+                            >
+                              {liveCharacter.naturalArmor ?? 5}
+                            </p>
                           )}
                         </div>
                         {([
@@ -21917,15 +21994,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ] as const).map(({ key, label, testid }) => (
                           <div key={key}>
                             <Label className="text-xs text-stone-400">{label}</Label>
-                            {caEditingOverview ? (
-                              <NumberInput
-                                min={0}
-                                value={caFundamentalsDraft[key]}
-                                onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, [key]: v ?? 0 }))}
-                                className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                                data-testid={`input-ca-edit-${testid}`}
-                              />
-                            ) : (() => {
+                            {caInlineField === key ? caInlineNumberEditor(key, testid) : (() => {
                               const baseVal = liveCharacter[key] || 0;
                               const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
                               const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
@@ -21934,7 +22003,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
                               const isReduced = effectiveVal < baseVal;
                               return (
-                                <p className="text-stone-200 text-sm" data-testid={`text-ca-${testid}`}>
+                                <p
+                                  className="text-stone-200 text-sm cursor-pointer select-none"
+                                  data-testid={`text-ca-${testid}`}
+                                  {...caInlinePressHandlers(key, baseVal)}
+                                >
                                   {isReduced ? (
                                     <>
                                       <span className="line-through text-stone-500">{baseVal} ft</span>{' '}
@@ -21960,15 +22033,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         ))}
                         <div>
                           <Label className="text-xs text-stone-400">Size</Label>
-                          {caEditingOverview ? (
-                            <Input
-                              value={caFundamentalsDraft.size}
-                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, size: e.target.value }))}
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-size"
-                            />
-                          ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-size">{liveCharacter.size || 'Medium'}</p>
+                          {caInlineField === 'size' ? caInlineTextEditor('size', 'size', 'Medium') : (
+                            <p
+                              className="text-stone-200 text-sm cursor-pointer select-none"
+                              data-testid="text-ca-size"
+                              {...caInlinePressHandlers('size', liveCharacter.size || '')}
+                            >
+                              {liveCharacter.size || 'Medium'}
+                            </p>
                           )}
                         </div>
 
@@ -21978,49 +22050,50 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             date picker or a lookup list. */}
                         <div>
                           <Label className="text-xs text-stone-400">Age</Label>
-                          {caEditingOverview ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              value={caFundamentalsDraft.age}
-                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, age: e.target.value }))}
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-age"
-                            />
+                          {caInlineField === 'caAge' ? (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                autoFocus
+                                type="number"
+                                min={0}
+                                value={caInlineDraft ?? ''}
+                                onChange={(e) => setCaInlineDraft(e.target.value)}
+                                className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
+                                data-testid="input-ca-edit-age"
+                                {...caInlineKeys('caAge', caAgeFromDraft)}
+                              />
+                              {caInlineActions('caAge', caAgeFromDraft)}
+                            </div>
                           ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-age">
+                            <p
+                              className="text-stone-200 text-sm cursor-pointer select-none"
+                              data-testid="text-ca-age"
+                              {...caInlinePressHandlers('caAge', (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge))}
+                            >
                               {(liveCharacter as any).caAge ?? '—'}
                             </p>
                           )}
                         </div>
                         <div>
                           <Label className="text-xs text-stone-400">Birthday</Label>
-                          {caEditingOverview ? (
-                            <Input
-                              value={caFundamentalsDraft.birthday}
-                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, birthday: e.target.value }))}
-                              placeholder="February 11"
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-birthday"
-                            />
-                          ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-birthday">
+                          {caInlineField === 'caBirthday' ? caInlineTextEditor('caBirthday', 'birthday', 'February 11') : (
+                            <p
+                              className="text-stone-200 text-sm cursor-pointer select-none"
+                              data-testid="text-ca-birthday"
+                              {...caInlinePressHandlers('caBirthday', (liveCharacter as any).caBirthday || '')}
+                            >
                               {(liveCharacter as any).caBirthday || '—'}
                             </p>
                           )}
                         </div>
                         <div className="col-span-2">
                           <Label className="text-xs text-stone-400">Languages</Label>
-                          {caEditingOverview ? (
-                            <Input
-                              value={caFundamentalsDraft.languages}
-                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, languages: e.target.value }))}
-                              placeholder="English, Tana Ornis"
-                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
-                              data-testid="input-ca-edit-languages"
-                            />
-                          ) : (
-                            <p className="text-stone-200 text-sm" data-testid="text-ca-languages">
+                          {caInlineField === 'caLanguages' ? caInlineTextEditor('caLanguages', 'languages', 'English, Tana Ornis') : (
+                            <p
+                              className="text-stone-200 text-sm cursor-pointer select-none"
+                              data-testid="text-ca-languages"
+                              {...caInlinePressHandlers('caLanguages', (liveCharacter as any).caLanguages || '')}
+                            >
                               {(liveCharacter as any).caLanguages || '—'}
                             </p>
                           )}
@@ -22033,18 +22106,39 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             alike. */}
                         <div className="col-span-2">
                           <Label className="text-xs text-stone-400">Aura</Label>
-                          {caEditingOverview ? (
-                            <div className="mt-1">
+                          {caInlineField === 'aura' ? (
+                            <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              {/* The aura is two values, so it writes on every
+                                  change rather than waiting for a tick - there
+                                  is nothing to get half-committed. */}
                               <CaAuraEditor
-                                color={caFundamentalsDraft.auraColor}
-                                shape={caFundamentalsDraft.auraShape}
-                                onChange={({ color, shape }) =>
-                                  setCaFundamentalsDraft(prev => ({ ...prev, auraColor: color, auraShape: shape }))
-                                }
+                                color={caInlineDraft?.color}
+                                shape={caInlineDraft?.shape}
+                                onChange={({ color, shape }) => {
+                                  setCaInlineDraft({ color, shape });
+                                  onUpdate?.({ caAuraColor: color, caAuraShape: shape } as any);
+                                }}
                               />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+                                onClick={(e) => { e.stopPropagation(); closeCaInline(); }}
+                                aria-label="Done"
+                                data-testid="button-ca-cancel-aura"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 mt-0.5" data-testid="text-ca-aura">
+                            <div
+                              className="flex items-center gap-2 mt-0.5 cursor-pointer select-none"
+                              data-testid="text-ca-aura"
+                              {...caInlinePressHandlers('aura', {
+                                color: (liveCharacter as any).caAuraColor || '',
+                                shape: (liveCharacter as any).caAuraShape || 'none',
+                              })}
+                            >
                               <CharacterAuraMark character={liveCharacter as any} size={18} />
                               <span className="text-stone-200 text-sm">
                                 {(liveCharacter as any).caAuraColor || 'Default'}
@@ -22066,22 +22160,30 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </div>
                   </div>
 
-                  {/* Physique — the ceiling on the Energy Pool. Edited with
-                      the rest of the fundamentals rather than on its own,
-                      since changing it can drag the pool down with it. */}
+                  {/* Physique — how much energy the body is built to carry.
+                      It doesn't cap the pool; going over it is what arms the
+                      overload effects below. */}
                   <div className="space-y-1">
                     <div className="flex justify-between items-center">
                       <Label className="text-xs text-stone-300">Physique</Label>
-                      {caEditingOverview ? (
-                        <NumberInput
-                          min={0}
-                          value={caFundamentalsDraft.physique}
-                          onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, physique: v ?? 0 }))}
-                          className="w-24 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
-                          data-testid="input-ca-physique"
-                        />
+                      {caInlineField === 'caPhysique' ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <NumberInput
+                            min={0}
+                            value={caInlineDraft}
+                            onChange={(v) => setCaInlineDraft(v ?? 0)}
+                            className="w-24 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                            data-testid="input-ca-physique"
+                            {...caInlineKeys('caPhysique', (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+                          />
+                          {caInlineActions('caPhysique', (d) => Math.max(0, Math.floor(Number(d) || 0)))}
+                        </div>
                       ) : (
-                        <span className="text-xs font-bold text-stone-200" data-testid="text-ca-physique">
+                        <span
+                          className="text-xs font-bold text-stone-200 cursor-pointer select-none"
+                          data-testid="text-ca-physique"
+                          {...caInlinePressHandlers('caPhysique', caPhysique.physique)}
+                        >
                           {caPhysique.physique.toLocaleString()}
                           {caPhysique.over && (
                             <span className="ml-1 text-[10px] text-red-400" data-testid="text-ca-physique-overloaded">
@@ -22288,10 +22390,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 style={{ filter: 'brightness(1.6) contrast(1.1)' }}
                                 draggable={false}
                               />
-                              {/* Body-type switch — intentionally understated (a small
-                                  corner glyph, not a labeled control) and only present
-                                  while actively editing the Overview tab. */}
-                              {caEditingOverview && canEditWounds && (
+                              {/* Body-type switch — intentionally understated: a
+                                  small corner glyph, not a labeled control. It
+                                  used to appear only while the Overview tab was
+                                  in edit mode; there is no such mode any more,
+                                  so it shows for anyone who could have entered
+                                  it. */}
+                              {canEditWounds && (
                                 <button
                                   type="button"
                                   className="absolute top-1.5 right-1.5 z-10 p-1 rounded-full bg-black/40 hover:bg-black/60 text-stone-400 hover:text-stone-200 transition-colors"

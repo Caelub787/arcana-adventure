@@ -318,7 +318,7 @@ export const characters = pgTable("characters", {
   // overload, which the GM hangs effects off (caPhysiqueEffects below).
   // 0 means "not set", not a Physique of zero, so characters that predate the
   // field aren't permanently in overload. See caPhysiqueState in shared/ca.ts.
-  caPhysique: integer("ca_physique").notNull().default(0),
+  caPhysique: integer("ca_physique").notNull().default(100),
   // C.A. only: what being over your Physique does to you. Same shape as a
   // wound's effects (a skill or movement target plus an amount) and applied
   // the same way, but only while the pool is actually over the Physique -

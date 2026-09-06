@@ -567,3 +567,19 @@ export function caAuraOf(
     : (isHexColor(fallbackColor) ? fallbackColor.trim() : CA_AURA_DEFAULT_COLOR);
   return { color, shape: caAuraShapeOf(character?.caAuraShape) };
 }
+
+// ---------------------------------------------------------------------------
+// Starting values
+// ---------------------------------------------------------------------------
+
+/**
+ * C.A. characters all start with the same Energy rather than their species',
+ * because C.A.'s species lists carry the other systems' numbers.
+ */
+export const CA_STARTING_ENERGY = 10;
+
+/**
+ * A real starting Physique, not the 0 that means "not set". A character made
+ * before Physique existed keeps their 0 and simply never overloads.
+ */
+export const CA_STARTING_PHYSIQUE = 100;

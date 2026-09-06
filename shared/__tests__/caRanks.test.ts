@@ -11,6 +11,8 @@ import {
   caAuraOf,
   caAuraShapeOf,
   CA_AURA_DEFAULT_COLOR,
+  CA_STARTING_ENERGY,
+  CA_STARTING_PHYSIQUE,
 } from "../ca";
 
 describe("the C.A. rank ladder", () => {
@@ -180,5 +182,23 @@ describe("auras", () => {
     expect(caAuraShapeOf("triangle")).toBe("none");
     expect(caAuraShapeOf(null)).toBe("none");
     expect(caAuraOf({ caAuraShape: "wobble" }).shape).toBe("none");
+  });
+});
+
+describe("starting values", () => {
+  it("starts C.A. characters at 10 Energy and 100 Physique", () => {
+    expect(CA_STARTING_ENERGY).toBe(10);
+    expect(CA_STARTING_PHYSIQUE).toBe(100);
+  });
+
+  // 100 has to be a real Physique, not the 0 that means "not set", or a new
+  // character could never overload.
+  it("makes the starting Physique a real one that can be exceeded", () => {
+    expect(caIsOverPhysique({ caPhysique: CA_STARTING_PHYSIQUE, caEnergyPool: 101 })).toBe(true);
+    expect(caIsOverPhysique({ caPhysique: CA_STARTING_PHYSIQUE, caEnergyPool: 100 })).toBe(false);
+  });
+
+  it("puts a starting character at the bottom of the ladder", () => {
+    expect(caRankLabel(0)).toBe("Bronze 1");
   });
 });
