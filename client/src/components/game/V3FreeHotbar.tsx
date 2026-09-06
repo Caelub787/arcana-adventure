@@ -287,12 +287,12 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       className={`fixed bottom-2 sm:bottom-4 z-30 pointer-events-auto ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
       data-testid="v3-free-hotbar"
     >
-      <div className="flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
+      <div className="chrome-frame chrome-frame-lg flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
         {/* Loadout switcher */}
         <div className="flex flex-col items-center mr-0.5 sm:mr-1 select-none">
           <button
             onClick={() => setLoadout((l) => (l + 1) % NUM_LOADOUTS)}
-            className="text-stone-400 hover:text-amber-400 p-0.5"
+            className="chrome-btn hover:text-amber-400 p-0.5"
             data-testid="button-loadout-up"
             aria-label="Next loadout"
           >
@@ -301,7 +301,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           <span className="text-amber-400 font-bold text-xs sm:text-sm w-4 sm:w-5 text-center" data-testid="text-loadout-index">{loadout}</span>
           <button
             onClick={() => setLoadout((l) => (l + NUM_LOADOUTS - 1) % NUM_LOADOUTS)}
-            className="text-stone-400 hover:text-amber-400 p-0.5"
+            className="chrome-btn hover:text-amber-400 p-0.5"
             data-testid="button-loadout-down"
             aria-label="Previous loadout"
           >
@@ -327,7 +327,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 onPointerLeave={cancelHold}
                 onPointerCancel={cancelHold}
                 onContextMenu={(e) => { if (entry) { e.preventDefault(); setRemoveTarget(entry); } }}
-                className={`w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
+                className={`chrome-frame w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
                   entry ? 'border-amber-600 bg-stone-800 hover:border-amber-500' : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
                 }`}
                 data-testid={`free-hotbar-slot-${slotIndex}`}
@@ -360,7 +360,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     )
                   ) : null
                 ) : (
-                  <Plus className="h-5 w-5 sm:h-6 sm:w-6 text-stone-500" />
+                  <Plus className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: "var(--ca-gilt-dim)" }} />
                 )}
               </button>
               {/* Source-character badge on items from a character's inventory */}

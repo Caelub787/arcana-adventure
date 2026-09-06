@@ -10573,7 +10573,7 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setGlobalSearchOpen((v) => !v)}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
                     globalSearchOpen
                       ? 'border-amber-500 text-amber-400'
                       : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'
@@ -10604,7 +10604,7 @@ export default function Campaign() {
                         if (activeSidePanel === 'ledger' && !sidePanelMinimized) setSidePanelMinimized(true);
                         else { setActiveSidePanel('ledger'); setSidePanelMinimized(false); }
                       }}
-                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                       data-testid="button-panel-ledger"
                     >
                       <ScrollText className="h-5 w-5" />
@@ -10625,7 +10625,7 @@ export default function Campaign() {
                         if (activeSidePanel === 'deck' && !sidePanelMinimized) setSidePanelMinimized(true);
                         else { setActiveSidePanel('deck'); setSidePanelMinimized(false); }
                       }}
-                      className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                       data-testid="button-panel-deck"
                     >
                       <Layers className="h-5 w-5" />
@@ -10677,7 +10677,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-chat"
                 >
                   <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10703,7 +10703,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-characters"
                 >
                   <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10730,7 +10730,7 @@ export default function Campaign() {
                         setSidePanelMinimized(false);
                       }
                     }}
-                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-initiative"
                   >
                     <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10765,7 +10765,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10785,7 +10785,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setLocation('/library')}
-                    className="bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
+                    className="chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
                     data-testid="button-panel-my-library"
                   >
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10806,7 +10806,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setV3SpellManagerOpen(true)}
-                    className={`relative bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${v3SpellManagerOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`relative chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${v3SpellManagerOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-crafted-spells"
                   >
                     <Wand2 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10842,7 +10842,7 @@ export default function Campaign() {
                         setSidePanelMinimized(false);
                       }
                     }}
-                    className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-scene"
                   >
                     <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10869,7 +10869,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-settings"
                 >
                   <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />

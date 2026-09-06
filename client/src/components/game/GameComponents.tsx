@@ -426,6 +426,7 @@ function ToolbarIconButton({ icon, label, active, danger, disabled, onClick, tes
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             style={{ touchAction: 'manipulation' }}
             className={`
+              chrome-frame chrome-btn
               w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
               transition-all duration-200 shadow-lg backdrop-blur-sm
               ${active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
@@ -516,6 +517,7 @@ function HoldMenuButton({ options, testId, holdMs = 250 }: {
         onContextMenu={(e) => e.preventDefault()}
         style={{ touchAction: 'manipulation' }}
         className={`
+          chrome-frame chrome-btn
           w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
           transition-all duration-200 shadow-lg backdrop-blur-sm
           ${defaultOption.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
@@ -9599,7 +9601,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               role="button"
               tabIndex={0}
               onClick={() => onOpenCharacterSheet?.()}
-              className="flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
+              className="chrome-frame chrome-frame-lg flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
               style={{ borderColor: cardAccentColor }}
               data-testid="button-character-overview"
             >
@@ -9704,7 +9706,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
         className={`fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
         data-collision-id="character-hotbar"
       >
-        <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">
+        <div className="glass-panel chrome-frame chrome-frame-lg rounded p-1 md:p-2 border border-stone-700">
           {/* Hotbar Type Switcher Buttons - Horizontal above slots */}
           <div className="flex gap-1 justify-center mb-1 md:mb-2">
             {hotbarTypes.map(({ type, icon: Icon, color }) => {
@@ -9725,6 +9727,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       <button
                         onClick={() => setActiveHotbar(type)}
                         className={`
+                          chrome-frame
                           w-7 h-7 md:w-8 md:h-8 rounded border-2 flex items-center justify-center
                           transition-all duration-200
                           ${colorClasses[color]}
@@ -9850,6 +9853,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 onClick={(e) => { e.stopPropagation(); onModeChange('select'); }}
                 style={{ touchAction: 'manipulation' }}
                 className={`
+                  chrome-frame chrome-btn
                   w-10 h-10 rounded-lg border-2 flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('stone', selectionMode === 'select')}
@@ -9877,6 +9881,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 onClick={(e) => { e.stopPropagation(); onModeChange(selectionMode === 'ruler' ? 'select' : 'ruler'); }}
                 style={{ touchAction: 'manipulation' }}
                 className={`
+                  chrome-frame chrome-btn
                   w-10 h-10 rounded-lg border-2 flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('amber', selectionMode === 'ruler')}
@@ -9912,6 +9917,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                       onClick={(e) => { e.stopPropagation(); onRulerShapeChange?.(shape); }}
                       style={{ touchAction: 'manipulation' }}
                       className={`
+                        chrome-frame chrome-btn
                         w-10 h-10 rounded-lg border-2 flex items-center justify-center
                         transition-all duration-200 shadow-lg backdrop-blur-sm
                         ${getColorClasses('purple', rulerShape === shape)}
@@ -11685,7 +11691,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
         onClick={onOpenSheet}
-        className={`rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
+        className={`chrome-frame chrome-frame-lg rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
           compact ? 'flex flex-col gap-0.5 p-1' : 'flex items-center gap-1.5 p-1.5'
         } ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
         style={{
@@ -16057,6 +16063,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     <div className="relative group">
       <div
         className={`
+          chrome-frame
           w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded border-2 flex items-center justify-center
           transition-all duration-200 hover-scale touch-target
           ${hotbar 

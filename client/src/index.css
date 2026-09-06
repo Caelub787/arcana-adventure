@@ -678,3 +678,84 @@ hr,
 .text-amber-300 {
   color: var(--ca-gilt-bright);
 }
+
+/* ---------------------------------------------------------------------------
+   Chrome frames: the sheet's tooled corners, on the rest of the app.
+
+   `CaSheetFrame` picks its four corners out with `CaCorner` - a 16px L of
+   gilt hairline, held 6px in from the edge. That is the single detail that
+   makes the sheet read as tooled rather than as a bordered box, and the
+   battlemap's own furniture (toolbars, hotbar, tracker cards, the token
+   plate) had none of it.
+
+   Doing it with `CaCorner` would mean four extra elements inside every one of
+   those, and most of them are inline markup with no component to edit. Four
+   corner brackets are eight hairlines, and eight hairlines are eight
+   background gradients, so the whole treatment is one class with no markup
+   at all - which also means it survives on elements that already have
+   children, a background colour, or a backdrop blur.
+
+   `background-color` is untouched, so every one of these keeps its own
+   surface; only the metal is added.
+   --------------------------------------------------------------------------- */
+.chrome-frame,
+[data-floating-panel]:not([class*="bg-gradient"]),
+[role="dialog"]:not([class*="bg-gradient"]) {
+  --chrome-corner: 8px;
+  --chrome-inset: 3px;
+  border-color: var(--ca-gilt-line-soft);
+  background-image:
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line));
+  background-repeat: no-repeat;
+  /* Each corner is an arm across and an arm down. */
+  background-size:
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner);
+  background-position:
+    left var(--chrome-inset) top var(--chrome-inset),
+    left var(--chrome-inset) top var(--chrome-inset),
+    right var(--chrome-inset) top var(--chrome-inset),
+    right var(--chrome-inset) top var(--chrome-inset),
+    left var(--chrome-inset) bottom var(--chrome-inset),
+    left var(--chrome-inset) bottom var(--chrome-inset),
+    right var(--chrome-inset) bottom var(--chrome-inset),
+    right var(--chrome-inset) bottom var(--chrome-inset);
+}
+
+/* Panels rather than buttons: a longer corner, held further in, so the
+   bracket is in proportion to the box the way the sheet's is. */
+.chrome-frame-lg,
+[data-floating-panel],
+[role="dialog"] {
+  --chrome-corner: 14px;
+  --chrome-inset: 5px;
+}
+
+/* Icon buttons in the chrome. The icons were `text-stone-400` - grey icons
+   inside a gilt frame, which is the mismatch itself. Anything already
+   carrying an amber text class is left alone: that is a button's active
+   state, and amber is remapped to the bright metal further up. */
+.chrome-btn:not([class*="text-amber"]) {
+  color: var(--ca-gilt);
+}
+.chrome-btn:not([class*="text-amber"]):hover {
+  color: var(--ca-gilt-bright);
+  border-color: var(--ca-gilt-line);
+}
+
+/* A chrome button's active state. Every one of these marks "selected" with an
+   `border-amber-*` class, and the soft hairline above would flatten it back to
+   looking unselected, so the metal goes solid and picks up a glow instead. */
+.chrome-frame[class*="border-amber"] {
+  border-color: var(--ca-gilt);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 0 14px -3px var(--ca-gilt);
+}
