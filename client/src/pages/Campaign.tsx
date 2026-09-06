@@ -6723,6 +6723,26 @@ export default function Campaign() {
     bringToFront(`char-${char.id}`);
   };
   
+  // Character sheet panel proportions.
+  //
+  // C.A.'s sheet is laid out in rows of chips beside a portrait, so it wants
+  // to be wide and comparatively short - at the old 652 the chip rows were
+  // cramped and the panel read as a tall column. The other systems keep the
+  // size they had.
+  //
+  // Docked notes are deliberately NARROWER than the sheet rather than a
+  // second panel of the same width: a note is something you read alongside
+  // the sheet, not a second sheet.
+  const CA_SHEET_WIDTH = 880;
+  const CA_SHEET_HEIGHT = 520;
+  const DEFAULT_SHEET_WIDTH = 652;
+  const DEFAULT_SHEET_HEIGHT = 480;
+  const DOCKED_NOTES_RATIO = 0.7;
+
+  const sheetPanelWidth = () => (isCA ? CA_SHEET_WIDTH : DEFAULT_SHEET_WIDTH);
+  const sheetPanelHeight = () => (isCA ? CA_SHEET_HEIGHT : DEFAULT_SHEET_HEIGHT);
+  const dockedNotesWidth = () => Math.round(sheetPanelWidth() * DOCKED_NOTES_RATIO);
+
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
     setCharSheetActiveTabs(prev => {
@@ -13227,8 +13247,8 @@ export default function Campaign() {
               setSheetNameDraft(sheet.name);
               setEditingSheetNameId(sheet.id);
             } : undefined}
-            defaultSize={{ width: 652, height: Math.min(window.innerHeight - 70, 480) }}
-            width={dockedCharNotes[sheet.id] ? 652 * 2 : 652}
+            defaultSize={{ width: sheetPanelWidth(), height: Math.min(window.innerHeight - 70, sheetPanelHeight()) }}
+            width={dockedCharNotes[sheet.id] ? sheetPanelWidth() + dockedNotesWidth() : sheetPanelWidth()}
             lockWidthResize={!dockedCharNotes[sheet.id]}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
@@ -13244,7 +13264,7 @@ export default function Campaign() {
                 parent. Without it the sheet grew to its full content height,
                 its own `flex-1 min-h-0 overflow-y-auto` tab body never
                 overflowed, and so nothing under the cursor could scroll. */}
-            <div className="flex flex-col flex-shrink-0 h-full min-h-0" style={{ width: '652px' }}>
+            <div className="flex flex-col flex-shrink-0 h-full min-h-0" style={{ width: sheetPanelWidth() }}>
             <CharacterSheet
               character={sheet}
               isGM={role === 'gm'}
@@ -13278,7 +13298,7 @@ export default function Campaign() {
             />
             </div>
             {dockedCharNotes[sheet.id] && (
-              <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: '652px' }}>
+              <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: dockedNotesWidth() }}>
                 <CampaignNotesPanel
                   campaignId={effectiveCampaignId || ''}
                   onClose={() => setDockedCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}

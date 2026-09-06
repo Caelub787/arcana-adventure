@@ -22320,11 +22320,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         }));
                       };
                       return (
+                        <>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3" ref={caWoundsSectionRef}>
-                          {/* Left: body diagram + legend + capacity */}
+                          {/* Left: the body diagram on its own. */}
                           <div className="space-y-2">
                             <div
-                              className={`relative w-full aspect-[2/3] rounded border border-stone-700 bg-stone-800 overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+                              // Capped and centred rather than filling the
+                              // column: at `w-full` the 2:3 diagram grew with
+                              // the panel - 615px tall on the wide C.A. sheet -
+                              // and that one box was most of why the sheet read
+                              // as a tall column.
+                              className={`relative w-full max-w-[220px] mx-auto aspect-[2/3] rounded-lg border bg-stone-900/70 overflow-hidden ${isPlacingCAWound ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+                              style={{ borderColor: 'var(--ca-gilt-line-soft)' }}
                               onClick={placeWound}
                               data-testid="area-ca-wound-diagram"
                             >
@@ -22364,33 +22371,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 />
                               ))}
                             </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={isPlacingCAWound ? 'default' : 'outline'}
-                              className="w-full"
-                              disabled={!canEditWounds}
-                              onClick={() => setIsPlacingCAWound((v) => !v)}
-                              data-testid="button-add-ca-wound"
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              {isPlacingCAWound ? 'Click the body to place...' : 'Add Wound'}
-                            </Button>
-                            <div className="flex flex-col gap-1 text-[10px] text-stone-400">
-                              {woundRules.WOUND_SEVERITIES.map((sev) => (
-                                <div key={sev} className="flex items-center gap-1.5">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${severityDot[sev]}`} />
-                                  <span>{woundRules.WOUND_SEVERITY_LABELS[sev]} = {woundRules.WOUND_SEVERITY_COST[sev]} {woundRules.WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
-                                </div>
-                              ))}
-                            </div>
                           </div>
-                          {/* Right: severity-sorted wound list. p-1 -m-1 gives the
-                              selection ring room to render on every side without
-                              being clipped by the scroll container's edges. */}
-                          <div className="space-y-2 max-h-[420px] overflow-y-auto p-1 -m-1">
+                          {/* Right: the severity-sorted list with Add Wound
+                              under it, so the button sits at the foot of the
+                              column it fills rather than under the diagram.
+                              p-1 -m-1 gives the selection ring room to render
+                              on every side without being clipped by the
+                              scroll container's edges. */}
+                          <div className="flex flex-col min-h-0">
+                          <div className="space-y-2 flex-1 min-h-0 overflow-y-auto p-1 -m-1">
                             {sortedWounds.length === 0 ? (
-                              <p className="text-xs text-stone-500 text-center py-4" data-testid="text-ca-wounds-empty">No wounds yet. Press Add Wound and click the body to place one.</p>
+                              <p className="text-xs text-stone-500 text-center py-6" data-testid="text-ca-wounds-empty">No wounds yet. Press Add Wound and click the body to place one.</p>
                             ) : sortedWounds.map((w) => {
                               const isEditing = editingCAWoundId === w.id;
                               const isSelected = selectedCAWoundId === w.id;
@@ -22560,7 +22551,33 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               );
                             })}
                           </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isPlacingCAWound ? 'default' : 'outline'}
+                            className="w-full mt-2 shrink-0"
+                            disabled={!canEditWounds}
+                            onClick={() => setIsPlacingCAWound((v) => !v)}
+                            data-testid="button-add-ca-wound"
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            {isPlacingCAWound ? 'Click the body to place...' : 'Add Wound'}
+                          </Button>
+                          </div>
                         </div>
+                        {/* The severity key reads as one line under both
+                            columns rather than a stack beside the diagram -
+                            it is a key to the markers, not a third column of
+                            content. */}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10px] text-stone-400">
+                          {woundRules.WOUND_SEVERITIES.map((sev) => (
+                            <span key={sev} className="flex items-center gap-1.5">
+                              <span className={`w-2.5 h-2.5 rounded-full ${severityDot[sev]}`} />
+                              <span>{woundRules.WOUND_SEVERITY_LABELS[sev]} = {woundRules.WOUND_SEVERITY_COST[sev]} {woundRules.WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
+                            </span>
+                          ))}
+                        </div>
+                        </>
                       );
                     })()}
                   </CaSection>

@@ -164,3 +164,15 @@ rather than every component being edited.
 
 The aura tints the frame rather than the sheet root in C.A.; the root style is
 only for the other systems.
+
+### Proportions
+
+The C.A. sheet panel is 880x520 rather than the 652x480 the other systems
+keep (`sheetPanelWidth` / `sheetPanelHeight` in `Campaign.tsx`) — the design
+is rows of chips beside a portrait, which wants width. Docked notes are
+**70%** of the sheet's width (`DOCKED_NOTES_RATIO`), not a second panel of the
+same width: a note is read alongside the sheet, not instead of it.
+
+The wound diagram is `max-w-[220px] mx-auto`, not `w-full`. At full width the
+2:3 box grew with the panel — 615px tall on the wide sheet — and that single
+box was most of why the sheet read as a tall column however wide it got.
