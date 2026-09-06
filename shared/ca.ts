@@ -305,3 +305,194 @@ export function caSkillPointBudget(level: number): number {
 }
 
 export const CA_MAX_NEGATIVE_SKILL_POINTS = 6;
+
+// ---------------------------------------------------------------------------
+// Ranks — the Universal Rank ladder. A character's rank and star are read
+// straight off their Energy Pool; they are never set by hand.
+//
+// Two things about the numbers, both deliberate:
+//   * There is no Unranked. Bronze Star 1 sits at 0, so every character has a
+//     rank from the moment they exist.
+//   * Every threshold is the source table's figure with one zero taken off,
+//     which is why Bronze runs 0/20/30/40/50 rather than 0/10/20/30/40 -
+//     Star 1 took over Unranked's slot and the rest kept their own values, so
+//     the 10 rung simply isn't part of the ladder.
+//
+// Usable Energy is exactly half the pool at every rung, so it is derived
+// rather than stored - see caUsableEnergy.
+//
+// Health and Lifespan are in the source table too. Lifespan is carried here
+// because it is flavour worth showing; Health is deliberately absent, since
+// C.A. replaced HP with wounds.
+// ---------------------------------------------------------------------------
+
+export type CARankName = "Bronze" | "Silver" | "Gold" | "Obsidian" | "Terran";
+
+export const CA_RANK_NAMES: CARankName[] = ["Bronze", "Silver", "Gold", "Obsidian", "Terran"];
+
+export interface CARankStarDef {
+  star: number;
+  /** Energy Pool needed to reach this star. */
+  energyPool: number;
+}
+
+export interface CARankDef {
+  name: CARankName;
+  /** Years, from the source table's Lifespan column. */
+  lifespan: number;
+  /** How much energy a character of this rank can absorb at once. */
+  absorptionLimit: number;
+  stars: CARankStarDef[];
+}
+
+function caStars(base: number): CARankStarDef[] {
+  // Star 1 is `base`, and each star after it steps by `base` - except Bronze,
+  // whose Star 1 is 0 and whose steps come off its own 10-point base.
+  return [1, 2, 3, 4, 5].map((star) => ({ star, energyPool: base * star }));
+}
+
+export const CA_RANKS: CARankDef[] = [
+  {
+    name: "Bronze",
+    lifespan: 100,
+    absorptionLimit: 20,
+    // Star 1 at 0 is the whole reason this rank is written out rather than
+    // generated: it is the one rung that doesn't follow the pattern.
+    stars: [
+      { star: 1, energyPool: 0 },
+      { star: 2, energyPool: 20 },
+      { star: 3, energyPool: 30 },
+      { star: 4, energyPool: 40 },
+      { star: 5, energyPool: 50 },
+    ],
+  },
+  { name: "Silver", lifespan: 150, absorptionLimit: 50, stars: caStars(100) },
+  { name: "Gold", lifespan: 200, absorptionLimit: 500, stars: caStars(1_000) },
+  { name: "Obsidian", lifespan: 250, absorptionLimit: 5_000, stars: caStars(10_000) },
+  { name: "Terran", lifespan: 300, absorptionLimit: 50_000, stars: caStars(100_000) },
+];
+
+export interface CARankPosition {
+  rank: CARankDef;
+  star: number;
+  /** Energy Pool this star begins at. */
+  energyPool: number;
+  /** Pool needed for the next star up, or null at the top of the ladder. */
+  nextEnergyPool: number | null;
+}
+
+/** Every rung, lowest first - the ladder flattened for display and lookup. */
+export const CA_RANK_LADDER: { rank: CARankDef; star: CARankStarDef }[] =
+  CA_RANKS.flatMap((rank) => rank.stars.map((star) => ({ rank, star })));
+
+/**
+ * The rung a pool sits on. Never null: a pool of 0 (or a negative, which
+ * shouldn't happen but shouldn't crash either) is Bronze 1, and anything past
+ * the top of the ladder stays at Terran 5.
+ */
+export function caRankForEnergyPool(pool: number | null | undefined): CARankPosition {
+  const value = Math.max(0, Math.floor(Number(pool) || 0));
+  let index = 0;
+  for (let i = 0; i < CA_RANK_LADDER.length; i++) {
+    if (CA_RANK_LADDER[i].star.energyPool <= value) index = i;
+    else break;
+  }
+  const here = CA_RANK_LADDER[index];
+  const next = CA_RANK_LADDER[index + 1];
+  return {
+    rank: here.rank,
+    star: here.star.star,
+    energyPool: here.star.energyPool,
+    nextEnergyPool: next ? next.star.energyPool : null,
+  };
+}
+
+/** "Gold 3" - what goes on the sheet. */
+export function caRankLabel(pool: number | null | undefined): string {
+  const position = caRankForEnergyPool(pool);
+  return `${position.rank.name} ${position.star}`;
+}
+
+/**
+ * Usable Energy: half the pool, rounded down. This is what a character
+ * actually spends on their abilities; the pool itself is the total they have
+ * built up, and is what the rank is read from.
+ */
+export function caUsableEnergy(pool: number | null | undefined): number {
+  return Math.floor(Math.max(0, Math.floor(Number(pool) || 0)) / 2);
+}
+
+/**
+ * Physique is the ceiling on the Energy Pool - a character cannot hold more
+ * energy than their body can carry. A Physique of 0 is treated as "not set
+ * yet" rather than as a hard zero, so a character created before Physique
+ * existed isn't retroactively pinned to an empty pool.
+ */
+export function caClampEnergyPoolToPhysique(
+  pool: number | null | undefined,
+  physique: number | null | undefined,
+): number {
+  const value = Math.max(0, Math.floor(Number(pool) || 0));
+  const cap = Math.max(0, Math.floor(Number(physique) || 0));
+  if (cap <= 0) return value;
+  return Math.min(value, cap);
+}
+
+// ---------------------------------------------------------------------------
+// Aura — C.A.'s replacement for the per-member beacon colour. An aura belongs
+// to the CHARACTER, not the player, which is the point: it is what makes a
+// character and their sheet recognisable at a glance, so two characters run by
+// the same player look nothing alike.
+//
+// It is a colour plus an optional shape. The shape is drawn in the aura colour
+// and animated, and shows up everywhere the colour does - the battlemap ping,
+// the party tracker's outline and roll glow, the sheet's own border.
+// ---------------------------------------------------------------------------
+
+export const CA_AURA_SHAPES = ["none", "ring", "star", "diamond", "hexagon", "bolt", "flame"] as const;
+export type CAAuraShape = typeof CA_AURA_SHAPES[number];
+
+export const CA_AURA_SHAPE_LABELS: Record<CAAuraShape, string> = {
+  none: "None",
+  ring: "Ring",
+  star: "Star",
+  diamond: "Diamond",
+  hexagon: "Hexagon",
+  bolt: "Bolt",
+  flame: "Flame",
+};
+
+/** The colour used when a character has no aura of their own yet. */
+export const CA_AURA_DEFAULT_COLOR = "#FBB524";
+
+export interface CAAura {
+  color: string;
+  shape: CAAuraShape;
+}
+
+function isHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value.trim());
+}
+
+export function caAuraShapeOf(value: unknown): CAAuraShape {
+  return (CA_AURA_SHAPES as readonly string[]).includes(value as string)
+    ? (value as CAAuraShape)
+    : "none";
+}
+
+/**
+ * A character's aura, with a fallback so callers never have to null-check.
+ * `fallbackColor` lets the caller keep whatever colour that surface used
+ * before - the member's beacon colour, or a stable per-entity colour for an
+ * NPC - rather than dropping every auraless character onto the same amber.
+ */
+export function caAuraOf(
+  character: { caAuraColor?: string | null; caAuraShape?: string | null } | null | undefined,
+  fallbackColor?: string | null,
+): CAAura {
+  const raw = character?.caAuraColor;
+  const color = isHexColor(raw)
+    ? raw.trim()
+    : (isHexColor(fallbackColor) ? fallbackColor.trim() : CA_AURA_DEFAULT_COLOR);
+  return { color, shape: caAuraShapeOf(character?.caAuraShape) };
+}

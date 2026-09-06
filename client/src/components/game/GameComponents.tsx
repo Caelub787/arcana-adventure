@@ -10,6 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
+import { caClampEnergyPoolToPhysique, caUsableEnergy, caAuraOf } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -26,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
+import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark } from "@/components/game/CAPanels";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -613,7 +615,7 @@ interface BattleMapProps {
     characterId?: string;
     characterName?: string;
   }>;
-  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string; beaconColor?: string }>;
+  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string; beaconColor?: string; beaconShape?: string }>;
   onBeacon?: (cellKey: string) => void;
   otherPlayersViewports?: Map<string, {
     userId: string;
@@ -3153,7 +3155,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                   data-testid={`beacon-${beacon.id}`}
                 >
                   <div 
-                    className="rounded-full"
+                    className="rounded-full flex items-center justify-center"
                     style={{
                       width: effectiveGridSize * 0.8,
                       height: effectiveGridSize * 0.8,
@@ -3162,7 +3164,19 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                       boxShadow: `0 0 30px 8px ${color}, inset 0 0 15px ${color}99`,
                       willChange: 'transform, opacity',
                     }}
-                  />
+                  >
+                    {/* C.A. auras can carry a shape as well as a colour; the
+                        server resolves it from the pinging player's assigned
+                        character and sends it along with the colour. */}
+                    {beacon.beaconShape && beacon.beaconShape !== 'none' && (
+                      <AuraShapeMark
+                        color={color}
+                        shape={beacon.beaconShape as any}
+                        size={effectiveGridSize * 0.4}
+                        animate={false}
+                      />
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -11315,8 +11329,14 @@ export function stableColorForId(id: string): string {
 // actual beacon ping on the map.
 export function characterTrackerColor(character: any, member?: any): string {
   const isGmMember = member?.role === 'gm' || member?.role === 'assistant_gm';
-  if (member?.beaconColor && !isGmMember) return member.beaconColor;
-  return stableColorForId(character?.id || member?.userId || member?.id || 'unknown');
+  const base = (member?.beaconColor && !isGmMember)
+    ? member.beaconColor
+    : stableColorForId(character?.id || member?.userId || member?.id || 'unknown');
+  // C.A. replaces the beacon colour with the character's own Aura, which is
+  // the point of an aura: two characters run by the same player should look
+  // nothing alike. Only C.A. characters ever carry one, so passing every
+  // character through here leaves the other systems exactly as they were.
+  return caAuraOf(character, base).color;
 }
 
 // Mobile halves the tracker card's WIDTH only. A uniform transform was the
@@ -11685,6 +11705,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
                 </div>
               )}
             </div>
+            <CharacterAuraMark character={character} fallbackColor={accentColor} size={10} className="shrink-0" />
             <span className="text-[11px] font-bold text-white truncate leading-tight flex-1 min-w-0">{displayName}</span>
             <button
               type="button"
@@ -11737,6 +11758,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         </div>
         <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
           <div className="flex items-center gap-1.5">
+            <CharacterAuraMark character={character} fallbackColor={accentColor} size={12} className="shrink-0" />
             <span className="text-sm font-bold text-white truncate leading-tight">{displayName}</span>
             {character && typeof dc === 'number' && (
               <span className="text-[10px] text-stone-400 font-semibold shrink-0">DC {dc}</span>
@@ -19066,6 +19088,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [caEditingOverview, setCaEditingOverview] = useState(false);
   const [caFundamentalsDraft, setCaFundamentalsDraft] = useState({
     race: '', size: '', dc: 0, speed: 0, flySpeed: 0, swimSpeed: 0,
+    // Physique caps the Energy Pool; the rest is the sheet's bio block, and
+    // the aura is what replaces the beacon colour for this character.
+    physique: 0, age: '', birthday: '', languages: '',
+    auraColor: '' as string, auraShape: 'none' as string,
   });
 
   // Energy Pool — a standalone number above the Energy bar, just a closed
@@ -19081,7 +19107,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     setCaEditingEnergyPool(true);
   };
   const saveCAEnergyPool = () => {
-    onUpdate?.({ [woundRules.energyPoolField]: Math.max(0, caEnergyPoolDraft) } as any);
+    // Physique is the ceiling: a body can only carry so much energy, so the
+    // pool is clamped on the way in rather than being allowed over and
+    // corrected somewhere else later.
+    onUpdate?.({
+      [woundRules.energyPoolField]: caClampEnergyPoolToPhysique(
+        caEnergyPoolDraft,
+        (liveCharacter as any).caPhysique,
+      ),
+    } as any);
     setCaEditingEnergyPool(false);
   };
 
@@ -21617,8 +21651,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     );
   }
 
+  // C.A.: the sheet wears the character's Aura as its own outline, so a sheet
+  // is recognisable as that character's before you have read a word of it.
+  // Only C.A. characters carry an aura, so every other system keeps the plain
+  // border it always had.
+  const caSheetAura = isCA ? caAuraOf(liveCharacter as any, null) : null;
+  const caSheetAuraSet = isCA && !!(liveCharacter as any)?.caAuraColor;
+
   return (
-    <div className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
+    <div
+      className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden"
+      style={caSheetAuraSet && caSheetAura ? {
+        border: `2px solid ${caSheetAura.color}`,
+        boxShadow: `inset 0 0 24px -6px ${caSheetAura.color}`,
+      } : undefined}
+      data-testid="character-sheet-root"
+    >
       {/* Back button header for template/admin view */}
       {isTemplate && onClose && (
         <div className="flex items-center gap-3 px-4 py-3 bg-stone-950 border-b border-stone-700 shrink-0">
@@ -21697,6 +21745,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         <Button
                           size="sm"
                           onClick={() => {
+                            const nextPhysique = Math.max(0, Math.floor(caFundamentalsDraft.physique || 0));
                             onUpdate?.({
                               race: caFundamentalsDraft.race,
                               size: caFundamentalsDraft.size,
@@ -21704,7 +21753,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                               speed: caFundamentalsDraft.speed,
                               flySpeed: caFundamentalsDraft.flySpeed,
                               swimSpeed: caFundamentalsDraft.swimSpeed,
-                            });
+                              caPhysique: nextPhysique,
+                              caAge: caFundamentalsDraft.age === '' ? null : Math.max(0, Math.floor(Number(caFundamentalsDraft.age) || 0)),
+                              caBirthday: caFundamentalsDraft.birthday.trim() || null,
+                              caLanguages: caFundamentalsDraft.languages.trim() || null,
+                              caAuraColor: caFundamentalsDraft.auraColor || null,
+                              caAuraShape: caFundamentalsDraft.auraShape,
+                              // Lowering Physique below the pool has to bring
+                              // the pool down with it, or the character sits
+                              // over their own cap until they next edit it.
+                              [woundRules.energyPoolField]: caClampEnergyPoolToPhysique(
+                                woundRules.energyPoolOf(liveCharacter),
+                                nextPhysique,
+                              ),
+                            } as any);
                             setCaEditingOverview(false);
                           }}
                           data-testid="button-ca-save-overview"
@@ -21728,6 +21790,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             speed: liveCharacter.speed || 0,
                             flySpeed: liveCharacter.flySpeed || 0,
                             swimSpeed: liveCharacter.swimSpeed || 0,
+                            physique: (liveCharacter as any).caPhysique ?? 0,
+                            age: (liveCharacter as any).caAge == null ? '' : String((liveCharacter as any).caAge),
+                            birthday: (liveCharacter as any).caBirthday || '',
+                            languages: (liveCharacter as any).caLanguages || '',
+                            auraColor: (liveCharacter as any).caAuraColor || '',
+                            auraShape: (liveCharacter as any).caAuraShape || 'none',
                           });
                           setCaEditingOverview(true);
                         }}
@@ -21890,7 +21958,120 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             <p className="text-stone-200 text-sm" data-testid="text-ca-size">{liveCharacter.size || 'Medium'}</p>
                           )}
                         </div>
+
+                        {/* Bio. Birthday and languages are free text on
+                            purpose - "February 11" and "English, Tana Ornis"
+                            are how players write them, and neither wants a
+                            date picker or a lookup list. */}
+                        <div>
+                          <Label className="text-xs text-stone-400">Age</Label>
+                          {caEditingOverview ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              value={caFundamentalsDraft.age}
+                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, age: e.target.value }))}
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-age"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-age">
+                              {(liveCharacter as any).caAge ?? '—'}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label className="text-xs text-stone-400">Birthday</Label>
+                          {caEditingOverview ? (
+                            <Input
+                              value={caFundamentalsDraft.birthday}
+                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, birthday: e.target.value }))}
+                              placeholder="February 11"
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-birthday"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-birthday">
+                              {(liveCharacter as any).caBirthday || '—'}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs text-stone-400">Languages</Label>
+                          {caEditingOverview ? (
+                            <Input
+                              value={caFundamentalsDraft.languages}
+                              onChange={(e) => setCaFundamentalsDraft(prev => ({ ...prev, languages: e.target.value }))}
+                              placeholder="English, Tana Ornis"
+                              className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm"
+                              data-testid="input-ca-edit-languages"
+                            />
+                          ) : (
+                            <p className="text-stone-200 text-sm" data-testid="text-ca-languages">
+                              {(liveCharacter as any).caLanguages || '—'}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Aura — this character's colour and shape, used
+                            everywhere C.A. used to use the player's beacon
+                            colour. It belongs to the character, so two
+                            characters run by the same player look nothing
+                            alike. */}
+                        <div className="col-span-2">
+                          <Label className="text-xs text-stone-400">Aura</Label>
+                          {caEditingOverview ? (
+                            <div className="mt-1">
+                              <CaAuraEditor
+                                color={caFundamentalsDraft.auraColor}
+                                shape={caFundamentalsDraft.auraShape}
+                                onChange={({ color, shape }) =>
+                                  setCaFundamentalsDraft(prev => ({ ...prev, auraColor: color, auraShape: shape }))
+                                }
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 mt-0.5" data-testid="text-ca-aura">
+                              <CharacterAuraMark character={liveCharacter as any} size={18} />
+                              <span className="text-stone-200 text-sm">
+                                {(liveCharacter as any).caAuraColor || 'Default'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Rank — read straight off the Energy Pool, never set by
+                      hand, so the info button opens the whole ladder rather
+                      than leaving a player to guess what the next rung costs. */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs text-stone-300">Rank</Label>
+                      <CaRankBadge energyPool={woundRules.energyPoolOf(liveCharacter)} />
+                    </div>
+                  </div>
+
+                  {/* Physique — the ceiling on the Energy Pool. Edited with
+                      the rest of the fundamentals rather than on its own,
+                      since changing it can drag the pool down with it. */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs text-stone-300">Physique</Label>
+                      {caEditingOverview ? (
+                        <NumberInput
+                          min={0}
+                          value={caFundamentalsDraft.physique}
+                          onChange={(v) => setCaFundamentalsDraft(prev => ({ ...prev, physique: v ?? 0 }))}
+                          className="w-24 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                          data-testid="input-ca-physique"
+                        />
+                      ) : (
+                        <span className="text-xs font-bold text-stone-200" data-testid="text-ca-physique">
+                          {((liveCharacter as any).caPhysique ?? 0).toLocaleString()}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -21905,7 +22086,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             min={0}
                             value={caEnergyPoolDraft}
                             onChange={(v) => setCaEnergyPoolDraft(v ?? 0)}
-                            className="w-20 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                            className="w-24 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
                             data-testid="input-ca-energy-pool"
                           />
                           <Button size="sm" className="h-7 text-xs bg-emerald-700 hover:bg-emerald-600 text-white" onClick={saveCAEnergyPool} data-testid="button-save-ca-energy-pool">Save</Button>
@@ -21924,10 +22105,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           onTouchMove={() => { if (caEnergyPoolPressTimerRef.current) { clearTimeout(caEnergyPoolPressTimerRef.current); caEnergyPoolPressTimerRef.current = null; } }}
                           title="Double-click (PC) or long-press (mobile) to edit"
                         >
-                          {woundRules.energyPoolOf(liveCharacter)}
+                          {woundRules.energyPoolOf(liveCharacter).toLocaleString()}
+                          {(() => {
+                            const cap = (liveCharacter as any).caPhysique ?? 0;
+                            if (!cap || woundRules.energyPoolOf(liveCharacter) < cap) return null;
+                            return (
+                              <span className="ml-1 text-[10px] text-amber-500" data-testid="text-ca-energy-pool-at-cap">
+                                at Physique
+                              </span>
+                            );
+                          })()}
                         </span>
                       )}
                     </div>
+                    <p className="text-[10px] text-stone-500" data-testid="text-ca-usable-energy">
+                      Usable Energy {caUsableEnergy(woundRules.energyPoolOf(liveCharacter)).toLocaleString()} — half the pool
+                    </p>
                   </div>
 
                   {/* Energy Bar — C.A. has no HP, no mana; Energy only */}

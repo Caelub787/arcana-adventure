@@ -313,6 +313,23 @@ export const characters = pgTable("characters", {
   // bar on the Overview tab. Just a bare number a player sets directly —
   // no current/max/temp split like Energy has.
   caEnergyPool: integer("ca_energy_pool").notNull().default(0),
+  // C.A. only: Physique is the ceiling on the Energy Pool - a body can only
+  // carry so much. 0 means "not set", not "a cap of zero", so characters that
+  // predate the field keep the pool they already had. See
+  // caClampEnergyPoolToPhysique in shared/ca.ts.
+  caPhysique: integer("ca_physique").notNull().default(0),
+  // C.A. only: the bio block from the sheet. Birthday and languages are free
+  // text on purpose - "February 11" and "English, Tana Ornis" are how players
+  // write them, and neither wants a picker or a lookup table.
+  caAge: integer("ca_age"),
+  caBirthday: text("ca_birthday"),
+  caLanguages: text("ca_languages"),
+  // C.A. only: the character's Aura, which replaces the per-member beacon
+  // colour everywhere C.A. used one - the battlemap ping, the tracker outline
+  // and roll glow, the sheet's own outline. The shape is optional and is
+  // animated in the aura colour; see CA_AURA_SHAPES in shared/ca.ts.
+  caAuraColor: text("ca_aura_color"),
+  caAuraShape: text("ca_aura_shape"),
   // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
   // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
   // two damage thresholds rather than absorbing damage directly, Armour Slots

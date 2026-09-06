@@ -15,6 +15,8 @@ import { registerCanvasRealmsRoutes } from "./canvasrealms";
 import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
+import { isWoundSystem } from "@shared/systemRules";
+import { caAuraOf, caClampEnergyPoolToPhysique } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -2606,8 +2608,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Get the user's beacon color from their membership
           const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
-          const beaconColor = membership?.beaconColor || '#FBB524'; // Default amber color
-          
+          let beaconColor = membership?.beaconColor || '#FBB524'; // Default amber color
+          let beaconShape: string = 'none';
+
+          // C.A. replaces the per-member beacon colour with the assigned
+          // character's Aura, so a ping on the map is recognisably that
+          // character rather than that player. Resolved here rather than on
+          // each client: the other players in the room have no reason to hold
+          // this character's sheet.
+          const beaconCampaign = await storage.getCampaign(campaignId);
+          if (isWoundSystem(beaconCampaign?.system) && membership?.assignedCharacterId) {
+            const auraChar = await storage.getCharacter(membership.assignedCharacterId);
+            if (auraChar) {
+              const aura = caAuraOf(auraChar as any, beaconColor);
+              beaconColor = aura.color;
+              beaconShape = aura.shape;
+            }
+          }
+
           // Broadcast beacon to ALL campaign members (including sender for consistency)
           const room = campaignRooms.get(campaignId);
           if (room) {
@@ -2618,7 +2636,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               username,
               gridX,
               gridY,
-              beaconColor
+              beaconColor,
+              beaconShape
             });
             
             room.forEach((client) => {
@@ -4575,6 +4594,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only validate attribute and skill point totals when those fields are being updated
       const charData = access.character;
       const updates = req.body;
+
+      // C.A.: Physique is a hard ceiling on the Energy Pool, and the rank is
+      // read off that pool, so letting a pool over the cap through here would
+      // hand out ranks the character hasn't earned. Applied on the server
+      // whether or not the client already clamped, and against whichever of
+      // the two is being written - lowering Physique has to bring an existing
+      // pool down with it.
+      if (isWoundSystem((access.campaign as any)?.system)) {
+        const writingPool = 'caEnergyPool' in updates;
+        const writingPhysique = 'caPhysique' in updates;
+        if (writingPool || writingPhysique) {
+          const physique = writingPhysique
+            ? Math.max(0, Math.floor(Number(updates.caPhysique) || 0))
+            : ((charData as any)?.caPhysique ?? 0);
+          const pool = writingPool
+            ? Number(updates.caEnergyPool)
+            : ((charData as any)?.caEnergyPool ?? 0);
+          if (writingPhysique) updates.caPhysique = physique;
+          updates.caEnergyPool = caClampEnergyPoolToPhysique(pool, physique);
+        }
+      }
       
       const attrs = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
       const skills = ['skillAgility', 'skillArcana', 'skillCharisma', 'skillConcentration', 'skillCulture', 'skillDeception', 'skillHistory', 'skillIntimidation', 'skillInvestigation', 'skillMedicine', 'skillPerception', 'skillSleightOfHand', 'skillStealth', 'skillStrength', 'skillWisdom'];

@@ -6817,6 +6817,9 @@ export default function Campaign() {
     gridY: number;
     username: string;
     beaconColor?: string;
+    // C.A. only: the aura shape the server resolved from the pinging player's
+    // assigned character, drawn inside the ring.
+    beaconShape?: string;
   }>>([]);
   
   // Beacon color picker dialog state
@@ -9825,10 +9828,10 @@ export default function Campaign() {
         
         // Handle beacon messages from all players (including self for consistency)
         if (data.type === 'beacon') {
-          const { id, gridX, gridY, username, beaconColor } = data;
+          const { id, gridX, gridY, username, beaconColor, beaconShape } = data;
           
           // Add the new beacon with its color
-          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username, beaconColor }]);
+          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username, beaconColor, beaconShape }]);
           
           // Remove beacon after animation completes (~1.5 seconds)
           setTimeout(() => {
