@@ -176,3 +176,17 @@ same width: a note is read alongside the sheet, not instead of it.
 The wound diagram is `max-w-[220px] mx-auto`, not `w-full`. At full width the
 2:3 box grew with the panel — 615px tall on the wide sheet — and that single
 box was most of why the sheet read as a tall column however wide it got.
+
+### The look is system-wide, from CSS
+
+The gilt is applied to the whole C.A. system by a block in `index.css` keyed
+on `:root[data-system="ca"]`, set by `Campaign.tsx` while a C.A. campaign is
+open. **It has to be on the document element**, not the page root: floating
+panels, dialogs, menus and popovers all `createPortal` to `document.body` and
+would miss an attribute anywhere else.
+
+That block gilds `[data-floating-panel]` and its header, `[data-panel-title]`,
+`[data-slot="card"]` (added to the shadcn Card for exactly this), dialogs,
+menus and listboxes. Component-level use of the `CASheetUI` pieces is still
+how the character sheet is built; the CSS is what reaches the rest of the app
+without every call site opting in.

@@ -5439,6 +5439,14 @@ function SandboxSheetEditor({
                 const el = e.currentTarget as HTMLElement;
                 if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
               }}
+              // A pointercancel with no handler leaves pfpDragging true and the
+              // header stuck to the cursor - the same failure the crop box had.
+              onPointerCancel={(e) => {
+                setPfpDragging(false);
+                const el = e.currentTarget as HTMLElement;
+                if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+              }}
+              onLostPointerCapture={() => setPfpDragging(false)}
             >
               <span className="text-xs font-medium text-amber-300">Profile Picture</span>
               <button
@@ -5493,7 +5501,6 @@ function SandboxSheetEditor({
                         e.preventDefault();
                         e.stopPropagation();
                         const el = e.currentTarget;
-                        el.setPointerCapture(e.pointerId);
                         const startX = e.clientX;
                         const startY = e.clientY;
                         const startArea = { ...pfpCropArea };
@@ -5509,17 +5516,21 @@ function SandboxSheetEditor({
                             y: Math.max(0, Math.min(ch - startArea.size, startArea.y + dy)),
                           });
                         };
+                        // On the WINDOW, not on the box. Every move re-renders
+                        // the box, and if React replaces that node the capture
+                        // goes with it - pointerup then lands somewhere else,
+                        // onUp never runs, onMove is never removed, and the box
+                        // follows the cursor forever with no way to put it down.
+                        // The window is still there whatever React does to the
+                        // box, so the release always arrives.
                         const onUp = () => {
-                          el.removeEventListener('pointermove', onMove);
-                          el.removeEventListener('pointerup', onUp);
-                          el.removeEventListener('pointercancel', onUp);
+                          window.removeEventListener('pointermove', onMove);
+                          window.removeEventListener('pointerup', onUp);
+                          window.removeEventListener('pointercancel', onUp);
                         };
-                        el.addEventListener('pointermove', onMove);
-                        el.addEventListener('pointerup', onUp);
-                        // Some trackpads/gesture handling deliver pointercancel
-                        // instead of pointerup - without this, the box keeps
-                        // following the cursor forever since onMove never gets removed.
-                        el.addEventListener('pointercancel', onUp);
+                        window.addEventListener('pointermove', onMove);
+                        window.addEventListener('pointerup', onUp);
+                        window.addEventListener('pointercancel', onUp);
                       }}
                     >
                       {[
@@ -5536,7 +5547,6 @@ function SandboxSheetEditor({
                             e.preventDefault();
                             e.stopPropagation();
                             const handle = e.currentTarget;
-                            handle.setPointerCapture(e.pointerId);
                             const startX = e.clientX;
                             const startY = e.clientY;
                             const startArea = { ...pfpCropArea };
@@ -5560,14 +5570,16 @@ function SandboxSheetEditor({
                               newY = Math.max(0, Math.min(ch - newSize, newY));
                               setPfpCropArea({ x: newX, y: newY, size: newSize });
                             };
+                            // Window listeners for the same reason as the
+                            // move handler above.
                             const onUp = () => {
-                              handle.removeEventListener('pointermove', onMove);
-                              handle.removeEventListener('pointerup', onUp);
-                              handle.removeEventListener('pointercancel', onUp);
+                              window.removeEventListener('pointermove', onMove);
+                              window.removeEventListener('pointerup', onUp);
+                              window.removeEventListener('pointercancel', onUp);
                             };
-                            handle.addEventListener('pointermove', onMove);
-                            handle.addEventListener('pointerup', onUp);
-                            handle.addEventListener('pointercancel', onUp);
+                            window.addEventListener('pointermove', onMove);
+                            window.addEventListener('pointerup', onUp);
+                            window.addEventListener('pointercancel', onUp);
                           }}
                         />
                       ))}
@@ -7551,6 +7563,21 @@ export default function Campaign() {
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
   const isSwampy = isSwampySystem((campaign as any)?.system);
+
+  // C.A.'s look is applied from CSS keyed on <html data-system>, not by every
+  // component opting in. It has to live on the document element rather than
+  // this page's root because floating panels, dialogs and menus all portal to
+  // document.body and would otherwise miss it entirely.
+  useEffect(() => {
+    if (!isCA) return;
+    const root = document.documentElement;
+    const previous = root.dataset.system;
+    root.dataset.system = 'ca';
+    return () => {
+      if (previous === undefined) delete root.dataset.system;
+      else root.dataset.system = previous;
+    };
+  }, [isCA]);
 
   // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
   const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);

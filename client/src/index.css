@@ -515,3 +515,56 @@
   .min-h-screen { min-height: 100dvh; }
   .max-h-screen { max-height: 100dvh; }
 }
+
+/* ---------------------------------------------------------------------------
+   C.A. — the tooled-cover look, applied to the whole system rather than
+   component by component.
+
+   Keyed on `<html data-system="ca">`, set by the campaign page while a C.A.
+   campaign is open. It has to be on the document element: floating panels,
+   dialogs, menus and popovers all portal to document.body, so an attribute on
+   the page's own root would miss most of the app.
+
+   Everything here is the gilding only — the frames, the hairlines, the panel
+   titles. Surfaces stay on the theme's own `stone-*` ramp, so C.A. still
+   changes colour with the theme; only the metal is fixed. See
+   .agents/memory/ca-ranks-and-auras.md.
+   --------------------------------------------------------------------------- */
+
+/* Floating panels: character sheets, notes, item detail, the lot. */
+:root[data-system="ca"] [data-floating-panel] {
+  border: 1px solid var(--ca-gilt-line-soft);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.4),
+    0 18px 40px -12px rgb(0 0 0 / 0.7);
+}
+
+/* Their drag headers — a gilt hairline under the title rather than a grey
+   divider, and the title itself in the metal. */
+:root[data-system="ca"] [data-floating-panel] > div:first-child {
+  border-bottom-color: var(--ca-gilt-line-soft);
+}
+:root[data-system="ca"] [data-panel-title] {
+  color: var(--ca-gilt-bright);
+}
+
+/* Cards, wherever they are — inventory rows, item sheets, admin lists. */
+:root[data-system="ca"] [data-slot="card"] {
+  border-color: var(--ca-gilt-line-soft);
+}
+
+/* Dialogs and the menus that hang off them. */
+:root[data-system="ca"] [role="dialog"],
+:root[data-system="ca"] [role="menu"],
+:root[data-system="ca"] [role="listbox"],
+:root[data-system="ca"] [data-radix-popper-content-wrapper] > * {
+  border-color: var(--ca-gilt-line-soft);
+}
+
+/* Section rules inside panels. Scoped to horizontal rules and explicit
+   separators so it doesn't repaint every bordered box in the app. */
+:root[data-system="ca"] hr,
+:root[data-system="ca"] [role="separator"] {
+  border-color: var(--ca-gilt-line-soft);
+  background-color: var(--ca-gilt-line-soft);
+}

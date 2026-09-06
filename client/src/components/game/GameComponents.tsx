@@ -18413,8 +18413,8 @@ function CAAttrsAndSkillsTab({
   };
 
   return (
-    <Card className="bg-stone-800 border-stone-700" data-testid="card-ca-attrs-skills">
-      <CardContent className="pt-4 space-y-3">
+    <CaSheetFrame>
+      <div className="p-4 space-y-3" data-testid="card-ca-attrs-skills">
         <p className="text-xs text-stone-500">
           Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
           {canEditSheet && ' Double-click (or long-press) a number to change it.'}
@@ -18521,13 +18521,10 @@ function CAAttrsAndSkillsTab({
         </div>
 
         {/* Skills — single alphabetical list across all attributes */}
-        <Card className="bg-stone-900 border-stone-600" data-testid="card-ca-skills">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-green-400 text-sm font-medium flex items-center gap-2">
-              <Zap className="h-4 w-4" /> Skills
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 pb-2 space-y-1">
+        <CaDivider />
+
+        <CaSection icon={<Zap className="h-3.5 w-3.5" />} title="Skills" testId="card-ca-skills">
+          <div className="space-y-1">
             {[...rules.SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = rules.ATTRIBUTES.find(a => a.key === skill.parent);
               const attrVal = (liveCharacter[skill.parent] as number) || 0;
@@ -18636,10 +18633,10 @@ function CAAttrsAndSkillsTab({
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
-      </CardContent>
-    </Card>
+          </div>
+        </CaSection>
+      </div>
+    </CaSheetFrame>
   );
 }
 
@@ -21827,15 +21824,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           )}
                         </div>
                       </div>
-                      {canEdit && onUpdate && (
-                        <span
-                          aria-hidden
-                          className="absolute bottom-1 right-1 w-6 h-6 rounded-full border bg-stone-900 flex items-center justify-center"
-                          style={{ borderColor: 'var(--ca-gilt-line)', color: 'var(--ca-gilt)' }}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </span>
-                      )}
                       {showCaPortraitMenu && canEdit && onUpdate && (
                         <div
                           className="absolute inset-0 rounded-full bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
@@ -24917,11 +24905,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 onUpdate={onUpdate ? (updates) => onUpdate(updates as any) : undefined}
               />
             ) : (<>
-            <CaCard
+            <CaSheetFrame>
+            <div className="p-4">
+            <CaSection
               title="Traits"
-              icon={<Star className="h-4 w-4" />}
-              accentClass="text-rose-500"
-              action={isGM && (
+              icon={<Star className="h-3.5 w-3.5" />}
+              value={isGM && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -25001,7 +24990,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   })
                 )}
               </div>
-            </CaCard>
+            </CaSection>
+            </div>
+            </CaSheetFrame>
 
             {/* Add Trait Dialog */}
             <FloatingPanel

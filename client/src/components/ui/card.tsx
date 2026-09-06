@@ -8,6 +8,9 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
+    // A stable hook for theming every card at once — C.A. gilds them from
+    // CSS rather than every call site adding classes.
+    data-slot="card"
     className={cn(
       "rounded-xl border bg-card text-card-foreground shadow",
       className
