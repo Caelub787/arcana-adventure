@@ -152,28 +152,27 @@ const AURA_SHAPE_PATHS: Record<Exclude<CAAuraShape, "none">, string> = {
 };
 
 /**
- * Deterministic per-particle drift. Seeded off the particle's index rather
+ * Deterministic per-particle orbit. Seeded off the particle's index rather
  * than Math.random so a re-render doesn't teleport every particle - they have
  * to keep drifting from wherever they were, not restart somewhere new.
+ *
+ * A particle travels a closed loop around the middle of the field, so it is
+ * always moving and always somewhere the colour actually is. The first pass
+ * had them run a line and fade at both ends, which read as blinking in and
+ * out of a few fixed spots rather than floating.
  */
-function particleDrift(i: number) {
+function particleOrbit(i: number) {
   const golden = 0.6180339887;
-  const a = ((i * golden) % 1) * Math.PI * 2;
-  const b = (((i + 1) * golden * 3) % 1) * Math.PI * 2;
-  const c = (((i + 2) * golden * 7) % 1) * Math.PI * 2;
-  // Percentages of the field, kept inside it so a particle drifts rather than
-  // slams into the wall.
-  const p = (angle: number, r: number) => ({
-    x: 50 + Math.cos(angle) * r,
-    y: 50 + Math.sin(angle) * r,
-  });
   return {
-    from: p(a, 30),
-    via: p(b, 34),
-    to: p(c, 28),
-    duration: 7 + ((i * 1.7) % 5),
-    delay: -((i * 2.3) % 7),
-    scale: 0.75 + ((i * 0.37) % 0.5),
+    // Where on the loop it starts, and how far out it runs. Kept well inside
+    // the field: the colour itself fades out around 78%, so a particle any
+    // further out would be drifting over nothing.
+    angle: ((i * golden) % 1) * Math.PI * 2,
+    radius: 22 + ((i * 5) % 9),
+    duration: 13 + ((i * 3.3) % 9),
+    delay: -((i * 4.1) % 13),
+    scale: 0.8 + ((i * 0.37) % 0.45),
+    reverse: i % 2 === 1,
   };
 }
 
@@ -290,61 +289,76 @@ export function AuraShapeMark({
     );
   }
 
-  const particleSize = Math.round(size * 0.34);
-  const drifts = Array.from({ length: PARTICLE_COUNT }, (_, i) => particleDrift(i));
+  const particleSize = Math.round(size * 0.3);
+  const orbits = Array.from({ length: PARTICLE_COUNT }, (_, i) => particleOrbit(i));
+
+  // Four waypoints round the loop, each one pulled in or pushed out a little
+  // so the path is a lopsided wander rather than a clean circle.
+  const waypoint = (o: ReturnType<typeof particleOrbit>, k: number) => {
+    const a = o.angle + (k * Math.PI) / 2;
+    const r = o.radius * (k % 2 === 0 ? 1.06 : 0.84);
+    return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r };
+  };
 
   return field(
     <>
       <style>
-        {drifts
-          .map((d, i) => {
+        {orbits
+          .map((o, i) => {
             const name = `${animId}p${i}`;
-            // Opacity is the fade: nothing at the extremes of the path, full
-            // in the middle of it, so a particle arrives and leaves rather
-            // than popping at the edge of the field.
+            const at = (k: number, pct: number, s: number) => {
+              const w = waypoint(o, k);
+              return `${pct}%{left:${w.x.toFixed(2)}%;top:${w.y.toFixed(2)}%;transform:translate(-50%,-50%) scale(${(o.scale * s).toFixed(3)})}`;
+            };
+            // No fade in the loop at all: the particle is simply always there,
+            // going round. Only its size breathes, which keeps it alive
+            // without the popping the old opacity ramp had.
             return (
               `@keyframes ${name}{` +
-              `0%{opacity:0;transform:translate(-50%,-50%) scale(${d.scale * 0.6})}` +
-              `18%{opacity:.95}` +
-              `50%{opacity:1;left:${d.via.x}%;top:${d.via.y}%;transform:translate(-50%,-50%) scale(${d.scale})}` +
-              `82%{opacity:.9}` +
-              `100%{opacity:0;left:${d.to.x}%;top:${d.to.y}%;transform:translate(-50%,-50%) scale(${d.scale * 0.6})}` +
+              at(0, 0, 1) +
+              at(1, 25, 0.88) +
+              at(2, 50, 1.08) +
+              at(3, 75, 0.92) +
+              at(4, 100, 1) +
               `}`
             );
           })
           .join("")}
       </style>
-      {drifts.map((d, i) => (
-        <svg
-          key={i}
-          viewBox="0 0 24 24"
-          width={particleSize}
-          height={particleSize}
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: `${d.from.x}%`,
-            top: `${d.from.y}%`,
-            transform: "translate(-50%, -50%)",
-            overflow: "visible",
-            opacity: 0,
-            ...(animate
-              ? {
-                  animation: `${animId}p${i} ${d.duration}s ease-in-out ${d.delay}s infinite alternate`,
-                }
-              : { opacity: 0.9 }),
-          }}
-        >
-          <path
-            d={AURA_SHAPE_PATHS[shape]}
-            fill={shape === "ring" ? "none" : color}
-            fillOpacity={0.4}
-            stroke={color}
-            strokeWidth={2}
-            strokeLinejoin="round"
-          />
-        </svg>
-      ))}
+      {orbits.map((o, i) => {
+        const start = waypoint(o, 0);
+        return (
+          <svg
+            key={i}
+            viewBox="0 0 24 24"
+            width={particleSize}
+            height={particleSize}
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: `${start.x}%`,
+              top: `${start.y}%`,
+              transform: "translate(-50%, -50%)",
+              overflow: "visible",
+              opacity: 0.9,
+              ...(animate
+                ? {
+                    animation: `${animId}p${i} ${o.duration}s linear ${o.delay}s infinite ${o.reverse ? "reverse" : "normal"}`,
+                  }
+                : {}),
+            }}
+          >
+            <path
+              d={AURA_SHAPE_PATHS[shape]}
+              fill={shape === "ring" ? "none" : color}
+              fillOpacity={0.4}
+              stroke={color}
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      })}
       {title && <span className="sr-only">{title}</span>}
     </>,
   );
@@ -437,24 +451,23 @@ export function AuraEdgeField({
   const rawId = useId();
   const animId = `auraedge-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
 
-  // Particles ride the perimeter rather than the middle: the interior is where
-  // the sheet's content is, and shapes drifting behind text is noise.
+  // Every particle rides the perimeter, on the same loop the glow sits on, and
+  // the loop is measured in pixels from the edge rather than percentages: a
+  // percentage inset on a tall sheet puts the side particles a long way in
+  // over the content, which is exactly where the colour isn't. The wrapper
+  // clips to the box, so nothing can wander outside the outline either.
   const marks = Array.from({ length: count }, (_, i) => {
-    const t = i / count;
-    const edge = Math.floor(t * 4);
-    const along = (t * 4) % 1;
-    const inset = 4 + ((i * 3) % 7);
-    const pos =
-      edge === 0 ? { left: `${along * 100}%`, top: `${inset}%` }
-      : edge === 1 ? { left: `${100 - inset}%`, top: `${along * 100}%` }
-      : edge === 2 ? { left: `${100 - along * 100}%`, top: `${100 - inset}%` }
-      : { left: `${inset}%`, top: `${100 - along * 100}%` };
+    const inset = 7 + ((i * 5) % 9);
     return {
-      pos,
-      size: 14 + ((i * 5) % 12),
-      duration: 11 + ((i * 2.6) % 9),
-      delay: -((i * 3.1) % 11),
-      drift: 6 + ((i * 2) % 10),
+      inset,
+      // How far back from each corner the path starts turning, so a particle
+      // rounds the corner instead of hitting it square.
+      corner: 16,
+      size: 11 + ((i * 5) % 9),
+      duration: 30 + ((i * 7) % 21),
+      delay: -((i * 6.5) % 30),
+      spin: 22 + ((i * 4) % 15),
+      reverse: i % 2 === 1,
     };
   });
 
@@ -473,40 +486,67 @@ export function AuraEdgeField({
         <>
           <style>
             {marks
-              .map((m, i) =>
-                `@keyframes ${animId}${i}{` +
-                `0%{opacity:0;transform:translate(-50%,-50%) translate(0,0)}` +
-                `25%{opacity:.5}` +
-                `75%{opacity:.4}` +
-                `100%{opacity:0;transform:translate(-50%,-50%) translate(${m.drift}px,${-m.drift}px)}}`,
-              )
-              .join("")}
+              .map((m, i) => {
+                const near = `${m.inset}px`;
+                const nearC = `${m.inset + m.corner}px`;
+                const far = `calc(100% - ${m.inset}px)`;
+                const farC = `calc(100% - ${m.inset + m.corner}px)`;
+                // Eight waypoints: the four sides get most of the loop, the
+                // four corner cuts get a sliver each, which slows a particle
+                // through the turn the way something with weight would.
+                return (
+                  `@keyframes ${animId}t${i}{` +
+                  `0%{left:${nearC};top:${near}}` +
+                  `21%{left:${farC};top:${near}}` +
+                  `25%{left:${far};top:${nearC}}` +
+                  `46%{left:${far};top:${farC}}` +
+                  `50%{left:${farC};top:${far}}` +
+                  `71%{left:${nearC};top:${far}}` +
+                  `75%{left:${near};top:${farC}}` +
+                  `96%{left:${near};top:${nearC}}` +
+                  `100%{left:${nearC};top:${near}}}`
+                );
+              })
+              .join("") + `@keyframes ${animId}spin{to{transform:rotate(360deg)}}`}
           </style>
           {marks.map((m, i) => (
-            <svg
+            <span
               key={i}
-              viewBox="0 0 24 24"
-              width={m.size}
-              height={m.size}
               style={{
                 position: "absolute",
-                ...m.pos,
+                left: `${m.inset + m.corner}px`,
+                top: `${m.inset}px`,
+                // The travel animation only touches left/top, so this stays
+                // put and the rotation below has the transform to itself.
                 transform: "translate(-50%, -50%)",
-                overflow: "visible",
-                opacity: 0,
-                animation: `${animId}${i} ${m.duration}s ease-in-out ${m.delay}s infinite alternate`,
+                lineHeight: 0,
+                animation: `${animId}t${i} ${m.duration}s linear ${m.delay}s infinite ${m.reverse ? "reverse" : "normal"}`,
               }}
             >
-              <path
-                d={AURA_SHAPE_PATHS[shape]}
-                fill={shape === "ring" ? "none" : color}
-                fillOpacity={0.18}
-                stroke={color}
-                strokeOpacity={0.55}
-                strokeWidth={1.4}
-                strokeLinejoin="round"
-              />
-            </svg>
+              <svg
+                viewBox="0 0 24 24"
+                width={m.size}
+                height={m.size}
+                style={{
+                  display: "block",
+                  overflow: "visible",
+                  // Faint on purpose - it should read as the colour moving,
+                  // not as a row of icons.
+                  opacity: 0.45,
+                  animation: `${animId}spin ${m.spin}s linear ${-i * 3}s infinite ${m.reverse ? "reverse" : "normal"}`,
+                }}
+              >
+                <path
+                  d={AURA_SHAPE_PATHS[shape]}
+                  fill={shape === "ring" ? "none" : color}
+                  fillOpacity={0.18}
+                  stroke={color}
+                  strokeOpacity={0.7}
+                  strokeWidth={1.4}
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
           ))}
         </>
       )}
