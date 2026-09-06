@@ -52,7 +52,7 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
-import { woundBodyImage } from "@/lib/woundBodyImages";
+import { woundBodyImage, woundBodyImageStyle } from "@/lib/woundBodyImages";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { RollEntriesEditor } from './RollEntriesEditor';
 import { CampaignNotesPanel } from '../notes/CampaignNotesPanel';
@@ -22327,7 +22327,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                 src={woundBodyImage(woundRules.slug, bodySex)}
                                 alt=""
                                 className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
-                                style={{ filter: 'brightness(1.6) contrast(1.1)' }}
+                                style={woundBodyImageStyle(woundRules.slug)}
                                 draggable={false}
                               />
                               {/* Body-type switch — intentionally understated: a
