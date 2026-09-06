@@ -177,16 +177,22 @@ The wound diagram is `max-w-[220px] mx-auto`, not `w-full`. At full width the
 2:3 box grew with the panel — 615px tall on the wide sheet — and that single
 box was most of why the sheet read as a tall column however wide it got.
 
-### The look is system-wide, from CSS
+### The look is app-wide, from CSS
 
-The gilt is applied to the whole C.A. system by a block in `index.css` keyed
-on `:root[data-system="ca"]`, set by `Campaign.tsx` while a C.A. campaign is
-open. **It has to be on the document element**, not the page root: floating
-panels, dialogs, menus and popovers all `createPortal` to `document.body` and
-would miss an attribute anywhere else.
+The gilt block at the end of `index.css` is **not gated on anything** — it is
+the app's main theme, applied everywhere. It began C.A.-only and keyed on
+`<html data-system="ca">`; that gate is gone.
 
-That block gilds `[data-floating-panel]` and its header, `[data-panel-title]`,
+It gilds `[data-floating-panel]` and its header, `[data-panel-title]`,
 `[data-slot="card"]` (added to the shadcn Card for exactly this), dialogs,
-menus and listboxes. Component-level use of the `CASheetUI` pieces is still
-how the character sheet is built; the CSS is what reaches the rest of the app
-without every call site opting in.
+menus, listboxes, `[role="tablist"]`, the active `[role="tab"]`, rules and
+separators, and the character sheet root. Verified by rendering plain shadcn
+markup that never opted in and confirming it picks the gilding up.
+
+Component-level use of the `CASheetUI` pieces is how the C.A. sheet is built;
+the CSS is what reaches everything else without every call site opting in.
+
+**Naming is now misleading and worth a follow-up:** the tokens are
+`--ca-gilt*` and the components live in `CASheetUI.tsx`, but neither is C.A.
+specific any more. Renaming was left alone rather than churn every call site
+mid-change.

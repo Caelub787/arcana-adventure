@@ -7074,6 +7074,13 @@ export default function Campaign() {
   };
   const handleOpenItemNotes = async (item: any) => {
     if (!effectiveCampaignId || !item?.id) return;
+    // The sheet's Notes button is a toggle, the way the character one is:
+    // pressing it again puts the notes away. The panel itself has no close
+    // button any more, so this is how they get shut.
+    if (!isMobile && floatingNotesOpen) {
+      setFloatingNotesOpen(false);
+      return;
+    }
     try {
       const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'item-sheet', item.id, item.name);
       if (isMobile) {
@@ -7563,21 +7570,6 @@ export default function Campaign() {
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
   const isSwampy = isSwampySystem((campaign as any)?.system);
-
-  // C.A.'s look is applied from CSS keyed on <html data-system>, not by every
-  // component opting in. It has to live on the document element rather than
-  // this page's root because floating panels, dialogs and menus all portal to
-  // document.body and would otherwise miss it entirely.
-  useEffect(() => {
-    if (!isCA) return;
-    const root = document.documentElement;
-    const previous = root.dataset.system;
-    root.dataset.system = 'ca';
-    return () => {
-      if (previous === undefined) delete root.dataset.system;
-      else root.dataset.system = previous;
-    };
-  }, [isCA]);
 
   // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
   const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
@@ -13332,6 +13324,9 @@ export default function Campaign() {
                   isOpen={true}
                   isGm={role === 'gm'}
                   contentOnly={true}
+                  // Closed by the sheet's own Notes button, which toggles -
+                  // one control rather than two that do the same thing.
+                  hideCloseButton
                   initialNoteId={dockedCharNotes[sheet.id]}
                 />
               </div>

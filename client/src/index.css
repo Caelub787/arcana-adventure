@@ -517,22 +517,20 @@
 }
 
 /* ---------------------------------------------------------------------------
-   C.A. — the tooled-cover look, applied to the whole system rather than
-   component by component.
+   The tooled-cover look, app-wide.
 
-   Keyed on `<html data-system="ca">`, set by the campaign page while a C.A.
-   campaign is open. It has to be on the document element: floating panels,
-   dialogs, menus and popovers all portal to document.body, so an attribute on
-   the page's own root would miss most of the app.
+   This started as C.A.-only and keyed on `<html data-system="ca">`. It is the
+   app's main theme now, so the gate is gone and it applies everywhere: every
+   system's sheets, the notes panel, item dialogs, the chrome around all of it.
 
-   Everything here is the gilding only — the frames, the hairlines, the panel
-   titles. Surfaces stay on the theme's own `stone-*` ramp, so C.A. still
-   changes colour with the theme; only the metal is fixed. See
-   .agents/memory/ca-ranks-and-auras.md.
+   Everything here is gilding only — frames, hairlines, panel titles. Surfaces
+   stay on the theme's own `stone-*` ramp, so when more themes arrive they
+   still change the app's colour; only the metal is fixed. Retuning the metal
+   is the five `--ca-gilt*` tokens above and nothing else.
    --------------------------------------------------------------------------- */
 
 /* Floating panels: character sheets, notes, item detail, the lot. */
-:root[data-system="ca"] [data-floating-panel] {
+[data-floating-panel] {
   border: 1px solid var(--ca-gilt-line-soft);
   box-shadow:
     0 0 0 1px rgb(0 0 0 / 0.4),
@@ -541,30 +539,50 @@
 
 /* Their drag headers — a gilt hairline under the title rather than a grey
    divider, and the title itself in the metal. */
-:root[data-system="ca"] [data-floating-panel] > div:first-child {
+[data-floating-panel] > div:first-child {
   border-bottom-color: var(--ca-gilt-line-soft);
 }
-:root[data-system="ca"] [data-panel-title] {
+[data-panel-title] {
   color: var(--ca-gilt-bright);
 }
 
-/* Cards, wherever they are — inventory rows, item sheets, admin lists. */
-:root[data-system="ca"] [data-slot="card"] {
+/* Cards, wherever they are — sheet sections, inventory rows, admin lists. */
+[data-slot="card"] {
   border-color: var(--ca-gilt-line-soft);
 }
 
 /* Dialogs and the menus that hang off them. */
-:root[data-system="ca"] [role="dialog"],
-:root[data-system="ca"] [role="menu"],
-:root[data-system="ca"] [role="listbox"],
-:root[data-system="ca"] [data-radix-popper-content-wrapper] > * {
+[role="dialog"],
+[role="menu"],
+[role="listbox"],
+[data-radix-popper-content-wrapper] > * {
   border-color: var(--ca-gilt-line-soft);
 }
 
-/* Section rules inside panels. Scoped to horizontal rules and explicit
-   separators so it doesn't repaint every bordered box in the app. */
-:root[data-system="ca"] hr,
-:root[data-system="ca"] [role="separator"] {
+/* Section rules. Scoped to real rules and separators so it doesn't repaint
+   every bordered box in the app. */
+hr,
+[role="separator"] {
   border-color: var(--ca-gilt-line-soft);
   background-color: var(--ca-gilt-line-soft);
+}
+
+/* Tab strips — the sheet's tabs and every other TabsList. The active tab gets
+   the metal so the current tab is obvious without a filled block. */
+[role="tablist"] {
+  border-color: var(--ca-gilt-line-soft);
+}
+[role="tab"][data-state="active"] {
+  border-color: var(--ca-gilt-line);
+  /* The active tab is the metal. Inactive tabs keep their own colours - the
+     sheet gives each tab one and that variety is worth keeping - but the
+     selected one reading blue inside a gold outline just looked like a
+     mistake. */
+  color: var(--ca-gilt-bright);
+}
+
+/* Every system's character sheet wears the same frame, not just the one whose
+   markup was rebuilt around it. */
+[data-testid="character-sheet-root"] {
+  border: 1px solid var(--ca-gilt-line-soft);
 }
