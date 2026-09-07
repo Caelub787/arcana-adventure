@@ -3156,7 +3156,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                   data-testid={`beacon-${beacon.id}`}
                 >
                   <div 
-                    className="rounded-full flex items-center justify-center"
+                    className="rounded-full"
                     style={{
                       width: effectiveGridSize * 0.8,
                       height: effectiveGridSize * 0.8,
@@ -3165,19 +3165,37 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                       boxShadow: `0 0 30px 8px ${color}, inset 0 0 15px ${color}99`,
                       willChange: 'transform, opacity',
                     }}
-                  >
-                    {/* C.A. auras can carry a shape as well as a colour; the
-                        server resolves it from the pinging player's assigned
-                        character and sends it along with the colour. */}
-                    {beacon.beaconShape && beacon.beaconShape !== 'none' && (
+                  />
+                  {/* C.A. auras can carry a shape as well as a colour; the
+                      server resolves it from the pinging player's assigned
+                      character and sends it along with the colour.
+
+                      The aura sits outside the ring rather than inside it.
+                      Inside, it was drawn at 40% of a grid square and then
+                      carried up to 2.5x by the ring's own scale, which
+                      rasterises once and stretches - hence a soft, chunky
+                      shape. Its own layer is drawn at the size it ends up.
+                      It was also `animate={false}`, so four shapes simply sat
+                      there; they move now, and fast enough to actually travel
+                      within the second and a half the beacon is on screen. */}
+                  {beacon.beaconShape && beacon.beaconShape !== 'none' && (
+                    <span
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: '50%',
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        animation: 'beacon-mark 1.5s ease-out forwards',
+                      }}
+                    >
                       <AuraShapeMark
                         color={color}
                         shape={beacon.beaconShape as any}
-                        size={effectiveGridSize * 0.4}
-                        animate={false}
+                        size={effectiveGridSize * 1.9}
+                        speed={7}
                       />
-                    )}
-                  </div>
+                    </span>
+                  )}
                 </div>
               );
             })}

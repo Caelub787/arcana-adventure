@@ -197,6 +197,7 @@ export function AuraShapeMark({
   shape,
   size = 16,
   animate = true,
+  speed = 1,
   className,
   title,
 }: {
@@ -204,6 +205,13 @@ export function AuraShapeMark({
   shape: CAAuraShape;
   size?: number;
   animate?: boolean;
+  /**
+   * How much faster than usual the shapes move. The loop is a slow drift by
+   * design - it sits on a sheet you are reading - but a beacon is on screen
+   * for a second and a half, and over that a 15s orbit does not visibly move
+   * at all. The beacon winds it up rather than settling for a still image.
+   */
+  speed?: number;
   className?: string;
   title?: string;
 }) {
@@ -248,7 +256,7 @@ export function AuraShapeMark({
               inset: "22%",
               borderRadius: "9999px",
               backgroundColor: color,
-              ...(animate ? { animation: `${animId}pulse 2.4s ease-in-out infinite` } : {}),
+              ...(animate ? { animation: `${animId}pulse ${(2.4 / speed).toFixed(2)}s ease-in-out infinite` } : {}),
             }}
           />
           {animate && (
@@ -270,7 +278,7 @@ export function AuraShapeMark({
         style={{
           overflow: "visible",
           filter: `drop-shadow(0 0 ${Math.max(2, size / 5)}px ${color})`,
-          ...(animate ? { animation: `${animId} 2.4s ease-in-out infinite` } : {}),
+          ...(animate ? { animation: `${animId} ${(2.4 / speed).toFixed(2)}s ease-in-out infinite` } : {}),
         }}
       >
         {title && <title>{title}</title>}
@@ -341,9 +349,14 @@ export function AuraShapeMark({
               transform: "translate(-50%, -50%)",
               overflow: "visible",
               opacity: 0.9,
+              // The shapes are drawn in the aura's own colour on a ground
+              // that is often already glowing in it - a beacon's ring most of
+              // all - so a flat outline disappears into it. A little of the
+              // colour thrown off the edge keeps them legible.
+              filter: `drop-shadow(0 0 ${Math.max(1, Math.round(particleSize / 3))}px ${color})`,
               ...(animate
                 ? {
-                    animation: `${animId}p${i} ${o.duration}s linear ${o.delay}s infinite ${o.reverse ? "reverse" : "normal"}`,
+                    animation: `${animId}p${i} ${(o.duration / speed).toFixed(2)}s linear ${(o.delay / speed).toFixed(2)}s infinite ${o.reverse ? "reverse" : "normal"}`,
                   }
                 : {}),
             }}
@@ -351,9 +364,9 @@ export function AuraShapeMark({
             <path
               d={AURA_SHAPE_PATHS[shape]}
               fill={shape === "ring" ? "none" : color}
-              fillOpacity={0.4}
+              fillOpacity={0.55}
               stroke={color}
-              strokeWidth={2}
+              strokeWidth={2.4}
               strokeLinejoin="round"
             />
           </svg>
