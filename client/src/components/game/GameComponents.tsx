@@ -405,6 +405,104 @@ export interface OtherPlayerAoe {
 
 // A single icon button matching the Select/Ruler tool buttons' look, for
 // left-side toolbar actions that don't need a hold-menu of alternatives.
+/**
+ * Drag-to-move for a crop box.
+ *
+ * Both crop dialogs got this wrong in the same way and it is worth writing
+ * down. They added `pointermove`/`pointerup` listeners to the document on
+ * every `pointerdown`. Any press whose release never reached the document -
+ * the pointer leaving the window, a gesture cancelled, a second press before
+ * the first let go - left a move listener behind that nothing would ever
+ * remove, and from then on the box followed the cursor for good. The item
+ * dialog compounded it by centring the box on the pointer instead of moving
+ * it by how far the pointer had travelled, so it snapped under the crosshair
+ * the moment you touched it.
+ *
+ * Pointer capture removes the whole class of problem. Once the box captures
+ * the pointer, every move and release for it is delivered to the box itself,
+ * so the handlers live on the element and React owns their lifetime. Capture
+ * also guarantees an ending: `lostpointercapture` fires when capture goes
+ * away for any reason at all, including the element being removed, so there
+ * is no path that leaves a drag running.
+ *
+ * `limits` is read at the start of each drag: it says how far the box may
+ * travel and how many stored units there are to a CSS pixel, which is 1 where
+ * the box is stored in displayed pixels and the image's natural-to-displayed
+ * ratio where it is stored in natural ones.
+ */
+export function useCropDrag(
+  position: { x: number; y: number; size: number },
+  setPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number; size: number }>>,
+  limits: () => { maxX: number; maxY: number; scaleX: number; scaleY: number },
+) {
+  const drag = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    cropX: number;
+    cropY: number;
+    maxX: number;
+    maxY: number;
+    scaleX: number;
+    scaleY: number;
+  } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // One pointer at a time. A second press mid-drag was one of the ways the
+    // old version ended up with a listener it could never clear.
+    if (drag.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { maxX, maxY, scaleX, scaleY } = limits();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    drag.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      cropX: position.x,
+      cropY: position.y,
+      maxX,
+      maxY,
+      scaleX,
+      scaleY,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    // By how far the pointer moved, not to where it is: the box keeps
+    // whatever offset it had when you grabbed it, and stays where you drop it.
+    const nextX = d.cropX + (e.clientX - d.startX) * d.scaleX;
+    const nextY = d.cropY + (e.clientY - d.startY) * d.scaleY;
+    setPosition((prev) => ({
+      ...prev,
+      x: Math.max(0, Math.min(d.maxX, nextX)),
+      y: Math.max(0, Math.min(d.maxY, nextY)),
+    }));
+  };
+
+  const end = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    drag.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  return {
+    handlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: end,
+      onPointerCancel: end,
+      onLostPointerCapture: end,
+    },
+    /** For when the dialog closes mid-drag: an unmounted box never reports
+        losing capture. */
+    cancel: () => { drag.current = null; },
+  };
+}
+
 function ToolbarIconButton({ icon, label, active, danger, disabled, onClick, testId }: {
   icon: React.ReactNode;
   label: string;
@@ -17015,6 +17113,12 @@ interface CharacterSheetProps {
   onOpenSpellbook?: (item: any) => void;
   onOpenNotes?: (character: any) => void;
   onOpenItemNotes?: (item: any) => void;
+  /**
+   * Draw the aura's edge somewhere else. When notes are docked beside the
+   * sheet, the host wraps both in one ring - two rings, one of them cutting
+   * between the sheet and its notes, reads as two panels rather than one.
+   */
+  hideAuraEdge?: boolean;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -19040,7 +19144,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes, onOpenItemNotes }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes, onOpenItemNotes, hideAuraEdge = false }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -21546,6 +21650,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
   };
 
+  // Stored in displayed pixels, so a CSS pixel of travel is a stored unit.
+  const portraitCrop = useCropDrag(cropPosition, setCropPosition, () => ({
+    maxX: Math.max(0, imageDimensions.width - cropPosition.size),
+    maxY: Math.max(0, imageDimensions.height - cropPosition.size),
+    scaleX: 1,
+    scaleY: 1,
+  }));
+  useEffect(() => {
+    if (!showPortraitCrop) portraitCrop.cancel();
+  }, [showPortraitCrop]);
+
   const handleCropConfirm = () => {
     if (!uploadedImage || !cropImageRef.current) return;
     
@@ -21725,7 +21840,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           outer box-shadow on this element, which the mobile dialog clips -
           hence a bright line under the header and nothing down the sides. An
           inset ring with its own layer can't be clipped. */}
-      {caSheetAuraSet && caSheetAura && (
+      {caSheetAuraSet && caSheetAura && !hideAuraEdge && (
         <AuraEdgeField color={caSheetAura.color} shape={caSheetAura.shape} />
       )}
       {/* Back button header for template/admin view */}
@@ -26719,43 +26834,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     height: cropPosition.size,
                     boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
                   }}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                    
-                    const initialPointerX = e.clientX;
-                    const initialPointerY = e.clientY;
-                    const initialCropX = cropPosition.x;
-                    const initialCropY = cropPosition.y;
-                    const currentSize = cropPosition.size;
-                    
-                    const handleMove = (moveEvent: PointerEvent) => {
-                      const deltaX = moveEvent.clientX - initialPointerX;
-                      const deltaY = moveEvent.clientY - initialPointerY;
-                      
-                      const maxX = imageDimensions.width - currentSize;
-                      const maxY = imageDimensions.height - currentSize;
-                      
-                      const newX = Math.max(0, Math.min(maxX, initialCropX + deltaX));
-                      const newY = Math.max(0, Math.min(maxY, initialCropY + deltaY));
-                      setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
-                    };
-                    
-                    const handleUp = (upEvent: PointerEvent) => {
-                      try { (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId); } catch {}
-                      document.removeEventListener('pointermove', handleMove);
-                      document.removeEventListener('pointerup', handleUp);
-                      document.removeEventListener('pointercancel', handleUp);
-                    };
-
-                    document.addEventListener('pointermove', handleMove);
-                    document.addEventListener('pointerup', handleUp);
-                    // Some trackpads/gesture handling deliver pointercancel instead
-                    // of pointerup - without this, the box keeps following the
-                    // cursor forever since the move listener never gets removed.
-                    document.addEventListener('pointercancel', handleUp);
-                  }}
+                  {...portraitCrop.handlers}
                 />
               </div>
               {/* Size Slider */}
@@ -29128,43 +29207,23 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     }
   };
 
-  const handleCropDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!cropImageRef.current) return;
-    const container = e.currentTarget.parentElement;
-    if (!container) return;
-    e.preventDefault();
-    e.stopPropagation();
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
-
-    const rect = container.getBoundingClientRect();
+  // Stored in the image's natural pixels while the box is drawn as a
+  // percentage of the displayed image, so a CSS pixel of travel is worth the
+  // natural-to-displayed ratio.
+  const itemCrop = useCropDrag(cropPosition, setCropPosition, () => {
     const img = cropImageRef.current;
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
-
-    const handleMove = (moveEvent: PointerEvent) => {
-      const relX = (moveEvent.clientX - rect.left) * scaleX;
-      const relY = (moveEvent.clientY - rect.top) * scaleY;
-
-      const newX = Math.max(0, Math.min(relX - cropPosition.size / 2, img.naturalWidth - cropPosition.size));
-      const newY = Math.max(0, Math.min(relY - cropPosition.size / 2, img.naturalHeight - cropPosition.size));
-
-      setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
+    const scaleX = img && img.clientWidth ? img.naturalWidth / img.clientWidth : 1;
+    const scaleY = img && img.clientHeight ? img.naturalHeight / img.clientHeight : 1;
+    return {
+      maxX: Math.max(0, (img?.naturalWidth ?? imageDimensions.width) - cropPosition.size),
+      maxY: Math.max(0, (img?.naturalHeight ?? imageDimensions.height) - cropPosition.size),
+      scaleX,
+      scaleY,
     };
-
-    const handleUp = (upEvent: PointerEvent) => {
-      try { (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId); } catch {}
-      document.removeEventListener('pointermove', handleMove);
-      document.removeEventListener('pointerup', handleUp);
-      document.removeEventListener('pointercancel', handleUp);
-    };
-
-    document.addEventListener('pointermove', handleMove);
-    document.addEventListener('pointerup', handleUp);
-    // Some trackpads/gesture handling deliver pointercancel instead of
-    // pointerup - without this, the box keeps following the cursor forever
-    // since the move listener never gets removed.
-    document.addEventListener('pointercancel', handleUp);
-  };
+  });
+  useEffect(() => {
+    if (!showImageCrop) itemCrop.cancel();
+  }, [showImageCrop]);
 
   const handleCropConfirm = () => {
     if (!uploadedImage || !cropImageRef.current) return;
@@ -29986,7 +30045,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                       width: `${(cropPosition.size / imageDimensions.width) * 100}%`,
                       height: `${(cropPosition.size / imageDimensions.height) * 100}%`,
                     }}
-                    onPointerDown={handleCropDrag}
+                    {...itemCrop.handlers}
                   />
                 )}
               </div>

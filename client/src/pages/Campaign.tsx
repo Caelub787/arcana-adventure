@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
-import { AuraCurrentField, AuraBurstField } from "@/components/game/CAPanels";
+import { AuraCurrentField, AuraBurstField, AuraEdgeField } from "@/components/game/CAPanels";
 import { caAuraOf } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
@@ -6755,8 +6755,14 @@ export default function Campaign() {
   // Docked notes are deliberately NARROWER than the sheet rather than a
   // second panel of the same width: a note is something you read alongside
   // the sheet, not a second sheet.
-  const CA_SHEET_WIDTH = 880;
-  const CA_SHEET_HEIGHT = 520;
+  //
+  // C.A.'s is trimmed 10% in both directions so more than one fits on screen
+  // at once. The docked-notes width is a ratio of the sheet's, so it comes
+  // down with it. The other systems keep theirs: they are already a quarter
+  // smaller than C.A.'s was, and shrinking them further only risks pushing
+  // their tabs into a scroll for no one who asked.
+  const CA_SHEET_WIDTH = 792;
+  const CA_SHEET_HEIGHT = 468;
   const DEFAULT_SHEET_WIDTH = 652;
   const DEFAULT_SHEET_HEIGHT = 480;
   const DOCKED_NOTES_RATIO = 0.7;
@@ -7064,6 +7070,27 @@ export default function Campaign() {
   // window - keyed by characterId so multiple open sheets can each have
   // their own docked note independently.
   const [dockedCharNotes, setDockedCharNotes] = useState<Record<string, string>>({});
+
+  // Which note belongs to which sheet, remembered for the session.
+  //
+  // Every press of a Notes button went to the server for the note's id before
+  // anything could appear, so opening always cost a round trip and closing
+  // then reopening cost another. The lookup is get-or-create and its answer
+  // never changes for a given entity, so it only has to be asked once.
+  const entityNoteIds = useRef<Map<string, string>>(new Map());
+  const entityNoteId = async (
+    entityType: 'character-sheet' | 'item-sheet',
+    entityId: string,
+    name: string,
+  ) => {
+    const key = `${entityType}:${entityId}`;
+    const known = entityNoteIds.current.get(key);
+    if (known) return known;
+    const note = await api.getOrCreateEntityNote(effectiveCampaignId!, entityType, entityId, name);
+    entityNoteIds.current.set(key, note.id);
+    return note.id;
+  };
+
   const handleOpenCharacterNotes = async (char: any) => {
     if (!effectiveCampaignId || !char?.id) return;
     if (!isMobile && dockedCharNotes[char.id]) {
@@ -7071,11 +7098,11 @@ export default function Campaign() {
       return;
     }
     try {
-      const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'character-sheet', char.id, char.name);
+      const noteId = await entityNoteId('character-sheet', char.id, char.name);
       if (isMobile) {
-        setMobileNotesFor({ noteId: note.id });
+        setMobileNotesFor({ noteId });
       } else {
-        setDockedCharNotes(prev => ({ ...prev, [char.id]: note.id }));
+        setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
       }
     } catch (e: any) {
       console.error('Failed to open character notes:', e);
@@ -7092,11 +7119,11 @@ export default function Campaign() {
       return;
     }
     try {
-      const note = await api.getOrCreateEntityNote(effectiveCampaignId, 'item-sheet', item.id, item.name);
+      const noteId = await entityNoteId('item-sheet', item.id, item.name);
       if (isMobile) {
-        setMobileNotesFor({ noteId: note.id });
+        setMobileNotesFor({ noteId });
       } else {
-        setFloatingNotesInitialNoteId(note.id);
+        setFloatingNotesInitialNoteId(noteId);
         setFloatingNotesOpen(true);
       }
     } catch (e: any) {
@@ -13310,7 +13337,14 @@ export default function Campaign() {
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
-            <div className="flex h-full min-h-0">
+            <div className="relative flex h-full min-h-0">
+            {/* With notes docked the aura wraps both panes rather than just
+                the sheet, so the pair reads as one panel. The sheet leaves
+                its own ring off while this one is up. */}
+            {dockedCharNotes[sheet.id] && (sheet as any)?.caAuraColor && (() => {
+              const aura = caAuraOf(sheet, null);
+              return <AuraEdgeField color={aura.color} shape={aura.shape} />;
+            })()}
             {/* This wrapper must be a flex COLUMN: CharacterSheet's root sizes
                 itself with `flex-1 min-h-0`, which is inert under a plain block
                 parent. Without it the sheet grew to its full content height,
@@ -13343,6 +13377,7 @@ export default function Campaign() {
               onOpenItemDetail={(item) => openDetachedItemDetail(sheet, item)}
               onOpenSpellbook={(item) => openDetachedSpellbook(sheet, item)}
               onOpenNotes={handleOpenCharacterNotes}
+              hideAuraEdge={!!dockedCharNotes[sheet.id]}
               trustedPlayer={(() => {
                 const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                 return !!m?.trustedPlayer;
@@ -13350,7 +13385,15 @@ export default function Campaign() {
             />
             </div>
             {dockedCharNotes[sheet.id] && (
-              <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: dockedNotesWidth() }}>
+              <div
+                className="flex-shrink-0 border-l h-full min-h-0"
+                style={{
+                  width: dockedNotesWidth(),
+                  borderLeftColor: (sheet as any)?.caAuraColor
+                    ? `${caAuraOf(sheet, null).color}55`
+                    : undefined,
+                }}
+              >
                 <CampaignNotesPanel
                   campaignId={effectiveCampaignId || ''}
                   onClose={() => setDockedCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}

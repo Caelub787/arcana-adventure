@@ -2624,7 +2624,13 @@ export function CampaignNotesPanel({
           <LoadingLogo className="h-5 w-5 text-stone-500" />
         </div>
       ) : (
-        <ScrollArea className="flex-1 p-3">
+        // A plain scroller rather than ScrollArea: Radix lays its viewport
+        // content out as a table, which leaves a percentage height on a child
+        // with nothing to resolve against - so the card was sized by
+        // `min-h-[40vh]`, a slice of the WINDOW, and stopped partway down a
+        // docked pane no matter how tall the pane was. A definite-height
+        // scroller lets the card simply fill it.
+        <div className="flex-1 min-h-0 overflow-y-auto p-3">
           {/* The whole card is the click target, including the empty space
               under a short note - an empty note would otherwise have almost
               nothing to click. */}
@@ -2633,7 +2639,7 @@ export function CampaignNotesPanel({
             tabIndex={0}
             onClick={beginInlineEdit}
             onFocus={beginInlineEdit}
-            className="rounded-lg shadow-[0_0_24px_rgba(0,0,0,0.35)] p-4 min-h-[40vh] cursor-text outline-none bg-stone-900/40"
+            className="rounded-lg shadow-[0_0_24px_rgba(0,0,0,0.35)] p-4 min-h-full cursor-text outline-none bg-stone-900/40"
             style={{ border: '1px solid var(--ca-gilt-line-soft)' }}
             data-testid="panel-note-read-surface"
           >
@@ -2645,7 +2651,7 @@ export function CampaignNotesPanel({
               {formatEntityReferences(currentNote?.content || "")}
             </div>
           </div>
-        </ScrollArea>
+        </div>
       )}
     </div>
   );
