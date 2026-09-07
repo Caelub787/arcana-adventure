@@ -17,6 +17,10 @@ import {
   caUsableEnergy,
   caAuraOf,
   caAuraShapeOf,
+  caAuraAngleOf,
+  caAuraColorAt,
+  caAuraGradient,
+  type CAAura,
   type CAAuraShape,
 } from "@shared/ca";
 
@@ -141,15 +145,53 @@ export function CaRankBadge({ energyPool }: { energyPool: number | null | undefi
 // Aura
 // ---------------------------------------------------------------------------
 
-// Each shape is a path on a 0..24 canvas, drawn in the aura colour.
+// Each shape is a path on a 0..24 canvas, drawn in the aura colour. They are
+// meant to read at 6-14px, which is what rules most of them: one clean form
+// or two beats an accurate cluster that turns to mush at that size.
 const AURA_SHAPE_PATHS: Record<Exclude<CAAuraShape, "none">, string> = {
-  ring: "M12 3 A9 9 0 1 1 11.99 3 Z",
-  star: "M12 2 L14.9 9.1 L22.5 9.6 L16.7 14.5 L18.5 21.9 L12 17.8 L5.5 21.9 L7.3 14.5 L1.5 9.6 L9.1 9.1 Z",
-  diamond: "M12 1.5 L22.5 12 L12 22.5 L1.5 12 Z",
-  hexagon: "M12 1.8 L21 7 L21 17 L12 22.2 L3 17 L3 7 Z",
-  bolt: "M13.8 1.5 L4.5 13.5 L10.8 13.5 L9.6 22.5 L19.5 10.2 L13.2 10.2 Z",
-  flame: "M12 1.5 C15 6 18.6 7.8 18.6 13.2 C18.6 17.8 15.6 22.5 12 22.5 C8.4 22.5 5.4 17.8 5.4 13.2 C5.4 9.9 7.5 8.4 8.7 6.3 C9.3 8.7 10.5 9.6 11.4 9.6 C12.6 9.6 12.9 7.5 12 1.5 Z",
+  bubbles: "M8 9a4 4 0 1 0 .01 0ZM17 6.5a2.6 2.6 0 1 0 .01 0ZM14 17.5a3.4 3.4 0 1 0 .01 0Z",
+  rings: "M12 3a9 9 0 1 0 .01 0ZM12 8.5a3.5 3.5 0 1 0 .01 0Z",
+  hexagons: "M12 2 20.6 7 20.6 17 12 22 3.4 17 3.4 7Z",
+  diamonds: "M10 3 16 12 10 21 4 12ZM19 5.5 22 10 19 14.5 16 10Z",
+  triangles: "M12 3 21 20 3 20ZM12 9.5 16.5 18 7.5 18Z",
+  squares: "M3.5 3.5h8.5v8.5H3.5ZM14 13.5h6.5V20H14Z",
+  shards: "M5 3 13.5 6 9 13.5 3 10ZM15.5 11 21.5 8.5 19.5 18.5 14 16Z",
+  sparks: "M12 1.5c1 7.5 3 9.5 10.5 10.5-7.5 1-9.5 3-10.5 10.5-1-7.5-3-9.5-10.5-10.5 7.5-1 9.5-3 10.5-10.5Z",
+  motes: "M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0ZM18.5 6m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0ZM6 17.5m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z",
+  wisps: "M12 1.8c4 6.2 7 9.2 7 13.2 0 4-3 7-7 7s-7-3-7-7c0-3.4 3-6.4 7-13.2Z",
+  spirals: "M13 12a1 1 0 1 1-2 0 3 3 0 1 1 6 0 5 5 0 1 1-10 0 7 7 0 1 1 14 0",
+  crescents: "M16.5 3.6a9.6 9.6 0 1 0 0 16.8 8 8 0 1 1 0-16.8Z",
+  ripples: "M3.5 16.5a9.5 9.5 0 0 1 17 0M7 18.5a6 6 0 0 1 10 0M10 20.5a3 3 0 0 1 4 0",
+  cracks: "M12.5 2 11 9.5 14 12.5 12 22M11 9.5 5.5 11.5M14 12.5 19.5 10M12.8 16.5 8 19.5",
+  runes: "M6.5 3v18M6.5 8.5 17.5 3M6.5 14.5 17.5 9M17.5 3v18",
+  eyes: "M2 12c4.5-6.5 15.5-6.5 20 0-4.5 6.5-15.5 6.5-20 0ZM12 8.7a3.3 3.3 0 1 0 .01 0Z",
+  stars: "M12 2 14.9 9.1 22.5 9.6 16.7 14.5 18.5 21.9 12 17.8 5.5 21.9 7.3 14.5 1.5 9.6 9.1 9.1Z",
+  crosses: "M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7Z",
+  arcs: "M3 16.5A10.5 10.5 0 0 1 11.5 3.5M13.5 20.5A10.5 10.5 0 0 0 21 9",
+  links: "M9 12m-6 0a6 4 0 1 0 12 0a6 4 0 1 0-12 0M15 12m-6 0a6 4 0 1 0 12 0a6 4 0 1 0-12 0",
+  cells: "M12 2.5c5.2 0 9.2 4.2 8.2 9.3-1 5.1-5.2 9.4-9.4 8.3C5.6 19 2.5 14.8 3.6 9.8 4.6 5.4 7.8 2.5 12 2.5Z",
+  webbing: "M12 2v20M2 12h20M5 5 19 19M19 5 5 19M12 6 6.5 12 12 18 17.5 12Z",
+  waves: "M2 9c3-4.5 6 4.5 9 0s6 4.5 9 0M2 16.5c3-4.5 6 4.5 9 0s6 4.5 9 0",
+  zigzags: "M3 6.5 8 12 3 17.5M10 4.5 15.5 12 10 19.5M17.5 6.5 21.5 12 17.5 17.5",
 };
+
+/**
+ * Shapes drawn as line work rather than solid forms. A branching crack or a
+ * pair of waves filled in is a blob; these carry their meaning in the stroke.
+ */
+const AURA_OUTLINE_SHAPES = new Set<CAAuraShape>([
+  "rings",
+  "triangles",
+  "spirals",
+  "ripples",
+  "cracks",
+  "runes",
+  "arcs",
+  "links",
+  "webbing",
+  "waves",
+  "zigzags",
+]);
 
 /**
  * The aura particle engine.
@@ -228,7 +270,7 @@ interface AuraParticle {
   inset: number;
 }
 
-type AuraMotion = "interior" | "edge" | "current" | "burst";
+type AuraMotion = "interior" | "edge" | "current";
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(a: T, b: T) => (Math.random() < 0.5 ? a : b);
@@ -373,7 +415,9 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
       };
 
     // A current through a short, wide card: in one end and out the other.
-    case "current":
+    // Also what a roll tray uses: the shapes ride its edges rather than
+    // crossing the middle, where they were only ever behind the number.
+    default:
       return {
         spawn(p: AuraParticle, w: number, h: number, first: boolean) {
           const onTop = Math.random() < 0.5;
@@ -407,38 +451,6 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
         },
       };
 
-    // Thrown out of the middle, for a tray announcing a result.
-    default:
-      return {
-        spawn(p: AuraParticle, w: number, h: number, first: boolean) {
-          const a = rnd(0, Math.PI * 2);
-          p.ttl = rnd(1.3, 2.8) / (active ? 1.5 : 1);
-          // Speed comes from how far it should get, not a fixed px/s: a roll
-          // tray is 85px across, and an absolute speed threw every shape out
-          // of it and into the clip within a few frames.
-          const R = Math.min(w, h) / 2;
-          const sp = (R * rnd(0.55, 1.05) * speed) / p.ttl;
-          p.x = w / 2;
-          p.y = h / 2;
-          p.vx = Math.cos(a) * sp;
-          p.vy = Math.sin(a) * sp * 0.7;
-          p.size = rnd(5, 11);
-          // Negative age is a wait: they come out in their own time rather
-          // than all at once on a shared beat.
-          p.age = first ? rnd(-0.6, p.ttl) : -rnd(0, 0.6);
-          p.fadeIn = p.ttl * 0.22;
-          p.fadeOut = p.ttl * 0.45;
-          p.peak = active ? rnd(0.5, 0.72) : rnd(0.28, 0.46);
-          p.rot = rnd(0, 360);
-          p.vrot = rnd(-30, 30);
-        },
-        step(p: AuraParticle, dt: number, _w: number, _h: number) {
-          p.vx *= 0.985;
-          p.vy *= 0.985;
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-        },
-      };
   }
 }
 
@@ -558,12 +570,13 @@ function AuraGlyph({ color, shape }: { color: string; shape: CAAuraShape }) {
     <svg viewBox="0 0 24 24" width={24} height={24} aria-hidden style={{ display: "block", overflow: "visible" }}>
       <path
         d={AURA_SHAPE_PATHS[shape]}
-        fill={shape === "ring" ? "none" : color}
+        fill={AURA_OUTLINE_SHAPES.has(shape) ? "none" : color}
         fillOpacity={0.18}
         stroke={color}
         strokeOpacity={0.72}
         strokeWidth={1.6}
         strokeLinejoin="round"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -573,12 +586,14 @@ function AuraGlyph({ color, shape }: { color: string; shape: CAAuraShape }) {
 function AuraParticleNodes({
   count,
   color,
+  color2 = null,
   shape,
   nodesRef,
   glow,
 }: {
   count: number;
   color: string;
+  color2?: string | null;
   shape: CAAuraShape;
   nodesRef: React.MutableRefObject<Array<HTMLSpanElement | null>>;
   glow?: boolean;
@@ -586,7 +601,12 @@ function AuraParticleNodes({
   if (shape === "none") return null;
   return (
     <>
-      {Array.from({ length: count }, (_, i) => (
+      {Array.from({ length: count }, (_, i) => {
+        // Spread along the gradient rather than all one colour, so a
+        // two-colour aura reads as two colours in the drift as well as in
+        // the glow.
+        const tone = caAuraColorAt({ color, color2 }, count > 1 ? i / (count - 1) : 0);
+        return (
         <span
           key={i}
           ref={(el) => { nodesRef.current[i] = el; }}
@@ -599,22 +619,62 @@ function AuraParticleNodes({
             willChange: "transform, opacity",
             // Drawn in the aura's colour on a ground already glowing in it,
             // so a flat outline disappears into the glow without this.
-            ...(glow ? { filter: `drop-shadow(0 0 3px ${color})` } : {}),
+            ...(glow ? { filter: `drop-shadow(0 0 3px ${tone})` } : {}),
           }}
         >
-          <AuraGlyph color={color} shape={shape} />
+          <AuraGlyph color={tone} shape={shape} />
         </span>
-      ))}
+        );
+      })}
     </>
   );
 }
 
-/** The inset ring every aura surface wears, so no ancestor can clip the glow. */
-function AuraRing({ color, strength = 1 }: { color: string; strength?: number }) {
+/**
+ * The inset ring every aura surface wears, so no ancestor can clip the glow.
+ *
+ * A gradient one is two glows rather than one: an inset shadow thrown from
+ * the gradient's near side in the first colour and one from the far side in
+ * the second, offset along the gradient's own angle. A box-shadow cannot hold
+ * a gradient, and the obvious alternative - a gradient-filled layer clipped to
+ * the border - needs a mask, and masks do not render at all here (see
+ * woundBodyImages.ts for the same finding). The hairline takes the colour
+ * halfway along, since it can only be one.
+ */
+function AuraRing({
+  color,
+  color2 = null,
+  angle = 180,
+  strength = 1,
+}: {
+  color: string;
+  color2?: string | null;
+  angle?: number;
+  strength?: number;
+}) {
+  const blur = Math.round(26 * strength);
+  const hair = caAuraColorAt({ color, color2 }, 0.5);
+  if (!color2) {
+    return (
+      <span
+        className="absolute inset-0 rounded-[inherit]"
+        style={{ boxShadow: `inset 0 0 0 1px ${hair}55, inset 0 0 ${blur}px -6px ${color}` }}
+      />
+    );
+  }
+  // 0deg points up, and CSS gradients run toward that angle.
+  const rad = ((angle - 90) * Math.PI) / 180;
+  const dx = Math.round(Math.cos(rad) * 6);
+  const dy = Math.round(Math.sin(rad) * 6);
   return (
     <span
       className="absolute inset-0 rounded-[inherit]"
-      style={{ boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 ${Math.round(26 * strength)}px -6px ${color}` }}
+      style={{
+        boxShadow:
+          `inset 0 0 0 1px ${hair}55, ` +
+          `inset ${-dx}px ${-dy}px ${blur}px -6px ${color}, ` +
+          `inset ${dx}px ${dy}px ${blur}px -6px ${color2}`,
+      }}
     />
   );
 }
@@ -660,6 +720,8 @@ const PARTICLE_COUNT = 8;
 
 export function AuraShapeMark({
   color,
+  color2 = null,
+  angle = 180,
   shape,
   size = 16,
   animate = true,
@@ -668,6 +730,8 @@ export function AuraShapeMark({
   title,
 }: {
   color: string;
+  color2?: string | null;
+  angle?: number;
   shape: CAAuraShape;
   size?: number;
   animate?: boolean;
@@ -707,9 +771,13 @@ export function AuraShapeMark({
         borderRadius: "9999px",
         overflow: "hidden",
         // The colour itself, densest in the middle - the "space" the shapes
-        // are suspended in.
-        background: `radial-gradient(circle at 50% 50%, ${color}66 0%, ${color}22 55%, transparent 78%)`,
-        boxShadow: `0 0 ${Math.max(3, size / 3)}px ${color}55`,
+        // are suspended in. A two-colour aura runs its gradient underneath and
+        // uses the radial only to fade the edges out.
+        backgroundImage: color2
+          ? `radial-gradient(circle at 50% 50%, #0000 0%, #0000 45%, #000 82%), ${caAuraGradient({ color, color2, angle }, "66")}`
+          : `radial-gradient(circle at 50% 50%, ${color}66 0%, ${color}22 55%, transparent 78%)`,
+        ...(color2 ? { backgroundBlendMode: "destination-out" as const } : {}),
+        boxShadow: `0 0 ${Math.max(3, size / 3)}px ${caAuraColorAt({ color, color2 }, 0.5)}55`,
       }}
     >
       {children}
@@ -724,7 +792,7 @@ export function AuraShapeMark({
           position: "absolute",
           inset: "22%",
           borderRadius: "9999px",
-          backgroundColor: color,
+          backgroundImage: caAuraGradient({ color, color2, angle }),
           opacity: 0.85,
         }}
       />,
@@ -752,11 +820,12 @@ export function AuraShapeMark({
           {title && <title>{title}</title>}
           <path
             d={AURA_SHAPE_PATHS[shape]}
-            fill={shape === "ring" ? "none" : color}
+            fill={AURA_OUTLINE_SHAPES.has(shape) ? "none" : color}
             fillOpacity={0.28}
             stroke={color}
             strokeWidth={1.6}
             strokeLinejoin="round"
+        strokeLinecap="round"
           />
         </svg>
       </span>
@@ -765,7 +834,7 @@ export function AuraShapeMark({
 
   return field(
     <>
-      <AuraParticleNodes count={PARTICLE_COUNT} color={color} shape={shape} nodesRef={nodesRef} glow />
+      <AuraParticleNodes count={PARTICLE_COUNT} color={color} color2={color2} shape={shape} nodesRef={nodesRef} glow />
       {title && <span className="sr-only">{title}</span>}
     </>,
     hostRef,
@@ -790,34 +859,93 @@ export function CharacterAuraMark({
   title?: string;
 }) {
   const aura = caAuraOf(character, fallbackColor);
-  return <AuraShapeMark color={aura.color} shape={aura.shape} size={size} animate={animate} className={className} title={title} />;
+  return <AuraShapeMark {...aura} size={size} animate={animate} className={className} title={title} />;
 }
 
 /** Colour picker plus shape picker, with a live preview of the pair. */
 export function CaAuraEditor({
   color,
+  color2,
+  angle,
   shape,
   onChange,
 }: {
   color: string | null | undefined;
+  color2?: string | null;
+  angle?: number | null;
   shape: string | null | undefined;
-  onChange: (next: { color: string; shape: CAAuraShape }) => void;
+  onChange: (next: { color: string; color2: string | null; angle: number; shape: CAAuraShape }) => void;
 }) {
-  const resolved = caAuraOf({ caAuraColor: color, caAuraShape: shape });
+  const resolved = caAuraOf({
+    caAuraColor: color,
+    caAuraColor2: color2,
+    caAuraAngle: angle,
+    caAuraShape: shape,
+  });
+  const emit = (patch: Partial<CAAura>) => onChange({ ...resolved, ...patch });
 
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid="ca-aura-editor">
       <input
         type="color"
         value={resolved.color}
-        onChange={(e) => onChange({ color: e.target.value, shape: resolved.shape })}
+        onChange={(e) => emit({ color: e.target.value })}
         className="h-7 w-10 rounded border border-stone-700 bg-stone-900 p-0.5 cursor-pointer"
         aria-label="Aura colour"
         data-testid="input-ca-aura-color"
       />
+
+      {/* The second colour is opt-in: without it the aura is one colour, which
+          is what most are, and an always-on second picker would imply every
+          aura has to be a gradient. */}
+      {resolved.color2 ? (
+        <>
+          <span className="text-stone-600 text-xs">to</span>
+          <input
+            type="color"
+            value={resolved.color2}
+            onChange={(e) => emit({ color2: e.target.value })}
+            className="h-7 w-10 rounded border border-stone-700 bg-stone-900 p-0.5 cursor-pointer"
+            aria-label="Aura second colour"
+            data-testid="input-ca-aura-color2"
+          />
+          <label className="flex items-center gap-1 text-[10px] text-stone-400">
+            <input
+              type="range"
+              min={0}
+              max={359}
+              step={15}
+              value={resolved.angle}
+              onChange={(e) => emit({ angle: caAuraAngleOf(e.target.value) })}
+              className="w-20 accent-amber-600"
+              aria-label="Gradient direction"
+              data-testid="input-ca-aura-angle"
+            />
+            <span className="tabular-nums w-8">{resolved.angle}°</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => emit({ color2: null })}
+            className="text-[10px] text-stone-500 hover:text-stone-300 underline"
+            data-testid="button-ca-aura-gradient-off"
+          >
+            single
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => emit({ color2: shiftHue(resolved.color, 40) })}
+          className="text-[10px] text-stone-500 hover:text-amber-300 underline"
+          data-testid="button-ca-aura-gradient-on"
+        >
+          + gradient
+        </button>
+      )}
+
       <select
         value={resolved.shape}
-        onChange={(e) => onChange({ color: resolved.color, shape: caAuraShapeOf(e.target.value) })}
+        onChange={(e) => emit({ shape: caAuraShapeOf(e.target.value) })}
         className="h-7 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs px-1.5"
         aria-label="Aura shape"
         data-testid="select-ca-aura-shape"
@@ -826,12 +954,42 @@ export function CaAuraEditor({
           <option key={s} value={s}>{CA_AURA_SHAPE_LABELS[s]}</option>
         ))}
       </select>
-      <AuraShapeMark color={resolved.color} shape={resolved.shape} size={30} />
+      <AuraShapeMark {...resolved} size={30} />
       {resolved.color.toLowerCase() === CA_AURA_DEFAULT_COLOR.toLowerCase() && !color && (
         <span className="text-[10px] text-stone-500">default</span>
       )}
     </div>
   );
+}
+
+/** A starting second colour that is visibly a gradient rather than a repeat. */
+function shiftHue(hex: string, degrees: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  if (!m) return hex;
+  let [r, g, b] = [1, 2, 3].map((i) => parseInt(m[i], 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = (((h * 60 + degrees) % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const mm = l - c / 2;
+  const [rr, gg, bb] =
+    h < 60 ? [c, x, 0] :
+    h < 120 ? [x, c, 0] :
+    h < 180 ? [0, c, x] :
+    h < 240 ? [0, x, c] :
+    h < 300 ? [x, 0, c] : [c, 0, x];
+  const to = (v: number) => Math.round((v + mm) * 255).toString(16).padStart(2, "0");
+  return `#${to(rr)}${to(gg)}${to(bb)}`;
 }
 
 /**
@@ -848,11 +1006,15 @@ export function CaAuraEditor({
  */
 export function AuraEdgeField({
   color,
+  color2 = null,
+  angle = 180,
   shape,
   count = 12,
   className = "",
 }: {
   color: string;
+  color2?: string | null;
+  angle?: number;
   shape: CAAuraShape;
   count?: number;
   className?: string;
@@ -865,8 +1027,8 @@ export function AuraEdgeField({
       className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
       data-testid="aura-edge-field"
     >
-      <AuraRing color={color} />
-      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
+      <AuraRing color={color} color2={color2} angle={angle} />
+      <AuraParticleNodes count={count} color={color} color2={color2} shape={shape} nodesRef={nodesRef} />
     </span>
   );
 }
@@ -882,16 +1044,28 @@ export function AuraEdgeField({
  */
 export function AuraCurrentField({
   color,
+  color2 = null,
+  angle = 180,
   shape,
   count = 9,
+  active = false,
   className = "",
 }: {
   color: string;
+  color2?: string | null;
+  angle?: number;
   shape: CAAuraShape;
   count?: number;
+  /** Winds the current up - a roll tray uses it while the dice tumble. */
+  active?: boolean;
   className?: string;
 }) {
-  const { hostRef, nodesRef } = useAuraParticles({ motion: "current", count, animate: shape !== "none" });
+  const { hostRef, nodesRef } = useAuraParticles({
+    motion: "current",
+    count,
+    animate: shape !== "none",
+    speed: active ? 2.6 : 1,
+  });
   return (
     <span
       ref={hostRef}
@@ -899,48 +1073,9 @@ export function AuraCurrentField({
       className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
       data-testid="aura-current-field"
     >
-      <AuraRing color={color} strength={0.7} />
-      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
+      <AuraRing color={color} color2={color2} angle={angle} strength={active ? 1 : 0.7} />
+      <AuraParticleNodes count={count} color={color} color2={color2} shape={shape} nodesRef={nodesRef} />
     </span>
   );
 }
 
-/**
- * The roll tray, and anything else that exists to announce a result.
- *
- * Shapes are thrown out of the middle and fade on the way to the edge, so the
- * tray reads as something arriving rather than something idling. `active`
- * winds it up while the dice are actually rolling, which is the difference
- * between a number landing and a number having landed.
- */
-export function AuraBurstField({
-  color,
-  shape,
-  count = 9,
-  active = false,
-  className = "",
-}: {
-  color: string;
-  shape: CAAuraShape;
-  count?: number;
-  active?: boolean;
-  className?: string;
-}) {
-  const { hostRef, nodesRef } = useAuraParticles({
-    motion: "burst",
-    count,
-    active,
-    animate: shape !== "none",
-  });
-  return (
-    <span
-      ref={hostRef}
-      aria-hidden
-      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
-      data-testid="aura-burst-field"
-    >
-      <AuraRing color={color} strength={active ? 1 : 0.6} />
-      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
-    </span>
-  );
-}

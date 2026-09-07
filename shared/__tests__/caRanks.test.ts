@@ -10,6 +10,7 @@ import {
   caPhysiqueStatEffectTotal,
   caAuraOf,
   caAuraShapeOf,
+  caAuraColorAt,
   CA_AURA_DEFAULT_COLOR,
   CA_STARTING_ENERGY,
   CA_STARTING_PHYSIQUE,
@@ -158,8 +159,38 @@ describe("overload effects", () => {
 
 describe("auras", () => {
   it("uses the character's own colour and shape", () => {
-    expect(caAuraOf({ caAuraColor: "#FF5500", caAuraShape: "flame" }))
-      .toEqual({ color: "#FF5500", shape: "flame" });
+    expect(caAuraOf({ caAuraColor: "#FF5500", caAuraShape: "wisps" }))
+      .toEqual({ color: "#FF5500", color2: null, angle: 180, shape: "wisps" });
+  });
+
+  // The shape list was replaced wholesale. Anyone who had already picked an
+  // aura would otherwise have found it silently blank.
+  it("maps shapes from the old list onto the new one", () => {
+    expect(caAuraShapeOf("flame")).toBe("wisps");
+    expect(caAuraShapeOf("ring")).toBe("rings");
+    expect(caAuraShapeOf("bolt")).toBe("zigzags");
+  });
+
+  it("takes a second colour only alongside the character's own first", () => {
+    const both = caAuraOf({ caAuraColor: "#FF5500", caAuraColor2: "#00AAFF", caAuraAngle: 90 });
+    expect(both.color2).toBe("#00AAFF");
+    expect(both.angle).toBe(90);
+    // Half a gradient painted over someone else's fallback colour would be
+    // someone else's aura.
+    expect(caAuraOf({ caAuraColor2: "#00AAFF" }, "#3D77F0").color2).toBeNull();
+    // A "gradient" between one colour and itself is not a gradient.
+    expect(caAuraOf({ caAuraColor: "#FF5500", caAuraColor2: "#ff5500" }).color2).toBeNull();
+  });
+
+  it("wraps the gradient angle and falls back to straight down", () => {
+    expect(caAuraOf({ caAuraColor: "#FF5500", caAuraAngle: 400 }).angle).toBe(40);
+    expect(caAuraOf({ caAuraColor: "#FF5500", caAuraAngle: -90 }).angle).toBe(270);
+    expect(caAuraOf({ caAuraColor: "#FF5500" }).angle).toBe(180);
+  });
+
+  it("reads a colour off the gradient for surfaces that can only take one", () => {
+    expect(caAuraColorAt({ color: "#000000", color2: "#ffffff" }, 0.5)).toBe("#808080");
+    expect(caAuraColorAt({ color: "#123456", color2: null }, 0.9)).toBe("#123456");
   });
 
   // The fallback is what keeps an auraless character looking the way it did
@@ -178,7 +209,7 @@ describe("auras", () => {
   });
 
   it("falls back to no shape for anything unrecognised", () => {
-    expect(caAuraShapeOf("star")).toBe("star");
+    expect(caAuraShapeOf("stars")).toBe("stars");
     expect(caAuraShapeOf("triangle")).toBe("none");
     expect(caAuraShapeOf(null)).toBe("none");
     expect(caAuraOf({ caAuraShape: "wobble" }).shape).toBe("none");

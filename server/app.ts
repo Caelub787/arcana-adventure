@@ -163,6 +163,8 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_languages text`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_color text`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_shape text`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_color2 text`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_angle integer`,
     // Swampy keeps its own copies of the three C.A.-shaped columns so the two
     // systems' wound/body/pool mechanics can diverge independently.
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS swampy_wounds jsonb NOT NULL DEFAULT '[]'::jsonb`,

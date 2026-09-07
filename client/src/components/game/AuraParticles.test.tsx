@@ -55,7 +55,7 @@ function transforms(container: HTMLElement) {
 
 describe("aura particle engine", () => {
   it("moves the shapes from frame to frame", () => {
-    const { container } = render(<AuraShapeMark color="#c9a227" shape="star" size={64} />);
+    const { container } = render(<AuraShapeMark color="#c9a227" shape="stars" size={64} />);
     advance(10);
     const early = transforms(container);
     expect(early.length).toBeGreaterThan(0);
@@ -68,8 +68,8 @@ describe("aura particle engine", () => {
   it("gives two fields different motion, so neither reads as a loop", () => {
     const { container } = render(
       <>
-        <AuraShapeMark color="#c9a227" shape="star" size={64} />
-        <AuraShapeMark color="#c9a227" shape="star" size={64} />
+        <AuraShapeMark color="#c9a227" shape="stars" size={64} />
+        <AuraShapeMark color="#c9a227" shape="stars" size={64} />
       </>,
     );
     advance(30);
@@ -81,7 +81,7 @@ describe("aura particle engine", () => {
   });
 
   it("keeps every shape under the alpha ceiling", () => {
-    const { container } = render(<AuraShapeMark color="#c9a227" shape="hexagon" size={64} />);
+    const { container } = render(<AuraShapeMark color="#c9a227" shape="hexagons" size={64} />);
     advance(120);
     const opacities = Array.from(
       container.querySelectorAll<HTMLElement>("[data-testid='aura-mark'] > span"),
@@ -105,7 +105,7 @@ describe("aura particle engine", () => {
       },
     );
 
-    render(<AuraShapeMark color="#c9a227" shape="star" size={64} />);
+    render(<AuraShapeMark color="#c9a227" shape="stars" size={64} />);
     // Runs before the observer has said anything: a field must not need an
     // intersection callback before it will draw.
     advance(5);
@@ -120,7 +120,7 @@ describe("aura particle engine", () => {
   });
 
   it("stops the shared loop once the last field unmounts", () => {
-    const { unmount } = render(<AuraShapeMark color="#c9a227" shape="star" size={64} />);
+    const { unmount } = render(<AuraShapeMark color="#c9a227" shape="stars" size={64} />);
     advance(5);
     expect(frames.length).toBeGreaterThan(0);
     unmount();

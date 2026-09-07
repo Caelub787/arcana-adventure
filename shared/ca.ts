@@ -520,17 +520,75 @@ export function caPhysiqueStatEffectTotal(
 // the party tracker's outline and roll glow, the sheet's own border.
 // ---------------------------------------------------------------------------
 
-export const CA_AURA_SHAPES = ["none", "ring", "star", "diamond", "hexagon", "bolt", "flame"] as const;
+export const CA_AURA_SHAPES = [
+  "none",
+  "bubbles",
+  "rings",
+  "hexagons",
+  "diamonds",
+  "triangles",
+  "squares",
+  "shards",
+  "sparks",
+  "motes",
+  "wisps",
+  "spirals",
+  "crescents",
+  "ripples",
+  "cracks",
+  "runes",
+  "eyes",
+  "stars",
+  "crosses",
+  "arcs",
+  "links",
+  "cells",
+  "webbing",
+  "waves",
+  "zigzags",
+] as const;
 export type CAAuraShape = typeof CA_AURA_SHAPES[number];
 
 export const CA_AURA_SHAPE_LABELS: Record<CAAuraShape, string> = {
   none: "None",
-  ring: "Ring",
-  star: "Star",
-  diamond: "Diamond",
-  hexagon: "Hexagon",
-  bolt: "Bolt",
-  flame: "Flame",
+  bubbles: "Bubbles",
+  rings: "Rings",
+  hexagons: "Hexagons",
+  diamonds: "Diamonds",
+  triangles: "Triangles",
+  squares: "Squares",
+  shards: "Shards",
+  sparks: "Sparks",
+  motes: "Motes",
+  wisps: "Wisps",
+  spirals: "Spirals",
+  crescents: "Crescents",
+  ripples: "Ripples",
+  cracks: "Cracks",
+  runes: "Runes",
+  eyes: "Eyes",
+  stars: "Stars",
+  crosses: "Crosses",
+  arcs: "Arcs",
+  links: "Chains",
+  cells: "Cells",
+  webbing: "Webbing",
+  waves: "Waves",
+  zigzags: "Zigzags",
+};
+
+/**
+ * Shapes the old, shorter list used, mapped onto their nearest replacement so
+ * an aura chosen before the list changed still draws something rather than
+ * silently falling back to none.
+ */
+const CA_AURA_SHAPE_ALIASES: Record<string, CAAuraShape> = {
+  ring: "rings",
+  star: "stars",
+  diamond: "diamonds",
+  hexagon: "hexagons",
+  bolt: "zigzags",
+  flame: "wisps",
 };
 
 /** The colour used when a character has no aura of their own yet. */
@@ -538,6 +596,10 @@ export const CA_AURA_DEFAULT_COLOR = "#FBB524";
 
 export interface CAAura {
   color: string;
+  /** The far end of the gradient, or null when the aura is a single colour. */
+  color2: string | null;
+  /** Which way the gradient runs, in degrees clockwise from "up". */
+  angle: number;
   shape: CAAuraShape;
 }
 
@@ -546,9 +608,50 @@ function isHexColor(value: unknown): value is string {
 }
 
 export function caAuraShapeOf(value: unknown): CAAuraShape {
-  return (CA_AURA_SHAPES as readonly string[]).includes(value as string)
-    ? (value as CAAuraShape)
-    : "none";
+  const raw = typeof value === "string" ? value.trim() : "";
+  if ((CA_AURA_SHAPES as readonly string[]).includes(raw)) return raw as CAAuraShape;
+  return CA_AURA_SHAPE_ALIASES[raw] ?? "none";
+}
+
+/** Degrees, wrapped into 0..359. Anything unusable reads as straight down. */
+export function caAuraAngleOf(value: unknown): number {
+  const n = typeof value === "number" ? value : parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(n)) return 180;
+  return ((Math.round(n) % 360) + 360) % 360;
+}
+
+/**
+ * The aura as a CSS gradient, for the surfaces that can paint one - the round
+ * mark's field, an edge ring. A single-colour aura still returns a gradient,
+ * from the colour to itself, so callers have one code path.
+ */
+export function caAuraGradient(aura: Pick<CAAura, "color" | "color2" | "angle">, opacityHex = ""): string {
+  const from = `${aura.color}${opacityHex}`;
+  const to = `${aura.color2 ?? aura.color}${opacityHex}`;
+  return `linear-gradient(${aura.angle}deg, ${from} 0%, ${to} 100%)`;
+}
+
+/**
+ * The colour a given fraction along the aura, for the things that can only
+ * take one - a particle, a border, a bar. 0 is the gradient's start.
+ */
+export function caAuraColorAt(aura: Pick<CAAura, "color" | "color2">, t: number): string {
+  if (!aura.color2) return aura.color;
+  const a = hexToRgb(aura.color);
+  const b = hexToRgb(aura.color2);
+  if (!a || !b) return aura.color;
+  const k = Math.max(0, Math.min(1, t));
+  const mix = (x: number, y: number) => Math.round(x + (y - x) * k);
+  return rgbToHex(mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2]));
+}
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**
@@ -558,14 +661,32 @@ export function caAuraShapeOf(value: unknown): CAAuraShape {
  * NPC - rather than dropping every auraless character onto the same amber.
  */
 export function caAuraOf(
-  character: { caAuraColor?: string | null; caAuraShape?: string | null } | null | undefined,
+  character:
+    | {
+        caAuraColor?: string | null;
+        caAuraColor2?: string | null;
+        caAuraAngle?: number | null;
+        caAuraShape?: string | null;
+      }
+    | null
+    | undefined,
   fallbackColor?: string | null,
 ): CAAura {
   const raw = character?.caAuraColor;
   const color = isHexColor(raw)
     ? raw.trim()
     : (isHexColor(fallbackColor) ? fallbackColor.trim() : CA_AURA_DEFAULT_COLOR);
-  return { color, shape: caAuraShapeOf(character?.caAuraShape) };
+  // A second colour only counts when the first one is the character's own -
+  // half a gradient over a fallback colour would be someone else's aura.
+  const second = isHexColor(raw) && isHexColor(character?.caAuraColor2)
+    ? character!.caAuraColor2!.trim()
+    : null;
+  return {
+    color,
+    color2: second && second.toLowerCase() !== color.toLowerCase() ? second : null,
+    angle: caAuraAngleOf(character?.caAuraAngle),
+    shape: caAuraShapeOf(character?.caAuraShape),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -336,6 +336,10 @@ export const characters = pgTable("characters", {
   // animated in the aura colour; see CA_AURA_SHAPES in shared/ca.ts.
   caAuraColor: text("ca_aura_color"),
   caAuraShape: text("ca_aura_shape"),
+  // The far end of the aura's gradient, and which way it runs. Null second
+  // colour means the aura is a single colour.
+  caAuraColor2: text("ca_aura_color2"),
+  caAuraAngle: integer("ca_aura_angle"),
   // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
   // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
   // two damage thresholds rather than absorbing damage directly, Armour Slots

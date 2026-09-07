@@ -2610,6 +2610,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
           let beaconColor = membership?.beaconColor || '#FBB524'; // Default amber color
           let beaconShape: string = 'none';
+          let beaconColor2: string | null = null;
+          let beaconAngle = 180;
 
           // C.A. replaces the per-member beacon colour with the assigned
           // character's Aura, so a ping on the map is recognisably that
@@ -2622,6 +2624,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (auraChar) {
               const aura = caAuraOf(auraChar as any, beaconColor);
               beaconColor = aura.color;
+              beaconColor2 = aura.color2;
+              beaconAngle = aura.angle;
               beaconShape = aura.shape;
             }
           }
@@ -2637,6 +2641,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               gridX,
               gridY,
               beaconColor,
+              beaconColor2,
+              beaconAngle,
               beaconShape
             });
             
@@ -17733,6 +17739,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } as any);
 
       broadcastToCampaign(campaignId, { type: 'note_created', noteId: created.id, campaignId, userId: req.session.userId });
+      // Every other create path tells the author directly as well as the
+      // room; this one only told the room, so an author whose socket was not
+      // in it saw nothing.
+      sendToUser(req.session.userId!, { type: 'notes_changed', noteId: created.id, campaignId });
       res.status(201).json(created);
     } catch (e) {
       console.error("Failed to get or create entity note:", e);

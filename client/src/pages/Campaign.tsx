@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
-import { AuraCurrentField, AuraBurstField, AuraEdgeField } from "@/components/game/CAPanels";
+import { AuraCurrentField, AuraEdgeField } from "@/components/game/CAPanels";
 import { caAuraOf } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
@@ -955,7 +955,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string; recipientId?: string; recipientName?: string }>>([]);
   const [chatTarget, setChatTarget] = useState<string>('all');
-  const [filter, setFilter] = useState<'all' | 'rolls' | 'chat' | 'events'>('all');
+  const [filter, setFilter] = useState<'all' | 'rolls' | 'chat'>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -1074,14 +1074,13 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
   const filteredMessages = visibleMessages.filter((msg: any) => {
     if (filter === 'all') return true;
     if (filter === 'rolls') return isRollMessage(msg);
-    if (filter === 'events') return isEventMessage(msg);
     return !isRollMessage(msg) && !isEventMessage(msg);
   });
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-1.5 px-4 pt-3 pb-2 border-b border-stone-800">
-        {(['all', 'rolls', 'chat', 'events'] as const).map((f) => (
+        {(['all', 'rolls', 'chat'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -1150,7 +1149,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
                   )}
                   {/* Over the portrait, and few enough at 32px that it reads
                       as the frame moving rather than as clutter on a face. */}
-                  {aura && <AuraCurrentField color={aura.color} shape={aura.shape} count={4} />}
+                  {aura && <AuraCurrentField {...aura} count={4} />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -1173,7 +1172,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
                     className="relative self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold bg-stone-950/40"
                     style={{ borderColor: color, color }}
                   >
-                    {aura && <AuraBurstField color={aura.color} shape={aura.shape} count={6} />}
+                    {aura && <AuraCurrentField {...aura} count={4} />}
                     <span className="relative">{rollTotal}</span>
                   </span>
                 )}
@@ -6865,8 +6864,11 @@ export default function Campaign() {
     gridY: number;
     username: string;
     beaconColor?: string;
-    // C.A. only: the aura shape the server resolved from the pinging player's
-    // assigned character, drawn inside the ring.
+    // C.A. only: the aura the server resolved from the pinging player's
+    // assigned character, drawn inside the ring - the far end of its gradient
+    // and which way that runs along with it.
+    beaconColor2?: string | null;
+    beaconAngle?: number;
     beaconShape?: string;
   }>>([]);
   
@@ -7071,6 +7073,19 @@ export default function Campaign() {
   // their own docked note independently.
   const [dockedCharNotes, setDockedCharNotes] = useState<Record<string, string>>({});
 
+  // The three lists every notes surface reads: the folder tree, the notes in
+  // the open folder, and the flat set the sidebar's tree is built from.
+  const invalidateNoteQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+  }, [queryClient]);
+
+  // The socket subscription is set up once and must not tear down and rebuild
+  // every time this identity changes, so it reads through a ref.
+  const invalidateNoteQueriesRef = useRef(invalidateNoteQueries);
+  useEffect(() => { invalidateNoteQueriesRef.current = invalidateNoteQueries; }, [invalidateNoteQueries]);
+
   // Which note belongs to which sheet, remembered for the session.
   //
   // Every press of a Notes button went to the server for the note's id before
@@ -7088,6 +7103,10 @@ export default function Campaign() {
     if (known) return known;
     const note = await api.getOrCreateEntityNote(effectiveCampaignId!, entityType, entityId, name);
     entityNoteIds.current.set(key, note.id);
+    // This route creates a note when there isn't one, and nothing local told
+    // the cache - so a note born from a sheet's Notes button stayed missing
+    // from the sidebar until a reload.
+    invalidateNoteQueries();
     return note.id;
   };
 
@@ -7366,6 +7385,11 @@ export default function Campaign() {
           total: typeof n.total === 'number' ? n.total : null,
           ts: typeof n.ts === 'number' ? n.ts : Date.now(),
           dieType: n.dieType || undefined,
+          // These are the rolls that already happened. Flagged rather than
+          // compared against a mount timestamp, because a row's `ts` can come
+          // from the server while "now" comes from this machine, and two
+          // clocks is not something to hang an animation on.
+          historical: true,
         }));
       setRollFeed(hydrated.slice(0, 50));
     }).catch(() => {});
@@ -9902,12 +9926,30 @@ export default function Campaign() {
           });
         }
         
+        // Notes created, deleted or moved anywhere in this campaign, by
+        // anyone. The notes panel subscribes to these too, but only while it
+        // is mounted and only in the instance that is - and there are three
+        // of them (the sidebar, a docked pane, a floating note). Handling it
+        // once at the page means the lists are current whichever is open,
+        // and current the moment one is opened.
+        if (
+          data.type === 'note_created' ||
+          data.type === 'note_deleted' ||
+          data.type === 'note_changed' ||
+          data.type === 'notes_changed' ||
+          data.type === 'note_folder_changed'
+        ) {
+          if (!data.campaignId || data.campaignId === effectiveCampaignId) {
+            invalidateNoteQueriesRef.current();
+          }
+        }
+
         // Handle beacon messages from all players (including self for consistency)
         if (data.type === 'beacon') {
-          const { id, gridX, gridY, username, beaconColor, beaconShape } = data;
+          const { id, gridX, gridY, username, beaconColor, beaconColor2, beaconAngle, beaconShape } = data;
           
           // Add the new beacon with its color
-          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username, beaconColor, beaconShape }]);
+          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username, beaconColor, beaconColor2, beaconAngle, beaconShape }]);
           
           // Remove beacon after animation completes (~1.5 seconds)
           setTimeout(() => {
@@ -13343,7 +13385,7 @@ export default function Campaign() {
                 its own ring off while this one is up. */}
             {dockedCharNotes[sheet.id] && (sheet as any)?.caAuraColor && (() => {
               const aura = caAuraOf(sheet, null);
-              return <AuraEdgeField color={aura.color} shape={aura.shape} />;
+              return <AuraEdgeField {...aura} />;
             })()}
             {/* This wrapper must be a flex COLUMN: CharacterSheet's root sizes
                 itself with `flex-1 min-h-0`, which is inert under a plain block

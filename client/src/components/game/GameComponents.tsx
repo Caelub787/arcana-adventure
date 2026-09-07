@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
-import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField, AuraBurstField } from "@/components/game/CAPanels";
+import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -716,7 +716,7 @@ interface BattleMapProps {
     characterId?: string;
     characterName?: string;
   }>;
-  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string; beaconColor?: string; beaconShape?: string }>;
+  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string; beaconColor?: string; beaconColor2?: string | null; beaconAngle?: number; beaconShape?: string }>;
   onBeacon?: (cellKey: string) => void;
   otherPlayersViewports?: Map<string, {
     userId: string;
@@ -3288,6 +3288,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     >
                       <AuraShapeMark
                         color={color}
+                        color2={beacon.beaconColor2 ?? null}
+                        angle={beacon.beaconAngle ?? 180}
                         shape={beacon.beaconShape as any}
                         size={effectiveGridSize * 1.9}
                         speed={7}
@@ -9584,8 +9586,6 @@ const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, statsOnly = false, onOpenCharacterSheet, onUpdateCharacter, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const isMobile = useIsMobile();
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
-  const [editingEnergy, setEditingEnergy] = useState(false);
-  const [energyDraft, setEnergyDraft] = useState('');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
     queryKey: ['hotbars', character?.id],
@@ -9677,144 +9677,10 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
 
   return (
     <>
-      {/* Mini self-tracker card - Bottom LEFT. Same rectangular-card look as
-          the top PinnedRosterChip: portrait, name, resource bars, DC -
-          border tinted to the owning player's beacon color (or a stable
-          per-NPC color when GM-inspecting an unowned character). The whole
-          card opens the character sheet; double-clicking the Energy value
-          edits it inline without leaving the battlemap. */}
-      {(() => {
-        const ownerMember = (campaignMembers || []).find((m: any) => m.assignedCharacterId === character.id);
-        const cardAccentColor = characterTrackerColor(character, ownerMember);
-        const accentMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(cardAccentColor);
-        const accentRgb = accentMatch ? `${parseInt(accentMatch[1], 16)}, ${parseInt(accentMatch[2], 16)}, ${parseInt(accentMatch[3], 16)}` : '61, 119, 240';
-        const isCABars = isWoundSystem(campaignSystem);
-        const primaryBar = isCABars
-          ? (() => {
-              const wr = woundSystemRules(campaignSystem);
-              return { value: Math.max(0, wr.WOUND_MAX - wr.woundTotalCost(wr.woundsOf(character))), max: wr.WOUND_MAX };
-            })()
-          : { value: Math.min(character.hp ?? 10, effectiveMaxHp), max: effectiveMaxHp };
-        const energyValue = Math.min(character.energy ?? 10, effectiveMaxEnergy);
-
-        const commitEnergyEdit = () => {
-          const parsed = parseInt(energyDraft, 10);
-          if (!isNaN(parsed)) {
-            onUpdateCharacter?.({ energy: Math.max(0, parsed) });
-          }
-          setEditingEnergy(false);
-        };
-
-        return (
-          <div
-            className="fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
-            style={{ left: '8px' }}
-            data-collision-id="hp-dc-display"
-          >
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpenCharacterSheet?.()}
-              className="chrome-frame chrome-frame-lg relative flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
-              style={{ borderColor: cardAccentColor }}
-              data-testid="button-character-overview"
-            >
-              {character?.caAuraColor && (() => {
-                const aura = caAuraOf(character, cardAccentColor);
-                return <AuraCurrentField color={aura.color} shape={aura.shape} count={5} />;
-              })()}
-              <div className="relative w-9 h-9 md:w-12 md:h-12 rounded-md overflow-hidden bg-stone-800 shrink-0">
-                {character.portrait ? (
-                  <img src={character.portrait} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-stone-600">
-                    <User className="h-4 w-4 md:h-5 md:w-5" />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="text-xs md:text-sm font-bold text-white truncate leading-tight">{character.name || 'Character'}</div>
-
-                {!isWoundSystem(campaignSystem) ? (
-                  <div className="flex items-center gap-1">
-                    <Heart className="h-3 w-3 text-red-500 shrink-0" />
-                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-                        initial={false}
-                        animate={{ width: `${Math.max(0, Math.min(100, (primaryBar.value / Math.max(1, primaryBar.max)) * 100))}%` }}
-                        transition={{ duration: 0.8, ease: "easeInOut" }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <Heart className="h-3 w-3 text-red-500 shrink-0" />
-                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full ${vitalBarColor(primaryBar.value, primaryBar.max)}`}
-                        initial={false}
-                        animate={{ width: `${(primaryBar.value / Math.max(1, primaryBar.max)) * 100}%` }}
-                        transition={{ duration: 0 }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <Zap className="h-3 w-3 text-cyan-400 shrink-0" />
-                  {editingEnergy ? (
-                    <input
-                      type="number"
-                      autoFocus
-                      value={energyDraft}
-                      onChange={(e) => setEnergyDraft(e.target.value)}
-                      onBlur={commitEnergyEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitEnergyEdit();
-                        if (e.key === 'Escape') setEditingEnergy(false);
-                      }}
-                      className="flex-1 h-4 min-w-0 bg-black/60 border border-cyan-500 rounded text-[9px] md:text-[10px] text-cyan-200 px-1"
-                      data-testid="input-hotbar-energy"
-                    />
-                  ) : (
-                    <div
-                      className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden cursor-text"
-                      onDoubleClick={() => { setEnergyDraft(String(energyValue)); setEditingEnergy(true); }}
-                      title="Double-click to edit"
-                    >
-                      <motion.div
-                        className="h-full bg-cyan-500"
-                        initial={false}
-                        animate={{ width: `${Math.max(0, Math.min(100, (energyValue / effectiveMaxEnergy) * 100))}%` }}
-                        transition={{ duration: 0.8, ease: "easeInOut" }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {showManaBar && (
-                  <div className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3 text-fuchsia-400 shrink-0" />
-                    <div className="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-fuchsia-700 to-fuchsia-400"
-                        initial={false}
-                        animate={{ width: `${Math.max(0, Math.min(100, ((character.mana ?? 0) / effectiveMaxMana) * 100))}%` }}
-                        transition={{ duration: 0.8, ease: "easeInOut" }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {campaignSystem !== 'aa-v3' && (
-                  <div className="text-[10px] text-stone-400 font-medium">DC {totalDC}</div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* The mini self-tracker card that used to sit bottom-left is gone.
+          It showed the viewer their own portrait, bars and DC, which is
+          what the pinned player tracker along the top already does, for
+          everyone rather than just you. */}
 
       {/* Hotbar Display - centered on desktop; pinned to the right edge on
           mobile like before, so it doesn't collide with the bottom-left
@@ -11394,6 +11260,14 @@ export type PinnedRollFeedEntry = {
   // e.g. "d20", "d6" - drives the tumble animation's random range so it
   // never flashes a number the actual die couldn't land on.
   dieType?: string;
+  /**
+   * Set on the rows restored from the server's roll cache when a campaign
+   * loads. Those are history, not something that just happened, and the
+   * tracker must not tumble a die for them - which it did, because the feed
+   * arrives a moment after the cards mount, so the first hydrated roll looked
+   * exactly like a fresh one landing.
+   */
+  historical?: boolean;
 };
 
 // Top-of-screen party tracker: GM-pinned members shown as small portrait
@@ -11699,6 +11573,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   useEffect(() => {
     if (!latest || latest.id === lastSeenIdRef.current) return;
     lastSeenIdRef.current = latest.id;
+    if (latest.historical) return;
     playReveal(latest);
   }, [latest?.id]);
 
@@ -11792,7 +11667,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
         }}
       >
-       {cardAura && <AuraCurrentField color={cardAura.color} shape={cardAura.shape} />}
+       {cardAura && <AuraCurrentField {...cardAura} />}
        {compact ? (
         <>
           {/* Portrait and name on one row, then the bars full width beneath —
@@ -11931,7 +11806,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
               }}
               data-testid={`pinned-roll-${testId}`}
             >
-              {cardAura && <AuraBurstField color={cardAura.color} shape={cardAura.shape} active={rolling} />}
+              {cardAura && <AuraCurrentField {...cardAura} count={7} active={rolling} />}
               <div className="text-[9px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
               <div className={`${compact ? 'text-lg' : 'text-xl'} font-bold leading-tight ${rolling ? 'animate-pulse' : ''}`} style={{ color: borderColor }}>
                 {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}
@@ -11980,6 +11855,7 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
     const latest = rollFeed[0];
     if (!latest || latest.id === lastSeenIdRef.current) return;
     lastSeenIdRef.current = latest.id;
+    if (latest.historical) return;
     const isPinned =
       // userId first, for the same reason the tracker prefers it: a nicknamed
       // roll would otherwise look like it belongs to nobody pinned.
@@ -12023,7 +11899,7 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
             className="relative px-3 py-1.5 rounded-lg bg-stone-900/95 border shadow-lg flex items-center gap-2"
             style={{ borderColor: color }}
           >
-            {aura && <AuraBurstField color={aura.color} shape={aura.shape} count={7} active />}
+            {aura && <AuraCurrentField {...aura} count={6} active />}
             <span className="relative text-xs font-bold truncate max-w-[100px]" style={{ color }}>{r.characterName || r.username}</span>
             <span className="relative text-xs text-stone-300 truncate max-w-[160px]">{r.text}</span>
             {r.total !== null && <span className="relative text-sm font-bold" style={{ color }}>{r.total}</span>}
@@ -21841,7 +21717,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           hence a bright line under the header and nothing down the sides. An
           inset ring with its own layer can't be clipped. */}
       {caSheetAuraSet && caSheetAura && !hideAuraEdge && (
-        <AuraEdgeField color={caSheetAura.color} shape={caSheetAura.shape} />
+        <AuraEdgeField {...caSheetAura} />
       )}
       {/* Back button header for template/admin view */}
       {isTemplate && onClose && (
@@ -22160,10 +22036,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             get half-committed. */}
                         <CaAuraEditor
                           color={caEdit.draft?.color}
+                          color2={caEdit.draft?.color2}
+                          angle={caEdit.draft?.angle}
                           shape={caEdit.draft?.shape}
-                          onChange={({ color, shape }) => {
-                            caEdit.setDraft({ color, shape });
-                            onUpdate?.({ caAuraColor: color, caAuraShape: shape } as any);
+                          onChange={(next) => {
+                            caEdit.setDraft(next);
+                            onUpdate?.({
+                              caAuraColor: next.color,
+                              caAuraColor2: next.color2,
+                              caAuraAngle: next.angle,
+                              caAuraShape: next.shape,
+                            } as any);
                           }}
                         />
                         <Button
@@ -22185,6 +22068,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         testId="text-ca-aura"
                         {...caEdit.pressHandlers('aura', {
                           color: (liveCharacter as any).caAuraColor || '',
+                          color2: (liveCharacter as any).caAuraColor2 || null,
+                          angle: (liveCharacter as any).caAuraAngle ?? 180,
                           shape: (liveCharacter as any).caAuraShape || 'none',
                         })}
                       >

@@ -344,7 +344,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 data-testid={`free-hotbar-slot-${slotIndex}`}
               >
                 {slotAura && (
-                  <AuraCurrentField color={slotAura.color} shape={slotAura.shape} count={4} />
+                  <AuraCurrentField {...slotAura} count={4} />
                 )}
                 {entry ? (
                   entry.character ? (() => {
