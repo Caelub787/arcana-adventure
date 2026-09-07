@@ -3219,35 +3219,29 @@ function DashCard({
   icon: Icon,
   title,
   description,
-  hoverBorder = 'hover:border-amber-600',
-  iconBg = 'bg-amber-700/20',
-  iconColor = 'text-amber-500',
-  titleColor = 'text-amber-500',
-  descColor = 'text-stone-400',
 }: {
   onClick: () => void;
   testId: string;
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
-  hoverBorder?: string;
-  iconBg?: string;
-  iconColor?: string;
-  titleColor?: string;
-  descColor?: string;
 }) {
+  // Every tile used to be able to pick its own colour, and a good third of
+  // them did - cyan, emerald, rose - which is why the library read as a
+  // different app to the sheets. There is one accent now, so there is nothing
+  // to pass.
   return (
     <Card
-      className={`bg-stone-900 border-stone-700 cursor-pointer ${hoverBorder} transition-colors`}
+      className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
       onClick={onClick}
       data-testid={testId}
     >
       <CardHeader>
-        <div className={`h-12 w-12 rounded-lg ${iconBg} flex items-center justify-center mb-2`}>
-          <Icon className={`h-6 w-6 ${iconColor}`} />
+        <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+          <Icon className="h-6 w-6 text-amber-500" />
         </div>
-        <CardTitle className={titleColor}>{title}</CardTitle>
-        <CardDescription className={descColor}>{description}</CardDescription>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription className="text-stone-400">{description}</CardDescription>
       </CardHeader>
     </Card>
   );
@@ -3660,17 +3654,15 @@ function V3AmmunitionTypesView({ systemSlug, personal }: { systemSlug: string; p
 function DashSection({
   title,
   icon: Icon,
-  color,
   children,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
   children: React.ReactNode;
 }) {
   return (
     <section data-testid={`dash-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
-      <div className={`flex items-center gap-2 mb-3 ${color}`}>
+      <div className="flex items-center gap-2 mb-3 text-amber-400">
         <Icon className="h-4 w-4" />
         <h3 className="text-sm font-semibold uppercase tracking-wide">{title}</h3>
         <div className="flex-1 h-px bg-stone-800 ml-2" />
@@ -4002,17 +3994,13 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
   if (systemSlug === 'swampy') {
     return (
       <div className="space-y-8" data-testid="dashboard-swampy">
-        <DashSection title="Beyond the Veil" icon={Sparkles} color="text-emerald-400">
+        <DashSection title="Beyond the Veil" icon={Sparkles}>
           <DashCard
             onClick={() => onNavigate('swampy-warrens')}
             testId="card-swampy-warrens"
             icon={Globe}
             title="Warrens"
             description="Living worlds beyond the Veil. Set each one's condition, nature, Paths, Houses and Scars - the condition is what shapes every Working drawn from it."
-            hoverBorder="hover:border-emerald-600"
-            iconBg="bg-emerald-700/20"
-            iconColor="text-emerald-500"
-            titleColor="text-emerald-500"
           />
           <DashCard
             onClick={() => onNavigate('swampy-deck')}
@@ -4020,24 +4008,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             icon={Layers}
             title="Deck of Houses"
             description="The cards a reading is drawn from, each with an upright and a reversed meaning. A reading reveals movement and pressure, it does not set the future."
-            hoverBorder="hover:border-emerald-600"
-            iconBg="bg-emerald-700/20"
-            iconColor="text-emerald-500"
-            titleColor="text-emerald-500"
           />
         </DashSection>
 
-        <DashSection title="Items & Characters" icon={Package} color="text-amber-400">
+        <DashSection title="Items & Characters" icon={Package}>
           <DashCard
             onClick={() => onNavigate('items')}
             testId="card-system-items"
             icon={Package}
             title="System Items"
             description="Gear, relics and anything else a character can carry. Items work the same way here as elsewhere - the brief changes magic, not equipment."
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
           />
           <DashCard
             onClick={() => onNavigate('characters')}
@@ -4045,10 +4025,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             icon={Users}
             title="Character Templates"
             description="Pre-built characters and NPCs to drop into a campaign"
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
           />
         </DashSection>
 
@@ -4062,17 +4038,13 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
   if (systemSlug === 'aa-v3') {
     return (
       <div className="space-y-8" data-testid="dashboard-v3">
-        <DashSection title="Items & Templates" icon={Package} color="text-amber-400">
+        <DashSection title="Items & Templates" icon={Package}>
           <DashCard
             onClick={() => onNavigate('items')}
             testId="card-system-items"
             icon={Package}
             title="System Items"
             description="Manage weapons, armor, consumables, and other items available across all campaigns"
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
           />
           <DashCard
             onClick={() => onNavigate('crafter-recipe-templates')}
@@ -4080,24 +4052,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             icon={Hammer}
             title="Crafter Recipe Templates"
             description="Build shared recipe lists and link them to crafter items. Edits propagate to every linked crafter automatically."
-            hoverBorder="hover:border-amber-600"
-            iconBg="bg-amber-700/20"
-            iconColor="text-amber-500"
-            titleColor="text-amber-500"
           />
         </DashSection>
 
-        <DashSection title="Spells & Magic" icon={Wand2} color="text-amber-400">
+        <DashSection title="Spells & Magic" icon={Wand2}>
             <DashCard
               onClick={() => onNavigate('v3-spells')}
               testId="card-v3-spells"
               icon={Wand2}
               title="Crafted Spells"
               description="Review player-crafted V3 spells and approve a canonical name, description, and image per composition"
-              hoverBorder="hover:border-amber-600"
-              iconBg="bg-amber-700/20"
-              iconColor="text-amber-500"
-              titleColor="text-amber-500"
             />
             <DashCard
               onClick={() => onNavigate('element-requirements')}
@@ -4105,24 +4069,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Lock}
               title="Element Requirements"
               description="Gate which spell elements players may craft with, requiring a Knowledge or item (optionally consumed) per element"
-              hoverBorder="hover:border-amber-600"
-              iconBg="bg-amber-700/20"
-              iconColor="text-amber-500"
-              titleColor="text-amber-500"
             />
           </DashSection>
 
-        <DashSection title="Weapons & Techniques" icon={Sword} color="text-rose-400">
+        <DashSection title="Weapons & Techniques" icon={Sword}>
             <DashCard
               onClick={() => onNavigate('techniques')}
               testId="card-techniques"
               icon={Sword}
               title="Techniques"
               description="Define weapon techniques: energy cost, unlock requirements, and a base-damage or skill-check roll"
-              hoverBorder="hover:border-rose-600"
-              iconBg="bg-rose-700/20"
-              iconColor="text-rose-500"
-              titleColor="text-rose-500"
             />
             <DashCard
               onClick={() => onNavigate('technique-groups')}
@@ -4130,24 +4086,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Layers}
               title="Weapon Techniques"
               description="Group techniques together, then assign a group to a weapon so its wielder can use them"
-              hoverBorder="hover:border-rose-600"
-              iconBg="bg-rose-700/20"
-              iconColor="text-rose-500"
-              titleColor="text-rose-500"
             />
           </DashSection>
 
-        <DashSection title="Actions & Abilities" icon={Sparkles} color="text-amber-400">
+        <DashSection title="Actions & Abilities" icon={Sparkles}>
             <DashCard
               onClick={() => onNavigate('action-tokens')}
               testId="card-action-tokens"
               icon={Sparkles}
               title="Action Tokens"
               description="Define reusable action token types (e.g. Second Wind, Rage) that GMs can assign to characters"
-              hoverBorder="hover:border-amber-600"
-              iconBg="bg-amber-700/20"
-              iconColor="text-amber-500"
-              titleColor="text-amber-500"
             />
             <DashCard
               onClick={() => onNavigate('advanced-item-types')}
@@ -4155,10 +4103,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Hammer}
               title="Advanced Item Types"
               description="Define named item types (e.g. Metal Weapon) to tag items and target crafter repair recipes"
-              hoverBorder="hover:border-amber-600"
-              iconBg="bg-amber-700/20"
-              iconColor="text-amber-500"
-              titleColor="text-amber-500"
             />
             {systemSlug === 'aa-v3' && (
               <DashCard
@@ -4167,25 +4111,17 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
                 icon={Crosshair}
                 title="Ammunition Types"
                 description="Define ammunition types (e.g. Arrow, Bolt) so ranged weapons can require matching ammo to fire"
-                hoverBorder="hover:border-amber-600"
-                iconBg="bg-amber-700/20"
-                iconColor="text-amber-500"
-                titleColor="text-amber-500"
               />
             )}
           </DashSection>
 
-        <DashSection title="Species & Progression" icon={Users} color="text-emerald-400">
+        <DashSection title="Species & Progression" icon={Users}>
           <DashCard
             onClick={() => onNavigate('species')}
             testId="card-system-species"
             icon={Users}
             title="System Species"
             description="Define playable races and species with their unique traits and abilities"
-            hoverBorder="hover:border-emerald-600"
-            iconBg="bg-emerald-700/20"
-            iconColor="text-emerald-500"
-            titleColor="text-emerald-500"
           />
           <DashCard
             onClick={() => onNavigate('feat-trees')}
@@ -4193,10 +4129,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
             icon={GitBranch}
             title="Skill Trees"
             description="Create and manage skill trees for species and classes"
-            hoverBorder="hover:border-emerald-600"
-            iconBg="bg-emerald-700/20"
-            iconColor="text-emerald-500"
-            titleColor="text-emerald-500"
           />
           {isAdmin && (
             <DashCard
@@ -4205,25 +4137,17 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Layers}
               title="Classes"
               description="Create and manage character classes with skill trees"
-              hoverBorder="hover:border-emerald-600"
-              iconBg="bg-emerald-700/20"
-              iconColor="text-emerald-500"
-              titleColor="text-emerald-500"
             />
           )}
         </DashSection>
 
-        <DashSection title="Characters & Mechanics" icon={User} color="text-cyan-400">
+        <DashSection title="Characters & Mechanics" icon={User}>
             <DashCard
               onClick={() => onNavigate('skills')}
               testId="card-system-skills"
               icon={BookOpen}
               title="Knowledge"
               description="Create knowledge that can be added to character sheets"
-              hoverBorder="hover:border-cyan-600"
-              iconBg="bg-cyan-700/20"
-              iconColor="text-cyan-500"
-              titleColor="text-cyan-500"
             />
             <DashCard
               onClick={() => onNavigate('traits')}
@@ -4231,10 +4155,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Star}
               title="Traits"
               description="Create traits with limited uses that reset on long rest"
-              hoverBorder="hover:border-cyan-600"
-              iconBg="bg-cyan-700/20"
-              iconColor="text-cyan-500"
-              titleColor="text-cyan-500"
             />
             <DashCard
               onClick={() => onNavigate('token-effects')}
@@ -4242,10 +4162,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Flame}
               title="Token Effects"
               description="Define status effects like poison, burning, or stun that can be applied to tokens in combat"
-              hoverBorder="hover:border-cyan-600"
-              iconBg="bg-cyan-700/20"
-              iconColor="text-cyan-500"
-              titleColor="text-cyan-500"
             />
             <DashCard
               onClick={() => onNavigate('characters')}
@@ -4253,25 +4169,16 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={User}
               title="Character Templates"
               description="Create reusable character templates for quick character creation"
-              hoverBorder="hover:border-cyan-600"
-              iconBg="bg-cyan-700/20"
-              iconColor="text-cyan-500"
-              titleColor="text-cyan-500"
             />
           </DashSection>
 
-        <DashSection title="Archives" icon={Archive} color="text-stone-400">
+        <DashSection title="Archives" icon={Archive}>
             <DashCard
               onClick={() => onNavigate('archived-items')}
               testId="card-archived-items"
               icon={Archive}
               title="Archived Items"
               description="View and restore archived items that are no longer active"
-              hoverBorder="hover:border-stone-500"
-              iconBg="bg-stone-700/20"
-              iconColor="text-stone-400"
-              titleColor="text-stone-400"
-              descColor="text-stone-500"
             />
             <DashCard
               onClick={() => onNavigate('archived-spells')}
@@ -4279,11 +4186,6 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
               icon={Archive}
               title="Archived Spells"
               description="View and restore archived spells that are no longer active"
-              hoverBorder="hover:border-stone-500"
-              iconBg="bg-stone-700/20"
-              iconColor="text-stone-400"
-              titleColor="text-stone-400"
-              descColor="text-stone-500"
             />
           </DashSection>
       </div>

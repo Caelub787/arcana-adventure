@@ -112,17 +112,27 @@
   --t-stone-800: #1F2230;
   --t-stone-900: #13141C;
   --t-stone-950: #0B0C11;
-  --t-amber-50: #EAF2FF;
-  --t-amber-100: #D6E4FF;
-  --t-amber-200: #B0CBFF;
-  --t-amber-300: #86AEFF;
-  --t-amber-400: #5C90FA;
-  --t-amber-500: #3D77F0;
-  --t-amber-600: #2F63D6;
-  --t-amber-700: #2851B3;
-  --t-amber-800: #1E3E8C;
-  --t-amber-900: #1A3270;
-  --t-amber-950: #0F1E48;
+  /* The app's accent ramp, and the real reason the theme kept "not applying".
+     Every `amber-*` class in the app resolves through here, and this ramp was
+     a blue one - the old Field Table theme remapped amber to its blue accent.
+     That is roughly 900 text-amber, 380 border-amber and 200 bg-amber usages
+     across the app coming out blue, which is what made the main menu, admin
+     and the library look like a different product from the sheets. No
+     selector can fix that many; the ramp itself has to be the metal.
+
+     Built around `--ca-gilt` at 500 so the accent and the gilding are the
+     same colour by construction, rather than two golds that nearly match. */
+  --t-amber-50: #FBF6E6;
+  --t-amber-100: #F6EDCA;
+  --t-amber-200: #EEDFA0;
+  --t-amber-300: #E2C972;
+  --t-amber-400: #D6B44A;
+  --t-amber-500: #C9A227;
+  --t-amber-600: #AC8A1E;
+  --t-amber-700: #8A6E18;
+  --t-amber-800: #6A5413;
+  --t-amber-900: #4C3C0E;
+  --t-amber-950: #2C2208;
   /* C.A. sheet gilding.
 
      The ornamental frame, medallions and rules on the C.A. character sheet
@@ -145,9 +155,11 @@
   --theme-surface: #1F2230;
   --theme-surface-raised: #272B3C;
   --theme-border: #363B4C;
-  --theme-primary: #3D77F0;
-  --theme-primary-hover: #5C90FA;
-  --theme-primary-muted: #1A3270;
+  /* Kept in step with the accent ramp above. A blue "primary" sitting in the
+     theme block is the exact trap that made this take four goes to find. */
+  --theme-primary: #C9A227;
+  --theme-primary-hover: #E2C163;
+  --theme-primary-muted: #4C3C0E;
   --theme-text-primary: #E4E7ED;
   --theme-text-secondary: #9AA1B2;
   --theme-text-disabled: #6C7386;
@@ -157,34 +169,40 @@
   --theme-info: #5EC3FF;
 }
 
-/* ============ Section identities (restrained accents on top of the global theme) ============ */
+/* ============ Section identities ============
+
+   These used to give each area of the app its own accent - pink for
+   campaigns, blue for Canvas Realms, purple for admin - which is a fine idea
+   and the opposite of one theme everywhere. They are all the metal now. The
+   per-section blocks are kept because that is where a future theme would
+   reintroduce a difference; today they simply agree. */
 
 [data-section="campaign"] {
-  --section-accent: #B75D78;
-  --section-accent-hover: #CC7790;
-  --section-accent-muted: rgba(183, 93, 120, 0.17);
-  --section-glow: rgba(183, 93, 120, 0.25);
+  --section-accent: #C9A227;
+  --section-accent-hover: #E2C163;
+  --section-accent-muted: rgba(201, 162, 39, 0.17);
+  --section-glow: rgba(201, 162, 39, 0.25);
 }
 
 [data-section="notes"] {
-  --section-accent: #C8A95F;
-  --section-accent-hover: #D8BC76;
-  --section-accent-muted: rgba(200, 169, 95, 0.17);
-  --section-glow: rgba(200, 169, 95, 0.25);
+  --section-accent: #C9A227;
+  --section-accent-hover: #E2C163;
+  --section-accent-muted: rgba(201, 162, 39, 0.17);
+  --section-glow: rgba(201, 162, 39, 0.25);
 }
 
 [data-section="canvas-realms"] {
-  --section-accent: #5E9FC7;
-  --section-accent-hover: #77B2D4;
-  --section-accent-muted: rgba(94, 159, 199, 0.17);
-  --section-glow: rgba(94, 159, 199, 0.25);
+  --section-accent: #C9A227;
+  --section-accent-hover: #E2C163;
+  --section-accent-muted: rgba(201, 162, 39, 0.17);
+  --section-glow: rgba(201, 162, 39, 0.25);
 }
 
 [data-section="admin"] {
-  --section-accent: #8176C7;
-  --section-accent-hover: #968CD6;
-  --section-accent-muted: rgba(129, 118, 199, 0.17);
-  --section-glow: rgba(129, 118, 199, 0.25);
+  --section-accent: #C9A227;
+  --section-accent-hover: #E2C163;
+  --section-accent-muted: rgba(201, 162, 39, 0.17);
+  --section-glow: rgba(201, 162, 39, 0.25);
 }
 
 /* Generic, restrained section accent touches: a hairline accent at the very top
@@ -635,17 +653,51 @@ hr,
   --tw-ring-color: var(--ca-gilt-line);
 }
 
-/* Filled primary buttons. `bg-amber-*` is the app's "this is the main action"
-   fill, and amber is remapped per theme - it comes out blue here, so an
-   Add Item button was a blue slab in a gold panel. Primary actions take the
-   metal instead. Destructive and success fills (red, emerald) are left alone:
-   those colours are the message. */
-[data-slot="button"][class*="bg-amber-"] {
+/* A solid amber fill is the app's "this is the main action" surface, and it
+   is the metal now. What it still needs is its foreground: the markup puts
+   `text-white` or `text-amber-100` on these, which was legible on the old
+   blue and is not on gold. Whole-token selectors, so a translucent wash like
+   `bg-amber-900/40` stays the wash it was meant to be. */
+[class~="bg-amber-500"],
+[class~="bg-amber-600"],
+[class~="bg-amber-700"],
+[class~="hover:bg-amber-500"]:hover,
+[class~="hover:bg-amber-600"]:hover,
+[class~="hover:bg-amber-700"]:hover {
+  color: rgb(28 25 23);
+}
+
+/* Saturated fills that are neither the accent nor a message. Red and emerald
+   carry meaning (destructive, confirm) and keep their colour; a blue or
+   violet Save is just a control that was never themed, and reads as a piece
+   of a different app. */
+[data-slot="button"][class~="bg-blue-500"],
+[data-slot="button"][class~="bg-blue-600"],
+[data-slot="button"][class~="bg-blue-700"],
+[data-slot="button"][class~="bg-indigo-600"],
+[data-slot="button"][class~="bg-indigo-700"],
+[data-slot="button"][class~="bg-violet-600"],
+[data-slot="button"][class~="bg-violet-700"],
+[data-slot="button"][class~="bg-sky-600"],
+[data-slot="button"][class~="bg-fuchsia-600"],
+[data-slot="button"][class~="bg-fuchsia-700"],
+button[class~="bg-blue-600"],
+button[class~="bg-blue-700"],
+button[class~="bg-indigo-600"],
+button[class~="bg-fuchsia-600"],
+button[class~="bg-fuchsia-700"] {
   background-color: var(--ca-gilt);
   color: rgb(28 25 23);
   border-color: var(--ca-gilt-bright);
 }
-[data-slot="button"][class*="bg-amber-"]:hover {
+[data-slot="button"][class~="bg-blue-500"]:hover,
+[data-slot="button"][class~="bg-blue-600"]:hover,
+[data-slot="button"][class~="bg-blue-700"]:hover,
+[data-slot="button"][class~="bg-indigo-600"]:hover,
+[data-slot="button"][class~="bg-violet-600"]:hover,
+[data-slot="button"][class~="bg-fuchsia-600"]:hover,
+button[class~="bg-blue-600"]:hover,
+button[class~="bg-fuchsia-600"]:hover {
   background-color: var(--ca-gilt-bright);
 }
 
@@ -663,21 +715,11 @@ hr,
 .glass-panel,
 [class*="bg-stone-900/9"][class*="border"],
 [class*="bg-stone-900/8"][class*="border"],
-[class*="bg-stone-800"][class*="border-stone-7"],
-[class*="border-amber-7"],
-[class*="border-amber-8"],
-[class*="border-amber-6"] {
+[class*="bg-stone-800"][class*="border-stone-7"] {
   border-color: var(--ca-gilt-line-soft);
 }
 
-/* Anything that leans on amber for a heading or a highlight. Same reason:
-   amber is this theme's blue, and a blue heading over a gold rule reads as a
-   mistake rather than a choice. */
-.text-amber-500,
-.text-amber-400,
-.text-amber-300 {
-  color: var(--ca-gilt-bright);
-}
+
 
 /* ---------------------------------------------------------------------------
    Chrome frames: the sheet's tooled corners, on the rest of the app.
@@ -759,3 +801,41 @@ hr,
   border-color: var(--ca-gilt);
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 0 14px -3px var(--ca-gilt);
 }
+
+/* Cards and the menus that hang off a trigger get the corners too, so a
+   dropdown, a select list or a settings card is built the same way as a
+   sheet section rather than just sharing its border colour. */
+[data-slot="card"],
+[data-radix-popper-content-wrapper] > * {
+  --chrome-corner: 12px;
+  --chrome-inset: 4px;
+  background-image:
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
+    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line));
+  background-repeat: no-repeat;
+  background-size:
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner),
+    var(--chrome-corner) 1px, 1px var(--chrome-corner);
+  background-position:
+    left var(--chrome-inset) top var(--chrome-inset),
+    left var(--chrome-inset) top var(--chrome-inset),
+    right var(--chrome-inset) top var(--chrome-inset),
+    right var(--chrome-inset) top var(--chrome-inset),
+    left var(--chrome-inset) bottom var(--chrome-inset),
+    left var(--chrome-inset) bottom var(--chrome-inset),
+    right var(--chrome-inset) bottom var(--chrome-inset),
+    right var(--chrome-inset) bottom var(--chrome-inset);
+}
+
+/* Card and dialog titles are set in the metal by the primitives themselves
+   (a Tailwind class, so tailwind-merge still lets a call site override it -
+   the sign-in title is gradient-clipped text and a CSS rule here would win
+   over that and flatten it). */
