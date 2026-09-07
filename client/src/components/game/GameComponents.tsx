@@ -2841,13 +2841,11 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         // height stretches with the 20000px scrollable map behind it, so a
         // `bottom` offset would resolve thousands of pixels below the
         // visible screen instead of near the actual bottom of the viewport.
+        // The ruler's shapes and sizes used to open underneath the ruler
+        // button and shove this whole column 200px down the screen. They open
+        // in a flyout beside the button now, so the column never moves.
         const SELECT_AND_RULER_HEIGHT = 88;  // two 40px buttons, 8px apart
-        const RULER_SHAPES_HEIGHT = 200;     // the divider plus 4 more buttons
-        const leftToolbarTop =
-          selectionToolsTop +
-          SELECT_AND_RULER_HEIGHT +
-          (selectionMode === 'ruler' ? RULER_SHAPES_HEIGHT : 0) +
-          8;
+        const leftToolbarTop = selectionToolsTop + SELECT_AND_RULER_HEIGHT + 8;
 
         return (
           <div
@@ -9829,11 +9827,17 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
 }: SelectionModeButtonsProps) {
   
   const getColorClasses = (color: string, isActive: boolean) => {
+    // Every tool button in this column is selected the same way: the ground
+    // lifts and the frame goes solid metal (`.chrome-frame` reads the amber
+    // border class and swaps in the gilt). They used to differ - the ruler
+    // filled itself `bg-amber-600`, and amber is this theme's blue, so it was
+    // the one blue slab in a column of gold.
+    const active = 'bg-stone-700 border-amber-500 text-amber-400';
     const colorClasses: Record<string, string> = {
-      stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
-      red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-red-900/50 hover:text-red-400',
-      purple: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-amber-900/50 hover:text-amber-400',
-      amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-amber-900/50 hover:text-amber-400',
+      stone: isActive ? active : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+      red: isActive ? active : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-red-900/50 hover:text-red-400',
+      purple: isActive ? active : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+      amber: isActive ? active : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
     };
     return colorClasses[color] || colorClasses.stone;
   };
@@ -9900,43 +9904,6 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
           </Tooltip>
         </TooltipProvider>
 
-        {selectionMode === 'ruler' && (
-          <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-stone-700/60">
-            {([
-              { shape: 'cone' as RulerShape, Icon: Triangle, label: 'Cone' },
-              { shape: 'line' as RulerShape, Icon: Minus, label: 'Line' },
-              { shape: 'square' as RulerShape, Icon: Square, label: 'Square' },
-              { shape: 'circle' as RulerShape, Icon: Circle, label: 'Circle' },
-            ]).map(({ shape, Icon, label }) => (
-              <TooltipProvider key={shape}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onPointerUp={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); onRulerShapeChange?.(shape); }}
-                      style={{ touchAction: 'manipulation' }}
-                      className={`
-                        chrome-frame chrome-btn
-                        w-10 h-10 rounded-lg border-2 flex items-center justify-center
-                        transition-all duration-200 shadow-lg backdrop-blur-sm
-                        ${getColorClasses('purple', rulerShape === shape)}
-                        ${rulerShape === shape ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                      `}
-                      aria-label={`${label} shape`}
-                      data-testid={`ruler-shape-${shape}`}
-                    >
-                      <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p className="font-bold">{label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/li
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
-import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw } from "lucide-react";
+import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw, Triangle, Circle, Square } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13011,106 +13011,112 @@ export default function Campaign() {
              );
            })()}
 
-           {/* Ruler / AOE measurement value dialog - per-shape size inputs */}
+           {/* Ruler settings — a flyout beside the ruler button.
+
+               This was a wide bar pinned to the top centre of the screen,
+               which on a phone landed under the pinned roster and ran off
+               both edges, and the shape buttons were a separate stack that
+               pushed the left toolbar 200px down the screen. Both are one
+               narrow column here, hanging off the ruler button itself, in
+               the order you use them: pick the shape, set its size, then
+               snap and clear. Nothing else on screen moves when it opens. */}
            {!spectatorMode && selectionMode === 'ruler' && (
              <div
-               className="fixed z-[10800] pointer-events-auto left-1/2 -translate-x-1/2 top-14"
+               className="fixed z-[10800] pointer-events-auto"
+               style={{ left: '64px', top: `${selectionToolsTop + 48}px` }}
                data-testid="ruler-control-panel"
              >
-               <div className="flex items-center gap-3 bg-stone-900/95 border border-amber-700/60 rounded-lg px-3 py-2 shadow-xl backdrop-blur-sm">
-                 <span className="text-xs font-bold text-amber-300 uppercase tracking-wide capitalize">{rulerShape}</span>
-                 {rulerShape === 'cone' && (
-                   <>
-                     <label className="flex items-center gap-1 text-xs text-stone-300">
-                       Length
-                       <RulerInput min={0} step={5} value={rulerDims.coneLength}
-                         onChange={(v) => setRulerDims(d => ({ ...d, coneLength: v }))}
-                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                         data-testid="ruler-input-cone-length" />
-                       ft
-                     </label>
-                     <label className="flex items-center gap-1 text-xs text-stone-300">
-                       Arc
-                       <RulerInput min={0} step={5} value={rulerDims.coneArc}
-                         onChange={(v) => setRulerDims(d => ({ ...d, coneArc: v }))}
-                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                         data-testid="ruler-input-cone-arc" />
-                       ft
-                     </label>
-                   </>
-                 )}
-                 {rulerShape === 'line' && (
-                   <>
-                     <label className="flex items-center gap-1 text-xs text-stone-300">
-                       Length
-                       <RulerInput min={0} step={5} value={rulerDims.lineLength}
-                         onChange={(v) => setRulerDims(d => ({ ...d, lineLength: v }))}
-                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                         data-testid="ruler-input-line-length" />
-                       ft
-                     </label>
-                     <label className="flex items-center gap-1 text-xs text-stone-300">
-                       Width
-                       <RulerInput min={0} step={5} value={rulerDims.lineWidth}
-                         onChange={(v) => setRulerDims(d => ({ ...d, lineWidth: v }))}
-                         className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                         data-testid="ruler-input-line-width" />
-                       ft
-                     </label>
-                   </>
-                 )}
-                 {rulerShape === 'square' && (
-                   <label className="flex items-center gap-1 text-xs text-stone-300">
-                     Side
-                     <RulerInput min={0} step={5} value={rulerDims.squareSide}
-                       onChange={(v) => setRulerDims(d => ({ ...d, squareSide: v }))}
-                       className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                       data-testid="ruler-input-square-side" />
-                     ft
+               <div className="chrome-frame chrome-frame-lg w-[172px] flex flex-col gap-2 bg-stone-900/95 border rounded-lg p-2 shadow-xl backdrop-blur-sm">
+                 <div className="grid grid-cols-4 gap-1">
+                   {([
+                     { shape: 'cone' as RulerShape, Icon: Triangle, label: 'Cone' },
+                     { shape: 'line' as RulerShape, Icon: Minus, label: 'Line' },
+                     { shape: 'square' as RulerShape, Icon: Square, label: 'Square' },
+                     { shape: 'circle' as RulerShape, Icon: Circle, label: 'Circle' },
+                   ]).map(({ shape, Icon, label }) => (
+                     <button
+                       key={shape}
+                       onClick={() => setRulerShape(shape)}
+                       style={{ touchAction: 'manipulation' }}
+                       className={`chrome-frame h-9 rounded border-2 flex items-center justify-center transition-colors ${
+                         rulerShape === shape
+                           ? 'bg-stone-700 border-amber-500 text-amber-400'
+                           : 'bg-stone-800/80 border-stone-600 text-stone-400'
+                       }`}
+                       aria-label={`${label} shape`}
+                       title={label}
+                       data-testid={`ruler-shape-${shape}`}
+                     >
+                       <Icon className="h-4 w-4" />
+                     </button>
+                   ))}
+                 </div>
+
+                 {(rulerShape === 'cone'
+                   ? [
+                       { key: 'coneLength', label: 'Length', testId: 'ruler-input-cone-length' },
+                       { key: 'coneArc', label: 'Arc', testId: 'ruler-input-cone-arc' },
+                     ]
+                   : rulerShape === 'line'
+                   ? [
+                       { key: 'lineLength', label: 'Length', testId: 'ruler-input-line-length' },
+                       { key: 'lineWidth', label: 'Width', testId: 'ruler-input-line-width' },
+                     ]
+                   : rulerShape === 'square'
+                   ? [{ key: 'squareSide', label: 'Side', testId: 'ruler-input-square-side' }]
+                   : [{ key: 'circleRadius', label: 'Diameter', testId: 'ruler-input-circle-radius' }]
+                 ).map(({ key, label, testId }) => (
+                   <label key={key} className="flex items-center justify-between gap-2 text-[11px] text-stone-300">
+                     <span className="shrink-0">{label}</span>
+                     <span className="flex items-center gap-1">
+                       <RulerInput
+                         min={0}
+                         step={5}
+                         value={(rulerDims as any)[key]}
+                         onChange={(v) => setRulerDims(d => ({ ...d, [key]: v }))}
+                         className="w-14 h-8 bg-stone-800 border border-stone-600 rounded px-1.5 text-stone-100 text-xs text-center"
+                         data-testid={testId}
+                       />
+                       <span className="text-stone-500">ft</span>
+                     </span>
                    </label>
-                 )}
-                 {rulerShape === 'circle' && (
-                   <label className="flex items-center gap-1 text-xs text-stone-300">
-                     Diameter
-                     <RulerInput min={0} step={5} value={rulerDims.circleRadius}
-                       onChange={(v) => setRulerDims(d => ({ ...d, circleRadius: v }))}
-                       className="w-16 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-stone-100 text-xs"
-                       data-testid="ruler-input-circle-radius" />
-                     ft
-                   </label>
-                 )}
-                 <Button
-                   size="sm"
-                   variant="outline"
-                   onClick={() => setRulerSnapToGrid(v => !v)}
-                   className={`h-8 text-xs border-stone-600 hover:bg-stone-700 ${rulerSnapToGrid ? 'text-amber-300 border-amber-600/60' : 'text-stone-400'}`}
-                   title={rulerSnapToGrid ? "Snap to Grid: on" : "Snap to Grid: off"}
-                   data-testid="button-ruler-snap-to-grid"
-                 >
-                   <Grid3X3 className="h-3.5 w-3.5" />
-                 </Button>
-                 <Button
-                   size="sm"
-                   variant="outline"
-                   onClick={clearMyRulerMarkers}
-                   className="h-8 text-xs border-stone-600 text-stone-200 hover:bg-stone-700"
-                   data-testid="button-ruler-clear"
-                 >
-                   Clear
-                 </Button>
-                 {role === 'gm' && (
+                 ))}
+
+                 <div className="flex items-center gap-1">
                    <Button
                      size="sm"
-                     onClick={clearAllRulerMarkers}
-                     className="h-8 text-xs bg-red-800 hover:bg-red-700 text-white"
-                     data-testid="button-ruler-clear-all"
+                     variant="outline"
+                     onClick={() => setRulerSnapToGrid(v => !v)}
+                     className={`h-8 w-8 p-0 shrink-0 ${rulerSnapToGrid ? 'text-amber-300 border-amber-600/60' : 'text-stone-400 border-stone-600'}`}
+                     title={rulerSnapToGrid ? "Snap to Grid: on" : "Snap to Grid: off"}
+                     data-testid="button-ruler-snap-to-grid"
                    >
-                     Clear All
+                     <Grid3X3 className="h-3.5 w-3.5" />
                    </Button>
-                 )}
+                   <Button
+                     size="sm"
+                     variant="outline"
+                     onClick={clearMyRulerMarkers}
+                     className="h-8 flex-1 text-[11px] px-1 border-stone-600 text-stone-200"
+                     data-testid="button-ruler-clear"
+                   >
+                     Clear
+                   </Button>
+                   {role === 'gm' && (
+                     <Button
+                       size="sm"
+                       onClick={clearAllRulerMarkers}
+                       className="h-8 flex-1 text-[11px] px-1 bg-red-800 hover:bg-red-700 text-white"
+                       data-testid="button-ruler-clear-all"
+                     >
+                       All
+                     </Button>
+                   )}
+                 </div>
                </div>
              </div>
            )}
+
 
            {!spectatorMode && !isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars
