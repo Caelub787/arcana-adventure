@@ -2048,7 +2048,10 @@ export function CampaignNotesPanel({
         </div>
       )}
       {sidebarSearchQuery || activeTagFilter ? (
-        <ScrollArea className="flex-1 p-1">
+        // A plain scroller, not ScrollArea: Radix lays its viewport content out
+        // as a table, and a table sizes to its content - so one long note
+        // title stretched every row past the panel's own edge.
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1">
           {allNotesForTree
             .filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))
             .filter((n) => !activeTagFilter || ((n as any).tags || []).includes(activeTagFilter))
@@ -2081,9 +2084,12 @@ export function CampaignNotesPanel({
               Clear #{activeTagFilter} filter
             </button>
           )}
-        </ScrollArea>
+        </div>
       ) : (
-      <ScrollArea className="flex-1 p-1">
+      // A plain scroller, not ScrollArea: Radix lays its viewport content out
+      // as a table, and a table sizes to its content - so one long note title
+      // stretched every row past the panel's own edge.
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1">
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
             showHomeView && !selectedFolderId
@@ -2318,7 +2324,7 @@ export function CampaignNotesPanel({
             )}
           </ContextMenuContent>
         </ContextMenu>
-      </ScrollArea>
+      </div>
       )}
     </div>
   );

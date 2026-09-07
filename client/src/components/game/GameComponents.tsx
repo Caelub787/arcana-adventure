@@ -22134,8 +22134,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     {/* Overload effects. Physique doesn't stop the pool going
                         higher - what going higher costs you is a GM ruling,
                         set the same way a wound's effects are, and live only
-                        while the pool is actually over. */}
-                    {isGM && (
+                        while the pool is actually over.
+
+                        Which is why the editor only appears once the pool
+                        actually IS over: on a character inside their Physique
+                        it is a control for a situation that isn't happening.
+                        Effects already set stay reachable either way, so
+                        nothing the GM configured can strand itself the moment
+                        the pool comes back down. */}
+                    {isGM && (caPhysique.over || caPhysiqueEffects.length > 0) && (
                       <CaInset className="space-y-1" testId="ca-physique-effects-editor">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-stone-400">
