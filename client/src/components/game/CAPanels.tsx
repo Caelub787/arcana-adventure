@@ -4,7 +4,7 @@
  *
  * Kept out of GameComponents.tsx, which is already past 30k lines.
  */
-import React, { useId, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -152,42 +152,486 @@ const AURA_SHAPE_PATHS: Record<Exclude<CAAuraShape, "none">, string> = {
 };
 
 /**
- * Deterministic per-particle orbit. Seeded off the particle's index rather
- * than Math.random so a re-render doesn't teleport every particle - they have
- * to keep drifting from wherever they were, not restart somewhere new.
+ * The aura particle engine.
  *
- * A particle travels a closed loop around the middle of the field, so it is
- * always moving and always somewhere the colour actually is. The first pass
- * had them run a line and fade at both ends, which read as blinking in and
- * out of a few fixed spots rather than floating.
+ * Every one of these fields used to be CSS keyframes, and keyframes repeat -
+ * watch a card for twenty seconds and you can see the loop come round. These
+ * are simulated instead: each shape gets its own randomly drawn speed, size,
+ * lifetime and heading when it spawns, drifts under a bit of noise while it
+ * lives, and is redrawn from scratch when it dies. Nothing is ever the same
+ * twice and there is no cycle to notice.
+ *
+ * One requestAnimationFrame loop drives every field on the page rather than
+ * one per field - a battlemap can easily have a dozen of these up at once
+ * (every tracker card, every hotbar slot, the sheet, the roll trays), and a
+ * dozen rAF loops fighting each other is how you lose a frame budget. Each
+ * frame writes nothing but `transform` and `opacity`, so none of it touches
+ * layout.
  */
-function particleOrbit(i: number) {
-  const golden = 0.6180339887;
-  return {
-    // Where on the loop it starts, and how far out it runs. Kept well inside
-    // the field: the colour itself fades out around 78%, so a particle any
-    // further out would be drifting over nothing.
-    angle: ((i * golden) % 1) * Math.PI * 2,
-    radius: 22 + ((i * 5) % 9),
-    duration: 13 + ((i * 3.3) % 9),
-    delay: -((i * 4.1) % 13),
-    scale: 0.8 + ((i * 0.37) % 0.45),
-    reverse: i % 2 === 1,
+
+/** How visible a shape gets to be, against what the motion asks for. */
+const AURA_ALPHA = 0.8;
+
+type AuraTicker = (dt: number) => void;
+const auraTickers = new Set<AuraTicker>();
+let auraRaf: number | null = null;
+let auraLastTs = 0;
+
+function auraFrame(ts: number) {
+  // Clamped: a backgrounded tab resumes with a huge delta, and without this
+  // every particle teleports the moment you come back to it.
+  const dt = Math.min(0.05, auraLastTs ? (ts - auraLastTs) / 1000 : 0.016);
+  auraLastTs = ts;
+  auraTickers.forEach((t) => t(dt));
+  auraRaf = auraTickers.size ? requestAnimationFrame(auraFrame) : null;
+}
+
+function subscribeAura(t: AuraTicker) {
+  auraTickers.add(t);
+  if (auraRaf === null) {
+    auraLastTs = 0;
+    auraRaf = requestAnimationFrame(auraFrame);
+  }
+  return () => {
+    auraTickers.delete(t);
+    if (auraTickers.size === 0 && auraRaf !== null) {
+      cancelAnimationFrame(auraRaf);
+      auraRaf = null;
+    }
   };
+}
+
+function auraReducedMotion() {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+interface AuraParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Drawn size in px; the glyph is rendered at 24 and scaled to this. */
+  size: number;
+  /** Negative while a particle is still waiting to be born. */
+  age: number;
+  ttl: number;
+  fadeIn: number;
+  fadeOut: number;
+  peak: number;
+  rot: number;
+  vrot: number;
+  /** Perimeter walkers only: distance along the path, and how fast. */
+  d: number;
+  sp: number;
+  inset: number;
+}
+
+type AuraMotion = "interior" | "edge" | "current" | "burst";
+
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+const pick = <T,>(a: T, b: T) => (Math.random() < 0.5 ? a : b);
+
+/**
+ * A point some distance along a rounded rectangle inset from the box's edge.
+ * Perimeter walkers ride this so a shape curves through a corner instead of
+ * turning on the spot.
+ */
+function pointOnRoundedRect(d: number, w: number, h: number, inset: number, radius: number) {
+  const iw = Math.max(1, w - inset * 2);
+  const ih = Math.max(1, h - inset * 2);
+  const c = Math.max(0, Math.min(radius, iw / 2, ih / 2));
+  const sx = iw - c * 2;
+  const sy = ih - c * 2;
+  const arc = (Math.PI * c) / 2;
+  const total = 2 * sx + 2 * sy + 4 * arc;
+  let t = ((d % total) + total) % total;
+
+  const onArc = (cx: number, cy: number, from: number, frac: number) => {
+    const a = from + (Math.PI / 2) * frac;
+    return { x: cx + Math.cos(a) * c, y: cy + Math.sin(a) * c };
+  };
+
+  if (t < sx) return { x: inset + c + t, y: inset };
+  t -= sx;
+  if (t < arc) return onArc(inset + iw - c, inset + c, -Math.PI / 2, t / arc);
+  t -= arc;
+  if (t < sy) return { x: inset + iw, y: inset + c + t };
+  t -= sy;
+  if (t < arc) return onArc(inset + iw - c, inset + ih - c, 0, t / arc);
+  t -= arc;
+  if (t < sx) return { x: inset + iw - c - t, y: inset + ih };
+  t -= sx;
+  if (t < arc) return onArc(inset + c, inset + ih - c, Math.PI / 2, t / arc);
+  t -= arc;
+  if (t < sy) return { x: inset, y: inset + ih - c - t };
+  t -= sy;
+  return onArc(inset + c, inset + c, Math.PI, t / arc);
+}
+
+/**
+ * How each kind of surface behaves. `spawn` draws a particle's whole life at
+ * random; `step` moves it for one frame. `first` is true only for the initial
+ * fill, where particles start part-way through their lives so a field is
+ * already busy rather than blooming from nothing.
+ */
+function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
+  switch (motion) {
+    // A drift inside a circular colour field: the aura chip, and a beacon.
+    //
+    // Pure noise was the first attempt and it huddled: identical forces on
+    // every particle meant they all ended up in the same place. Each one
+    // holds its own radius and its own rate instead, and it is those two that
+    // wander - so the paths stay separated and still never repeat.
+    case "interior":
+      return {
+        spawn(p: AuraParticle, w: number, h: number, first: boolean) {
+          const R = Math.min(w, h) / 2;
+          const a = rnd(0, Math.PI * 2);
+          p.inset = R * rnd(0.22, 0.6);
+          p.d = rnd(0.25, 0.75) * speed * pick(1, -1);
+          p.x = w / 2 + Math.cos(a) * p.inset;
+          p.y = h / 2 + Math.sin(a) * p.inset;
+          p.vx = 0;
+          p.vy = 0;
+          p.size = Math.max(4, Math.min(w, h) * rnd(0.2, 0.29));
+          p.ttl = rnd(7, 15) / speed;
+          p.age = first ? rnd(0, p.ttl) : 0;
+          p.fadeIn = Math.min(1.2, p.ttl * 0.25);
+          p.fadeOut = Math.min(1.6, p.ttl * 0.3);
+          p.peak = rnd(0.6, 0.95);
+          p.rot = rnd(0, 360);
+          p.vrot = rnd(-16, 16) * speed;
+        },
+        step(p: AuraParticle, dt: number, w: number, h: number) {
+          const R = Math.min(w, h) / 2;
+          const dx = p.x - w / 2;
+          const dy = p.y - h / 2;
+          const dist = Math.hypot(dx, dy) || 0.001;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          const tx = -uy;
+          const ty = ux;
+          // Chase the rate this particle wants to be turning at...
+          const wantTan = p.d * dist;
+          const haveTan = p.vx * tx + p.vy * ty;
+          const accT = (wantTan - haveTan) * 2.6;
+          // ...and the radius it wants to be at, damped so it settles rather
+          // than bouncing in and out.
+          const haveRad = p.vx * ux + p.vy * uy;
+          const accR = (p.inset - dist) * 2.4 - haveRad * 1.8;
+          p.vx += (tx * accT + ux * accR) * dt;
+          p.vy += (ty * accT + uy * accR) * dt;
+          // The wander lives in what it is aiming for, not in its velocity,
+          // which is what keeps the motion smooth and the path unrepeatable.
+          p.inset += rnd(-1, 1) * R * 0.3 * dt;
+          if (p.inset < R * 0.18) p.inset = R * 0.18;
+          if (p.inset > R * 0.62) p.inset = R * 0.62;
+          p.d += rnd(-1, 1) * 0.4 * dt * speed;
+          const lo = 0.14 * speed;
+          const hi = 0.95 * speed;
+          const mag = Math.abs(p.d);
+          if (mag < lo) p.d = lo * Math.sign(p.d || 1);
+          if (mag > hi) p.d = hi * Math.sign(p.d);
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+        },
+      };
+
+    // A lap of the border, for a whole sheet.
+    case "edge":
+      return {
+        spawn(p: AuraParticle, w: number, h: number, first: boolean) {
+          p.inset = rnd(6, 16);
+          p.sp = rnd(14, 34) * speed * pick(1, -1);
+          p.d = rnd(0, 2 * (w + h));
+          p.size = rnd(9, 19);
+          p.ttl = rnd(14, 30);
+          p.age = first ? rnd(0, p.ttl) : 0;
+          p.fadeIn = 1.6;
+          p.fadeOut = 2.2;
+          p.peak = rnd(0.34, 0.56);
+          p.rot = rnd(0, 360);
+          p.vrot = rnd(-9, 9);
+          p.x = 0;
+          p.y = 0;
+        },
+        step(p: AuraParticle, dt: number, w: number, h: number) {
+          // The speed itself wanders, so shapes pull apart and bunch up
+          // instead of holding formation the way keyframes made them.
+          p.sp += rnd(-1, 1) * 7 * dt;
+          const cap = 46 * speed;
+          if (p.sp > cap) p.sp = cap;
+          if (p.sp < -cap) p.sp = -cap;
+          if (Math.abs(p.sp) < 5 * speed) p.sp = 5 * speed * Math.sign(p.sp || 1);
+          p.d += p.sp * dt;
+          const pt = pointOnRoundedRect(p.d, w, h, p.inset, 14);
+          p.x = pt.x;
+          p.y = pt.y;
+        },
+      };
+
+    // A current through a short, wide card: in one end and out the other.
+    case "current":
+      return {
+        spawn(p: AuraParticle, w: number, h: number, first: boolean) {
+          const onTop = Math.random() < 0.5;
+          p.inset = rnd(3, 9);
+          p.sp = rnd(16, 40) * speed * (onTop ? 1 : -1);
+          p.y = onTop ? p.inset : h - p.inset;
+          const span = w + 28;
+          p.ttl = span / Math.abs(p.sp);
+          p.age = first ? rnd(0, p.ttl) : 0;
+          // Position is a function of age, so the initial fill spreads them
+          // along the edge instead of stacking them all at the entrance.
+          p.x = (onTop ? -14 : w + 14) + p.sp * p.age;
+          p.vy = rnd(-2, 2);
+          p.size = rnd(8, 15);
+          p.fadeIn = p.ttl * 0.18;
+          p.fadeOut = p.ttl * 0.22;
+          p.peak = rnd(0.34, 0.52);
+          p.rot = rnd(0, 360);
+          p.vrot = rnd(-12, 12);
+        },
+        step(p: AuraParticle, dt: number, w: number, h: number) {
+          p.x += p.sp * dt;
+          // A shallow wobble across the edge, kept inside the glow band.
+          p.vy += rnd(-1, 1) * 6 * dt;
+          p.vy *= 0.96;
+          p.y += p.vy * dt;
+          const lo = 2;
+          const hi = h - 2;
+          if (p.y < lo) { p.y = lo; p.vy = Math.abs(p.vy); }
+          if (p.y > hi) { p.y = hi; p.vy = -Math.abs(p.vy); }
+        },
+      };
+
+    // Thrown out of the middle, for a tray announcing a result.
+    default:
+      return {
+        spawn(p: AuraParticle, w: number, h: number, first: boolean) {
+          const a = rnd(0, Math.PI * 2);
+          p.ttl = rnd(1.3, 2.8) / (active ? 1.5 : 1);
+          // Speed comes from how far it should get, not a fixed px/s: a roll
+          // tray is 85px across, and an absolute speed threw every shape out
+          // of it and into the clip within a few frames.
+          const R = Math.min(w, h) / 2;
+          const sp = (R * rnd(0.55, 1.05) * speed) / p.ttl;
+          p.x = w / 2;
+          p.y = h / 2;
+          p.vx = Math.cos(a) * sp;
+          p.vy = Math.sin(a) * sp * 0.7;
+          p.size = rnd(8, 15);
+          // Negative age is a wait: they come out in their own time rather
+          // than all at once on a shared beat.
+          p.age = first ? rnd(-0.6, p.ttl) : -rnd(0, 0.6);
+          p.fadeIn = p.ttl * 0.22;
+          p.fadeOut = p.ttl * 0.45;
+          p.peak = active ? rnd(0.5, 0.72) : rnd(0.28, 0.46);
+          p.rot = rnd(0, 360);
+          p.vrot = rnd(-30, 30);
+        },
+        step(p: AuraParticle, dt: number, _w: number, _h: number) {
+          p.vx *= 0.985;
+          p.vy *= 0.985;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+        },
+      };
+  }
+}
+
+/**
+ * Runs a field of particles over a host element and writes each frame
+ * straight to the DOM. Deliberately not React state: this is sixty updates a
+ * second per particle, and rendering that through React would be the most
+ * expensive thing on the battlemap.
+ */
+function useAuraParticles({
+  motion,
+  count,
+  animate = true,
+  speed = 1,
+  active = false,
+  fixedSize,
+}: {
+  motion: AuraMotion;
+  count: number;
+  animate?: boolean;
+  speed?: number;
+  active?: boolean;
+  /** Square hosts of a known size skip measuring. */
+  fixedSize?: number;
+}) {
+  const hostRef = useRef<HTMLSpanElement | null>(null);
+  const nodesRef = useRef<Array<HTMLSpanElement | null>>([]);
+  const boxRef = useRef({ w: fixedSize ?? 0, h: fixedSize ?? 0 });
+
+  useEffect(() => {
+    if (fixedSize) {
+      boxRef.current = { w: fixedSize, h: fixedSize };
+      return;
+    }
+    const host = hostRef.current;
+    if (!host || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      boxRef.current = { w: host.offsetWidth, h: host.offsetHeight };
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [fixedSize]);
+
+  useEffect(() => {
+    if (!animate || auraReducedMotion()) return;
+    const behaviour = auraBehaviour(motion, speed, active);
+    const parts: AuraParticle[] = Array.from({ length: count }, () => ({
+      x: 0, y: 0, vx: 0, vy: 0, size: 10,
+      age: 0, ttl: 1, fadeIn: 0.2, fadeOut: 0.2, peak: 0.5,
+      rot: 0, vrot: 0, d: 0, sp: 0, inset: 6,
+    }));
+    let seeded = false;
+
+    const tick = (dt: number) => {
+      const { w, h } = boxRef.current;
+      // Nothing to draw on: a collapsed roll tray, a hidden panel.
+      if (w < 8 || h < 8) return;
+      if (!seeded) {
+        parts.forEach((p) => behaviour.spawn(p, w, h, true));
+        seeded = true;
+      }
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        p.age += dt;
+        if (p.age >= p.ttl) behaviour.spawn(p, w, h, false);
+        else if (p.age > 0) behaviour.step(p, dt, w, h);
+        p.rot += p.vrot * dt;
+
+        const node = nodesRef.current[i];
+        if (!node) continue;
+        let a: number;
+        if (p.age <= 0) a = 0;
+        else if (p.age < p.fadeIn) a = p.peak * (p.age / p.fadeIn);
+        else if (p.age > p.ttl - p.fadeOut) a = p.peak * ((p.ttl - p.age) / p.fadeOut);
+        else a = p.peak;
+        node.style.opacity = String(Math.max(0, a) * AURA_ALPHA);
+        node.style.transform =
+          `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)` +
+          ` rotate(${p.rot.toFixed(1)}deg) scale(${(p.size / 24).toFixed(3)})`;
+      }
+    };
+
+    return subscribeAura(tick);
+  }, [motion, count, animate, speed, active]);
+
+  return { hostRef, nodesRef };
+}
+
+/** One shape, at the weight every aura surface draws it. */
+function AuraGlyph({ color, shape }: { color: string; shape: CAAuraShape }) {
+  if (shape === "none") return null;
+  return (
+    <svg viewBox="0 0 24 24" width={24} height={24} aria-hidden style={{ display: "block", overflow: "visible" }}>
+      <path
+        d={AURA_SHAPE_PATHS[shape]}
+        fill={shape === "ring" ? "none" : color}
+        fillOpacity={0.18}
+        stroke={color}
+        strokeOpacity={0.72}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** The nodes the engine writes to. Positioned entirely by `transform`. */
+function AuraParticleNodes({
+  count,
+  color,
+  shape,
+  nodesRef,
+  glow,
+}: {
+  count: number;
+  color: string;
+  shape: CAAuraShape;
+  nodesRef: React.MutableRefObject<Array<HTMLSpanElement | null>>;
+  glow?: boolean;
+}) {
+  if (shape === "none") return null;
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          ref={(el) => { nodesRef.current[i] = el; }}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            lineHeight: 0,
+            opacity: 0,
+            willChange: "transform, opacity",
+            // Drawn in the aura's colour on a ground already glowing in it,
+            // so a flat outline disappears into the glow without this.
+            ...(glow ? { filter: `drop-shadow(0 0 3px ${color})` } : {}),
+          }}
+        >
+          <AuraGlyph color={color} shape={shape} />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** The inset ring every aura surface wears, so no ancestor can clip the glow. */
+function AuraRing({ color, strength = 1 }: { color: string; strength?: number }) {
+  return (
+    <span
+      className="absolute inset-0 rounded-[inherit]"
+      style={{ boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 ${Math.round(26 * strength)}px -6px ${color}` }}
+    />
+  );
+}
+
+/**
+ * A slow random walk for anything too small to hold particles - the plain
+ * colour dot, and the single shape a tiny chip falls back to. A keyframed
+ * pulse is a loop you can see at that size; this never repeats.
+ */
+function useAuraBreathe(animate: boolean, speed = 1) {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!animate || auraReducedMotion()) return;
+    let target = rnd(0.7, 1);
+    let cur = target;
+    let hold = 0;
+    return subscribeAura((dt) => {
+      hold -= dt;
+      if (hold <= 0) {
+        target = rnd(0.62, 1);
+        hold = rnd(0.7, 2.1) / speed;
+      }
+      cur += (target - cur) * Math.min(1, dt * 2.2 * speed);
+      const el = ref.current;
+      if (!el) return;
+      el.style.opacity = (0.5 + cur * 0.5).toFixed(3);
+      el.style.transform = `scale(${(0.9 + cur * 0.16).toFixed(3)})`;
+    });
+  }, [animate, speed]);
+  return ref;
 }
 
 /**
  * The aura: the character's colour as a field, with their shape drifting
  * around inside it like something suspended in it.
  *
- * The particles fade in as they come out of the middle and fade out again as
- * they reach the edge, so nothing ever hits a hard boundary - a radial mask
- * would be the obvious way to do that, but masks did not render at all when
- * this was checked (see woundBodyImages.ts for the same finding), so the fade
- * is in each particle's own opacity keyframes instead.
- *
  * Below `PARTICLE_MIN_SIZE` there is no room for any of this - at 12px a
- * particle is two pixels - so it falls back to the single centred shape.
+ * particle is three pixels - so it falls back to a single shape that breathes
+ * instead.
  */
 const PARTICLE_MIN_SIZE = 20;
 const PARTICLE_COUNT = 4;
@@ -206,22 +650,28 @@ export function AuraShapeMark({
   size?: number;
   animate?: boolean;
   /**
-   * How much faster than usual the shapes move. The loop is a slow drift by
-   * design - it sits on a sheet you are reading - but a beacon is on screen
-   * for a second and a half, and over that a 15s orbit does not visibly move
-   * at all. The beacon winds it up rather than settling for a still image.
+   * How much faster than usual the shapes move. The drift is slow by design -
+   * it sits on a sheet you are reading - but a beacon is on screen for a
+   * second and a half, and over that a normal drift does not visibly move at
+   * all. The beacon winds it up rather than settling for a still image.
    */
   speed?: number;
   className?: string;
   title?: string;
 }) {
-  // Unique per instance: two auras on screen at once must not share a
-  // keyframes name, or the second one's animation wins for both.
-  const rawId = useId();
-  const animId = `aura-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const small = shape === "none" || size < PARTICLE_MIN_SIZE;
+  const breatheRef = useAuraBreathe(animate && small, speed);
+  const { hostRef, nodesRef } = useAuraParticles({
+    motion: "interior",
+    count: PARTICLE_COUNT,
+    animate: animate && !small,
+    speed,
+    fixedSize: size,
+  });
 
-  const field = (children: React.ReactNode, extraStyle?: React.CSSProperties) => (
+  const field = (children: React.ReactNode, ref?: React.Ref<HTMLSpanElement>) => (
     <span
+      ref={ref}
       className={className}
       title={title}
       aria-hidden={title ? undefined : true}
@@ -238,144 +688,68 @@ export function AuraShapeMark({
         // are suspended in.
         background: `radial-gradient(circle at 50% 50%, ${color}66 0%, ${color}22 55%, transparent 78%)`,
         boxShadow: `0 0 ${Math.max(3, size / 3)}px ${color}55`,
-        ...extraStyle,
       }}
     >
       {children}
     </span>
   );
 
-  // No shape, or too small for particles to read: the plain pulsing dot.
-  if (shape === "none" || size < PARTICLE_MIN_SIZE) {
-    if (shape === "none") {
-      return field(
-        <>
-          <span
-            style={{
-              position: "absolute",
-              inset: "22%",
-              borderRadius: "9999px",
-              backgroundColor: color,
-              ...(animate ? { animation: `${animId}pulse ${(2.4 / speed).toFixed(2)}s ease-in-out infinite` } : {}),
-            }}
-          />
-          {animate && (
-            <style>{`@keyframes ${animId}pulse{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.14)}}`}</style>
-          )}
-        </>,
-      );
-    }
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        className={className}
-        role={title ? "img" : "presentation"}
-        aria-hidden={title ? undefined : true}
-        data-testid="aura-mark"
-        data-aura-shape={shape}
+  if (shape === "none") {
+    return field(
+      <span
+        ref={breatheRef as React.Ref<HTMLSpanElement>}
         style={{
-          overflow: "visible",
-          filter: `drop-shadow(0 0 ${Math.max(2, size / 5)}px ${color})`,
-          ...(animate ? { animation: `${animId} ${(2.4 / speed).toFixed(2)}s ease-in-out infinite` } : {}),
+          position: "absolute",
+          inset: "22%",
+          borderRadius: "9999px",
+          backgroundColor: color,
+          opacity: 0.85,
         }}
-      >
-        {title && <title>{title}</title>}
-        {animate && (
-          <style>{`@keyframes ${animId}{0%,100%{opacity:.7;transform:scale(.94)}50%{opacity:1;transform:scale(1.06)}}`}</style>
-        )}
-        <path
-          d={AURA_SHAPE_PATHS[shape]}
-          fill={shape === "ring" ? "none" : color}
-          fillOpacity={0.35}
-          stroke={color}
-          strokeWidth={1.6}
-          strokeLinejoin="round"
-        />
-      </svg>
+      />,
     );
   }
 
-  const particleSize = Math.round(size * 0.3);
-  const orbits = Array.from({ length: PARTICLE_COUNT }, (_, i) => particleOrbit(i));
-
-  // Four waypoints round the loop, each one pulled in or pushed out a little
-  // so the path is a lopsided wander rather than a clean circle.
-  const waypoint = (o: ReturnType<typeof particleOrbit>, k: number) => {
-    const a = o.angle + (k * Math.PI) / 2;
-    const r = o.radius * (k % 2 === 0 ? 1.06 : 0.84);
-    return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r };
-  };
+  if (small) {
+    return (
+      <span
+        className={className}
+        title={title}
+        aria-hidden={title ? undefined : true}
+        data-testid="aura-mark"
+        data-aura-shape={shape}
+        style={{ display: "inline-block", lineHeight: 0 }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width={size}
+          height={size}
+          ref={breatheRef as React.Ref<SVGSVGElement>}
+          role={title ? "img" : "presentation"}
+          style={{ overflow: "visible", filter: `drop-shadow(0 0 ${Math.max(2, size / 5)}px ${color})` }}
+        >
+          {title && <title>{title}</title>}
+          <path
+            d={AURA_SHAPE_PATHS[shape]}
+            fill={shape === "ring" ? "none" : color}
+            fillOpacity={0.28}
+            stroke={color}
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    );
+  }
 
   return field(
     <>
-      <style>
-        {orbits
-          .map((o, i) => {
-            const name = `${animId}p${i}`;
-            const at = (k: number, pct: number, s: number) => {
-              const w = waypoint(o, k);
-              return `${pct}%{left:${w.x.toFixed(2)}%;top:${w.y.toFixed(2)}%;transform:translate(-50%,-50%) scale(${(o.scale * s).toFixed(3)})}`;
-            };
-            // No fade in the loop at all: the particle is simply always there,
-            // going round. Only its size breathes, which keeps it alive
-            // without the popping the old opacity ramp had.
-            return (
-              `@keyframes ${name}{` +
-              at(0, 0, 1) +
-              at(1, 25, 0.88) +
-              at(2, 50, 1.08) +
-              at(3, 75, 0.92) +
-              at(4, 100, 1) +
-              `}`
-            );
-          })
-          .join("")}
-      </style>
-      {orbits.map((o, i) => {
-        const start = waypoint(o, 0);
-        return (
-          <svg
-            key={i}
-            viewBox="0 0 24 24"
-            width={particleSize}
-            height={particleSize}
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: `${start.x}%`,
-              top: `${start.y}%`,
-              transform: "translate(-50%, -50%)",
-              overflow: "visible",
-              opacity: 0.9,
-              // The shapes are drawn in the aura's own colour on a ground
-              // that is often already glowing in it - a beacon's ring most of
-              // all - so a flat outline disappears into it. A little of the
-              // colour thrown off the edge keeps them legible.
-              filter: `drop-shadow(0 0 ${Math.max(1, Math.round(particleSize / 3))}px ${color})`,
-              ...(animate
-                ? {
-                    animation: `${animId}p${i} ${(o.duration / speed).toFixed(2)}s linear ${(o.delay / speed).toFixed(2)}s infinite ${o.reverse ? "reverse" : "normal"}`,
-                  }
-                : {}),
-            }}
-          >
-            <path
-              d={AURA_SHAPE_PATHS[shape]}
-              fill={shape === "ring" ? "none" : color}
-              fillOpacity={0.55}
-              stroke={color}
-              strokeWidth={2.4}
-              strokeLinejoin="round"
-            />
-          </svg>
-        );
-      })}
+      <AuraParticleNodes count={PARTICLE_COUNT} color={color} shape={shape} nodesRef={nodesRef} glow />
       {title && <span className="sr-only">{title}</span>}
     </>,
+    hostRef,
   );
 }
+
 
 /** A character's aura, resolved and drawn. */
 export function CharacterAuraMark({
@@ -440,7 +814,7 @@ export function CaAuraEditor({
 
 /**
  * The aura as an edge treatment for a whole surface: a glow that hugs every
- * side, with the character's shape drifting faintly along the edges.
+ * side, with the character's shape drifting along the border.
  *
  * The sheet's glow used to be a plain outer `box-shadow` on the root, which a
  * scroll container or a full-screen dialog clips - on a phone that left a
@@ -461,169 +835,28 @@ export function AuraEdgeField({
   count?: number;
   className?: string;
 }) {
-  const rawId = useId();
-  const animId = `auraedge-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-  // Every particle rides the perimeter, on the same loop the glow sits on, and
-  // the loop is measured in pixels from the edge rather than percentages: a
-  // percentage inset on a tall sheet puts the side particles a long way in
-  // over the content, which is exactly where the colour isn't. The wrapper
-  // clips to the box, so nothing can wander outside the outline either.
-  const marks = Array.from({ length: count }, (_, i) => {
-    const inset = 7 + ((i * 5) % 9);
-    return {
-      inset,
-      // How far back from each corner the path starts turning, so a particle
-      // rounds the corner instead of hitting it square.
-      corner: 16,
-      size: 11 + ((i * 5) % 9),
-      duration: 30 + ((i * 7) % 21),
-      delay: -((i * 6.5) % 30),
-      spin: 22 + ((i * 4) % 15),
-      reverse: i % 2 === 1,
-    };
-  });
-
+  const { hostRef, nodesRef } = useAuraParticles({ motion: "edge", count, animate: shape !== "none" });
   return (
     <span
+      ref={hostRef}
       aria-hidden
       className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
       data-testid="aura-edge-field"
     >
-      {/* The glow itself, as an inset ring so no ancestor can clip it. */}
-      <span
-        className="absolute inset-0 rounded-[inherit]"
-        style={{ boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 26px -6px ${color}` }}
-      />
-      {shape !== "none" && (
-        <>
-          <style>
-            {marks
-              .map((m, i) => {
-                const near = `${m.inset}px`;
-                const nearC = `${m.inset + m.corner}px`;
-                const far = `calc(100% - ${m.inset}px)`;
-                const farC = `calc(100% - ${m.inset + m.corner}px)`;
-                // Eight waypoints: the four sides get most of the loop, the
-                // four corner cuts get a sliver each, which slows a particle
-                // through the turn the way something with weight would.
-                return (
-                  `@keyframes ${animId}t${i}{` +
-                  `0%{left:${nearC};top:${near}}` +
-                  `21%{left:${farC};top:${near}}` +
-                  `25%{left:${far};top:${nearC}}` +
-                  `46%{left:${far};top:${farC}}` +
-                  `50%{left:${farC};top:${far}}` +
-                  `71%{left:${nearC};top:${far}}` +
-                  `75%{left:${near};top:${farC}}` +
-                  `96%{left:${near};top:${nearC}}` +
-                  `100%{left:${nearC};top:${near}}}`
-                );
-              })
-              .join("") + `@keyframes ${animId}spin{to{transform:rotate(360deg)}}`}
-          </style>
-          {marks.map((m, i) => (
-            <span
-              key={i}
-              style={{
-                position: "absolute",
-                left: `${m.inset + m.corner}px`,
-                top: `${m.inset}px`,
-                // The travel animation only touches left/top, so this stays
-                // put and the rotation below has the transform to itself.
-                transform: "translate(-50%, -50%)",
-                lineHeight: 0,
-                animation: `${animId}t${i} ${m.duration}s linear ${m.delay}s infinite ${m.reverse ? "reverse" : "normal"}`,
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width={m.size}
-                height={m.size}
-                style={{
-                  display: "block",
-                  overflow: "visible",
-                  // Faint on purpose - it should read as the colour moving,
-                  // not as a row of icons.
-                  opacity: 0.45,
-                  animation: `${animId}spin ${m.spin}s linear ${-i * 3}s infinite ${m.reverse ? "reverse" : "normal"}`,
-                }}
-              >
-                <path
-                  d={AURA_SHAPE_PATHS[shape]}
-                  fill={shape === "ring" ? "none" : color}
-                  fillOpacity={0.18}
-                  stroke={color}
-                  strokeOpacity={0.7}
-                  strokeWidth={1.4}
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          ))}
-        </>
-      )}
+      <AuraRing color={color} />
+      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
     </span>
   );
 }
 
 /**
- * The aura's shapes, drawn once per kind of surface.
+ * Tracker cards, the mini player card, the hotbar slot holding a character -
+ * anything short and wide.
  *
- * Every one of these draws the same shape in the same colour; what differs is
- * how it moves, because the surfaces differ. A character sheet is a page you
- * sit with, so its shapes take a slow lap of the whole border. A tracker card
- * is a 100px strip you glance at, and a lap of that is a shape spending half
- * its life rounding corners - so those run the long edges instead, like a
- * current. A roll tray exists to say a number landed, so its shapes come out
- * of the middle.
- *
- * They share the plumbing below and differ only in their keyframes.
- */
-
-/** The inset ring every aura surface wears, so no ancestor can clip the glow. */
-function AuraRing({ color, strength = 1 }: { color: string; strength?: number }) {
-  return (
-    <span
-      className="absolute inset-0 rounded-[inherit]"
-      style={{
-        boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 ${Math.round(26 * strength)}px -6px ${color}`,
-      }}
-    />
-  );
-}
-
-/** One shape, drawn at the weight the aura marks use everywhere else. */
-function AuraGlyph({ color, shape, size }: { color: string; shape: CAAuraShape; size: number }) {
-  if (shape === "none") return null;
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden
-      style={{ display: "block", overflow: "visible" }}
-    >
-      <path
-        d={AURA_SHAPE_PATHS[shape]}
-        fill={shape === "ring" ? "none" : color}
-        fillOpacity={0.2}
-        stroke={color}
-        strokeOpacity={0.75}
-        strokeWidth={1.5}
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/**
- * Tracker cards, the mini player card, anything short and wide.
- *
- * Shapes run the long edges only - left to right along the top, right to left
- * along the bottom - so the card reads as having a current moving through it.
- * They enter and leave past the ends rather than turning, which is what a
- * perimeter loop would spend most of a 100px card doing.
+ * Shapes run the long edges only, in one end and out the other, so the card
+ * reads as having a current moving through it. A lap of the border is what a
+ * sheet gets; on a 100px strip it is a shape spending half its life rounding
+ * corners.
  */
 export function AuraCurrentField({
   color,
@@ -636,56 +869,16 @@ export function AuraCurrentField({
   count?: number;
   className?: string;
 }) {
-  const rawId = useId();
-  const animId = `auracur-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-  const marks = Array.from({ length: count }, (_, i) => ({
-    onTop: i % 2 === 0,
-    inset: 4 + ((i * 3) % 5),
-    size: 8 + ((i * 5) % 6),
-    duration: 7 + ((i * 2.7) % 6),
-    delay: -((i * 2.9) % 7),
-  }));
-
+  const { hostRef, nodesRef } = useAuraParticles({ motion: "current", count, animate: shape !== "none" });
   return (
     <span
+      ref={hostRef}
       aria-hidden
       className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
       data-testid="aura-current-field"
     >
       <AuraRing color={color} strength={0.7} />
-      {shape !== "none" && (
-        <>
-          <style>
-            {marks
-              .map(
-                (m, i) =>
-                  `@keyframes ${animId}${i}{` +
-                  `0%{left:${m.onTop ? "-10%" : "110%"};opacity:0}` +
-                  `14%{opacity:.5}` +
-                  `86%{opacity:.45}` +
-                  `100%{left:${m.onTop ? "110%" : "-10%"};opacity:0}}`,
-              )
-              .join("")}
-          </style>
-          {marks.map((m, i) => (
-            <span
-              key={i}
-              style={{
-                position: "absolute",
-                left: m.onTop ? "-10%" : "110%",
-                [m.onTop ? "top" : "bottom"]: `${m.inset}px`,
-                transform: "translate(-50%, -50%)",
-                lineHeight: 0,
-                opacity: 0,
-                animation: `${animId}${i} ${m.duration}s linear ${m.delay}s infinite`,
-              }}
-            >
-              <AuraGlyph color={color} shape={shape} size={m.size} />
-            </span>
-          ))}
-        </>
-      )}
+      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
     </span>
   );
 }
@@ -693,10 +886,10 @@ export function AuraCurrentField({
 /**
  * The roll tray, and anything else that exists to announce a result.
  *
- * Shapes come out of the middle and fade as they reach the edge, so the tray
- * reads as something arriving rather than something idling. `active` winds it
- * up while the dice are actually rolling and lets it settle afterwards, which
- * is the difference between "a number is landing" and "a number landed".
+ * Shapes are thrown out of the middle and fade on the way to the edge, so the
+ * tray reads as something arriving rather than something idling. `active`
+ * winds it up while the dice are actually rolling, which is the difference
+ * between a number landing and a number having landed.
  */
 export function AuraBurstField({
   color,
@@ -711,61 +904,21 @@ export function AuraBurstField({
   active?: boolean;
   className?: string;
 }) {
-  const rawId = useId();
-  const animId = `aurabur-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-  const marks = Array.from({ length: count }, (_, i) => {
-    const angle = (i / count) * Math.PI * 2 + 0.4;
-    // Kept short of the edge so a shape fades out rather than being cut off
-    // by the tray's own corner radius.
-    const reach = 40 + ((i * 7) % 10);
-    return {
-      x: 50 + Math.cos(angle) * reach,
-      y: 50 + Math.sin(angle) * reach * 0.7,
-      size: 8 + ((i * 4) % 6),
-      duration: (active ? 1.5 : 3.4) + ((i * 0.31) % 0.9),
-      delay: -((i * 0.9) % 4),
-    };
+  const { hostRef, nodesRef } = useAuraParticles({
+    motion: "burst",
+    count,
+    active,
+    animate: shape !== "none",
   });
-
   return (
     <span
+      ref={hostRef}
       aria-hidden
       className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
       data-testid="aura-burst-field"
     >
       <AuraRing color={color} strength={active ? 1 : 0.6} />
-      {shape !== "none" && (
-        <>
-          <style>
-            {marks
-              .map(
-                (m, i) =>
-                  `@keyframes ${animId}${i}{` +
-                  `0%{left:50%;top:50%;opacity:0;transform:translate(-50%,-50%) scale(.35)}` +
-                  `22%{opacity:${active ? 0.7 : 0.45}}` +
-                  `100%{left:${m.x.toFixed(1)}%;top:${m.y.toFixed(1)}%;opacity:0;transform:translate(-50%,-50%) scale(1)}}`,
-              )
-              .join("")}
-          </style>
-          {marks.map((m, i) => (
-            <span
-              key={i}
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                lineHeight: 0,
-                opacity: 0,
-                animation: `${animId}${i} ${m.duration.toFixed(2)}s ease-out ${m.delay.toFixed(2)}s infinite`,
-              }}
-            >
-              <AuraGlyph color={color} shape={shape} size={m.size} />
-            </span>
-          ))}
-        </>
-      )}
+      <AuraParticleNodes count={count} color={color} shape={shape} nodesRef={nodesRef} />
     </span>
   );
 }
