@@ -629,3 +629,109 @@ export function CaInfoHint({
     </Popover>
   );
 }
+
+/**
+ * A whole labelled field that edits itself in place.
+ *
+ * The Overview wires each of its values by hand, which is right there because
+ * most of them are a different shape. A library sheet is thirty ordinary
+ * fields in a row, and writing all thirty out by hand is how a sheet ends up
+ * with three different ways to edit a number. This is the ordinary case:
+ * label above, value below, double-click or long-press to change it, and it
+ * writes only itself.
+ */
+export function CaInlineField({
+  edit,
+  field,
+  label,
+  value,
+  kind = "text",
+  options,
+  placeholder,
+  suffix,
+  min,
+  max,
+  wide = false,
+  empty = "—",
+  testId,
+}: {
+  edit: CaInlineEdit;
+  field: string;
+  label: React.ReactNode;
+  value: any;
+  kind?: "text" | "number" | "textarea" | "select";
+  /** For `select`: the values on offer, in order. */
+  options?: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  /** Trailing unit shown after the value, e.g. "lb". */
+  suffix?: React.ReactNode;
+  min?: number;
+  max?: number;
+  wide?: boolean;
+  /** What to show when the value is unset. */
+  empty?: string;
+  testId?: string;
+}) {
+  const open = edit.field === field;
+  const id = testId ?? `ca-inline-${field}`;
+  const shown =
+    kind === "select"
+      ? options?.find((o) => o.value === String(value ?? ""))?.label ?? (value ? String(value) : "")
+      : value === null || value === undefined || value === "" ? "" : String(value);
+
+  if (open) {
+    return (
+      <CaField label={label} wide={wide}>
+        <div className="flex items-center gap-1">
+          {kind === "number" ? (
+            <CaInlineNumber edit={edit} field={field} min={min} max={max} testId={id} />
+          ) : kind === "select" ? (
+            <select
+              autoFocus
+              value={String(edit.draft ?? "")}
+              onChange={(e) => edit.setDraft(e.target.value)}
+              className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs px-1.5"
+              data-testid={id}
+            >
+              {options?.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ) : kind === "textarea" ? (
+            <textarea
+              autoFocus
+              rows={4}
+              value={String(edit.draft ?? "")}
+              onChange={(e) => edit.setDraft(e.target.value)}
+              placeholder={placeholder}
+              className="flex-1 min-w-0 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs p-1.5 resize-y"
+              data-testid={id}
+            />
+          ) : (
+            <CaInlineText edit={edit} field={field} placeholder={placeholder} testId={id} />
+          )}
+          {/* CaInlineText and CaInlineNumber each bring their own tick and
+              cross; the plain select and textarea do not, so only they get a
+              set here. Adding one unconditionally gave text fields two. */}
+          {(kind === "select" || kind === "textarea") && (
+            <CaInlineActions edit={edit} field={field} />
+          )}
+        </div>
+      </CaField>
+    );
+  }
+
+  return (
+    <CaField label={label} wide={wide}>
+      <CaValue
+        editable={edit.canEdit}
+        className={`${shown ? "" : "text-stone-600 italic"} ${kind === "textarea" ? "whitespace-pre-wrap" : "truncate"}`}
+        data-testid={`${id}-value`}
+        {...edit.pressHandlers(field, value ?? (kind === "number" ? 0 : ""))}
+      >
+        {shown || empty}
+        {shown && suffix ? <span className="text-stone-500 text-xs ml-1">{suffix}</span> : null}
+      </CaValue>
+    </CaField>
+  );
+}

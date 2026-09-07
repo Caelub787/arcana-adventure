@@ -61,6 +61,7 @@ import {
   itemToDraft,
 } from '@/lib/library-dialog-bridges';
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
+import { LibraryItemSheet } from '@/components/admin/LibraryItemSheet';
 import { isWoundSystem } from "@shared/systemRules";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
 import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs } from "@shared/systems";
@@ -279,8 +280,9 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
   }, [isAdmin, currentView]);
   
-  const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  // The item opened as an inline-edit sheet, rather than in the full form.
+  const [sheetItem, setSheetItem] = useState<Item | null>(null);
 
   // @arcana/library-dialogs host adapter — wraps existing api.* calls behind a
   // session-cookie LibraryTransport, bridges Arcana's <ImageBrowser> as the
@@ -327,13 +329,53 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
-      setShowAddItem(false);
       toast({ title: 'Item Created', description: 'System item created successfully' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
+
+  /**
+   * "Add Item" makes the row and opens it, rather than asking for thirty
+   * fields before anything exists. The cost is that abandoning one leaves an
+   * "Untitled Item" behind, which is why the sheet's Delete is right there in
+   * its header.
+   */
+  const createBlankItem = async () => {
+    try {
+      const created = await api.createSystemItem({
+        name: 'Untitled Item',
+        itemType: 'utility',
+        rarity: 'common',
+        system: systemSlug,
+        ...(personalMode ? { personal: true } : {}),
+      } as any);
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      setSheetItem(created as Item);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Could not create the item', variant: 'destructive' });
+    }
+  };
+
+  /** One field, written on its own, straight from the sheet. */
+  const writeSheetItem = async (updates: Record<string, any>) => {
+    if (!sheetItem) return;
+    // Shown immediately: the sheet is the thing you are looking at, and a
+    // round trip before the value changes reads as the edit not taking.
+    setSheetItem((prev) => (prev ? ({ ...prev, ...updates } as Item) : prev));
+    try {
+      const saved = await api.updateSystemItem(sheetItem.id, updates as any);
+      setSheetItem((prev) => (prev && prev.id === sheetItem.id ? (saved as Item) : prev));
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Could not save', variant: 'destructive' });
+      const fresh = await api.getSystemItem(sheetItem.id).catch(() => null);
+      if (fresh) setSheetItem(fresh as Item);
+    }
+  };
 
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, data, templateLinks }: { id: string; data: Partial<Item>; templateLinks?: string[] }) => {
@@ -406,7 +448,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const [editingTrait, setEditingTrait] = useState<SystemTrait | null>(null);
   const [traitSearchQuery, setTraitSearchQuery] = useState('');
 
-  const [showAddCharacter, setShowAddCharacter] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [characterSearchQuery, setCharacterSearchQuery] = useState('');
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<Character | null>(null);
@@ -817,13 +858,27 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     mutationFn: (character: Partial<Character>) => api.createCharacterTemplate({ ...character, ...(personalMode ? { personal: true } : {}) } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['character-templates'] });
-      setShowAddCharacter(false);
       toast({ title: 'Character Created', description: 'Character template created successfully' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
+
+  /** Same as items: the template exists first, and the sheet is the editor. */
+  const createBlankCharacter = async () => {
+    try {
+      const created = await api.createCharacterTemplate({
+        name: 'Untitled Character',
+        system: systemSlug,
+        ...(personalMode ? { personal: true } : {}),
+      } as any);
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      setViewingCharacterSheet(created as Character);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Could not create the character', variant: 'destructive' });
+    }
+  };
 
   const updateCharacterMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Character> }) => api.updateCharacterTemplate(id, data),
@@ -1181,11 +1236,13 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             setSearchQuery={setSearchQuery}
             typeFilter={typeFilter}
             setTypeFilter={setTypeFilter}
-            onAddItem={() => setShowAddItem(true)}
+            onAddItem={() => createBlankItem()}
             onEditItem={async (itemId) => {
-              // Fetch full item data for editing
+              // The sheet is the way in; the full form is a button on it, for
+              // the editors it deliberately doesn't carry (rolls, template
+              // links, crafter recipes, V3 boosts).
               const fullItem = await api.getSystemItem(itemId);
-              setEditingItem(fullItem);
+              setSheetItem(fullItem);
             }}
             onDeleteItem={(id) => {
               if (confirm('Are you sure you want to delete this item?')) {
@@ -1319,8 +1376,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             isLoading={charactersLoading || templateFoldersLoading}
             searchQuery={characterSearchQuery}
             setSearchQuery={setCharacterSearchQuery}
-            onAddCharacter={() => setShowAddCharacter(true)}
-            onEditCharacter={setEditingCharacter}
+            onAddCharacter={() => createBlankCharacter()}
+            onEditCharacter={setViewingCharacterSheet}
             onDeleteCharacter={(id) => {
               if (confirm('Are you sure you want to delete this character template?')) {
                 deleteCharacterMutation.mutate(id);
@@ -1406,27 +1463,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             an empty templateLinks array on legacy edits. */}
         {useLibraryItemDialog ? (
           <>
-            <ItemDialog
-              open={showAddItem}
-              onOpenChange={(open) => setShowAddItem(open)}
-              mode="create"
-              host={itemDialogHost}
-              campaignSystem={systemSlug}
-              renderCrafterExtras={renderCrafterExtras}
-              onSaved={(saved) => {
-                invalidateItemQueries(saved.id);
-                setShowAddItem(false);
-                toast({ title: 'Item Created', description: 'System item created successfully' });
-                // Crafter items persist recipes/repair/tools via dedicated
-                // id-keyed endpoints, so those editors only light up once a row
-                // exists. Auto-reopen the new crafter item in edit mode so the
-                // GM can configure them immediately — no manual save-and-reopen.
-                if ((saved as Item).itemType === 'crafter') {
-                  setEditingItem(saved as Item);
-                }
-              }}
-            />
-
             {editingItem && (
               <ItemDialog
                 open={!!editingItem}
@@ -1446,17 +1482,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           </>
         ) : (
           <>
-            <ItemFormDialog
-              open={showAddItem}
-              onOpenChange={(open) => setShowAddItem(open)}
-              onSave={(data, draftRolls, templateLinks) =>
-                createItemMutation.mutate({ item: data, draftRolls, templateLinks })
-              }
-              isLoading={createItemMutation.isPending}
-              campaignSystem={systemSlug}
-              personal={personalMode}
-            />
-
             {editingItem && (
               <ItemFormDialog
                 open={!!editingItem}
@@ -1471,6 +1496,30 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               />
             )}
           </>
+        )}
+
+        {/* The item sheet, over everything, the way the character-template
+            sheet already opens. */}
+        {sheetItem && (
+          <div className="fixed inset-0 z-[10000] bg-stone-950/95 flex items-start justify-center overflow-auto p-4" data-testid="overlay-library-item-sheet">
+            <LibraryItemSheet
+              item={sheetItem}
+              systemSlug={systemSlug}
+              onUpdate={writeSheetItem}
+              onOpenFullForm={() => {
+                const open = sheetItem;
+                setSheetItem(null);
+                setEditingItem(open);
+              }}
+              onDelete={() => {
+                if (!confirm('Delete this item?')) return;
+                const id = sheetItem.id;
+                setSheetItem(null);
+                deleteItemMutation.mutate(id);
+              }}
+              onClose={() => setSheetItem(null)}
+            />
+          </div>
         )}
 
         {imageBrowserElement}
@@ -1592,14 +1641,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           />
         )}
 
-        <CharacterFormDialog
-          open={showAddCharacter}
-          onOpenChange={setShowAddCharacter}
-          onSave={(data) => createCharacterMutation.mutate(data)}
-          isLoading={createCharacterMutation.isPending}
-          folders={templateFolders}
-        />
-
         {editingCharacter && (
           <CharacterFormDialog
             open={!!editingCharacter}
@@ -1644,6 +1685,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 isGM={true}
                 isOwner={true}
                 isTemplate={true}
+                // Without this the sheet fell back to the default system's
+                // layout, so a C.A. template opened without the double-click
+                // editing that is the reason to open a sheet at all.
+                campaignSystem={systemSlug}
                 onUpdate={(updates) => {
                   updateCharacterMutation.mutate(
                     { id: viewingCharacterSheet.id, data: updates },
