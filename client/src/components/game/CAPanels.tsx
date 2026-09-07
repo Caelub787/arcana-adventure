@@ -145,33 +145,37 @@ export function CaRankBadge({ energyPool }: { energyPool: number | null | undefi
 // Aura
 // ---------------------------------------------------------------------------
 
-// Each shape is a path on a 0..24 canvas, drawn in the aura colour. They are
-// meant to read at 6-14px, which is what rules most of them: one clean form
-// or two beats an accurate cluster that turns to mush at that size.
+// Each shape is a path on a 0..24 canvas, drawn in the aura colour.
+//
+// They are meant to read at 8-15px, which is what rules all of them: two bold
+// forms beat five accurate ones, and anything that leaves half the canvas
+// empty is a speck by the time it is drawn. Several of these started out
+// faithful to the name and unreadable at size - three scattered bubbles, a
+// four-branch crack, a nine-spoke web - and were cut down until they held.
 const AURA_SHAPE_PATHS: Record<Exclude<CAAuraShape, "none">, string> = {
-  bubbles: "M8 9a4 4 0 1 0 .01 0ZM17 6.5a2.6 2.6 0 1 0 .01 0ZM14 17.5a3.4 3.4 0 1 0 .01 0Z",
+  bubbles: "M9 10a6 6 0 1 0 .01 0ZM17.5 17.5a4 4 0 1 0 .01 0Z",
   rings: "M12 3a9 9 0 1 0 .01 0ZM12 8.5a3.5 3.5 0 1 0 .01 0Z",
   hexagons: "M12 2 20.6 7 20.6 17 12 22 3.4 17 3.4 7Z",
-  diamonds: "M10 3 16 12 10 21 4 12ZM19 5.5 22 10 19 14.5 16 10Z",
+  diamonds: "M9.5 2 16.5 12 9.5 22 2.5 12ZM18.5 4.5 22.5 10.5 18.5 16.5 14.5 10.5Z",
   triangles: "M12 3 21 20 3 20ZM12 9.5 16.5 18 7.5 18Z",
-  squares: "M3.5 3.5h8.5v8.5H3.5ZM14 13.5h6.5V20H14Z",
-  shards: "M5 3 13.5 6 9 13.5 3 10ZM15.5 11 21.5 8.5 19.5 18.5 14 16Z",
+  squares: "M2.5 3h11.5v11.5H2.5ZM15 14.5h6.5V21H15Z",
+  shards: "M3.5 3 14.5 6 9 15.5 2 11ZM15.5 10.5 22 8 20 21 13.5 17.5Z",
   sparks: "M12 1.5c1 7.5 3 9.5 10.5 10.5-7.5 1-9.5 3-10.5 10.5-1-7.5-3-9.5-10.5-10.5 7.5-1 9.5-3 10.5-10.5Z",
-  motes: "M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0ZM18.5 6m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0ZM6 17.5m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z",
+  motes: "M9.5 11a5 5 0 1 0 .01 0ZM18 18.5a3 3 0 1 0 .01 0Z",
   wisps: "M12 1.8c4 6.2 7 9.2 7 13.2 0 4-3 7-7 7s-7-3-7-7c0-3.4 3-6.4 7-13.2Z",
-  spirals: "M13 12a1 1 0 1 1-2 0 3 3 0 1 1 6 0 5 5 0 1 1-10 0 7 7 0 1 1 14 0",
+  spirals: "M12 12A2 2 0 0 1 16 12A4 4 0 0 1 8 12A5.5 5.5 0 0 1 19 12A7 7 0 0 1 5 12",
   crescents: "M16.5 3.6a9.6 9.6 0 1 0 0 16.8 8 8 0 1 1 0-16.8Z",
-  ripples: "M3.5 16.5a9.5 9.5 0 0 1 17 0M7 18.5a6 6 0 0 1 10 0M10 20.5a3 3 0 0 1 4 0",
-  cracks: "M12.5 2 11 9.5 14 12.5 12 22M11 9.5 5.5 11.5M14 12.5 19.5 10M12.8 16.5 8 19.5",
-  runes: "M6.5 3v18M6.5 8.5 17.5 3M6.5 14.5 17.5 9M17.5 3v18",
+  ripples: "M2 17.5a10.5 10.5 0 0 1 20 0M6.5 20a5.5 5.5 0 0 1 11 0",
+  cracks: "M13.5 2 10.5 10 14 13.5 11 22M10.5 10 3.5 12.5M14 13.5 20.5 10",
+  runes: "M5.5 3v18M18.5 3v18M5.5 10.5 18.5 5",
   eyes: "M2 12c4.5-6.5 15.5-6.5 20 0-4.5 6.5-15.5 6.5-20 0ZM12 8.7a3.3 3.3 0 1 0 .01 0Z",
   stars: "M12 2 14.9 9.1 22.5 9.6 16.7 14.5 18.5 21.9 12 17.8 5.5 21.9 7.3 14.5 1.5 9.6 9.1 9.1Z",
   crosses: "M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7Z",
-  arcs: "M3 16.5A10.5 10.5 0 0 1 11.5 3.5M13.5 20.5A10.5 10.5 0 0 0 21 9",
+  arcs: "M2.5 15.5A11 11 0 0 1 13 3M11 21A11 11 0 0 0 21.5 8.5",
   links: "M9 12m-6 0a6 4 0 1 0 12 0a6 4 0 1 0-12 0M15 12m-6 0a6 4 0 1 0 12 0a6 4 0 1 0-12 0",
   cells: "M12 2.5c5.2 0 9.2 4.2 8.2 9.3-1 5.1-5.2 9.4-9.4 8.3C5.6 19 2.5 14.8 3.6 9.8 4.6 5.4 7.8 2.5 12 2.5Z",
-  webbing: "M12 2v20M2 12h20M5 5 19 19M19 5 5 19M12 6 6.5 12 12 18 17.5 12Z",
-  waves: "M2 9c3-4.5 6 4.5 9 0s6 4.5 9 0M2 16.5c3-4.5 6 4.5 9 0s6 4.5 9 0",
+  webbing: "M12 3 20 7.5v9L12 21 4 16.5v-9ZM12 12V3M12 12 20 16.5M12 12 4 16.5",
+  waves: "M2 7c3-6 7 6 10 0s7 6 10 0M2 17c3-6 7 6 10 0s7 6 10 0",
   zigzags: "M3 6.5 8 12 3 17.5M10 4.5 15.5 12 10 19.5M17.5 6.5 21.5 12 17.5 17.5",
 };
 
@@ -337,7 +341,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           p.y = h / 2 + Math.sin(a) * p.inset;
           p.vx = 0;
           p.vy = 0;
-          p.size = Math.max(3, Math.min(w, h) * rnd(0.13, 0.21));
+          p.size = Math.max(7, Math.min(w, h) * rnd(0.17, 0.26));
           p.ttl = rnd(7, 15) / speed;
           p.age = first ? rnd(0, p.ttl) : 0;
           p.fadeIn = Math.min(1.2, p.ttl * 0.25);
@@ -388,7 +392,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           p.inset = rnd(6, 16);
           p.sp = rnd(14, 34) * speed * pick(1, -1);
           p.d = rnd(0, 2 * (w + h));
-          p.size = rnd(6, 13);
+          p.size = rnd(8, 15);
           p.ttl = rnd(14, 30);
           p.age = first ? rnd(0, p.ttl) : 0;
           p.fadeIn = 1.6;
@@ -431,7 +435,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           // along the edge instead of stacking them all at the entrance.
           p.x = (onTop ? -14 : w + 14) + p.sp * p.age;
           p.vy = rnd(-2, 2);
-          p.size = rnd(5, 11);
+          p.size = rnd(8, 14);
           p.fadeIn = p.ttl * 0.18;
           p.fadeOut = p.ttl * 0.22;
           p.peak = rnd(0.34, 0.52);
@@ -574,7 +578,10 @@ function AuraGlyph({ color, shape }: { color: string; shape: CAAuraShape }) {
         fillOpacity={0.18}
         stroke={color}
         strokeOpacity={0.72}
-        strokeWidth={1.6}
+        // Line-work shapes carry all their meaning in the stroke, so they need
+        // more of it to survive being drawn at ten pixels. A filled form with
+        // the same weight just goes blobby.
+        strokeWidth={AURA_OUTLINE_SHAPES.has(shape) ? 2.3 : 1.7}
         strokeLinejoin="round"
         strokeLinecap="round"
       />
