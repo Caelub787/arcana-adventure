@@ -11915,15 +11915,20 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
     >
       {active.map((r) => {
         const color = colorFor(r);
+        const character = (characters || []).find((c: any) => c.name === r.characterName);
+        // This stands in for the tracker's roll tray while something is
+        // fullscreen, so it announces a result the same way that does.
+        const aura = character?.caAuraColor ? caAuraOf(character, color) : null;
         return (
           <div
             key={r.id}
-            className="px-3 py-1.5 rounded-lg bg-stone-900/95 border shadow-lg flex items-center gap-2"
+            className="relative px-3 py-1.5 rounded-lg bg-stone-900/95 border shadow-lg flex items-center gap-2"
             style={{ borderColor: color }}
           >
-            <span className="text-xs font-bold truncate max-w-[100px]" style={{ color }}>{r.characterName || r.username}</span>
-            <span className="text-xs text-stone-300 truncate max-w-[160px]">{r.text}</span>
-            {r.total !== null && <span className="text-sm font-bold" style={{ color }}>{r.total}</span>}
+            {aura && <AuraBurstField color={aura.color} shape={aura.shape} count={7} active />}
+            <span className="relative text-xs font-bold truncate max-w-[100px]" style={{ color }}>{r.characterName || r.username}</span>
+            <span className="relative text-xs text-stone-300 truncate max-w-[160px]">{r.text}</span>
+            {r.total !== null && <span className="relative text-sm font-bold" style={{ color }}>{r.total}</span>}
           </div>
         );
       })}

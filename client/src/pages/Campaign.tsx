@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { AuraCurrentField, AuraBurstField } from "@/components/game/CAPanels";
+import { caAuraOf } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
 import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, isSwampySystem, type SystemSlug } from "@shared/systems";
@@ -1058,7 +1060,11 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
     const color = char
       ? characterTrackerColor(char, member)
       : (member?.beaconColor || stableColorForId(msg.userId || msg.sender || 'unknown'));
-    return { portrait, color };
+    // Chat already wore the aura's colour; it gets the shapes too, on the
+    // same terms as everywhere else - only once the player has actually
+    // chosen an aura, never on the fallback colour.
+    const aura = char?.caAuraColor ? caAuraOf(char, color) : null;
+    return { portrait, color, aura };
   };
 
   const isRollMessage = (msg: any) => msg.type === 'roll' || (msg.type !== 'system' && msg.type !== 'gm-audit' && !!msg.text?.includes('rolled'));
@@ -1125,7 +1131,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
               );
             }
 
-            const { portrait, color } = resolveMessageIdentity(msg);
+            const { portrait, color, aura } = resolveMessageIdentity(msg);
             return (
               <div
                 key={msg.id || i}
@@ -1142,6 +1148,9 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
                       <User className="h-3.5 w-3.5" />
                     </div>
                   )}
+                  {/* Over the portrait, and few enough at 32px that it reads
+                      as the frame moving rather than as clutter on a face. */}
+                  {aura && <AuraCurrentField color={aura.color} shape={aura.shape} count={4} />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -1161,10 +1170,11 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
                 </div>
                 {rollTotal !== null && (
                   <span
-                    className="self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold bg-stone-950/40"
+                    className="relative self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold bg-stone-950/40"
                     style={{ borderColor: color, color }}
                   >
-                    {rollTotal}
+                    {aura && <AuraBurstField color={aura.color} shape={aura.shape} count={6} />}
+                    <span className="relative">{rollTotal}</span>
                   </span>
                 )}
               </div>

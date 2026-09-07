@@ -295,7 +295,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           p.y = h / 2 + Math.sin(a) * p.inset;
           p.vx = 0;
           p.vy = 0;
-          p.size = Math.max(4, Math.min(w, h) * rnd(0.2, 0.29));
+          p.size = Math.max(3, Math.min(w, h) * rnd(0.13, 0.21));
           p.ttl = rnd(7, 15) / speed;
           p.age = first ? rnd(0, p.ttl) : 0;
           p.fadeIn = Math.min(1.2, p.ttl * 0.25);
@@ -346,7 +346,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           p.inset = rnd(6, 16);
           p.sp = rnd(14, 34) * speed * pick(1, -1);
           p.d = rnd(0, 2 * (w + h));
-          p.size = rnd(9, 19);
+          p.size = rnd(6, 13);
           p.ttl = rnd(14, 30);
           p.age = first ? rnd(0, p.ttl) : 0;
           p.fadeIn = 1.6;
@@ -387,7 +387,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           // along the edge instead of stacking them all at the entrance.
           p.x = (onTop ? -14 : w + 14) + p.sp * p.age;
           p.vy = rnd(-2, 2);
-          p.size = rnd(8, 15);
+          p.size = rnd(5, 11);
           p.fadeIn = p.ttl * 0.18;
           p.fadeOut = p.ttl * 0.22;
           p.peak = rnd(0.34, 0.52);
@@ -422,7 +422,7 @@ function auraBehaviour(motion: AuraMotion, speed: number, active: boolean) {
           p.y = h / 2;
           p.vx = Math.cos(a) * sp;
           p.vy = Math.sin(a) * sp * 0.7;
-          p.size = rnd(8, 15);
+          p.size = rnd(5, 11);
           // Negative age is a wait: they come out in their own time rather
           // than all at once on a shared beat.
           p.age = first ? rnd(-0.6, p.ttl) : -rnd(0, 0.6);
@@ -523,7 +523,29 @@ function useAuraParticles({
       }
     };
 
-    return subscribeAura(tick);
+    // Only while it is actually on screen. Chat mounts one of these per
+    // message and a roster mounts one per character, so a long scrollback
+    // would otherwise have hundreds of fields simulating into the void.
+    let stop: (() => void) | null = null;
+    const start = () => { if (!stop) stop = subscribeAura(tick); };
+    const halt = () => { if (stop) { stop(); stop = null; } };
+
+    // Started straight away and paused by the observer, rather than waiting
+    // for the observer to start it: the first intersection callback is not
+    // guaranteed to be prompt, and a field that needs one before it draws
+    // anything shows an empty box until it arrives.
+    start();
+    const host = hostRef.current;
+    if (!host || typeof IntersectionObserver === "undefined") return halt;
+    const io = new IntersectionObserver(
+      ([entry]) => (entry.isIntersecting ? start() : halt()),
+      { rootMargin: "80px" },
+    );
+    io.observe(host);
+    return () => {
+      io.disconnect();
+      halt();
+    };
   }, [motion, count, animate, speed, active]);
 
   return { hostRef, nodesRef };
@@ -633,8 +655,8 @@ function useAuraBreathe(animate: boolean, speed = 1) {
  * particle is three pixels - so it falls back to a single shape that breathes
  * instead.
  */
-const PARTICLE_MIN_SIZE = 20;
-const PARTICLE_COUNT = 4;
+const PARTICLE_MIN_SIZE = 18;
+const PARTICLE_COUNT = 8;
 
 export function AuraShapeMark({
   color,
@@ -827,7 +849,7 @@ export function CaAuraEditor({
 export function AuraEdgeField({
   color,
   shape,
-  count = 7,
+  count = 12,
   className = "",
 }: {
   color: string;
@@ -861,7 +883,7 @@ export function AuraEdgeField({
 export function AuraCurrentField({
   color,
   shape,
-  count = 6,
+  count = 9,
   className = "",
 }: {
   color: string;
@@ -894,7 +916,7 @@ export function AuraCurrentField({
 export function AuraBurstField({
   color,
   shape,
-  count = 6,
+  count = 9,
   active = false,
   className = "",
 }: {

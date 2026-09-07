@@ -90,6 +90,35 @@ describe("aura particle engine", () => {
     for (const o of opacities) expect(o).toBeLessThanOrEqual(0.8);
   });
 
+  it("pauses a field the moment it scrolls out of view", () => {
+    // Chat mounts one of these per message; a long scrollback simulating
+    // off-screen is the thing this guards against.
+    let notify: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+          notify = cb;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+
+    render(<AuraShapeMark color="#c9a227" shape="star" size={64} />);
+    // Runs before the observer has said anything: a field must not need an
+    // intersection callback before it will draw.
+    advance(5);
+    expect(frames.length).toBeGreaterThan(0);
+
+    notify!([{ isIntersecting: false }]);
+    advance(1);
+    expect(frames).toHaveLength(0);
+
+    notify!([{ isIntersecting: true }]);
+    expect(frames.length).toBeGreaterThan(0);
+  });
+
   it("stops the shared loop once the last field unmounts", () => {
     const { unmount } = render(<AuraShapeMark color="#c9a227" shape="star" size={64} />);
     advance(5);
