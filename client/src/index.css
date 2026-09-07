@@ -637,15 +637,20 @@ hr,
    was still drawing plain shadcn controls next to them. Styling the shared
    primitives is what makes the two match without touching either call site.
 
-   Outlined and ghost buttons take the metal; filled ones (a Save, a
-   destructive Delete) keep their own colour, because those are meant to stand
-   out from the frame rather than blend into it. */
-[data-slot="button"].border,
+   Outlined buttons take the metal; filled ones (a Save, a destructive
+   Delete) keep their own colour, because those are meant to stand out from
+   the frame rather than blend into it.
+
+   Ghost buttons are excluded by the `border-transparent` guard. They are
+   built as `border border-transparent` - the border is there to stop the
+   layout shifting, not to be seen - and painting it gold put a faint gold
+   box around every bare icon button in the app. */
+[data-slot="button"].border:not(.border-transparent),
 [data-slot="button"][class*="border-stone"],
 [data-slot="button"][class*="border-input"] {
   border-color: var(--ca-gilt-line-soft);
 }
-[data-slot="button"]:hover.border,
+[data-slot="button"].border:not(.border-transparent):hover,
 [data-slot="button"][class*="border-stone"]:hover,
 [data-slot="button"][class*="border-input"]:hover {
   border-color: var(--ca-gilt-line);

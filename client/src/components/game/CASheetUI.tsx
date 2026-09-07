@@ -11,7 +11,8 @@
  * and writes only itself.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -578,5 +579,53 @@ export function CaInset({
     >
       {children}
     </div>
+  );
+}
+
+
+/**
+ * A footnote folded up behind an icon.
+ *
+ * Rules text like how attribute values map to dice is worth having, and worth
+ * having once - it is read the first session and skipped every session after,
+ * and a paragraph of it above a tab pushes the actual numbers down the page.
+ * The icon is bare rather than a Button: every variant carries a frame, and a
+ * boxed `i` reads as a control you were meant to press.
+ */
+export function CaInfoHint({
+  children,
+  label = "More about this",
+  align = "start",
+  testId = "button-ca-info-hint",
+}: {
+  children: React.ReactNode;
+  label?: string;
+  align?: "start" | "center" | "end";
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center transition-colors"
+          style={{ color: "var(--ca-gilt)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ca-gilt-bright)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ca-gilt)"; }}
+          aria-label={label}
+          data-testid={testId}
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className="w-64 text-xs leading-relaxed text-stone-300"
+        data-testid="panel-ca-info-hint"
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
   );
 }

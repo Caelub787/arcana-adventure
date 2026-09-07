@@ -28,7 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField, AuraBurstField } from "@/components/game/CAPanels";
-import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset } from "@/components/game/CASheetUI";
+import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -18025,9 +18025,11 @@ function V3AttrsAndSkillsTab({
             </Button>
           </div>
         )}
-        <p className="text-xs text-stone-500">
-          Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
-        </p>
+        <div className="flex justify-end">
+          <CaInfoHint label="How attributes and skills roll" align="end" testId="button-v3-skills-info">
+            Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+          </CaInfoHint>
+        </div>
 
         {editing && (
           <div className="grid grid-cols-2 gap-2" data-testid="v3-point-budgets">
@@ -18422,10 +18424,15 @@ function CAAttrsAndSkillsTab({
   return (
     <CaSheetFrame>
       <div className="p-4 space-y-3" data-testid="card-ca-attrs-skills">
-        <p className="text-xs text-stone-500">
-          Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
-          {canEditSheet && ' Double-click (or long-press) a number to change it.'}
-        </p>
+        {/* The rules for reading this tab, folded up: read once, skipped
+            every session after, and a paragraph of it here pushed the
+            numbers themselves down the page. */}
+        <div className="flex justify-end">
+          <CaInfoHint label="How attributes and skills roll" align="end" testId="button-ca-skills-info">
+            Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+            {canEditSheet && ' Double-click (or long-press) a number to change it.'}
+          </CaInfoHint>
+        </div>
 
         {/* The budgets are always on screen now rather than only inside an
             edit mode, because they are what tells you whether there is

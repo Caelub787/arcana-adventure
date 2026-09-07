@@ -7,7 +7,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import {
   CA_RANKS,
   CA_AURA_SHAPES,
@@ -120,17 +119,18 @@ export function CaRankBadge({ energyPool }: { energyPool: number | null | undefi
             {fmt(toNext)} to next
           </span>
         )}
-        <Button
+        {/* A bare icon, not a Button: every button variant carries a frame
+            of some kind, and a boxed `i` beside the rank read as a control
+            you were meant to press rather than a footnote. */}
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="h-4 w-4 p-0 text-stone-500 hover:text-amber-400"
+          className="inline-flex items-center justify-center text-amber-400 hover:text-amber-200 transition-colors"
           onClick={(e) => { e.stopPropagation(); setOpen(true); }}
           aria-label="What the ranks mean"
           data-testid="button-ca-rank-info"
         >
           <Info className="h-3 w-3" />
-        </Button>
+        </button>
       </span>
       <CaRankReferenceDialog open={open} onOpenChange={setOpen} energyPool={energyPool} />
     </>
