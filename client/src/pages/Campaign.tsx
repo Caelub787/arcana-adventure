@@ -13380,13 +13380,6 @@ export default function Campaign() {
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <div className="relative flex h-full min-h-0">
-            {/* With notes docked the aura wraps both panes rather than just
-                the sheet, so the pair reads as one panel. The sheet leaves
-                its own ring off while this one is up. */}
-            {dockedCharNotes[sheet.id] && (sheet as any)?.caAuraColor && (() => {
-              const aura = caAuraOf(sheet, null);
-              return <AuraEdgeField {...aura} />;
-            })()}
             {/* This wrapper must be a flex COLUMN: CharacterSheet's root sizes
                 itself with `flex-1 min-h-0`, which is inert under a plain block
                 parent. Without it the sheet grew to its full content height,
@@ -13449,6 +13442,18 @@ export default function Campaign() {
                 />
               </div>
             )}
+            {/* With notes docked the aura wraps both panes rather than just
+                the sheet, so the pair reads as one panel; the sheet leaves its
+                own ring off while this one is up.
+
+                Last, and above both panes. The sheet's root is positioned and
+                paints in tree order with this, so drawn first it went straight
+                under the sheet's own opaque background - which read as the
+                aura switching off the moment notes opened. */}
+            {dockedCharNotes[sheet.id] && (sheet as any)?.caAuraColor && (() => {
+              const aura = caAuraOf(sheet, null);
+              return <AuraEdgeField {...aura} className="z-30" />;
+            })()}
             </div>
           </FloatingPanel>
           );
