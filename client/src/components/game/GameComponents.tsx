@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
-import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField } from "@/components/game/CAPanels";
+import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField, AuraBurstField } from "@/components/game/CAPanels";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -9617,10 +9617,14 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
               role="button"
               tabIndex={0}
               onClick={() => onOpenCharacterSheet?.()}
-              className="chrome-frame chrome-frame-lg flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
+              className="chrome-frame chrome-frame-lg relative flex items-center gap-2 rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg p-1.5 w-32 md:w-44 cursor-pointer hover:shadow-xl transition-shadow"
               style={{ borderColor: cardAccentColor }}
               data-testid="button-character-overview"
             >
+              {character?.caAuraColor && (() => {
+                const aura = caAuraOf(character, cardAccentColor);
+                return <AuraCurrentField color={aura.color} shape={aura.shape} count={5} />;
+              })()}
               <div className="relative w-9 h-9 md:w-12 md:h-12 rounded-md overflow-hidden bg-stone-800 shrink-0">
                 {character.portrait ? (
                   <img src={character.portrait} alt="" className="w-full h-full object-cover" />
@@ -11622,6 +11626,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const visible = !!latest && (revealed || historyOpen);
   const borderColor = accentColor || '#3D77F0';
   const rgbForBorder = accentRgb || '61, 119, 240';
+  // The shapes only appear once a player has actually chosen an aura - an
+  // unset aura is just a colour, and a card full of drifting default shapes
+  // would say nothing about whose card it is.
+  const cardAura = character?.caAuraColor ? caAuraOf(character, accentColor) : null;
 
   const historyPopoverContent = (
     <PopoverContent side="bottom" align="center" className="w-56 bg-stone-900 border-stone-700 p-2">
@@ -11676,7 +11684,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
         onClick={onOpenSheet}
-        className={`chrome-frame chrome-frame-lg rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
+        className={`chrome-frame chrome-frame-lg relative rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
           compact ? 'flex flex-col gap-0.5 p-1' : 'flex items-center gap-1.5 p-1.5'
         } ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
         style={{
@@ -11686,6 +11694,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
           boxShadow: glow ? `0 0 0 3px rgba(${rgbForBorder}, 0.35)` : undefined,
         }}
       >
+       {cardAura && <AuraCurrentField color={cardAura.color} shape={cardAura.shape} />}
        {compact ? (
         <>
           {/* Portrait and name on one row, then the bars full width beneath —
@@ -11814,7 +11823,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-              className="mt-2 rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
+              className="relative mt-2 rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
               style={{
                 width: trayWidth,
                 height: trayHeight,
@@ -11824,6 +11833,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
               }}
               data-testid={`pinned-roll-${testId}`}
             >
+              {cardAura && <AuraBurstField color={cardAura.color} shape={cardAura.shape} active={rolling} />}
               <div className="text-[9px] font-medium text-stone-300 truncate max-w-full leading-tight">{latest?.text || ''}</div>
               <div className={`${compact ? 'text-lg' : 'text-xl'} font-bold leading-tight ${rolling ? 'animate-pulse' : ''}`} style={{ color: borderColor }}>
                 {rolling ? rollDisplay : (latest ? (latest.total ?? '') : '')}

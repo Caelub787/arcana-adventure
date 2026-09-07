@@ -19,6 +19,8 @@ import { vitalBarColor } from "@/lib/vitalBarColor";
 import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
 import { isSwampySystem } from "@shared/systems";
 import { SWAMPY_MAX_HOPE } from "@shared/swampy";
+import { caAuraOf } from "@shared/ca";
+import { AuraCurrentField } from "@/components/game/CAPanels";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -313,6 +315,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
         <div className="grid grid-cols-5 xl:grid-cols-10 gap-1 sm:gap-2">
         {Array.from({ length: NUM_SLOTS }).map((_, slotIndex) => {
           const entry = currentEntries.get(slotIndex);
+          // A slot holding a character is that player's info, so it takes
+          // their aura instead of the generic frame - the same colour their
+          // sheet, tracker and beacon already use.
+          // Read off the live character rather than the slot's snapshot, so
+          // changing an aura shows up here without a refresh, the same way the
+          // stat bars already do.
+          const slotLive = entry?.character ? liveCharMap.get(entry.character.id) : null;
+          const slotAura = slotLive?.caAuraColor ? caAuraOf(slotLive) : null;
           return (
             <div key={slotIndex} className="relative">
               <button
@@ -327,11 +337,15 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 onPointerLeave={cancelHold}
                 onPointerCancel={cancelHold}
                 onContextMenu={(e) => { if (entry) { e.preventDefault(); setRemoveTarget(entry); } }}
-                className={`chrome-frame w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
+                className={`chrome-frame relative w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
                   entry ? 'border-amber-600 bg-stone-800 hover:border-amber-500' : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
                 }`}
+                style={slotAura ? { borderColor: slotAura.color } : undefined}
                 data-testid={`free-hotbar-slot-${slotIndex}`}
               >
+                {slotAura && (
+                  <AuraCurrentField color={slotAura.color} shape={slotAura.shape} count={4} />
+                )}
                 {entry ? (
                   entry.character ? (() => {
                     // Merge in live character data (not just the snapshot the

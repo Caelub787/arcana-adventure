@@ -566,3 +566,206 @@ export function AuraEdgeField({
     </span>
   );
 }
+
+/**
+ * The aura's shapes, drawn once per kind of surface.
+ *
+ * Every one of these draws the same shape in the same colour; what differs is
+ * how it moves, because the surfaces differ. A character sheet is a page you
+ * sit with, so its shapes take a slow lap of the whole border. A tracker card
+ * is a 100px strip you glance at, and a lap of that is a shape spending half
+ * its life rounding corners - so those run the long edges instead, like a
+ * current. A roll tray exists to say a number landed, so its shapes come out
+ * of the middle.
+ *
+ * They share the plumbing below and differ only in their keyframes.
+ */
+
+/** The inset ring every aura surface wears, so no ancestor can clip the glow. */
+function AuraRing({ color, strength = 1 }: { color: string; strength?: number }) {
+  return (
+    <span
+      className="absolute inset-0 rounded-[inherit]"
+      style={{
+        boxShadow: `inset 0 0 0 1px ${color}55, inset 0 0 ${Math.round(26 * strength)}px -6px ${color}`,
+      }}
+    />
+  );
+}
+
+/** One shape, drawn at the weight the aura marks use everywhere else. */
+function AuraGlyph({ color, shape, size }: { color: string; shape: CAAuraShape; size: number }) {
+  if (shape === "none") return null;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden
+      style={{ display: "block", overflow: "visible" }}
+    >
+      <path
+        d={AURA_SHAPE_PATHS[shape]}
+        fill={shape === "ring" ? "none" : color}
+        fillOpacity={0.2}
+        stroke={color}
+        strokeOpacity={0.75}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Tracker cards, the mini player card, anything short and wide.
+ *
+ * Shapes run the long edges only - left to right along the top, right to left
+ * along the bottom - so the card reads as having a current moving through it.
+ * They enter and leave past the ends rather than turning, which is what a
+ * perimeter loop would spend most of a 100px card doing.
+ */
+export function AuraCurrentField({
+  color,
+  shape,
+  count = 6,
+  className = "",
+}: {
+  color: string;
+  shape: CAAuraShape;
+  count?: number;
+  className?: string;
+}) {
+  const rawId = useId();
+  const animId = `auracur-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  const marks = Array.from({ length: count }, (_, i) => ({
+    onTop: i % 2 === 0,
+    inset: 4 + ((i * 3) % 5),
+    size: 8 + ((i * 5) % 6),
+    duration: 7 + ((i * 2.7) % 6),
+    delay: -((i * 2.9) % 7),
+  }));
+
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
+      data-testid="aura-current-field"
+    >
+      <AuraRing color={color} strength={0.7} />
+      {shape !== "none" && (
+        <>
+          <style>
+            {marks
+              .map(
+                (m, i) =>
+                  `@keyframes ${animId}${i}{` +
+                  `0%{left:${m.onTop ? "-10%" : "110%"};opacity:0}` +
+                  `14%{opacity:.5}` +
+                  `86%{opacity:.45}` +
+                  `100%{left:${m.onTop ? "110%" : "-10%"};opacity:0}}`,
+              )
+              .join("")}
+          </style>
+          {marks.map((m, i) => (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                left: m.onTop ? "-10%" : "110%",
+                [m.onTop ? "top" : "bottom"]: `${m.inset}px`,
+                transform: "translate(-50%, -50%)",
+                lineHeight: 0,
+                opacity: 0,
+                animation: `${animId}${i} ${m.duration}s linear ${m.delay}s infinite`,
+              }}
+            >
+              <AuraGlyph color={color} shape={shape} size={m.size} />
+            </span>
+          ))}
+        </>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The roll tray, and anything else that exists to announce a result.
+ *
+ * Shapes come out of the middle and fade as they reach the edge, so the tray
+ * reads as something arriving rather than something idling. `active` winds it
+ * up while the dice are actually rolling and lets it settle afterwards, which
+ * is the difference between "a number is landing" and "a number landed".
+ */
+export function AuraBurstField({
+  color,
+  shape,
+  count = 6,
+  active = false,
+  className = "",
+}: {
+  color: string;
+  shape: CAAuraShape;
+  count?: number;
+  active?: boolean;
+  className?: string;
+}) {
+  const rawId = useId();
+  const animId = `aurabur-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  const marks = Array.from({ length: count }, (_, i) => {
+    const angle = (i / count) * Math.PI * 2 + 0.4;
+    // Kept short of the edge so a shape fades out rather than being cut off
+    // by the tray's own corner radius.
+    const reach = 40 + ((i * 7) % 10);
+    return {
+      x: 50 + Math.cos(angle) * reach,
+      y: 50 + Math.sin(angle) * reach * 0.7,
+      size: 8 + ((i * 4) % 6),
+      duration: (active ? 1.5 : 3.4) + ((i * 0.31) % 0.9),
+      delay: -((i * 0.9) % 4),
+    };
+  });
+
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] ${className}`}
+      data-testid="aura-burst-field"
+    >
+      <AuraRing color={color} strength={active ? 1 : 0.6} />
+      {shape !== "none" && (
+        <>
+          <style>
+            {marks
+              .map(
+                (m, i) =>
+                  `@keyframes ${animId}${i}{` +
+                  `0%{left:50%;top:50%;opacity:0;transform:translate(-50%,-50%) scale(.35)}` +
+                  `22%{opacity:${active ? 0.7 : 0.45}}` +
+                  `100%{left:${m.x.toFixed(1)}%;top:${m.y.toFixed(1)}%;opacity:0;transform:translate(-50%,-50%) scale(1)}}`,
+              )
+              .join("")}
+          </style>
+          {marks.map((m, i) => (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                lineHeight: 0,
+                opacity: 0,
+                animation: `${animId}${i} ${m.duration.toFixed(2)}s ease-out ${m.delay.toFixed(2)}s infinite`,
+              }}
+            >
+              <AuraGlyph color={color} shape={shape} size={m.size} />
+            </span>
+          ))}
+        </>
+      )}
+    </span>
+  );
+}
