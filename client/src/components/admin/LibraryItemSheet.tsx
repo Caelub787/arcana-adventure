@@ -14,7 +14,7 @@
  * away for those.
  */
 import React from "react";
-import { Package, Sword, Shield, Coins, Trash2, SlidersHorizontal, X, Sparkles } from "lucide-react";
+import { Package, Sword, Shield, Coins, Trash2, SlidersHorizontal, X, Sparkles, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   useCaInlineEdit,
@@ -26,6 +26,7 @@ import {
   CaDivider,
 } from "@/components/game/CASheetUI";
 import { getEffectTypes } from "@/lib/effectTypes";
+import { useImageBrowserBridge } from "@/lib/library-dialog-bridges";
 import {
   CA_ITEM_EFFECT_TRIGGERS,
   CA_ITEM_EFFECT_TRIGGER_LABELS,
@@ -48,7 +49,13 @@ const ATTRIBUTES = ["might", "finesse", "wit", "presence", "will", "craft"];
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"];
 const AOE_SHAPES = ["cone", "sphere", "line", "cube", "cylinder"];
 
-/** A boolean is one click, not a double-click and a picker. */
+/**
+ * A boolean is one click, not a double-click and a picker.
+ *
+ * The box sits against its label rather than out at the right margin: with
+ * two or three of these stacked, a column of boxes a hand's width from the
+ * words meant working out which belonged to which.
+ */
 function ToggleRow({
   label,
   value,
@@ -63,16 +70,16 @@ function ToggleRow({
   testId: string;
 }) {
   return (
-    <label className={`flex items-center justify-between gap-2 text-xs ${disabled ? "opacity-50" : "cursor-pointer"}`}>
-      <span className="text-stone-300">{label}</span>
+    <label className={`flex items-center gap-2 text-xs w-fit ${disabled ? "opacity-50" : "cursor-pointer"}`}>
       <input
         type="checkbox"
         checked={!!value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="accent-amber-600 h-3.5 w-3.5"
+        className="accent-amber-600 h-3.5 w-3.5 shrink-0"
         data-testid={testId}
       />
+      <span className="text-stone-300">{label}</span>
     </label>
   );
 }
@@ -98,6 +105,15 @@ export function LibraryItemSheet({
   const type = String(item?.itemType || "");
   const damageTypes = getEffectTypes(systemSlug);
   const rules = woundSystemRules(systemSlug) as any;
+  // The sheet carries its own image browser rather than asking each host to
+  // wire one in: the admin page and a character sheet would otherwise need to
+  // pass the same picker down two different trees.
+  const { imagePicker, element: imageBrowser } = useImageBrowserBridge();
+  const pickImage = async () => {
+    if (!canEdit) return;
+    const picked = await imagePicker({ title: "Item Image" });
+    if (picked?.url) onUpdate({ image: picked.url });
+  };
   const effects = normalizeCAItemEffects(item?.effects);
   const patchEffect = (id: string, patch: Partial<CAItemEffect>) =>
     onUpdate({ effects: effects.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
@@ -127,14 +143,49 @@ export function LibraryItemSheet({
 
       <div className="p-4 space-y-3 overflow-y-auto" style={{ maxHeight: "70vh" }}>
         <CaSection icon={<CaMedallion><Package className="h-3.5 w-3.5" /></CaMedallion>} title="Identity">
-          <CaFieldGrid>
+          <div className="flex gap-3 items-start">
+            {/* The picture, in the same ringed square a character's portrait
+                gets, so an item and a character read as the same kind of
+                thing. */}
+            <div className="shrink-0">
+              <button
+                type="button"
+                onClick={pickImage}
+                disabled={!canEdit}
+                className="relative w-20 h-20 rounded-xl p-[2px] block disabled:cursor-default"
+                style={{ background: "linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)" }}
+                aria-label={item?.image ? "Change item image" : "Add an item image"}
+                title={canEdit ? "Click to choose an image" : undefined}
+                data-testid="button-library-item-image"
+              >
+                <span className="w-full h-full rounded-[10px] overflow-hidden bg-stone-800 flex items-center justify-center">
+                  {item?.image ? (
+                    <img src={item.image} alt="" className="w-full h-full object-cover" data-testid="img-library-item" />
+                  ) : (
+                    <ImageIcon className="h-7 w-7 text-stone-600" />
+                  )}
+                </span>
+              </button>
+              {canEdit && item?.image && (
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ image: null })}
+                  className="mt-1 w-full text-[10px] text-stone-500 hover:text-red-400"
+                  data-testid="button-library-item-image-clear"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <CaFieldGrid className="flex-1 min-w-0">
             <CaInlineField edit={edit} field="name" label="Name" value={item?.name} placeholder="Untitled Item" testId="library-item-name" />
             <CaInlineField edit={edit} field="itemType" label="Type" value={type} kind="select" options={opts(ITEM_TYPES)} testId="library-item-type" />
             <CaInlineField edit={edit} field="rarity" label="Rarity" value={item?.rarity} kind="select" options={opts(RARITIES)} testId="library-item-rarity" />
             <CaInlineField edit={edit} field="size" label="Size" value={item?.size} testId="library-item-size" />
             <CaInlineField edit={edit} field="description" label="Description" value={item?.description} kind="textarea" wide placeholder="What it is." testId="library-item-description" />
             <CaInlineField edit={edit} field="rules" label="Rules" value={item?.rules} kind="textarea" wide placeholder="What it does." testId="library-item-rules" />
-          </CaFieldGrid>
+            </CaFieldGrid>
+          </div>
           <div className="mt-2 space-y-1">
             <ToggleRow label="Rules visible to players" value={item?.rulesVisible ?? true} disabled={!canEdit} onChange={(v) => onUpdate({ rulesVisible: v })} testId="toggle-library-item-rules-visible" />
           </div>
@@ -273,6 +324,7 @@ export function LibraryItemSheet({
           </div>
         </CaSection>
       </div>
+      {imageBrowser}
     </CaSheetFrame>
   );
 }
