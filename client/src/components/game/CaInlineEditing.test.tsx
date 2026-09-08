@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 /**
- * The Ability header carries two GM-written values and writes them to two
- * different columns. Getting that wiring backwards is invisible in a
- * screenshot and silent at runtime - the wrong field just quietly stops
- * saving - so it is pinned here.
+ * C.A.'s sheet has no edit mode: every value is its own editor, opened by
+ * double-clicking it. Two of those are easy to get subtly wrong and hard to
+ * see going wrong - the Ability header writes two GM values to two different
+ * columns, and the character's name is the one text field where empty is not
+ * a legal answer.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { CaAbilityHeader, useCaInlineEdit } from "./CASheetUI";
+import { CaAbilityHeader, CaInlineText, useCaInlineEdit } from "./CASheetUI";
 
 function Harness({ character, canEdit, write }: any) {
   const edit = useCaInlineEdit(write, canEdit);
@@ -52,5 +53,37 @@ describe("the Ability header", () => {
     fireEvent.doubleClick(screen.getByTestId("ca-ability-name-value"));
     expect(screen.queryByTestId("input-ca-edit-ca-ability-name")).toBeNull();
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe("a name that can't be empty", () => {
+  function NameHarness({ name, write }: { name: string; write: (u: any) => void }) {
+    const edit = useCaInlineEdit(write, true);
+    React.useEffect(() => { edit.open("name", name); }, []);
+    if (edit.field !== "name") return null;
+    return (
+      <CaInlineText
+        edit={edit}
+        field="name"
+        testId="ca-name"
+        transform={(draft) => String(draft ?? "").trim() || name}
+      />
+    );
+  }
+
+  it("keeps the old name when the field is cleared and saved", () => {
+    const write = vi.fn();
+    render(<NameHarness name="Sable Thornbury" write={write} />);
+    fireEvent.change(screen.getByTestId("input-ca-edit-ca-name"), { target: { value: "   " } });
+    fireEvent.click(screen.getByTestId("button-ca-save-name"));
+    expect(write).toHaveBeenCalledWith({ name: "Sable Thornbury" });
+  });
+
+  it("saves a real new name trimmed", () => {
+    const write = vi.fn();
+    render(<NameHarness name="Sable Thornbury" write={write} />);
+    fireEvent.change(screen.getByTestId("input-ca-edit-ca-name"), { target: { value: "  Sable Ashgrove " } });
+    fireEvent.click(screen.getByTestId("button-ca-save-name"));
+    expect(write).toHaveBeenCalledWith({ name: "Sable Ashgrove" });
   });
 });

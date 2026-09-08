@@ -21927,9 +21927,26 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-2">
-                      <h2 className="font-display text-3xl font-bold text-stone-100 truncate leading-none" data-testid="text-ca-name">
-                        {liveCharacter.name}
-                      </h2>
+                      {/* The name edits where it sits, like everything else on
+                          this sheet. Blank keeps the old one rather than
+                          leaving a nameless character on the tracker. */}
+                      {caEdit.field === 'name' ? (
+                        <CaInlineText
+                          edit={caEdit}
+                          field="name"
+                          placeholder="Character name"
+                          testId="ca-name"
+                          transform={(draft) => String(draft ?? '').trim() || liveCharacter.name}
+                        />
+                      ) : (
+                        <h2
+                          className={`font-display text-3xl font-bold text-stone-100 truncate leading-none ${caEdit.canEdit ? 'cursor-pointer' : ''}`}
+                          data-testid="text-ca-name"
+                          {...caEdit.pressHandlers('name', liveCharacter.name || '')}
+                        >
+                          {liveCharacter.name}
+                        </h2>
+                      )}
 
                       <div className="grid grid-cols-2 gap-2">
                         {caEdit.field === 'race' ? (

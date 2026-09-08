@@ -278,24 +278,34 @@ export function CaInlineText({
   field,
   testId,
   placeholder,
+  transform = trimmedOrNull,
+  className = "",
 }: {
   edit: CaInlineEdit;
   field: string;
   testId: string;
   placeholder?: string;
+  /**
+   * What the draft becomes on save. Defaults to "trimmed, or null if empty" -
+   * pass your own where empty isn't a legal value (a character's name, say,
+   * which has to stay something).
+   */
+  transform?: CaInlineTransform;
+  /** Extra classes for the input, e.g. to match the type it is replacing. */
+  className?: string;
 }) {
   return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
       <Input
         autoFocus
         value={edit.draft ?? ""}
         onChange={(e) => edit.setDraft(e.target.value)}
         placeholder={placeholder}
-        className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0"
+        className={`bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0 flex-1 ${className}`}
         data-testid={`input-ca-edit-${testId}`}
-        {...edit.keyHandlers(field, trimmedOrNull)}
+        {...edit.keyHandlers(field, transform)}
       />
-      <CaInlineActions edit={edit} field={field} transform={trimmedOrNull} />
+      <CaInlineActions edit={edit} field={field} transform={transform} />
     </div>
   );
 }
@@ -526,9 +536,12 @@ export function CaSectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-2" data-testid={testId}>
-      <span className="flex items-center gap-2 min-w-0">
+      {/* The left half takes the row rather than sizing to its text: a title
+          that is itself an editor (the Ability's name) needs a width to
+          resolve `w-full` against, and a long title truncates either way. */}
+      <span className="flex items-center gap-2 min-w-0 flex-1">
         {icon && <CaMedallion>{icon}</CaMedallion>}
-        <span className="font-display text-base font-bold text-stone-100 truncate">{title}</span>
+        <span className="font-display text-base font-bold text-stone-100 truncate min-w-0 flex-1">{title}</span>
       </span>
       {value}
     </div>
@@ -764,13 +777,23 @@ export function CaAbilityHeader({
     <CaSection
       icon={<Flame className="h-3.5 w-3.5" />}
       title={
-        <span
-          className={`${name ? "" : "text-stone-500 italic font-normal text-sm"} ${canEdit ? "cursor-pointer" : ""}`}
-          data-testid="ca-ability-name-value"
-          {...edit.pressHandlers("caAbilityName", character?.caAbilityName ?? "")}
-        >
-          {name || (canEdit ? "Double-click to name this ability" : "Unnamed ability")}
-        </span>
+        edit.field === "caAbilityName" ? (
+          <CaInlineText
+            edit={edit}
+            field="caAbilityName"
+            placeholder="Name the ability"
+            testId="ca-ability-name"
+            className="font-normal"
+          />
+        ) : (
+          <span
+            className={`${name ? "" : "text-stone-500 italic font-normal text-sm"} ${canEdit ? "cursor-pointer" : ""}`}
+            data-testid="ca-ability-name-value"
+            {...edit.pressHandlers("caAbilityName", character?.caAbilityName ?? "")}
+          >
+            {name || (canEdit ? "Double-click to name this ability" : "Unnamed ability")}
+          </span>
+        )
       }
       value={
         <CaInfoHint label="How Abilities work" align="end" testId="button-ca-ability-info">
@@ -781,11 +804,6 @@ export function CaAbilityHeader({
       }
       testId="card-ca-ability"
     >
-      {edit.field === "caAbilityName" && (
-        <CaField label="Ability name" wide>
-          <CaInlineText edit={edit} field="caAbilityName" placeholder="Name the ability" testId="ca-ability-name" />
-        </CaField>
-      )}
       {edit.field === "caAbilityDescription" ? (
         <div className="flex items-start gap-1">
           <textarea
