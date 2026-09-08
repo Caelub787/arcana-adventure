@@ -118,18 +118,94 @@ app.use((req, res, next) => {
 // apply cleanly in isolation, so this runs the same idempotent ALTERs
 // directly against the app's own DB connection on every boot. A no-op
 // once a column exists; safe to leave in permanently.
+/**
+ * Lets boot carry on when a piece of start-up work takes too long.
+ *
+ * The work is not cancelled - it keeps running, and finishes when it finishes.
+ * What changes is that nothing downstream waits on it. Binding the port is the
+ * one thing that must happen on time: a service that never opens its port is
+ * failed and replaced, and then whatever it was waiting on never gets done
+ * either.
+ */
+function withDeadline<T>(label: string, ms: number, work: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<T>((resolve) =>
+      setTimeout(() => {
+        console.error(`${label} has not finished after ${ms}ms; booting without waiting for it`);
+        resolve(fallback);
+      }, ms),
+    ),
+  ]);
+}
+
+/**
+ * Runs the boot-time schema guards without being able to hold the deploy up.
+ *
+ * `ALTER TABLE ... ADD COLUMN` needs an ACCESS EXCLUSIVE lock even when it is
+ * a no-op, and a deploy is exactly when that lock is hardest to get: the old
+ * instance is still serving while the new one boots, so it holds live
+ * connections to the very tables being altered. Without a lock timeout the
+ * ALTER waits forever, the new instance never reaches `listen`, the platform
+ * never retires the old one, and the deploy times out with no error in the
+ * log at all - which is precisely what happened. Worse, a waiting ALTER
+ * queues ahead of everything else, so the old instance's own reads on that
+ * table stall behind it too.
+ *
+ * `SET LOCAL` inside a transaction rather than `SET` on the connection: this
+ * client goes back to a shared pool afterwards, and a leaked lock_timeout
+ * would apply to whatever ran on it next.
+ *
+ * Returns the statements that did not apply, for the caller to retry once the
+ * port is open and the old instance has gone.
+ */
+async function runSchemaGuard(label: string, statements: string[]): Promise<string[]> {
+  const failed: string[] = [];
+  const client = await dbPool.connect();
+  try {
+    for (const sql of statements) {
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL lock_timeout = '5s'");
+        await client.query("SET LOCAL statement_timeout = '30s'");
+        await client.query(sql);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        failed.push(sql);
+        console.error(`Failed to run startup schema guard [${label}] (${sql}):`, err);
+      }
+    }
+  } finally {
+    client.release();
+  }
+  return failed;
+}
+
+/**
+ * Anything the guard could not apply, tried again in the background. By the
+ * time the port is open the old instance is on its way out, so the lock it was
+ * holding is about to be free - and a column that is late by a few seconds is
+ * a great deal better than a deploy that never lands.
+ */
+async function retrySchemaGuard(pending: string[]) {
+  let remaining = pending;
+  for (const waitMs of [5_000, 15_000, 30_000, 60_000, 120_000]) {
+    if (remaining.length === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    remaining = await runSchemaGuard("retry", remaining);
+  }
+  if (remaining.length > 0) {
+    console.error(`Startup schema guard gave up on ${remaining.length} statement(s):`, remaining);
+  }
+}
+
 async function ensureMapMakerColumns() {
   const statements = [
     `ALTER TABLE IF EXISTS map_objects ADD COLUMN IF NOT EXISTS layer text NOT NULL DEFAULT 'structures'`,
     `ALTER TABLE IF EXISTS maps ADD COLUMN IF NOT EXISTS map_type text NOT NULL DEFAULT 'regional'`,
   ];
-  for (const sql of statements) {
-    try {
-      await dbPool.query(sql);
-    } catch (err) {
-      console.error(`Failed to run startup schema guard (${sql}):`, err);
-    }
-  }
+  return runSchemaGuard("map-maker", statements);
 }
 
 // Same self-healing pattern as ensureMapMakerColumns, extended to every
@@ -290,13 +366,7 @@ async function ensureKnowledgeSystemSchema() {
       created_at timestamp NOT NULL DEFAULT now()
     )`,
   ];
-  for (const sql of statements) {
-    try {
-      await dbPool.query(sql);
-    } catch (err) {
-      console.error(`Failed to run startup schema guard (${sql}):`, err);
-    }
-  }
+  return runSchemaGuard("knowledge", statements);
 }
 
 // Compact inline SVG placeholders — just enough to try out placement,
@@ -349,9 +419,19 @@ async function ensureTestStampAssets() {
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
-  await ensureMapMakerColumns();
-  await ensureKnowledgeSystemSchema();
-  await ensureTestStampAssets();
+  // Bounded twice over: each statement has its own lock and statement
+  // timeouts, and the lot has a deadline in case something outside them - the
+  // pool handing out a connection, say - is what stalls.
+  const pendingSchema = await withDeadline(
+    "Startup schema guard",
+    45_000,
+    (async () => [
+      ...(await ensureMapMakerColumns()),
+      ...(await ensureKnowledgeSystemSchema()),
+    ])(),
+    [] as string[],
+  );
+  await withDeadline("Test stamp asset seeding", 20_000, ensureTestStampAssets(), undefined);
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -377,5 +457,11 @@ export default async function runApp(
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    // Only once the port is open: a retry that runs before it would be back
+    // to holding the deploy up, which is the thing this is here to avoid.
+    if (pendingSchema.length > 0) {
+      log(`${pendingSchema.length} schema statement(s) did not apply; retrying in the background`);
+      void retrySchemaGuard(pendingSchema);
+    }
   });
 }
