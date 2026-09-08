@@ -9965,6 +9965,9 @@ export default function Campaign() {
         if (data.type === 'roll_entries_changed') {
           if (!data.campaignId || data.campaignId === effectiveCampaignId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['rollEntries'] });
+            // A hotbar slot holding an ability roll carries a copy of that
+            // roll, so a rename or a delete has to reach the bar too.
+            queryClientRef.current.invalidateQueries({ queryKey: ['free-hotbar', effectiveCampaignIdRef.current] });
           }
         }
 

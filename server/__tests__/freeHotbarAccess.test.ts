@@ -10,8 +10,12 @@ import express from "express";
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
+  // What a `db.select()...` chain resolves to. Almost every route here goes
+  // through `storage`, but the ability-roll branch reads roll_entries
+  // directly, so tests need a way to say what that read finds.
+  const dbRows: { value: any[] } = { value: [] };
   const query = () => {
-    const p: any = Promise.resolve([]);
+    const p: any = Promise.resolve(dbRows.value);
     const proxy: any = new Proxy(
       {},
       {
@@ -49,6 +53,7 @@ const h = vi.hoisted(() => {
   return {
     storage,
     adminUserIds,
+    dbRows,
     db: {
       execute: async () => ({ rows: [] }),
       select: () => query(),
@@ -117,6 +122,7 @@ const campaign = { id: campaignId, gmUserId: gm, system: "aa-v3", is18Plus: fals
 beforeEach(() => {
   for (const m of Object.values(h.storage)) (m as any).mockReset();
   h.adminUserIds.clear();
+  h.dbRows.value = [];
   h.storage.getUser.mockImplementation(async (id: string) => ({
     id,
     username: `user-${id}`,
@@ -584,6 +590,7 @@ describe("PUT /api/campaigns/:campaignId/free-hotbar — write-path guards", () 
       slotIndex: 2,
       characterId: null,
       itemId: libraryItem.id,
+      rollEntryId: null,
     });
     expect(await res.json()).toMatchObject({ id: saved.id });
   });
@@ -605,8 +612,69 @@ describe("PUT /api/campaigns/:campaignId/free-hotbar — write-path guards", () 
       slotIndex: 4,
       characterId: ownChar.id,
       itemId: null,
+      rollEntryId: null,
     });
     expect(await res.json()).toMatchObject({ id: saved.id });
+  });
+
+  // C.A. ability rolls: a third thing a slot can hold. Everything the route
+  // already refused to do for characters and items, it must refuse for these.
+  it("rejects an ability roll that no longer exists (404)", async () => {
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 5, rollEntryId: "gone",
+    });
+    expect(res.status).toBe(404);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects a roll that is not an ability roll (400)", async () => {
+    h.dbRows.value = [{ id: "roll1", ownerType: "item", ownerId: "item1" }];
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 5, rollEntryId: "roll1",
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("rejects an ability roll on a character the caller can't see (403)", async () => {
+    h.dbRows.value = [{ id: "roll1", ownerType: "ability", ownerId: foreignChar.id }];
+    h.storage.getCharacter.mockResolvedValue(foreignChar);
+    h.storage.getCharacterPermission.mockResolvedValue(null);
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 5, rollEntryId: "roll1",
+    });
+    expect(res.status).toBe(403);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
+  });
+
+  it("allows an ability roll off a character the caller owns", async () => {
+    const ownChar = { ...foreignChar, id: "char-own", userId: player };
+    h.dbRows.value = [{ id: "roll1", ownerType: "ability", ownerId: ownChar.id }];
+    h.storage.getCharacter.mockResolvedValue(ownChar);
+    const saved = { ...charEntry, id: "entry-roll", characterId: null, rollEntryId: "roll1" };
+    h.storage.upsertFreeHotbarEntry.mockResolvedValue(saved);
+
+    const res = await putHotbar(player, {
+      loadoutIndex: 1, slotIndex: 5, rollEntryId: "roll1",
+    });
+    expect(res.status).toBe(200);
+    expect(h.storage.upsertFreeHotbarEntry).toHaveBeenCalledWith({
+      userId: player,
+      campaignId,
+      loadoutIndex: 1,
+      slotIndex: 5,
+      characterId: null,
+      itemId: null,
+      rollEntryId: "roll1",
+    });
+  });
+
+  it("rejects a slot asked to hold two things at once (400)", async () => {
+    const res = await putHotbar(player, {
+      loadoutIndex: 0, slotIndex: 5, characterId: "char-own", rollEntryId: "roll1",
+    });
+    expect(res.status).toBe(400);
+    expect(h.storage.upsertFreeHotbarEntry).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated PUT requests (401)", async () => {

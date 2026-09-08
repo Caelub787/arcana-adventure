@@ -13,13 +13,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye } from "lucide-react";
-import { LazyItemImage } from "./GameComponents";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame } from "lucide-react";
+import { LazyItemImage, executeCharacterRollEntry } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
 import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
 import { isSwampySystem } from "@shared/systems";
 import { SWAMPY_MAX_HOPE } from "@shared/swampy";
-import { caAuraOf } from "@shared/ca";
+import { caAbilityRollLabel, caAuraOf } from "@shared/ca";
 import { AuraCurrentField } from "@/components/game/CAPanels";
 
 const NUM_LOADOUTS = 9;
@@ -51,9 +51,12 @@ export interface FreeHotbarEntryView {
   slotIndex: number;
   characterId: string | null;
   itemId: string | null;
+  /** C.A. only: one roll off a character's Ability tab. */
+  rollEntryId?: string | null;
   character: FreeHotbarCharView | null;
   item: any | null;
-  sourceCharacter: { id: string; name: string; portrait: string | null } | null;
+  rollEntry?: any | null;
+  sourceCharacter: { id: string; name: string; portrait: string | null; caAbilityName?: string | null } | null;
 }
 
 // Compact stacked HP/Energy/Mana bars for character slot tiles + peek panel.
@@ -217,7 +220,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   const setSlotMutation = useMutation({
-    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null }) =>
+    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null }) =>
       api.setFreeHotbarSlot(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['free-hotbar', campaignId] });
@@ -264,6 +267,23 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     holdArmed.current = false;
   };
 
+  // The owning character's picture for an ability-roll slot, preferring the
+  // live one so a portrait change shows up without a refresh.
+  const rollOwnerPortrait = (entry: FreeHotbarEntryView): string | null => {
+    const ownerId = entry.rollEntry?.ownerId || entry.sourceCharacter?.id;
+    return (ownerId ? liveCharMap.get(ownerId)?.portrait : null) || entry.sourceCharacter?.portrait || null;
+  };
+
+  // What the slot is, in words. The tile only has room for a picture and
+  // seven characters, so the rest lives on hover.
+  const slotTitle = (entry?: FreeHotbarEntryView): string | undefined => {
+    if (!entry) return undefined;
+    if (entry.character) return entry.character.name;
+    if (entry.item) return entry.item.name;
+    if (entry.rollEntry) return caAbilityRollLabel(entry.sourceCharacter, entry.rollEntry);
+    return undefined;
+  };
+
   const handleSlotClick = (slotIndex: number) => {
     const entry = currentEntries.get(slotIndex);
     if (!entry) { setPickerSlot(slotIndex); return; }
@@ -275,6 +295,17 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       }
     } else if (entry.item) {
       onOpenItem(entry.item, entry.item.characterId || null);
+    } else if (entry.rollEntry) {
+      // An ability roll goes off where you press it. The character it belongs
+      // to comes from the live campaign list so the roll picks up whatever
+      // that character's attributes and skills are right now, not what they
+      // were when the slot was filled.
+      const owner = liveCharMap.get(entry.rollEntry.ownerId) || entry.sourceCharacter;
+      executeCharacterRollEntry(entry.rollEntry, {
+        character: owner,
+        campaignSystem,
+        label: caAbilityRollLabel(owner, entry.rollEntry),
+      });
     }
   };
 
@@ -337,6 +368,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                 onPointerLeave={cancelHold}
                 onPointerCancel={cancelHold}
                 onContextMenu={(e) => { if (entry) { e.preventDefault(); setRemoveTarget(entry); } }}
+                title={slotTitle(entry)}
                 className={`chrome-frame relative w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none ${
                   entry ? 'border-amber-600 bg-stone-800 hover:border-amber-500' : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
                 }`}
@@ -372,13 +404,29 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                     ) : (
                       <LazyItemImage itemId={entry.item.id} itemType={entry.item.itemType} />
                     )
+                  ) : entry.rollEntry ? (
+                    // An ability roll: whose ability it is behind, which roll
+                    // it is in front. The portrait is dimmed right down so the
+                    // roll's name stays readable at 40px.
+                    <div className="relative w-full h-full pointer-events-none">
+                      {rollOwnerPortrait(entry) ? (
+                        <img src={rollOwnerPortrait(entry)!} alt="" className="w-full h-full object-cover opacity-40" />
+                      ) : null}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                        <Dices className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: "var(--ca-gilt-bright)" }} />
+                        <span className="hidden sm:block text-[8px] leading-none px-0.5 w-full text-center truncate text-stone-200">
+                          {entry.rollEntry.name}
+                        </span>
+                      </div>
+                    </div>
                   ) : null
                 ) : (
                   <Plus className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: "var(--ca-gilt-dim)" }} />
                 )}
               </button>
-              {/* Source-character badge on items from a character's inventory */}
-              {entry?.item && entry.sourceCharacter && (
+              {/* Source-character badge on items from a character's inventory,
+                  and on ability rolls, which always belong to a character. */}
+              {(entry?.item || entry?.rollEntry) && entry.sourceCharacter && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -417,6 +465,10 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           onAssignItem={(itemId) =>
             setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, itemId })
           }
+          onAssignRoll={(rollEntryId) =>
+            setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, rollEntryId })
+          }
+          showAbilities={isWoundSystem(campaignSystem)}
         />
       )}
 
@@ -526,7 +578,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
             <DialogTitle className="text-stone-200">Remove from hotbar?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-stone-400">
-            {removeTarget?.character?.name || removeTarget?.item?.name || 'This entry'} will be removed from slot {(removeTarget?.slotIndex ?? 0) + 1}.
+            {removeTarget?.character?.name || removeTarget?.item?.name || removeTarget?.rollEntry?.name || 'This entry'} will be removed from slot {(removeTarget?.slotIndex ?? 0) + 1}.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setRemoveTarget(null)} className="border-stone-600" data-testid="button-cancel-remove">Cancel</Button>
@@ -544,15 +596,19 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   );
 }
 
-function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem }: {
+function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem, onAssignRoll, showAbilities }: {
   campaignId: string;
   isGM: boolean;
   onClose: () => void;
   onAssignCharacter: (characterId: string) => void;
   onAssignItem: (itemId: string) => void;
+  onAssignRoll: (rollEntryId: string) => void;
+  /** C.A. only - no other system has abilities to put on a slot. */
+  showAbilities: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [browsingChar, setBrowsingChar] = useState<{ id: string; name: string } | null>(null);
+  const [browsingAbilityOf, setBrowsingAbilityOf] = useState<{ id: string; name: string } | null>(null);
   const [librarySection, setLibrarySection] = useState<null | 'admin' | 'personal'>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
@@ -567,6 +623,12 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
     queryKey: ['items', browsingChar?.id],
     queryFn: () => api.getItems(browsingChar!.id),
     enabled: !!browsingChar,
+  });
+
+  const { data: abilityRolls = [], isLoading: abilityRollsLoading } = useQuery({
+    queryKey: ['rollEntries', 'ability', browsingAbilityOf?.id],
+    queryFn: () => api.getAbilityRolls(browsingAbilityOf!.id),
+    enabled: !!browsingAbilityOf,
   });
 
   // Same source as every other in-campaign item browser: campaign library
@@ -598,16 +660,21 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
     .filter((it: any) => (!q || it.name?.toLowerCase().includes(q)) && (!typeFilter || it.itemType === typeFilter));
 
   const inItemBrowser = !!browsingChar || !!librarySection;
-  const browserTitle = browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'Campaign & My Library' : 'Admin Library';
+  const inAbilityBrowser = !!browsingAbilityOf;
+  const inBrowser = inItemBrowser || inAbilityBrowser;
+  const browserTitle = browsingAbilityOf
+    ? `${browsingAbilityOf.name}'s Ability`
+    : browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'Campaign & My Library' : 'Admin Library';
+  const filteredAbilityRolls = (abilityRolls as any[]).filter((r: any) => !q || r.name?.toLowerCase().includes(q));
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-stone-200 flex items-center gap-2">
-            {inItemBrowser && (
+            {inBrowser && (
               <button
-                onClick={() => { setBrowsingChar(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
+                onClick={() => { setBrowsingChar(null); setBrowsingAbilityOf(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
                 className="text-stone-400 hover:text-stone-200"
                 data-testid="button-picker-back"
                 aria-label="Back"
@@ -615,12 +682,12 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                 <ArrowLeft className="h-4 w-4" />
               </button>
             )}
-            {inItemBrowser ? browserTitle : 'Assign to Slot'}
+            {inBrowser ? browserTitle : 'Assign to Slot'}
           </DialogTitle>
         </DialogHeader>
         <div className="flex items-center gap-2">
           <Input
-            placeholder={inItemBrowser ? 'Search items...' : 'Search characters...'}
+            placeholder={inAbilityBrowser ? 'Search rolls...' : inItemBrowser ? 'Search items...' : 'Search characters...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-stone-800 border-stone-700 flex-1"
@@ -676,7 +743,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
           )}
         </div>
         <div className="flex-1 overflow-y-auto space-y-1 min-h-0" data-testid="picker-list">
-          {!inItemBrowser && (
+          {!inBrowser && (
             <>
               {filteredChars.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 p-2 rounded-lg bg-stone-800/70 border border-stone-700" data-testid={`picker-char-${c.id}`}>
@@ -699,6 +766,14 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                       <Package className="h-3 w-3 mr-1" /> Item
                     </Button>
                   )}
+                  {/* Ability rolls only need view access - a player keeps their
+                      own on the bar, a GM keeps an NPC's to hand. */}
+                  {showAbilities && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingAbilityOf({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-ability-${c.id}`}>
+                      <Flame className="h-3 w-3 mr-1" /> Ability
+                    </Button>
+                  )}
                 </div>
               ))}
               {filteredChars.length === 0 && (
@@ -716,6 +791,33 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                     <Library className="h-4 w-4 mr-2" /> Campaign & My Library
                   </Button>
                 </div>
+              )}
+            </>
+          )}
+          {inAbilityBrowser && (
+            <>
+              {abilityRollsLoading && (
+                <p className="text-sm text-stone-500 text-center py-4">Loading…</p>
+              )}
+              {filteredAbilityRolls.map((r: any) => (
+                <button
+                  key={r.id}
+                  onClick={() => onAssignRoll(r.id)}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg bg-stone-800/70 border border-stone-700 hover:border-amber-600 text-left"
+                  data-testid={`picker-ability-roll-${r.id}`}
+                >
+                  <div className="w-8 h-8 rounded-md bg-stone-700 flex items-center justify-center shrink-0">
+                    <Dices className="h-4 w-4" style={{ color: "var(--ca-gilt)" }} />
+                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-stone-200 truncate">{r.name}</span>
+                    {r.description && <span className="block text-[11px] text-stone-500 truncate">{r.description}</span>}
+                  </span>
+                  <span className="text-xs text-stone-500">{r.noRoll ? 'No roll' : r.diceFormula}</span>
+                </button>
+              ))}
+              {!abilityRollsLoading && filteredAbilityRolls.length === 0 && (
+                <p className="text-sm text-stone-500 text-center py-4">This character has no ability rolls yet.</p>
               )}
             </>
           )}

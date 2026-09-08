@@ -11,7 +11,7 @@
  * and writes only itself.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Check, X, Info } from "lucide-react";
+import { Check, X, Info, Flame } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -733,5 +733,81 @@ export function CaInlineField({
         {shown && suffix ? <span className="text-stone-500 text-xs ml-1">{suffix}</span> : null}
       </CaValue>
     </CaField>
+  );
+}
+
+/**
+ * The head of the C.A. Ability tab: the ability's own name as the heading,
+ * and one line under it saying what it is.
+ *
+ * The name is the heading rather than a field called "Ability name" under a
+ * section called "Ability" on a tab called Ability - that said the word three
+ * times and the thing's actual name nowhere. The GM double-clicks either part
+ * to change it; a player reads both.
+ *
+ * The name's editor opens as a field beneath the heading rather than inside
+ * it: the heading row is a flex line with a truncate on it, and an input
+ * dropped in there has no width to resolve against.
+ */
+export function CaAbilityHeader({
+  character,
+  edit,
+  canEdit,
+}: {
+  character: { caAbilityName?: string | null; caAbilityDescription?: string | null } | null | undefined;
+  edit: CaInlineEdit;
+  canEdit: boolean;
+}) {
+  const name = String(character?.caAbilityName || "").trim();
+  const description = String(character?.caAbilityDescription || "").trim();
+  return (
+    <CaSection
+      icon={<Flame className="h-3.5 w-3.5" />}
+      title={
+        <span
+          className={`${name ? "" : "text-stone-500 italic font-normal text-sm"} ${canEdit ? "cursor-pointer" : ""}`}
+          data-testid="ca-ability-name-value"
+          {...edit.pressHandlers("caAbilityName", character?.caAbilityName ?? "")}
+        >
+          {name || (canEdit ? "Double-click to name this ability" : "Unnamed ability")}
+        </span>
+      }
+      value={
+        <CaInfoHint label="How Abilities work" align="end" testId="button-ca-ability-info">
+          <p>Every character has one Ability. The GM double-clicks the heading to name it, and the line under it to describe it in a sentence.</p>
+          <p className="mt-2">What it does at length is written in its own note: press <span style={{ color: "var(--ca-gilt)" }}>Notes</span> at the top of the sheet while this tab is open and the ability's note opens instead of the character's. GM and player can both write in it.</p>
+          <p className="mt-2">The rolls below are built the same way an item's are, and roll the same way. Any of them can go on your hotbar.</p>
+        </CaInfoHint>
+      }
+      testId="card-ca-ability"
+    >
+      {edit.field === "caAbilityName" && (
+        <CaField label="Ability name" wide>
+          <CaInlineText edit={edit} field="caAbilityName" placeholder="Name the ability" testId="ca-ability-name" />
+        </CaField>
+      )}
+      {edit.field === "caAbilityDescription" ? (
+        <div className="flex items-start gap-1">
+          <textarea
+            autoFocus
+            rows={2}
+            value={String(edit.draft ?? "")}
+            onChange={(e) => edit.setDraft(e.target.value)}
+            placeholder="What this ability is, in a sentence."
+            className="flex-1 min-w-0 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs p-1.5 resize-y"
+            data-testid="ca-ability-description"
+          />
+          <CaInlineActions edit={edit} field="caAbilityDescription" />
+        </div>
+      ) : (
+        <p
+          className={`text-xs leading-relaxed whitespace-pre-wrap ${description ? "text-stone-300" : "text-stone-600 italic"} ${canEdit ? "cursor-pointer" : ""}`}
+          data-testid="ca-ability-description-value"
+          {...edit.pressHandlers("caAbilityDescription", character?.caAbilityDescription ?? "")}
+        >
+          {description || (canEdit ? "Double-click to add a short description." : "No description yet.")}
+        </p>
+      )}
+    </CaSection>
   );
 }

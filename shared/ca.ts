@@ -835,3 +835,19 @@ export function caItemStatEffectTotal(
   }
   return total;
 }
+
+/**
+ * What a roll off the Ability tab is called when it lands in the roll feed.
+ *
+ * The sheet and the hotbar both fire these, and a roll that reads one way from
+ * the sheet and another way from a hotbar slot is the same roll pretending to
+ * be two.
+ */
+export function caAbilityRollLabel(
+  character: { caAbilityName?: string | null } | null | undefined,
+  rollEntry: { name?: string | null } | null | undefined,
+): string {
+  const ability = String(character?.caAbilityName || "").trim() || "Ability";
+  const roll = String(rollEntry?.name || "").trim();
+  return roll ? `${ability} - ${roll}` : ability;
+}

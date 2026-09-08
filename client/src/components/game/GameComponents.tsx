@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
 import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
-import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField } from "@/components/game/CASheetUI";
+import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField, CaAbilityHeader } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -155,6 +155,64 @@ function resolveRollAttrAndSkillMod(
     breakdownParts.push(`${skillDef?.name || rollEntry.linkedSkillKey}: ${skillMod >= 0 ? '+' : ''}${skillMod}`);
   }
   return { mod, breakdownParts };
+}
+
+/**
+ * Rolls one roll-entry for a character and puts the result on screen.
+ *
+ * This is the whole of what a trait roll and an Ability roll do, so it lives
+ * out here at the module level rather than inside the character sheet: the
+ * hotbar fires ability rolls too, and a second copy of this in the hotbar is
+ * how the two start disagreeing about what a roll means.
+ */
+export function executeCharacterRollEntry(
+  rollEntry: any,
+  opts: { character: any; campaignSystem?: string; label: string },
+): void {
+  const { character, campaignSystem, label } = opts;
+  const notify = (result: number, modifier: number, breakdown: string) => {
+    triggerRollNotification({
+      type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+      dieType: 'd20',
+      label,
+      result,
+      modifier,
+      total: result,
+      username: character?.name || 'Unknown',
+      characterName: character?.name,
+      calculationBreakdown: breakdown,
+      isHealing: rollEntry.rollType === 'heal',
+    });
+    if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
+    }
+  };
+
+  if (rollEntry.noRoll) {
+    const flatValue = rollEntry.mod || 0;
+    notify(flatValue, 0, `Effect applied (no roll)${flatValue ? ` | Value: ${flatValue}` : ''}`);
+    return;
+  }
+  if (!rollEntry.diceFormula) return;
+
+  const formulaParts: string[] = [rollEntry.diceFormula];
+  if (rollEntry.mod && rollEntry.mod !== 0) {
+    formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
+  }
+  const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character, campaignSystem);
+  if (attrMod !== 0) {
+    formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
+  }
+
+  const result = rollDice(formulaParts.join(''));
+  const breakdown = [
+    rollEntry.diceFormula,
+    rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
+    ...attrSkillBreakdown,
+    rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+  ].filter(Boolean).join(' | ');
+
+  notify(result.total, (rollEntry.mod || 0) + attrMod, breakdown);
 }
 
 function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
@@ -19839,6 +19897,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     !!onUpdate && isGM,
   );
 
+  const caAbilityNameSet = String((liveCharacter as any)?.caAbilityName || '').trim();
+  const caAbilityDescription = String((liveCharacter as any)?.caAbilityDescription || '').trim();
+
   // Which tab is showing. The sheet can be driven from outside (`activeTab`)
   // or left to itself (`defaultTab`), and the Notes button needs the answer
   // either way: on the Ability tab it opens the ability's note instead of the
@@ -20786,70 +20847,22 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // rolls, via the shared resolveRollAttrAndSkillMod helper, but without the
   // item-specific energy/mana/item-cost gating (not requested for traits).
   const executeTraitRoll = useCallback((rollEntry: any, trait: CharacterTrait) => {
-    if (rollEntry.noRoll) {
-      const flatValue = rollEntry.mod || 0;
-      triggerRollNotification({
-        type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
-        dieType: 'd20',
-        label: `${trait.name} - ${rollEntry.name}`,
-        result: flatValue,
-        modifier: 0,
-        total: flatValue,
-        username: character?.name || 'Unknown',
-        characterName: character?.name,
-        calculationBreakdown: `Effect applied (no roll)${flatValue ? ` | Value: ${flatValue}` : ''}`,
-        isHealing: rollEntry.rollType === 'heal',
-      });
-      if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
-        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
-      }
-      return;
-    }
-    if (!rollEntry.diceFormula) return;
-
-    const formulaParts: string[] = [rollEntry.diceFormula];
-    if (rollEntry.mod && rollEntry.mod !== 0) {
-      formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
-    }
-    const { mod: attrMod, breakdownParts: attrSkillBreakdown } = resolveRollAttrAndSkillMod(rollEntry, character, campaignSystem);
-    if (attrMod !== 0) {
-      formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
-    }
-
-    const fullFormula = formulaParts.join('');
-    const result = rollDice(fullFormula);
-
-    const breakdown = [
-      rollEntry.diceFormula,
-      rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
-      ...attrSkillBreakdown,
-      rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
-    ].filter(Boolean).join(' | ');
-
-    triggerRollNotification({
-      type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
-      dieType: 'd20',
+    executeCharacterRollEntry(rollEntry, {
+      character,
+      campaignSystem,
       label: `${trait.name} - ${rollEntry.name}`,
-      result: result.total,
-      modifier: (rollEntry.mod || 0) + attrMod,
-      total: result.total,
-      username: character?.name || 'Unknown',
-      characterName: character?.name,
-      calculationBreakdown: breakdown,
-      isHealing: rollEntry.rollType === 'heal',
     });
-
-    if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
-      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
-    }
-  }, [character]);
+  }, [character, campaignSystem]);
 
   // An Ability rolls exactly the way a trait does - the same builder, the same
   // dice, the same notification. All that differs is whose name is on it.
   const executeAbilityRoll = useCallback((rollEntry: any) => {
-    const abilityName = String((character as any)?.caAbilityName || '').trim() || 'Ability';
-    executeTraitRoll(rollEntry, { name: abilityName } as any);
-  }, [character, executeTraitRoll]);
+    executeCharacterRollEntry(rollEntry, {
+      character,
+      campaignSystem,
+      label: caAbilityRollLabel(character, rollEntry),
+    });
+  }, [character, campaignSystem]);
 
   // Save to admin library mutation (admin only)
   const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
@@ -24760,31 +24773,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           <TabsContent value="ability" className="space-y-4 mt-0" data-testid="content-ability">
             <CaSheetFrame>
               <div className="p-4 space-y-3">
-                <CaSection
-                  icon={<Flame className="h-3.5 w-3.5" />}
-                  title="Ability"
-                  value={
-                    <CaInfoHint label="How Abilities work" align="end" testId="button-ca-ability-info">
-                      <p>Every character has one Ability, and the GM names it here.</p>
-                      <p className="mt-2">What it actually does is written in its own note: press <span style={{ color: "var(--ca-gilt)" }}>Notes</span> at the top of the sheet while this tab is open and the ability's note opens instead of the character's. GM and player can both write in it.</p>
-                      <p className="mt-2">The rolls below are built the same way an item's are, and roll the same way.</p>
-                    </CaInfoHint>
-                  }
-                  testId="card-ca-ability"
-                >
-                  <CaFieldGrid>
-                    <CaInlineField
-                      edit={caGmEdit}
-                      field="caAbilityName"
-                      label="Ability name"
-                      value={(liveCharacter as any)?.caAbilityName}
-                      placeholder="Name the ability"
-                      empty={isGM ? "Double-click to name it" : "Not named yet"}
-                      wide
-                      testId="ca-ability-name"
-                    />
-                  </CaFieldGrid>
-                </CaSection>
+                <CaAbilityHeader character={liveCharacter} edit={caGmEdit} canEdit={isGM} />
 
                 <CaDivider />
 

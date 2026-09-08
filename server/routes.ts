@@ -3110,9 +3110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // C.A.: what carrying more energy than your body is built for does to
       // you is a GM ruling, the same way a wound's effects are.
       'caPhysiqueEffects',
-      // C.A.: the character's Ability is the GM's to name. The note behind it
-      // is not - player and GM both write in that.
-      'caAbilityName',
+      // C.A.: the character's Ability is the GM's to name and describe. The
+      // note behind it is not - player and GM both write in that.
+      'caAbilityName', 'caAbilityDescription',
       'isTemplate', 'campaignId', 'userId', 'folderId', 'pinned',
       // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
       'maxHp', 'maxEnergy', 'maxMana',
@@ -5283,7 +5283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const checkFreeHotbarTargetAccess = async (
     userId: string,
     campaignId: string,
-    body: { characterId?: string | null; itemId?: string | null },
+    body: { characterId?: string | null; itemId?: string | null; rollEntryId?: string | null },
   ): Promise<{ ok: boolean; error?: string; status?: number }> => {
     if (body.characterId) {
       // View access is enough to pin a character to your own hotbar (read-only
@@ -5314,7 +5314,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isGM) return { ok: false, status: 403, error: "Only GMs can assign library items" };
       return { ok: true };
     }
-    return { ok: false, status: 400, error: "Entry must reference a character or an item" };
+    if (body.rollEntryId) {
+      // C.A. ability rolls only. Anyone who can see the character can keep one
+      // of its ability rolls on their own bar - a player rolls their own, a GM
+      // keeps an NPC's to hand.
+      const [roll] = await db.select().from(rollEntries).where(eq(rollEntries.id, body.rollEntryId)).limit(1);
+      if (!roll) return { ok: false, status: 404, error: "Roll not found" };
+      if (roll.ownerType !== 'ability') return { ok: false, status: 400, error: "Only ability rolls can go on the hotbar" };
+      const access = await checkCharacterAccess(roll.ownerId, userId, 'view');
+      if (!access.character || access.character.campaignId !== campaignId) {
+        return { ok: false, status: 400, error: "Roll's character is not in this campaign" };
+      }
+      if (!access.allowed) return { ok: false, status: 403, error: "You don't have access to this character" };
+      return { ok: true };
+    }
+    return { ok: false, status: 400, error: "Entry must reference a character, an item or an ability roll" };
   };
 
   app.get("/api/campaigns/:campaignId/free-hotbar", requireAuth, async (req, res) => {
@@ -5387,6 +5401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               canEdit,
             },
             item: null,
+            rollEntry: null,
             sourceCharacter: null,
           };
         }
@@ -5417,7 +5432,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else if (!isGM) {
             return null; // library items are GM-only (hidden, kept in case GM status is restored)
           }
-          return { ...entry, character: null, item, sourceCharacter };
+          return { ...entry, character: null, item, sourceCharacter, rollEntry: null };
+        }
+        if (entry.rollEntryId) {
+          // An ability roll carries its character with it: the tile shows whose
+          // ability it is, and the roll itself needs that character's mods.
+          const [roll] = await db.select().from(rollEntries).where(eq(rollEntries.id, entry.rollEntryId)).limit(1);
+          const access = roll ? await checkCharacterAccess(roll.ownerId, userId, 'view') : null;
+          if (!roll || !access?.character || !access.allowed) {
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to clean up dangling free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
+          const owner = access.character;
+          return {
+            ...entry,
+            character: null,
+            item: null,
+            rollEntry: roll,
+            sourceCharacter: {
+              id: owner.id,
+              name: owner.name,
+              portrait: resolvePortrait(owner),
+              caAbilityName: owner.caAbilityName ?? null,
+            },
+          };
         }
         return null;
       }));
@@ -5436,6 +5478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const slotIndex = Number(req.body.slotIndex);
       const characterId = req.body.characterId || null;
       const itemId = req.body.itemId || null;
+      const rollEntryId = req.body.rollEntryId || null;
 
       if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
         return res.status(400).json({ error: "loadoutIndex must be 0-8" });
@@ -5443,16 +5486,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
         return res.status(400).json({ error: "slotIndex must be 0-9" });
       }
-      if ((characterId && itemId) || (!characterId && !itemId)) {
-        return res.status(400).json({ error: "Provide exactly one of characterId or itemId" });
+      if ([characterId, itemId, rollEntryId].filter(Boolean).length !== 1) {
+        return res.status(400).json({ error: "Provide exactly one of characterId, itemId or rollEntryId" });
       }
 
-      const access = await checkFreeHotbarTargetAccess(userId, campaignId, { characterId, itemId });
+      const access = await checkFreeHotbarTargetAccess(userId, campaignId, { characterId, itemId, rollEntryId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
       const entry = await storage.upsertFreeHotbarEntry({
         userId, campaignId, loadoutIndex, slotIndex,
-        characterId, itemId,
+        characterId, itemId, rollEntryId,
       });
       res.json(entry);
     } catch (err) {

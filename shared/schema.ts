@@ -345,6 +345,9 @@ export const characters = pgTable("characters", {
   // note is titled after it, and the ability's rolls are roll_entries rows
   // with ownerType 'ability' and this character's id as the owner.
   caAbilityName: text("ca_ability_name"),
+  // A line or two under the name, on the tab itself - what the Ability is, in
+  // short. The long write-up is the ability note; this is the label on the tin.
+  caAbilityDescription: text("ca_ability_description"),
   // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
   // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
   // two damage thresholds rather than absorbing damage directly, Armour Slots
@@ -1150,9 +1153,10 @@ export type Hotbar = typeof hotbars.$inferSelect;
 
 // AA V3 free hotbar (per-user, per-campaign quick-access loadouts).
 // Each user has 9 loadouts (0-8) of 10 slots (0-9) per campaign. A slot holds
-// either a character (open sheet shortcut) or a direct link to an item row —
-// a character-owned inventory item, or an admin/My Library item (characterId
-// null on the item). Exactly one of characterId/itemId is set per row.
+// a character (open sheet shortcut), a direct link to an item row — a
+// character-owned inventory item, or an admin/My Library item (characterId
+// null on the item) — or, in C.A., one roll off a character's Ability.
+// Exactly one of characterId/itemId/rollEntryId is set per row.
 export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -1161,6 +1165,9 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   slotIndex: integer("slot_index").notNull(), // 0-9
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   itemId: varchar("item_id").references(() => items.id, { onDelete: "cascade" }),
+  // C.A.: a single roll off a character's Ability tab, so the roll a player
+  // makes every turn is one press away instead of three panels deep.
+  rollEntryId: varchar("roll_entry_id").references((): any => rollEntries.id, { onDelete: "cascade" }),
 }, (table) => ({
   uniqueSlot: uniqueIndex("free_hotbar_user_campaign_loadout_slot_unique").on(
     table.userId,
