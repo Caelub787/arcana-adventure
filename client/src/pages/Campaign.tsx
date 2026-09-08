@@ -7094,7 +7094,7 @@ export default function Campaign() {
   // never changes for a given entity, so it only has to be asked once.
   const entityNoteIds = useRef<Map<string, string>>(new Map());
   const entityNoteId = async (
-    entityType: 'character-sheet' | 'item-sheet',
+    entityType: 'character-sheet' | 'item-sheet' | 'character-ability',
     entityId: string,
     name: string,
   ) => {
@@ -7110,19 +7110,30 @@ export default function Campaign() {
     return note.id;
   };
 
-  const handleOpenCharacterNotes = async (char: any) => {
+  // C.A. characters have two sheet notes, not one: the character's own, and
+  // the one their Ability is written in. Which one the Notes button opens is
+  // whichever tab the sheet is on, so pressing it on the Ability tab while
+  // the character note is docked swaps the pane over rather than shutting it.
+  const handleOpenCharacterNotes = async (char: any, variant: 'sheet' | 'ability' = 'sheet') => {
     if (!effectiveCampaignId || !char?.id) return;
-    if (!isMobile && dockedCharNotes[char.id]) {
-      setDockedCharNotes(prev => { const next = { ...prev }; delete next[char.id]; return next; });
-      return;
-    }
+    const entityType = variant === 'ability' ? 'character-ability' : 'character-sheet';
+    const title = variant === 'ability'
+      ? (String(char?.caAbilityName || '').trim() || `${char.name}'s Ability`)
+      : char.name;
     try {
-      const noteId = await entityNoteId('character-sheet', char.id, char.name);
+      // The id is remembered after the first press, so the toggle stays
+      // instant; only the very first open of a note costs a round trip.
+      const known = entityNoteIds.current.get(`${entityType}:${char.id}`);
+      const noteId = known || await entityNoteId(entityType as any, char.id, title);
       if (isMobile) {
         setMobileNotesFor({ noteId });
-      } else {
-        setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
+        return;
       }
+      if (dockedCharNotes[char.id] === noteId) {
+        setDockedCharNotes(prev => { const next = { ...prev }; delete next[char.id]; return next; });
+        return;
+      }
+      setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
     } catch (e: any) {
       console.error('Failed to open character notes:', e);
       toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
@@ -7154,15 +7165,17 @@ export default function Campaign() {
   // should open docked alongside that sheet (same docking used by the
   // sheet's own Notes button) rather than as a generic floating note panel.
   const handleOpenEntityNoteFromSidebar = async (
-    entityType: 'character-sheet' | 'item-sheet',
+    entityType: 'character-sheet' | 'item-sheet' | 'character-ability',
     entityId: string,
     noteId: string,
   ) => {
     try {
-      if (entityType === 'character-sheet') {
+      if (entityType === 'character-sheet' || entityType === 'character-ability') {
         const char = (characters as any[] | undefined)?.find((c: any) => c.id === entityId) || await api.getCharacter(entityId);
         if (!char) return;
         openCharacterSheet(char);
+        // An ability note belongs to the Ability tab, so the sheet opens on it.
+        if (entityType === 'character-ability') setCharSheetActiveTabs(prev => ({ ...prev, [char.id]: 'ability' }));
         setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
       } else {
         const item = await api.getItem(entityId);
@@ -9941,6 +9954,17 @@ export default function Campaign() {
         ) {
           if (!data.campaignId || data.campaignId === effectiveCampaignId) {
             invalidateNoteQueriesRef.current();
+          }
+        }
+
+        // Rolls changed on an item, a spell, a trait or a character's Ability.
+        // Every open sheet in the campaign re-reads them, so a GM building a
+        // roll builds it in front of the player holding that sheet open.
+        // Invalidating the whole "rollEntries" prefix also covers the copies
+        // a live Roll Template fans out to.
+        if (data.type === 'roll_entries_changed') {
+          if (!data.campaignId || data.campaignId === effectiveCampaignId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['rollEntries'] });
           }
         }
 

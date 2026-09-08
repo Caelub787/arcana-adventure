@@ -31,7 +31,6 @@ import {
   useCaInlineEdit,
   CaSheetFrame,
   CaSection,
-  CaMedallion,
   CaFieldGrid,
   CaInlineField,
   CaDivider,
@@ -47,7 +46,7 @@ import {
   normalizeCAItemEffects,
   type CAItemEffect,
 } from "@shared/ca";
-import { woundSystemRules } from "@shared/systemRules";
+import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
 import { V3_SKILLS, V3_RUNE_TARGET_ITEM_TYPES, V3_RUNE_STAT_TARGETS } from "@shared/v3";
 
 const opts = (values: readonly string[], blank?: string) => [
@@ -242,6 +241,11 @@ export function LibraryItemSheet({
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const type = String(item?.itemType || "");
   const isV3 = systemSlug === "aa-v3";
+  // C.A. has one roll system and it is the Rolls panel at the bottom of this
+  // sheet. The old per-item damage/attack columns were a second, weaker one
+  // saying the same thing in fewer words, so C.A. doesn't show them at all -
+  // an item that hits for 1d8 says so as a roll, the way an Ability does.
+  const isCA = isWoundSystem(systemSlug);
   const damageTypes = getEffectTypes(systemSlug);
   const rules = woundSystemRules(systemSlug) as any;
 
@@ -294,7 +298,7 @@ export function LibraryItemSheet({
   const section = (icon: React.ReactNode, title: string, body: React.ReactNode) => (
     <>
       <CaDivider />
-      <CaSection icon={<CaMedallion>{icon}</CaMedallion>} title={title}>{body}</CaSection>
+      <CaSection icon={icon} title={title}>{body}</CaSection>
     </>
   );
 
@@ -315,7 +319,7 @@ export function LibraryItemSheet({
       </div>
 
       <div className="p-4 space-y-3 overflow-y-auto" style={{ maxHeight: "70vh" }}>
-        <CaSection icon={<CaMedallion><Package className="h-3.5 w-3.5" /></CaMedallion>} title="Identity">
+        <CaSection icon={<Package className="h-3.5 w-3.5" />} title="Identity">
           <div className="flex gap-3 items-start">
             {/* The picture, in the same ringed square a character's portrait
                 gets, so an item and a character read as the same kind of
@@ -389,11 +393,16 @@ export function LibraryItemSheet({
             </CaFieldGrid>
             <div className="mt-2 space-y-1">
               <ToggleRow label="Container" value={!!item?.isContainer} disabled={!canEdit} onChange={(v) => onUpdate({ isContainer: v })} testId="toggle-library-item-container" />
+              {/* Two-handedness is how the item is held, not how it hits, so
+                  it stays behind when C.A. drops the Attack block. */}
+              {isCA && type === "weapon" && (
+                <ToggleRow label="Heavy (two-handed)" value={!!item?.isHeavy} disabled={!canEdit} onChange={(v) => onUpdate({ isHeavy: v })} testId="toggle-library-item-heavy" />
+              )}
             </div>
           </>
         ))}
 
-        {(type === "weapon" || type === "consumable" || type === "ammunition") && section(<Sword className="h-3.5 w-3.5" />, "Attack", (
+        {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && section(<Sword className="h-3.5 w-3.5" />, "Attack", (
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="damage" label="Damage" value={item?.damage} placeholder="1d8" testId="library-item-damage" />
@@ -483,21 +492,29 @@ export function LibraryItemSheet({
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="rationServings" label="Ration servings" value={item?.rationServings ?? 0} kind="number" min={0} testId="library-item-ration-servings" />
-              <CaInlineField edit={edit} field="consumableHpChange" label="HP change" value={item?.consumableHpChange ?? 0} kind="number" min={-999} testId="library-item-hp-change" />
-              <CaInlineField edit={edit} field="consumableEnergyChange" label="Energy change" value={item?.consumableEnergyChange ?? 0} kind="number" min={-999} testId="library-item-energy-change" />
-              <CaInlineField edit={edit} field="consumableManaChange" label="Mana change" value={item?.consumableManaChange ?? 0} kind="number" min={-999} testId="library-item-mana-change" />
+              {/* The stat changes and the detonation are a roll wearing a
+                  different hat - C.A. writes them as rolls instead. */}
+              {!isCA && (
+                <>
+                  <CaInlineField edit={edit} field="consumableHpChange" label="HP change" value={item?.consumableHpChange ?? 0} kind="number" min={-999} testId="library-item-hp-change" />
+                  <CaInlineField edit={edit} field="consumableEnergyChange" label="Energy change" value={item?.consumableEnergyChange ?? 0} kind="number" min={-999} testId="library-item-energy-change" />
+                  <CaInlineField edit={edit} field="consumableManaChange" label="Mana change" value={item?.consumableManaChange ?? 0} kind="number" min={-999} testId="library-item-mana-change" />
+                </>
+              )}
               <CaInlineField edit={edit} field="consumableEffectDescription" label="Effect" value={item?.consumableEffectDescription} kind="textarea" wide placeholder="What happens when it is used." testId="library-item-consumable-effect" />
-              {item?.isDetonatable && (
+              {!isCA && item?.isDetonatable && (
                 <>
                   <CaInlineField edit={edit} field="detonateAoeShape" label="Detonation area" value={item?.detonateAoeShape} kind="select" options={opts(AOE_SHAPES, "None")} testId="library-item-detonate-shape" />
                   <CaInlineField edit={edit} field="detonateAoeRange" label="Detonation range" value={item?.detonateAoeRange ?? 15} kind="number" min={0} suffix="ft" testId="library-item-detonate-range" />
                 </>
               )}
             </CaFieldGrid>
-            <div className="mt-2 space-y-1">
-              <ToggleRow label="Rolls like a weapon" value={!!item?.isDamaging} disabled={!canEdit} onChange={(v) => onUpdate({ isDamaging: v })} testId="toggle-library-item-damaging" />
-              <ToggleRow label="Can be detonated" value={!!item?.isDetonatable} disabled={!canEdit} onChange={(v) => onUpdate({ isDetonatable: v })} testId="toggle-library-item-detonatable" />
-            </div>
+            {!isCA && (
+              <div className="mt-2 space-y-1">
+                <ToggleRow label="Rolls like a weapon" value={!!item?.isDamaging} disabled={!canEdit} onChange={(v) => onUpdate({ isDamaging: v })} testId="toggle-library-item-damaging" />
+                <ToggleRow label="Can be detonated" value={!!item?.isDetonatable} disabled={!canEdit} onChange={(v) => onUpdate({ isDetonatable: v })} testId="toggle-library-item-detonatable" />
+              </div>
+            )}
           </>
         ))}
 

@@ -97,7 +97,7 @@ interface CampaignNotesPanelProps {
   // alongside that sheet (the same docking its own Notes button uses)
   // instead of via onOpenFloatingNote. Falls back to onOpenFloatingNote when
   // not provided, or for notes with no entity link.
-  onOpenEntityNote?: (entityType: 'character-sheet' | 'item-sheet', entityId: string, noteId: string) => void;
+  onOpenEntityNote?: (entityType: 'character-sheet' | 'item-sheet' | 'character-ability', entityId: string, noteId: string) => void;
   // Sidebar's right-click "Timelines" menu item - navOnly has no tab bar to
   // host the Timelines/Graph views inline, so opening them is delegated to
   // the caller (which can pop them into their own floating panel).
@@ -1257,7 +1257,10 @@ export function CampaignNotesPanel({
     enabled: !!selectedNoteId,
   });
   const currentNoteRefs = currentNoteRefsRaw ?? [];
-  const linkedEntityRef = currentNoteRefs.find(r => ["character-sheet", "item-sheet"].includes(r.entityType));
+  // C.A.'s ability notes hang off a character the same way a sheet note does,
+  // so they count as linked here too - otherwise clicking one in the sidebar
+  // opened it as a loose note with no sheet beside it.
+  const linkedEntityRef = currentNoteRefs.find(r => ["character-sheet", "item-sheet", "character-ability"].includes(r.entityType));
 
   // Sidebar (navOnly) mode never shows note content inline - whatever set
   // selectedNoteId (folder tree click, search result, "New Note", etc.) gets
@@ -1282,10 +1285,10 @@ export function CampaignNotesPanel({
     }
     if (currentNoteRefsRaw === undefined) return;
     const id = selectedNoteId;
-    const entityRef = currentNoteRefsRaw.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet");
+    const entityRef = currentNoteRefsRaw.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet" || r.entityType === "character-ability");
     setSelectedNoteId(null);
     if (entityRef) {
-      onOpenEntityNote(entityRef.entityType as "character-sheet" | "item-sheet", entityRef.entityId, id);
+      onOpenEntityNote(entityRef.entityType as "character-sheet" | "item-sheet" | "character-ability", entityRef.entityId, id);
     } else if (onOpenFloatingNote) {
       onOpenFloatingNote(id);
     }

@@ -3110,6 +3110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // C.A.: what carrying more energy than your body is built for does to
       // you is a GM ruling, the same way a wound's effects are.
       'caPhysiqueEffects',
+      // C.A.: the character's Ability is the GM's to name. The note behind it
+      // is not - player and GM both write in that.
+      'caAbilityName',
       'isTemplate', 'campaignId', 'userId', 'folderId', 'pinned',
       // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
       'maxHp', 'maxEnergy', 'maxMana',
@@ -4692,6 +4695,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           character: updatedCharacter
         });
       }
+
+      // C.A.: the ability note is named after the ability, so renaming the
+      // ability renames its note rather than leaving a note titled after a
+      // power the character no longer has.
+      if ('caAbilityName' in (req.body || {}) && updatedCharacter?.campaignId
+          && (req.body.caAbilityName || '') !== (charData?.caAbilityName || '')) {
+        try {
+          const nextTitle = String(req.body.caAbilityName || '').trim() || `${updatedCharacter.name}'s Ability`;
+          const backlinks = await storage.getBacklinks('character-ability', updatedCharacter.id);
+          for (const link of backlinks) {
+            const note = await storage.getNote(link.noteId);
+            if (!note || note.campaignId !== updatedCharacter.campaignId) continue;
+            if (note.title === nextTitle) continue;
+            await storage.updateNote(note.id, { title: nextTitle } as any);
+            broadcastToCampaign(updatedCharacter.campaignId, { type: 'note_changed', noteId: note.id, campaignId: updatedCharacter.campaignId, userId: req.session.userId });
+          }
+        } catch (e) {
+          console.error('Failed to rename ability note:', e);
+        }
+      }
       
       const auditFields = Object.keys(req.body || {}).filter(k => k !== 'tempHp' && k !== 'tempEnergy' && k !== 'tempMana' && k !== 'hp' && k !== 'energy' && k !== 'mana');
       if (auditFields.length > 0) {
@@ -5833,6 +5856,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // C.A. only: the rolls a character's Ability is made of. Same roll builder
+  // items use, owned by the character rather than by anything in its bags.
+  app.get("/api/characters/:id/ability-rolls", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, (req as any).session?.userId, 'view');
+      if (!access.allowed) return res.status(403).json({ error: "Not authorized to view this character" });
+      const rolls = await storage.getRollEntries("ability", req.params.id);
+      const enriched = await enrichWithTemplateNames(rolls);
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch ability roll entries" });
+    }
+  });
+
   // Helper: check if user can modify roll entries for a given owner
   const canModifyRollEntries = async (userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
     const user = await storage.getUser(userId);
@@ -5885,6 +5922,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } else if (ownerType === 'character') {
       const access = await checkCharacterAccess(ownerId, userId, 'edit');
       return access.isOwner || access.isGM;
+    } else if (ownerType === 'ability') {
+      // C.A. only: the rolls on a character's Ability tab. Owned by the
+      // character itself, so the same people who may edit the sheet may
+      // build its ability rolls.
+      const access = await checkCharacterAccess(ownerId, userId, 'edit');
+      return access.isOwner || access.isGM;
     } else if (ownerType === 'trait') {
       const trait = await storage.getCharacterTrait(ownerId);
       if (!trait) return false;
@@ -5892,6 +5935,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return access.isOwner || access.isGM;
     }
     return false;
+  };
+
+  // Rolls are shared state: a GM building an item's or an Ability's rolls is
+  // building them for whoever is holding that sheet open right now. Nothing
+  // told the room, so everyone else had to reload to see the new roll. Which
+  // campaign a roll belongs to has to be walked back through its owner.
+  const rollEntryCampaignId = async (ownerType: string, ownerId: string): Promise<string | null> => {
+    const viaCharacter = async (characterId?: string | null) => {
+      if (!characterId) return null;
+      const character = await storage.getCharacter(characterId);
+      return character?.campaignId || null;
+    };
+    if (ownerType === 'item') {
+      const item = await storage.getItem(ownerId);
+      return item?.campaignId || (await viaCharacter(item?.characterId));
+    }
+    if (ownerType === 'spell') {
+      const spell = await storage.getSpell(ownerId);
+      return spell?.campaignId || (await viaCharacter(spell?.characterId));
+    }
+    if (ownerType === 'trait') {
+      const trait = await storage.getCharacterTrait(ownerId);
+      return await viaCharacter(trait?.characterId);
+    }
+    if (ownerType === 'ability' || ownerType === 'character') {
+      return await viaCharacter(ownerId);
+    }
+    return null;
+  };
+  const broadcastRollEntriesChanged = async (ownerType: string, ownerId: string) => {
+    try {
+      const campaignId = await rollEntryCampaignId(ownerType, ownerId);
+      if (campaignId) {
+        broadcastToCampaign(campaignId, { type: 'roll_entries_changed', ownerType, ownerId, campaignId });
+      }
+    } catch (e) {
+      console.error('Failed to broadcast roll entry change:', e);
+    }
   };
 
   // A note attached to a character-sheet or item-sheet entity is shared:
@@ -5907,7 +5988,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     entityId: string
   ): Promise<{ canView: boolean; canEdit: boolean; isGM: boolean } | null> => {
     let characterId: string | null = null;
-    if (entityType === 'character-sheet') {
+    if (entityType === 'character-sheet' || entityType === 'character-ability') {
+      // C.A. characters carry a second sheet note - the one their Ability is
+      // written in. It hangs off the same character and follows exactly the
+      // same access rules as the sheet note.
       characterId = entityId;
     } else if (entityType === 'item-sheet') {
       const item = await storage.getItem(entityId);
@@ -5946,7 +6030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     isRealGm: boolean,
   ): Promise<{ canView: boolean; canEdit: boolean } | null> => {
     const refs = await storage.getNoteReferences(note.id);
-    const entityRef = refs.find(r => r.entityType === 'character-sheet' || r.entityType === 'item-sheet');
+    const entityRef = refs.find(r => r.entityType === 'character-sheet' || r.entityType === 'item-sheet' || r.entityType === 'character-ability');
     if (!entityRef) return null;
     const entityAccess = await checkEntityNoteAccess(userId, entityRef.entityType, entityRef.entityId);
     if (!entityAccess) return null;
@@ -6034,6 +6118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      await broadcastRollEntriesChanged(entry.ownerType, entry.ownerId);
       res.json(entry);
     } catch (err) {
       res.status(400).json({ error: "Failed to create roll entry" });
@@ -6106,6 +6191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      await broadcastRollEntriesChanged(existing.ownerType, existing.ownerId);
       res.json(entry);
     } catch (err) {
       res.status(400).json({ error: "Failed to update roll entry" });
@@ -6162,6 +6248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteRollEntry(req.params.id);
+      await broadcastRollEntriesChanged(entry.ownerType, entry.ownerId);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete roll entry" });
@@ -6540,6 +6627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...resetFields,
         isOverridden: false,
       });
+      await broadcastRollEntriesChanged(existing.ownerType, existing.ownerId);
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to reset roll entry" });

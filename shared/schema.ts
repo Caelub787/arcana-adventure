@@ -340,6 +340,11 @@ export const characters = pgTable("characters", {
   // colour means the aura is a single colour.
   caAuraColor2: text("ca_aura_color2"),
   caAuraAngle: integer("ca_aura_angle"),
+  // C.A. only: the name of this character's Ability - the one power that is
+  // theirs alone. The Ability tab hangs off this: the character's ability
+  // note is titled after it, and the ability's rolls are roll_entries rows
+  // with ownerType 'ability' and this character's id as the owner.
+  caAbilityName: text("ca_ability_name"),
   // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
   // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
   // two damage thresholds rather than absorbing damage directly, Armour Slots

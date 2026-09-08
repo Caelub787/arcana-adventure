@@ -1507,6 +1507,12 @@ class ApiClient {
     return this.request(`/character-traits/${traitId}/rolls`);
   }
 
+  // C.A. only: the rolls that make up a character's Ability. Owned by the
+  // character, not by anything in its bags.
+  async getAbilityRolls(characterId: string): Promise<RollEntry[]> {
+    return this.request(`/characters/${characterId}/ability-rolls`);
+  }
+
   async createRollEntry(data: Partial<RollEntry>): Promise<RollEntry> {
     return this.request('/roll-entries', {
       method: 'POST',

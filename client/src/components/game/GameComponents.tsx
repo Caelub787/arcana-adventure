@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
 import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
-import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint } from "@/components/game/CASheetUI";
+import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -16988,7 +16988,11 @@ interface CharacterSheetProps {
   trustedPlayer?: boolean;
   onOpenItemDetail?: (item: any) => void;
   onOpenSpellbook?: (item: any) => void;
-  onOpenNotes?: (character: any) => void;
+  /**
+   * `variant` picks which of the sheet's notes to open. C.A. characters have
+   * two: the character's own, and the one their Ability is written in.
+   */
+  onOpenNotes?: (character: any, variant?: 'sheet' | 'ability') => void;
   onOpenItemNotes?: (item: any) => void;
   /**
    * Draw the aura's edge somewhere else. When notes are docked beside the
@@ -19827,6 +19831,23 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     !!onUpdate && (isOwner || isGM),
   );
 
+  // The same machinery for the handful of C.A. fields that are the GM's to
+  // set rather than the character's - the Ability's name, for one. A player
+  // reads it; only the GM opens it.
+  const caGmEdit = useCaInlineEdit(
+    (updates) => onUpdate?.(updates as any),
+    !!onUpdate && isGM,
+  );
+
+  // Which tab is showing. The sheet can be driven from outside (`activeTab`)
+  // or left to itself (`defaultTab`), and the Notes button needs the answer
+  // either way: on the Ability tab it opens the ability's note instead of the
+  // character's.
+  const [currentTab, setCurrentTab] = useState<string>(activeTab ?? defaultTab);
+  useEffect(() => {
+    if (activeTab !== undefined) setCurrentTab(activeTab);
+  }, [activeTab]);
+
   // Age is the one number that can be genuinely empty rather than zero.
   const caAgeFromDraft = (draft: any) => {
     const raw = String(draft ?? '').trim();
@@ -20823,6 +20844,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
   }, [character]);
 
+  // An Ability rolls exactly the way a trait does - the same builder, the same
+  // dice, the same notification. All that differs is whose name is on it.
+  const executeAbilityRoll = useCallback((rollEntry: any) => {
+    const abilityName = String((character as any)?.caAbilityName || '').trim() || 'Ability';
+    executeTraitRoll(rollEntry, { name: abilityName } as any);
+  }, [character, executeTraitRoll]);
+
   // Save to admin library mutation (admin only)
   const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
   const saveToLibraryMutation = useMutation({
@@ -21615,6 +21643,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     ? [
         { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
         { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+        // The one power that is this character's alone, between what they can
+        // do and what they are carrying.
+        { value: 'ability', icon: Flame, color: 'red', label: 'Ability' },
         { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
         { value: 'traits', icon: Star, color: 'fuchsia', label: 'Traits' },
       ]
@@ -21765,16 +21796,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onOpenNotes(character)}
+            onClick={() => onOpenNotes(character, isCA && currentTab === 'ability' ? 'ability' : 'sheet')}
             className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
             data-testid="button-character-notes"
           >
             <ScrollText className="h-3 w-3" />
-            Notes
+            {isCA && currentTab === 'ability' ? 'Ability notes' : 'Notes'}
           </Button>
         </div>
       )}
-      <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => onTabChange?.(v)} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
+      <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => { setCurrentTab(v); onTabChange?.(v); }} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
         {/* C.A. sets its tab bar into a framed strip rather than sitting it
             flush against a divider, so it reads as part of the same tooled
@@ -21783,7 +21814,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           isCA
             ? 'w-[calc(100%-1.5rem)] mx-3 mt-3 mb-1 rounded-xl bg-stone-950/80 border border-[color:var(--ca-gilt-line-soft)] p-1.5 gap-1'
             : 'w-full bg-stone-950 border-b border-stone-700 p-1 gap-0.5 sm:gap-1'
-        } ${(isAAV3 || isCA || isSwampy) ? 'grid-cols-4' : 'grid-cols-7'}`}>
+        } ${isCA ? 'grid-cols-5' : (isAAV3 || isSwampy) ? 'grid-cols-4' : 'grid-cols-7'}`}>
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -24717,6 +24748,67 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             </>
             )}
           </TabsContent>
+
+          {/* ABILITY TAB - C.A. only.
+              A character's Ability is one named power with its own write-up
+              and its own rolls. The write-up is a note like any other, hooked
+              to the character the way the sheet note is, so it shows up in the
+              notes sidebar, links, searches and history for free. The rolls
+              are the item roll builder, unchanged - it is the roll system this
+              game runs on, so an Ability rolls the way a weapon does. */}
+          {isCA && (
+          <TabsContent value="ability" className="space-y-4 mt-0" data-testid="content-ability">
+            <CaSheetFrame>
+              <div className="p-4 space-y-3">
+                <CaSection
+                  icon={<Flame className="h-3.5 w-3.5" />}
+                  title="Ability"
+                  value={
+                    <CaInfoHint label="How Abilities work" align="end" testId="button-ca-ability-info">
+                      <p>Every character has one Ability, and the GM names it here.</p>
+                      <p className="mt-2">What it actually does is written in its own note: press <span style={{ color: "var(--ca-gilt)" }}>Notes</span> at the top of the sheet while this tab is open and the ability's note opens instead of the character's. GM and player can both write in it.</p>
+                      <p className="mt-2">The rolls below are built the same way an item's are, and roll the same way.</p>
+                    </CaInfoHint>
+                  }
+                  testId="card-ca-ability"
+                >
+                  <CaFieldGrid>
+                    <CaInlineField
+                      edit={caGmEdit}
+                      field="caAbilityName"
+                      label="Ability name"
+                      value={(liveCharacter as any)?.caAbilityName}
+                      placeholder="Name the ability"
+                      empty={isGM ? "Double-click to name it" : "Not named yet"}
+                      wide
+                      testId="ca-ability-name"
+                    />
+                  </CaFieldGrid>
+                </CaSection>
+
+                <CaDivider />
+
+                <CaSection
+                  icon={<Dices className="h-3.5 w-3.5" />}
+                  title="Rolls"
+                  testId="card-ca-ability-rolls"
+                >
+                  <RollEntriesEditor
+                    ownerType="ability"
+                    ownerId={liveCharacter.id}
+                    canEdit={isGM}
+                    campaignSystem={campaignSystem}
+                    characterCustomSkills={characterCustomSkills as any[]}
+                    characterEnergy={liveCharacter?.energy ?? 0}
+                    characterMana={liveCharacter?.mana ?? 0}
+                    characterItems={items as any[]}
+                    onExecuteRoll={(roll: any) => executeAbilityRoll(roll)}
+                  />
+                </CaSection>
+              </div>
+            </CaSheetFrame>
+          </TabsContent>
+          )}
 
           {/* INVENTORY TAB */}
           <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
