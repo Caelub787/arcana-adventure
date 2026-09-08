@@ -293,7 +293,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     if (!isAdmin && !nonAdminAllowedViews.includes(currentView)) setCurrentView('dashboard');
   }, [isAdmin, currentView]);
   
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
   // The item opened as an inline-edit sheet, rather than in the full form.
   const [sheetItem, setSheetItem] = useState<Item | null>(null);
 
@@ -405,7 +404,6 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
       queryClient.invalidateQueries({ queryKey: ['item-image', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['item-template-links', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['roll-entries', 'item', vars.id] });
-      setEditingItem(null);
       toast({ title: 'Item Updated', description: 'System item updated successfully' });
     },
     onError: (error: any) => {
@@ -1453,7 +1451,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             onNavigateBack={() => setCurrentView('items')} 
             onEditItem={async (itemId) => {
               const fullItem = await api.getSystemItem(itemId);
-              setEditingItem(fullItem);
+              setSheetItem(fullItem);
             }}
             systemSlug={systemSlug}
             personal={personalMode}
@@ -1469,47 +1467,9 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           />
         )}
 
-        {/* AA V2 uses the new @arcana/library-dialogs ItemDialog (multi-template
-            links via ItemTemplateLinksPanel). Legacy systems keep the inline
-            ItemFormDialog so the single-link picker (ItemTemplateLinkPicker)
-            and its attendant flow stay intact and we never blindly write back
-            an empty templateLinks array on legacy edits. */}
-        {useLibraryItemDialog ? (
-          <>
-            {editingItem && (
-              <ItemDialog
-                open={!!editingItem}
-                onOpenChange={(open) => { if (!open) setEditingItem(null); }}
-                mode="edit"
-                initialValue={itemToDraft(editingItem)}
-                host={itemDialogHost}
-                campaignSystem={systemSlug}
-                renderCrafterExtras={renderCrafterExtras}
-                onSaved={(saved) => {
-                  invalidateItemQueries(saved.id);
-                  setEditingItem(null);
-                  toast({ title: 'Item Updated', description: 'System item updated successfully' });
-                }}
-              />
-            )}
-          </>
-        ) : (
-          <>
-            {editingItem && (
-              <ItemFormDialog
-                open={!!editingItem}
-                onOpenChange={(open) => { if (!open) setEditingItem(null); }}
-                onSave={(data, _draftRolls, templateLinks) =>
-                  updateItemMutation.mutate({ id: editingItem.id, data, templateLinks })
-                }
-                initialData={editingItem}
-                isLoading={updateItemMutation.isPending}
-                campaignSystem={systemSlug}
-                personal={personalMode}
-              />
-            )}
-          </>
-        )}
+        {/* The two item form dialogs used to live here. The sheet carries
+            every field they did, per item type, so there is nothing left for
+            them to edit and nothing left to open them. */}
 
         {/* The item sheet, over everything, the way the character-template
             sheet already opens. */}
@@ -1518,12 +1478,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             <LibraryItemSheet
               item={sheetItem}
               systemSlug={systemSlug}
+              personal={personalMode}
               onUpdate={writeSheetItem}
-              onOpenFullForm={() => {
-                const open = sheetItem;
-                setSheetItem(null);
-                setEditingItem(open);
-              }}
               onDelete={() => {
                 if (!confirm('Delete this item?')) return;
                 const id = sheetItem.id;

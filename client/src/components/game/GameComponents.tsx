@@ -26855,7 +26855,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               systemSlug={campaignSystem || ''}
               canEdit={isGM || isOwner}
               onUpdate={(updates) => updateItemMutation.mutate({ id: sheetItem.id, data: updates })}
-              onOpenFullForm={() => { setInlineItemSheetId(null); setSelectedItem(sheetItem); }}
               onDelete={() => {
                 if (!confirm('Delete this item?')) return;
                 setInlineItemSheetId(null);
