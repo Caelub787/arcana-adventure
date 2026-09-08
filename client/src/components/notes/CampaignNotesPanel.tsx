@@ -2962,13 +2962,12 @@ export function CampaignNotesPanel({
           'rgb(var(--notes-page-rgb, 20 20 27) / 0.98)',
       }}
     >
-      {/* The page's own inner rule, inset from the panel edge the way a tooled
-          border sits in from the edge of a cover. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-2 rounded-md"
-        style={{ border: '1px solid var(--ca-gilt-line-soft)', opacity: 0.55 }}
-      />
+      {/* There was a second gilt rule here, inset from the panel edge the way
+          a tooled border sits in from the edge of a cover. It was drawn over
+          the whole panel, so in the narrow sidebar it cut straight across the
+          header, the Home row and the note rows rather than framing them - a
+          stray box on top of the content instead of a border around it. The
+          edge rule on the root is the frame. */}
       <div className="flex items-center justify-between p-2 border-b border-stone-700 bg-stone-900">
         <div className="flex items-center gap-2 min-w-0">
           {/* The sidebar-toggle/title header only applies to the two-pane
