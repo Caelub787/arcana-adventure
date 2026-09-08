@@ -14,7 +14,7 @@
  * away for those.
  */
 import React from "react";
-import { Package, Sword, Shield, Coins, Trash2, SlidersHorizontal, X } from "lucide-react";
+import { Package, Sword, Shield, Coins, Trash2, SlidersHorizontal, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   useCaInlineEdit,
@@ -26,6 +26,14 @@ import {
   CaDivider,
 } from "@/components/game/CASheetUI";
 import { getEffectTypes } from "@/lib/effectTypes";
+import {
+  CA_ITEM_EFFECT_TRIGGERS,
+  CA_ITEM_EFFECT_TRIGGER_LABELS,
+  makeCAItemEffect,
+  normalizeCAItemEffects,
+  type CAItemEffect,
+} from "@shared/ca";
+import { woundSystemRules } from "@shared/systemRules";
 
 const opts = (values: readonly string[], blank?: string) => [
   ...(blank === undefined ? [] : [{ value: "", label: blank }]),
@@ -89,6 +97,14 @@ export function LibraryItemSheet({
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const type = String(item?.itemType || "");
   const damageTypes = getEffectTypes(systemSlug);
+  const rules = woundSystemRules(systemSlug) as any;
+  const effects = normalizeCAItemEffects(item?.effects);
+  const patchEffect = (id: string, patch: Partial<CAItemEffect>) =>
+    onUpdate({ effects: effects.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  const knownTargets = new Set<string>([
+    ...rules.FIXED_STAT_TARGETS,
+    ...rules.SKILLS.map((sk: { key: string }) => sk.key),
+  ]);
 
   return (
     <CaSheetFrame className="w-full max-w-3xl">
@@ -175,6 +191,87 @@ export function LibraryItemSheet({
             </CaSection>
           </>
         )}
+
+        <CaDivider />
+
+        {/* Effects. Optional, any number, and each one says for itself whether
+            it needs the item equipped or just carried - the same {target,
+            amount} an overload or a wound uses, so there is one idea of what
+            an effect is rather than three. */}
+        <CaSection icon={<CaMedallion><Sparkles className="h-3.5 w-3.5" /></CaMedallion>} title="Effects">
+          <div className="space-y-1" data-testid="library-item-effects">
+            {effects.length === 0 && (
+              <p className="text-[11px] text-stone-500">No effects. This item changes nothing on its own.</p>
+            )}
+            {effects.map((eff) => (
+              <div key={eff.id} className="flex items-center gap-1">
+                <select
+                  value={eff.trigger}
+                  disabled={!canEdit}
+                  onChange={(e) => patchEffect(eff.id, { trigger: e.target.value as CAItemEffect["trigger"] })}
+                  className="h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1 shrink-0"
+                  data-testid={`select-item-effect-${eff.id}-trigger`}
+                >
+                  {CA_ITEM_EFFECT_TRIGGERS.map((t) => (
+                    <option key={t} value={t}>{CA_ITEM_EFFECT_TRIGGER_LABELS[t]}</option>
+                  ))}
+                </select>
+                <select
+                  value={eff.target}
+                  disabled={!canEdit}
+                  onChange={(e) => patchEffect(eff.id, { target: e.target.value })}
+                  className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1"
+                  data-testid={`select-item-effect-${eff.id}-target`}
+                >
+                  <optgroup label="Movement">
+                    {rules.FIXED_STAT_TARGETS.map((t: string) => (
+                      <option key={t} value={t}>{rules.FIXED_STAT_LABELS[t]}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Skills">
+                    {rules.SKILLS.map((sk: { key: string; name: string }) => (
+                      <option key={sk.key} value={sk.key}>{sk.name}</option>
+                    ))}
+                  </optgroup>
+                  {/* A target the lists no longer offer - a skill since
+                      renamed, say - would otherwise display as whatever the
+                      first option happens to be, and the next edit would
+                      quietly overwrite it with that. */}
+                  {!knownTargets.has(eff.target) && (
+                    <option value={eff.target}>{eff.target} (unknown)</option>
+                  )}
+                </select>
+                <input
+                  type="number"
+                  value={eff.amount}
+                  disabled={!canEdit}
+                  onChange={(e) => patchEffect(eff.id, { amount: Math.round(Number(e.target.value) || 0) })}
+                  className="w-16 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                  data-testid={`input-item-effect-${eff.id}-amount`}
+                />
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => onUpdate({ effects: effects.filter((e) => e.id !== eff.id) })}
+                  className="text-stone-500 hover:text-red-400 shrink-0 disabled:opacity-40"
+                  data-testid={`button-remove-item-effect-${eff.id}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+            {canEdit && (
+              <button
+                type="button"
+                className="text-[11px] text-amber-500 hover:text-amber-400"
+                onClick={() => onUpdate({ effects: [...effects, makeCAItemEffect()] })}
+                data-testid="button-add-item-effect"
+              >
+                + Add Effect
+              </button>
+            )}
+          </div>
+        </CaSection>
       </div>
     </CaSheetFrame>
   );

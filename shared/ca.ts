@@ -769,3 +769,69 @@ export function caSkillBounds(
     max: Math.min(5 + Math.max(0, Math.floor(scrollBoost)), current + Math.max(0, left)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Item effects
+//
+// An item can carry any number of modifiers, each one either live only while
+// the item is equipped or live for as long as it is carried at all. Same
+// {target, amount} shape wounds and Physique overload already use, so a GM
+// only has to learn one idea of what an "effect" is, and every consumer that
+// already totals one of those can total these the same way.
+// ---------------------------------------------------------------------------
+
+export const CA_ITEM_EFFECT_TRIGGERS = ["equipped", "carried"] as const;
+export type CAItemEffectTrigger = typeof CA_ITEM_EFFECT_TRIGGERS[number];
+
+export const CA_ITEM_EFFECT_TRIGGER_LABELS: Record<CAItemEffectTrigger, string> = {
+  equipped: "While equipped",
+  carried: "While carried",
+};
+
+export interface CAItemEffect extends CAWoundEffect {
+  trigger: CAItemEffectTrigger;
+}
+
+export function makeCAItemEffect(trigger: CAItemEffectTrigger = "equipped"): CAItemEffect {
+  return { ...makeCAWoundEffect(), trigger };
+}
+
+export function normalizeCAItemEffects(value: unknown): CAItemEffect[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((e) => ({
+      id: typeof e.id === "string" ? e.id : makeCAWoundId(),
+      target: typeof e.target === "string" ? e.target : CA_FIXED_STAT_TARGETS[0],
+      amount: Number.isFinite(Number(e.amount)) ? Number(e.amount) : 0,
+      // An unrecognised trigger is treated as the narrower one: an effect that
+      // should have needed equipping and silently applied from the backpack is
+      // the worse way to be wrong.
+      trigger: e.trigger === "carried" ? "carried" : "equipped",
+    }));
+}
+
+/** Whether an item's effects are live right now, given how it is being held. */
+export function caItemEffectIsActive(effect: CAItemEffect, isEquipped: boolean): boolean {
+  return effect.trigger === "carried" || isEquipped;
+}
+
+/**
+ * What a character's items are doing to one skill or movement stat right now.
+ * Items not equipped contribute only their "while carried" effects.
+ */
+export function caItemStatEffectTotal(
+  items: Array<{ effects?: unknown; isEquipped?: boolean | null }> | null | undefined,
+  target: string,
+): number {
+  if (!target || !Array.isArray(items)) return 0;
+  let total = 0;
+  for (const item of items) {
+    if (!item) continue;
+    const equipped = !!item.isEquipped;
+    for (const eff of normalizeCAItemEffects(item.effects)) {
+      if (eff.target === target && caItemEffectIsActive(eff, equipped)) total += eff.amount;
+    }
+  }
+  return total;
+}

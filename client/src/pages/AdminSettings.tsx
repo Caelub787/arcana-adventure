@@ -232,6 +232,19 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // "My Library" personal mode: scopes every list/create to the current user
   // (own + global rows only), even for admins. Non-admins are always personal.
   const personalMode = forcePersonal || new URLSearchParams(search).get('personal') === '1' || !isAdmin;
+  /**
+   * Where Back goes from the dashboard.
+   *
+   * The library is a page of its own, so opening it from inside a campaign
+   * used to strand you: Back went home, and getting back to the game meant
+   * finding it again. Whoever sent you here says where you came from. Only an
+   * in-app path is honoured - a protocol-relative one would be somewhere else
+   * entirely.
+   */
+  const returnTo = (() => {
+    const raw = new URLSearchParams(search).get('from');
+    return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
+  })();
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
@@ -1093,7 +1106,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
-      setLocation('/');
+      setLocation(returnTo);
     } else {
       setCurrentView('dashboard');
     }

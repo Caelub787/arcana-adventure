@@ -11,6 +11,9 @@ import {
   caAuraOf,
   caAuraShapeOf,
   caAuraColorAt,
+  caItemStatEffectTotal,
+  normalizeCAItemEffects,
+  caItemEffectIsActive,
   CA_AURA_DEFAULT_COLOR,
   CA_STARTING_ENERGY,
   CA_STARTING_PHYSIQUE,
@@ -231,5 +234,45 @@ describe("starting values", () => {
 
   it("puts a starting character at the bottom of the ladder", () => {
     expect(caRankLabel(0)).toBe("Bronze 1");
+  });
+});
+
+describe("item effects", () => {
+  const eq = { id: "a", target: "speed", amount: 10, trigger: "equipped" as const };
+  const carried = { id: "b", target: "speed", amount: 3, trigger: "carried" as const };
+
+  it("counts an equipped-only effect only while the item is equipped", () => {
+    expect(caItemStatEffectTotal([{ effects: [eq], isEquipped: true }], "speed")).toBe(10);
+    expect(caItemStatEffectTotal([{ effects: [eq], isEquipped: false }], "speed")).toBe(0);
+  });
+
+  it("counts a carried effect whether the item is equipped or not", () => {
+    expect(caItemStatEffectTotal([{ effects: [carried], isEquipped: false }], "speed")).toBe(3);
+    expect(caItemStatEffectTotal([{ effects: [carried], isEquipped: true }], "speed")).toBe(3);
+  });
+
+  it("adds up every item and only the target asked for", () => {
+    const bag = [
+      { effects: [eq, carried], isEquipped: true },
+      { effects: [carried], isEquipped: false },
+      { effects: [{ id: "c", target: "stealth", amount: 2, trigger: "carried" }], isEquipped: false },
+    ];
+    expect(caItemStatEffectTotal(bag, "speed")).toBe(16);
+    expect(caItemStatEffectTotal(bag, "stealth")).toBe(2);
+    expect(caItemStatEffectTotal(bag, "flySpeed")).toBe(0);
+  });
+
+  it("treats an unreadable trigger as the narrower one", () => {
+    // An effect that should have needed equipping and silently applied from
+    // the backpack is the worse way to be wrong.
+    const [normalised] = normalizeCAItemEffects([{ id: "x", target: "speed", amount: 1, trigger: "whenever" }]);
+    expect(normalised.trigger).toBe("equipped");
+    expect(caItemEffectIsActive(normalised, false)).toBe(false);
+  });
+
+  it("shrugs off items with no effects at all", () => {
+    expect(caItemStatEffectTotal([{ isEquipped: true }, { effects: null }, null as any], "speed")).toBe(0);
+    expect(caItemStatEffectTotal(null, "speed")).toBe(0);
+    expect(caItemStatEffectTotal([{ effects: [eq], isEquipped: true }], "")).toBe(0);
   });
 });

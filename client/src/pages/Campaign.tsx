@@ -10863,7 +10863,7 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setLocation('/library')}
+                    onClick={() => setLocation(`/library?from=${encodeURIComponent(location)}`)}
                     className="chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
                     data-testid="button-panel-my-library"
                   >

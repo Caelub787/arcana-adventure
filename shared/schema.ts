@@ -638,6 +638,11 @@ export const items = pgTable("items", {
   consumableEffectDescription: text("consumable_effect_description"),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
+  // Modifiers the item grants its holder: {id, target, amount, trigger} where
+  // trigger is "equipped" (live only while worn/wielded) or "carried" (live
+  // for as long as it is in the inventory at all). Optional - most items have
+  // none - and any number of them.
+  effects: jsonb("effects").$type<{ id: string; target: string; amount: number; trigger: string }[]>().default(sql`'[]'::jsonb`).notNull(),
   // Spellbook capacity (AA V3 only): maximum number of crafted/pre-loaded spells
   // a spellbook item may hold. 0 means unlimited.
   maxSpells: integer("max_spells").default(10).notNull(),

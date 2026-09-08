@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
+import { caUsableEnergy, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -28,6 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
+import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -18266,6 +18267,7 @@ function CAAttrsAndSkillsTab({
   handleRoll,
   openRollPanel,
   campaignSystem,
+  items = [],
 }: {
   liveCharacter: any;
   canEditSheet: boolean;
@@ -18274,6 +18276,8 @@ function CAAttrsAndSkillsTab({
   handleRoll: (name: string, mod: number, extra?: number, adv?: 'none'|'advantage'|'disadvantage', isSkill?: boolean, dieOverride?: string) => void;
   openRollPanel: (name: string, mod: number, type: 'skill'|'attribute', dieOverride?: string) => void;
   campaignSystem?: string;
+  /** The character's inventory: items can carry skill modifiers of their own. */
+  items?: any[];
 }) {
   const rules = woundSystemRules(campaignSystem);
   const skillBoostQueryClient = useQueryClient();
@@ -18531,15 +18535,19 @@ function CAAttrsAndSkillsTab({
               // and clears on its own as the pool moves, with no state of its
               // own to keep in sync.
               const skillOverloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, skill.key);
-              const skillVal = rawSkillVal + skillScrollBoost + skillWoundEffect + skillOverloadEffect;
+              // What the character is carrying and wearing. Equipped-only
+              // effects drop out on their own when the item comes off.
+              const skillItemEffect = caItemStatEffectTotal(items as any[], skill.key);
+              const skillVal = rawSkillVal + skillScrollBoost + skillWoundEffect + skillOverloadEffect + skillItemEffect;
               const skillBaseVal = rawSkillVal;
-              const skillTempBoost = skillScrollBoost + skillWoundEffect + skillOverloadEffect;
+              const skillTempBoost = skillScrollBoost + skillWoundEffect + skillOverloadEffect + skillItemEffect;
               const skillOpen = caEdit.field === `skill:${skill.key}`;
               const skillLimits = skillBounds(skill.key);
               const skillTempSources = [
                 skillScrollBoost !== 0 ? `${skillScrollBoost > 0 ? '+' : ''}${skillScrollBoost} bonus` : null,
                 skillWoundEffect !== 0 ? `${skillWoundEffect > 0 ? '+' : ''}${skillWoundEffect} from wounds` : null,
                 skillOverloadEffect !== 0 ? `${skillOverloadEffect > 0 ? '+' : ''}${skillOverloadEffect} over Physique` : null,
+                skillItemEffect !== 0 ? `${skillItemEffect > 0 ? '+' : ''}${skillItemEffect} from items` : null,
               ].filter(Boolean).join(', ');
               return (
                 <div
@@ -19847,6 +19855,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
+  // The item opened as an inline-edit sheet, the way the library does it.
+  const [inlineItemSheetId, setInlineItemSheetId] = useState<string | null>(null);
   // V3: inventory delete buttons hidden by default, revealed via a toggle
   const [showInventoryDelete, setShowInventoryDelete] = useState(false);
   
@@ -20913,6 +20923,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }
   });
 
+  /**
+   * Add Item makes the row and opens its sheet, the same way the library does
+   * - no form to fill in before the item exists. The old add form is still
+   *   the deep editor, reachable from the sheet.
+   */
+  const createBlankInventoryItem = () => {
+    createItemMutation.mutate(
+      { name: 'Untitled Item', itemType: 'utility', rarity: 'common', quantity: 1 },
+      { onSuccess: (created: any) => { if (created?.id) setInlineItemSheetId(created.id); } },
+    );
+  };
+
   // AA V3 equip/unequip — server enforces one-per-armor-slot and returns any
   // auto-unequipped sibling ids; the query invalidation picks everything up.
   const equipItemMutation = useMutation({
@@ -21816,13 +21838,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       onTouchMove={() => { if (caPortraitLongPressRef.current) clearTimeout(caPortraitLongPressRef.current); }}
                       data-testid="container-ca-portrait"
                     >
-                      {/* Round and ringed rather than a square tile - it reads
-                          as a portrait medallion set into the page. */}
+                      {/* A ringed square with the corners taken off: a circle
+                          crops a portrait to its middle, and most of them are
+                          framed as pictures rather than as medallions. */}
                       <div
-                        className="w-full h-full rounded-full p-[2px]"
+                        className="w-full h-full rounded-xl p-[2px]"
                         style={{ background: 'linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)' }}
                       >
-                        <div className="w-full h-full rounded-full overflow-hidden bg-stone-800 flex items-center justify-center">
+                        <div className="w-full h-full rounded-[10px] overflow-hidden bg-stone-800 flex items-center justify-center">
                           {character.portrait ? (
                             <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-character-portrait" />
                           ) : (
@@ -21832,7 +21855,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       </div>
                       {showCaPortraitMenu && canEdit && onUpdate && (
                         <div
-                          className="absolute inset-0 rounded-full bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
+                          className="absolute inset-0 rounded-xl bg-stone-950/90 flex flex-col items-center justify-center gap-1.5 p-1 z-10"
                           onClick={() => setShowCaPortraitMenu(false)}
                         >
                           <Button
@@ -21929,7 +21952,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           const baseVal = liveCharacter[key] || 0;
                           const woundEffect = woundRules.woundStatEffectTotal(woundRules.woundsOf(liveCharacter), key);
                           const overloadEffect = caPhysiqueStatEffectTotal(liveCharacter as any, key);
-                          const woundAdjusted = Math.max(0, baseVal + woundEffect + overloadEffect);
+                          const itemEffect = caItemStatEffectTotal(items as any[], key);
+                          const woundAdjusted = Math.max(0, baseVal + woundEffect + overloadEffect + itemEffect);
                           const exh = liveCharacter.exhaustion || 0;
                           const effectiveVal = exh >= 5 ? 0 : exh >= 2 ? Math.floor(woundAdjusted / 2) : woundAdjusted;
                           const isReduced = effectiveVal < baseVal;
@@ -23877,6 +23901,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                 handleRoll={handleRoll}
                 openRollPanel={openRollPanel}
                 campaignSystem={campaignSystem}
+                items={items as any[]}
               />
             ) : (
             <>
@@ -24733,7 +24758,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </Button>
                   )}
                   {canEditAsGM && (
-                    <Button size="sm" onClick={() => { setShowAddItem(true); bringToFront?.(`add-item${charPanelSuffix}`); }} data-testid="button-add-item">
+                    <Button size="sm" onClick={createBlankInventoryItem} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
                   )}
@@ -26366,7 +26391,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                   <div className="flex justify-center">
                     {character.portrait ? (
-                      <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
+                      <div className="w-32 h-32 rounded-xl overflow-hidden border-4 border-amber-600/50 shadow-lg">
                         <img 
                           src={character.portrait} 
                           alt={character.name} 
@@ -26375,7 +26400,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         />
                       </div>
                     ) : (
-                      <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
+                      <div className="w-32 h-32 rounded-xl bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
                         <User className="h-12 w-12 text-stone-500" />
                       </div>
                     )}
@@ -26816,6 +26841,31 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           } : undefined}
         />
       )}
+
+      {/* An inventory item, edited in place. Same sheet the library uses, so
+          making an item in a campaign and making one in your library are the
+          same job rather than two different forms. */}
+      {inlineItemSheetId && (() => {
+        const sheetItem = (items as any[]).find((i: any) => i.id === inlineItemSheetId);
+        if (!sheetItem) return null;
+        return (
+          <div className="fixed inset-0 z-[10600] bg-stone-950/95 flex items-start justify-center overflow-auto p-4" data-testid="overlay-inventory-item-sheet">
+            <LibraryItemSheet
+              item={sheetItem}
+              systemSlug={campaignSystem || ''}
+              canEdit={isGM || isOwner}
+              onUpdate={(updates) => updateItemMutation.mutate({ id: sheetItem.id, data: updates })}
+              onOpenFullForm={() => { setInlineItemSheetId(null); setSelectedItem(sheetItem); }}
+              onDelete={() => {
+                if (!confirm('Delete this item?')) return;
+                setInlineItemSheetId(null);
+                deleteItemMutation.mutate(sheetItem.id);
+              }}
+              onClose={() => setInlineItemSheetId(null)}
+            />
+          </div>
+        );
+      })()}
 
       {/* Add/Edit Item Floating Panel */}
       <AddItemDialog 
