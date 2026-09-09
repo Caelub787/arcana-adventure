@@ -16,7 +16,7 @@ import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/li
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
-import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw, Triangle, Circle, Square } from "lucide-react";
+import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw, Triangle, Circle, Square, Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -42,6 +42,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
+import { NotesWorkspace } from "@/components/notes/NotesWorkspace";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
@@ -7212,6 +7213,10 @@ export default function Campaign() {
     }
   };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Notes, given the whole screen: several open at once as windows you can
+  // move, resize and tile. Everything in it is the same live note the side
+  // panel shows, so leaving it changes nothing but the amount of room.
+  const [notesWorkspaceOpen, setNotesWorkspaceOpen] = useState(false);
   const [sidePanelInitialNoteId, setSidePanelInitialNoteId] = useState<string | null>(null);
   const sidePanelNoteOpenCounterRef = useRef(0);
   const [searchPreviewItems, setSearchPreviewItems] = useState<any[]>([]);
@@ -13764,7 +13769,24 @@ export default function Campaign() {
                 <SwampyDeckPanel campaignId={effectiveCampaignId} />
               )}
               {activeSidePanel === 'notes' && effectiveCampaignId && (
-                <div className="h-full overflow-hidden">
+                <div className="h-full overflow-hidden flex flex-col">
+                  {/* The side panel is a column; the workspace is the screen.
+                      Same notes either way - this just says which one you
+                      want right now. */}
+                  <div className="flex items-center justify-end px-2 py-1 border-b border-stone-800 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 gap-1"
+                      onClick={() => setNotesWorkspaceOpen(true)}
+                      title="Open the notes workspace"
+                      data-testid="button-open-notes-workspace"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      Workspace
+                    </Button>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
                   <CampaignNotesPanel
                     campaignId={effectiveCampaignId}
                     onClose={() => setSidePanelMinimized(true)}
@@ -13793,6 +13815,7 @@ export default function Campaign() {
                       bringToFront('timelines');
                     }}
                   />
+                  </div>
                 </div>
               )}
               {activeSidePanel === 'settings' && effectiveCampaignId && (
@@ -14167,6 +14190,19 @@ export default function Campaign() {
             }
             openDetachedItemDetail(owner || { id: '', name: 'Library' }, item);
           }}
+        />
+      )}
+
+      {/* The notes workspace, over everything. Same notes, same live edits -
+          just the whole screen instead of a column, with as many open at once
+          as you like. */}
+      {notesWorkspaceOpen && effectiveCampaignId && (
+        <NotesWorkspace
+          campaignId={effectiveCampaignId}
+          isGm={role === 'gm'}
+          campaignMembers={members as any[] || []}
+          initialNoteId={sidePanelInitialNoteId}
+          onClose={() => setNotesWorkspaceOpen(false)}
         />
       )}
 
