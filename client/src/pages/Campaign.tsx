@@ -6772,12 +6772,17 @@ export default function Campaign() {
 
   const closeCharacterSheet = (charId: string) => {
     setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
-    setCharSheetActiveTabs(prev => {
+    const forget = (prev: Record<string, string>) => {
       if (!(charId in prev)) return prev;
       const next = { ...prev };
       delete next[charId];
       return next;
-    });
+    };
+    setCharSheetActiveTabs(forget);
+    // Notes opened from this sheet go with it; otherwise reopening the sheet
+    // came back with a note pane still stuck to the side of it.
+    setDockedCharNotes(forget);
+    setOverlayCharNotes(forget);
   };
 
   // Item-detail / spellbook panels are hosted here (not inside the character
@@ -7072,6 +7077,10 @@ export default function Campaign() {
   // window - keyed by characterId so multiple open sheets can each have
   // their own docked note independently.
   const [dockedCharNotes, setDockedCharNotes] = useState<Record<string, string>>({});
+  // The same note, over the sheet instead of beside it: the panel keeps its
+  // width and the sheet stays mounted underneath, so tabs and scroll position
+  // survive going in and out of the note.
+  const [overlayCharNotes, setOverlayCharNotes] = useState<Record<string, string>>({});
 
   // The three lists every notes surface reads: the folder tree, the notes in
   // the open folder, and the flat set the sidebar's tree is built from.
@@ -7114,7 +7123,11 @@ export default function Campaign() {
   // the one their Ability is written in. Which one the Notes button opens is
   // whichever tab the sheet is on, so pressing it on the Ability tab while
   // the character note is docked swaps the pane over rather than shutting it.
-  const handleOpenCharacterNotes = async (char: any, variant: 'sheet' | 'ability' = 'sheet') => {
+  const handleOpenCharacterNotes = async (
+    char: any,
+    variant: 'sheet' | 'ability' = 'sheet',
+    mode: 'dock' | 'over' = 'dock',
+  ) => {
     if (!effectiveCampaignId || !char?.id) return;
     const entityType = variant === 'ability' ? 'character-ability' : 'character-sheet';
     const title = variant === 'ability'
@@ -7129,11 +7142,19 @@ export default function Campaign() {
         setMobileNotesFor({ noteId });
         return;
       }
-      if (dockedCharNotes[char.id] === noteId) {
-        setDockedCharNotes(prev => { const next = { ...prev }; delete next[char.id]; return next; });
+      // Each button toggles its own way of showing the note, and turns the
+      // other one off - two copies of the same note either side of the sheet
+      // is not a layout anyone asked for.
+      const [open, setOpen, closeOther] = mode === 'over'
+        ? [overlayCharNotes, setOverlayCharNotes, setDockedCharNotes]
+        : [dockedCharNotes, setDockedCharNotes, setOverlayCharNotes];
+      const drop = (prev: Record<string, string>) => { const next = { ...prev }; delete next[char.id]; return next; };
+      closeOther(drop);
+      if (open[char.id] === noteId) {
+        setOpen(drop);
         return;
       }
-      setDockedCharNotes(prev => ({ ...prev, [char.id]: noteId }));
+      setOpen(prev => ({ ...prev, [char.id]: noteId }));
     } catch (e: any) {
       console.error('Failed to open character notes:', e);
       toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
@@ -13439,7 +13460,7 @@ export default function Campaign() {
               onOpenItemDetail={(item) => openDetachedItemDetail(sheet, item)}
               onOpenSpellbook={(item) => openDetachedSpellbook(sheet, item)}
               onOpenNotes={handleOpenCharacterNotes}
-              hideAuraEdge={!!dockedCharNotes[sheet.id]}
+              hideAuraEdge={!!dockedCharNotes[sheet.id] || !!overlayCharNotes[sheet.id]}
               trustedPlayer={(() => {
                 const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                 return !!m?.trustedPlayer;
@@ -13469,6 +13490,39 @@ export default function Campaign() {
                 />
               </div>
             )}
+            {/* Notes over the sheet: same note, same panel, no extra width.
+                The sheet stays mounted underneath so coming back lands on the
+                tab and the scroll position it was left on. Under the aura's
+                z-30 ring, so the pair still reads as one framed panel. */}
+            {overlayCharNotes[sheet.id] && (
+              <div className="absolute inset-0 z-20 bg-stone-950 flex flex-col" data-testid={`overlay-char-notes-${sheet.id}`}>
+                <div className="flex items-center gap-2 px-2 py-1 border-b border-stone-800 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => setOverlayCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}
+                    data-testid={`button-overlay-notes-back-${sheet.id}`}
+                  >
+                    <ChevronLeft className="h-3 w-3 mr-1" />
+                    Sheet
+                  </Button>
+                  <span className="text-[11px] text-stone-500 truncate">{sheet.name}</span>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <CampaignNotesPanel
+                    campaignId={effectiveCampaignId || ''}
+                    onClose={() => setOverlayCharNotes(prev => { const next = { ...prev }; delete next[sheet.id]; return next; })}
+                    isOpen={true}
+                    isGm={role === 'gm'}
+                    campaignMembers={members as any[] || []}
+                    contentOnly={true}
+                    hideCloseButton
+                    initialNoteId={overlayCharNotes[sheet.id]}
+                  />
+                </div>
+              </div>
+            )}
             {/* With notes docked the aura wraps both panes rather than just
                 the sheet, so the pair reads as one panel; the sheet leaves its
                 own ring off while this one is up.
@@ -13477,7 +13531,7 @@ export default function Campaign() {
                 paints in tree order with this, so drawn first it went straight
                 under the sheet's own opaque background - which read as the
                 aura switching off the moment notes opened. */}
-            {dockedCharNotes[sheet.id] && (sheet as any)?.caAuraColor && (() => {
+            {(dockedCharNotes[sheet.id] || overlayCharNotes[sheet.id]) && (sheet as any)?.caAuraColor && (() => {
               const aura = caAuraOf(sheet, null);
               return <AuraEdgeField {...aura} className="z-30" />;
             })()}

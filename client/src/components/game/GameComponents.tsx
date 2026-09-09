@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -17049,8 +17049,12 @@ interface CharacterSheetProps {
   /**
    * `variant` picks which of the sheet's notes to open. C.A. characters have
    * two: the character's own, and the one their Ability is written in.
+   *
+   * `mode` picks where it opens: `dock` puts it in a second pane beside the
+   * sheet, `over` puts it on top of the sheet in the panel the sheet already
+   * has, for when there isn't room on screen for both.
    */
-  onOpenNotes?: (character: any, variant?: 'sheet' | 'ability') => void;
+  onOpenNotes?: (character: any, variant?: 'sheet' | 'ability', mode?: 'dock' | 'over') => void;
   onOpenItemNotes?: (item: any) => void;
   /**
    * Draw the aura's edge somewhere else. When notes are docked beside the
@@ -21804,20 +21808,40 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           )}
         </div>
       )}
-      {!isTemplate && campaignId && onOpenNotes && (
-        <div className="flex items-center justify-end px-2 pt-1.5 pb-0.5 bg-stone-950 border-b border-stone-800 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenNotes(character, isCA && currentTab === 'ability' ? 'ability' : 'sheet')}
-            className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
-            data-testid="button-character-notes"
-          >
-            <ScrollText className="h-3 w-3" />
-            {isCA && currentTab === 'ability' ? 'Ability notes' : 'Notes'}
-          </Button>
-        </div>
-      )}
+      {!isTemplate && campaignId && onOpenNotes && (() => {
+        const variant = isCA && currentTab === 'ability' ? 'ability' : 'sheet';
+        const label = variant === 'ability' ? 'Ability notes' : 'Notes';
+        return (
+          <div className="flex items-center justify-end gap-1 px-2 pt-1.5 pb-0.5 bg-stone-950 border-b border-stone-800 shrink-0">
+            {/* Two ways to read the same note. Beside the sheet when there is
+                room for both, over the sheet when there isn't - which is also
+                the only thing that fits on a phone, so the first button is
+                hidden there rather than doing the same job twice. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenNotes(character, variant, 'dock')}
+              className="hidden sm:inline-flex h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
+              title={`${label} beside the sheet`}
+              data-testid="button-character-notes"
+            >
+              <PanelRight className="h-3 w-3" />
+              {label}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenNotes(character, variant, 'over')}
+              className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
+              title={`${label} over the sheet`}
+              data-testid="button-character-notes-over"
+            >
+              <ScrollText className="h-3 w-3" />
+              <span className="sm:hidden">{label}</span>
+            </Button>
+          </div>
+        );
+      })()}
       <Tabs {...(activeTab !== undefined ? { value: activeTab } : { defaultValue: defaultTab })} onValueChange={(v) => { setCurrentTab(v); onTabChange?.(v); }} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
         {/* C.A. sets its tab bar into a framed strip rather than sitting it

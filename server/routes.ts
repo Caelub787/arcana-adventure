@@ -3554,23 +3554,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // private folder nested under Players. Kept idempotent-ish by only being
   // called from campaign creation / member join, which each only fire once
   // per campaign/member.
+  const CAMPAIGN_KNOWLEDGE_DEFAULTS: Array<{ kind: string; name: string; visibility: string; sortOrder: number }> = [
+    // Shared with everyone in the campaign.
+    { kind: "wiki", name: "Wiki", visibility: "party", sortOrder: 0 },
+    { kind: "party", name: "Party", visibility: "party", sortOrder: 1 },
+    // The container the per-player folders hang under. GM-visible; each
+    // player sees only their own folder inside it.
+    { kind: "players", name: "Players", visibility: "gm", sortOrder: 2 },
+    { kind: "gm-notes", name: "GM Notes", visibility: "gm", sortOrder: 3 },
+  ];
+
   async function provisionCampaignKnowledgeDefaults(campaignId: string, gmUserId: string) {
-    await storage.createNoteFolder({
-      userId: gmUserId, campaignId, parentId: null, name: "Wiki",
-      kind: "wiki", visibility: "party", sortOrder: 0,
-    } as any);
-    await storage.createNoteFolder({
-      userId: gmUserId, campaignId, parentId: null, name: "Party",
-      kind: "party", visibility: "party", sortOrder: 1,
-    } as any);
-    await storage.createNoteFolder({
-      userId: gmUserId, campaignId, parentId: null, name: "Players",
-      kind: "players", visibility: "gm", sortOrder: 2,
-    } as any);
-    await storage.createNoteFolder({
-      userId: gmUserId, campaignId, parentId: null, name: "GM Notes",
-      kind: "gm-notes", visibility: "gm", sortOrder: 3,
-    } as any);
+    const existing = await storage.getCampaignNoteFolders(campaignId);
+    const haveKind = new Set(existing.filter((f: any) => !f.parentId).map((f: any) => f.kind));
+    for (const def of CAMPAIGN_KNOWLEDGE_DEFAULTS) {
+      if (haveKind.has(def.kind)) continue;
+      await storage.createNoteFolder({
+        userId: gmUserId, campaignId, parentId: null, name: def.name,
+        kind: def.kind, visibility: def.visibility, sortOrder: def.sortOrder,
+      } as any);
+    }
+  }
+
+  // Campaigns made before these folders existed, and members who joined
+  // before their own folder was a thing, never got one - the join and create
+  // hooks only fire once each, and they had already fired. Every read of a
+  // campaign's folders now makes sure they are all there. It is a set-shaped
+  // check against rows already in hand, and once per campaign per boot at
+  // that, because from then on the join hook keeps up.
+  const knowledgeDefaultsChecked = new Set<string>();
+  async function ensureCampaignKnowledgeFolders(campaignId: string) {
+    if (knowledgeDefaultsChecked.has(campaignId)) return;
+    knowledgeDefaultsChecked.add(campaignId);
+    try {
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return;
+      await provisionCampaignKnowledgeDefaults(campaignId, campaign.gmUserId);
+      const members = await storage.getCampaignMembers(campaignId);
+      for (const m of members) {
+        // The GM's own notes are the GM Notes folder; they don't also need a
+        // player folder among the players they can already all see.
+        if (m.role === 'gm' || m.userId === campaign.gmUserId) continue;
+        await provisionPlayerKnowledgeFolder(campaignId, m.userId, m.username);
+      }
+    } catch (e) {
+      // A campaign is perfectly usable without these; never fail a read over
+      // one that couldn't be created.
+      knowledgeDefaultsChecked.delete(campaignId);
+      console.error('[knowledge] Failed to ensure default folders:', e);
+    }
   }
 
   async function provisionPlayerKnowledgeFolder(campaignId: string, memberUserId: string, username: string) {
@@ -17569,6 +17601,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // and anything whose visibility (party / players list) grants them
         // access. GMs see everything.
         const role = await getKnowledgeRole(req.session.userId!, campaignId);
+        if (role.isMember) await ensureCampaignKnowledgeFolders(campaignId);
         const allFolders = await storage.getCampaignNoteFolders(campaignId);
         const folderById = new Map(allFolders.map((f: any) => [f.id, f]));
         const shared = await storage.getSharedWithUser(req.session.userId!);

@@ -385,7 +385,7 @@ function FolderTreeItem({
     <div>
       {index === 0 && <DropIndicator isActive={dropPosition === "before" && dropTargetIndex === 0} />}
       <ContextMenu>
-        <ContextMenuTrigger asChild>
+        <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
           <div
             className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
               isDragOver && dropPosition === "into"
@@ -528,7 +528,7 @@ function FolderTreeItem({
           ))}
           {folderNotes.map((note) => (
             <ContextMenu key={note.id}>
-              <ContextMenuTrigger asChild>
+              <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
                 <div
                   draggable
                   onDragStart={(e) => {
@@ -2008,13 +2008,43 @@ export function CampaignNotesPanel({
 
   if (!isOpen) return null;
 
+  // What you can make at the top level of this campaign's notes. One list,
+  // shown two ways: as the sidebar's New button and as the right-click menu,
+  // so the two can't drift apart.
+  const rootCreateActions: Array<{ key: string; label: string; icon: any; run: () => void } | { separator: true }> = [
+    { key: "folder", label: "New Folder", icon: FolderPlus, run: () => openFolderDialog() },
+    { separator: true },
+    { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
+    { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
+    { key: "scene", label: "New Scene", icon: MapIcon, run: () => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any) },
+    ...(onOpenTimelines ? [{ separator: true as const }, { key: "timelines", label: "Timelines", icon: HistoryIcon, run: onOpenTimelines }] : []),
+  ];
+
   const renderSidebar = () => (
     <div className="flex flex-col h-full border-r border-stone-700 bg-stone-950/50 overflow-hidden">
       <div className="flex items-center justify-between p-2 border-b border-stone-700">
         <span className="text-xs font-medium text-stone-300">Folders</span>
-        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => openFolderDialog()}>
-          <Plus className="h-3 w-3" />
-        </Button>
+        {/* Everything the right-click menu offers, on a button you can find.
+            Right-clicking used to be the only way to make a note, a canvas or
+            a scene, and only over the sliver of blank space under the tree. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="h-5 w-5" title="New…" data-testid="button-sidebar-new">
+              <Plus className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
+            {rootCreateActions.map((a, i) => (
+              "separator" in a ? (
+                <DropdownMenuSeparator key={`sep-${i}`} className="bg-stone-700" />
+              ) : (
+                <DropdownMenuItem key={a.key} onClick={a.run} data-testid={`menu-new-root-${a.key}`}>
+                  <a.icon className="h-3 w-3 mr-2" /> {a.label}
+                </DropdownMenuItem>
+              )
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="p-1 border-b border-stone-700">
         <div className="relative">
@@ -2092,6 +2122,13 @@ export function CampaignNotesPanel({
       // A plain scroller, not ScrollArea: Radix lays its viewport content out
       // as a table, and a table sizes to its content - so one long note title
       // stretched every row past the panel's own edge.
+      //
+      // The whole scroller is the right-click target. It used to be a 100px
+      // filler under the tree, so with more than a screenful of folders there
+      // was barely anywhere left to aim at. A row's own menu still wins: each
+      // row's trigger stops the event before it reaches this one.
+      <ContextMenu>
+      <ContextMenuTrigger asChild>
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1">
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
@@ -2239,7 +2276,7 @@ export function CampaignNotesPanel({
             <div className="mt-1 pt-1 border-t border-stone-800">
               {unfiledNotesForTree.map((note) => (
                 <ContextMenu key={note.id}>
-                  <ContextMenuTrigger asChild>
+                  <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
                     <div
                       onClick={() => {
                         setShowHomeView(false);
@@ -2290,44 +2327,23 @@ export function CampaignNotesPanel({
             canvas/scene, or jump to Timelines - a folder/note row's own
             context menu (above) takes precedence when right-clicking it
             directly, since this filler only covers space below the list. */}
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <div className="min-h-[100px]" data-testid="panel-sidebar-blank-context-target" />
-          </ContextMenuTrigger>
-          <ContextMenuContent className="bg-stone-900 border-stone-700">
-            <ContextMenuItem onClick={() => openFolderDialog()} data-testid="context-menu-new-root-folder">
-              <FolderPlus className="h-3 w-3 mr-2" /> New Folder
-            </ContextMenuItem>
-            <ContextMenuSeparator className="bg-stone-700" />
-            <ContextMenuItem
-              onClick={() => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any)}
-              data-testid="context-menu-new-root-note"
-            >
-              <FileText className="h-3 w-3 mr-2" /> New Note
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any)}
-              data-testid="context-menu-new-root-canvas"
-            >
-              <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any)}
-              data-testid="context-menu-new-root-scene"
-            >
-              <MapIcon className="h-3 w-3 mr-2" /> New Scene
-            </ContextMenuItem>
-            {onOpenTimelines && (
-              <>
-                <ContextMenuSeparator className="bg-stone-700" />
-                <ContextMenuItem onClick={onOpenTimelines} data-testid="context-menu-open-timelines">
-                  <HistoryIcon className="h-3 w-3 mr-2" /> Timelines
-                </ContextMenuItem>
-              </>
-            )}
-          </ContextMenuContent>
-        </ContextMenu>
+        {/* Still here so the tree has somewhere to drop onto below the last
+            folder; the right-click menu is the whole scroller now. */}
+        <div className="min-h-[100px]" data-testid="panel-sidebar-blank-context-target" />
       </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="bg-stone-900 border-stone-700">
+        {rootCreateActions.map((a, i) => (
+          "separator" in a ? (
+            <ContextMenuSeparator key={`sep-${i}`} className="bg-stone-700" />
+          ) : (
+            <ContextMenuItem key={a.key} onClick={a.run} data-testid={`context-menu-new-root-${a.key}`}>
+              <a.icon className="h-3 w-3 mr-2" /> {a.label}
+            </ContextMenuItem>
+          )
+        ))}
+      </ContextMenuContent>
+      </ContextMenu>
       )}
     </div>
   );
@@ -2398,7 +2414,7 @@ export function CampaignNotesPanel({
               const isOwner = note.userId === user?.id;
               return (
               <ContextMenu key={note.id}>
-                <ContextMenuTrigger asChild>
+                <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
                   <div
                     className={`group p-2 rounded cursor-pointer transition-colors ${
                       selectedNoteId === note.id

@@ -185,67 +185,69 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Main Menu Grid */}
-          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
+          {/* Main Menu Grid.
+              Every card is the same height as the tallest in its row, at every
+              width. Without this the grid stretched the link but not the card
+              inside it, so whichever card's blurb wrapped to a second line
+              stood a line taller than the rest. */}
+          <div className={`grid grid-cols-1 gap-6 items-stretch ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
             
             {/* My Campaigns */}
-            <Link href="/my-campaigns">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-800/80">
+            <Link href="/my-campaigns" className="block h-full">
+              <Card className="group flex h-full flex-col cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-800/80">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-blue-900/30 text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <ScrollText className="h-6 w-6 ml-1" />
                   </div>
                   <CardTitle className="font-display text-xl text-stone-200 group-hover:text-blue-400">My Campaigns</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">Manage your created campaigns, or join new ones.</p>
                 </CardContent>
               </Card>
             </Link>
 
             {/* Maps */}
-            <Link href="/maps">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-teal-600/50 hover:bg-stone-800/80" data-testid="card-maps">
+            <Link href="/maps" className="block h-full">
+              <Card className="group flex h-full flex-col cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-teal-600/50 hover:bg-stone-800/80" data-testid="card-maps">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-teal-900/30 text-teal-500 group-hover:bg-teal-600 group-hover:text-white transition-colors">
                     <MapIcon className="h-6 w-6" />
                   </div>
                   <CardTitle className="font-display text-xl text-stone-200 group-hover:text-teal-400">Maps</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">Paint terrain, place stamps, and import maps as campaign scenes.</p>
                 </CardContent>
               </Card>
             </Link>
 
             {/* My Library — everyone, including admins */}
-            <Link href="/library">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-my-library">
+            <Link href="/library" className="block h-full">
+              <Card className="group flex h-full flex-col cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-my-library">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                     <BookOpen className="h-6 w-6" />
                   </div>
                   <CardTitle className="font-display text-xl text-stone-200 group-hover:text-amber-400">My Library</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Maintain your private A.A. V2 / V3 library: items, spells, species, classes, and more.
-                  </p>
+                <CardContent className="flex-1">
+                  <p className="text-sm text-stone-500 group-hover:text-stone-400">Keep your own items, spells, species, and classes.</p>
                 </CardContent>
               </Card>
             </Link>
 
             {/* Admin Settings (admins only) */}
             {isAdmin && (
-            <Link href="/admin">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-admin-settings">
+            <Link href="/admin" className="block h-full">
+              <Card className="group flex h-full flex-col cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-admin-settings">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                     <Shield className="h-6 w-6" />
                   </div>
                   <CardTitle className="font-display text-xl text-stone-200 group-hover:text-amber-400">Admin Settings</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">
                     Manage system items, spells, and global game settings.
                   </p>
