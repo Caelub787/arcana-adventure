@@ -1,7 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import {
+  DEFAULT_MAP_LAYERS, DEFAULT_LAYER_FOR_KIND, MAP_LAYER_KINDS, MAP_ELEMENT_KINDS,
+  DEFAULT_MAP_GRID, defaultElementData, mapStyle, normalizeGrid,
+  type MapElementKind,
+} from "@shared/mapDoc";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -6333,6 +6338,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ---------------------------------------------------------------------
   // Map Maker
   // ---------------------------------------------------------------------
+  // Every map has the same set of layers to start with, and gets them the
+  // first time it is opened rather than only at creation - maps made before
+  // layers existed are otherwise stuck without any.
+  async function ensureMapLayers(mapId: string): Promise<MapLayer[]> {
+    const existing = await storage.getMapLayers(mapId);
+    if (existing.length > 0) return existing;
+    const created: MapLayer[] = [];
+    for (const seed of DEFAULT_MAP_LAYERS) {
+      created.push(await storage.createMapLayer({
+        mapId, name: seed.name, kind: seed.kind, sortOrder: seed.sortOrder,
+        visible: seed.visible !== false, locked: !!seed.locked, opacity: 1,
+      } as any));
+    }
+    return created;
+  }
+
+  // Owner or admin, for every map route below.
+  async function mapWriteAccess(userId: string, mapId: string) {
+    const map = await storage.getMap(mapId);
+    if (!map) return { map: null, error: "Map not found", status: 404 as const };
+    if (map.ownerUserId !== userId && !(await isAdminUser(userId))) {
+      return { map: null, error: "Not authorized to edit this map", status: 403 as const };
+    }
+    return { map, error: null, status: 200 as const };
+  }
+
+  app.post("/api/maps/:id/layers", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      const existing = await storage.getMapLayers(req.params.id);
+      const layer = await storage.createMapLayer({
+        mapId: req.params.id,
+        name: String(req.body.name || "New Layer"),
+        kind: (MAP_LAYER_KINDS as readonly string[]).includes(req.body.kind) ? req.body.kind : "art",
+        sortOrder: typeof req.body.sortOrder === "number" ? req.body.sortOrder : existing.length,
+        parentId: req.body.parentId ?? null,
+      } as any);
+      res.status(201).json(layer);
+    } catch (err) {
+      console.error("Failed to create map layer:", err);
+      res.status(400).json({ error: "Failed to create map layer" });
+    }
+  });
+
+  app.patch("/api/maps/:id/layers/:layerId", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      const patch: Record<string, any> = {};
+      for (const key of ["name", "visible", "locked", "opacity", "sortOrder", "parentId", "kind"]) {
+        if (req.body[key] !== undefined) patch[key] = req.body[key];
+      }
+      res.json(await storage.updateMapLayer(req.params.layerId, patch));
+    } catch (err) {
+      console.error("Failed to update map layer:", err);
+      res.status(400).json({ error: "Failed to update map layer" });
+    }
+  });
+
+  app.delete("/api/maps/:id/layers/:layerId", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      // A map with no layers has nowhere to put anything, so the last one stays.
+      const layers = await storage.getMapLayers(req.params.id);
+      if (layers.length <= 1) return res.status(400).json({ error: "A map needs at least one layer" });
+      await storage.deleteMapLayer(req.params.layerId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete map layer:", err);
+      res.status(400).json({ error: "Failed to delete map layer" });
+    }
+  });
+
+  // Elements are created, changed and deleted in batches: placing a scatter of
+  // fifty trees, nudging a multi-selection, or reordering a stack are each one
+  // editor action and should be one request, not fifty.
+  app.post("/api/maps/:id/elements", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      const rows: any[] = Array.isArray(req.body.elements) ? req.body.elements : [req.body];
+      const layers = await storage.getMapLayers(req.params.id);
+      const layerByName = new Map(layers.map((l) => [l.name, l.id]));
+      const prepared = rows
+        .filter((r) => (MAP_ELEMENT_KINDS as readonly string[]).includes(r?.kind))
+        .map((r) => ({
+          mapId: req.params.id,
+          kind: r.kind,
+          name: r.name ?? null,
+          layerId: r.layerId ?? layerByName.get(DEFAULT_LAYER_FOR_KIND[r.kind as MapElementKind]) ?? layers[0]?.id ?? null,
+          x: Number(r.x) || 0,
+          y: Number(r.y) || 0,
+          width: Number(r.width) || 100,
+          height: Number(r.height) || 100,
+          rotation: Number(r.rotation) || 0,
+          flipX: !!r.flipX,
+          flipY: !!r.flipY,
+          opacity: typeof r.opacity === "number" ? r.opacity : 1,
+          zIndex: Number(r.zIndex) || 0,
+          locked: !!r.locked,
+          hidden: !!r.hidden,
+          groupId: r.groupId ?? null,
+          data: { ...defaultElementData(r.kind), ...(r.data ?? {}) },
+        }));
+      if (prepared.length === 0) return res.status(400).json({ error: "No valid elements" });
+      res.status(201).json(await storage.createMapElements(prepared as any));
+    } catch (err) {
+      console.error("Failed to create map elements:", err);
+      res.status(400).json({ error: "Failed to create map elements" });
+    }
+  });
+
+  app.patch("/api/maps/:id/elements", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      const updates: any[] = Array.isArray(req.body.updates) ? req.body.updates : [];
+      const out: any[] = [];
+      for (const u of updates) {
+        if (!u?.id) continue;
+        const existing = await storage.getMapElement(u.id);
+        if (!existing || existing.mapId !== req.params.id) continue;
+        const patch: Record<string, any> = {};
+        for (const key of ["layerId", "name", "x", "y", "width", "height", "rotation",
+                           "flipX", "flipY", "opacity", "zIndex", "locked", "hidden", "groupId"]) {
+          if (u[key] !== undefined) patch[key] = u[key];
+        }
+        // `data` merges rather than replaces, so changing a path's width does
+        // not have to send back every one of its points.
+        if (u.data !== undefined) patch.data = { ...(existing.data ?? {}), ...u.data };
+        const row = await storage.updateMapElement(u.id, patch);
+        if (row) out.push(row);
+      }
+      res.json(out);
+    } catch (err) {
+      console.error("Failed to update map elements:", err);
+      res.status(400).json({ error: "Failed to update map elements" });
+    }
+  });
+
+  app.post("/api/maps/:id/elements/delete", requireAuth, async (req, res) => {
+    try {
+      const access = await mapWriteAccess(req.session.userId!, req.params.id);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      const ids: string[] = Array.isArray(req.body.ids) ? req.body.ids.filter((i: any) => typeof i === "string") : [];
+      await storage.deleteMapElements(req.params.id, ids);
+      res.json({ success: true, removed: ids.length });
+    } catch (err) {
+      console.error("Failed to delete map elements:", err);
+      res.status(400).json({ error: "Failed to delete map elements" });
+    }
+  });
+
   app.get("/api/maps", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -6347,14 +6507,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/maps", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
+      // A style picks the canvas and the grid; it does not change what the
+      // file is, which is why there is one editor rather than five.
+      const style = mapStyle(req.body.style);
+      const grid = normalizeGrid({ ...DEFAULT_MAP_GRID, ...style.grid, ...(req.body.grid ?? {}) });
       const map = await storage.createMap({
         name: req.body.name || "Untitled Map",
-        width: req.body.width || 2000,
-        height: req.body.height || 1500,
-        gridSize: req.body.gridSize || 50,
+        width: req.body.width || style.width,
+        height: req.body.height || style.height,
+        gridSize: req.body.gridSize || grid.size,
         mapType: req.body.mapType === 'battle' ? 'battle' : 'regional',
+        style: style.key,
+        grid,
         ownerUserId: userId,
-      });
+      } as any);
+      await ensureMapLayers(map.id);
       res.json(map);
     } catch (err) {
       console.error("Failed to create map:", err);
@@ -6371,7 +6538,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not authorized to view this map" });
       }
       const objects = await storage.getMapObjects(map.id);
-      res.json({ ...map, objects });
+      // Older maps predate layers and the element table entirely; giving them
+      // both on read means every map in the editor is the same shape, with no
+      // "has this one been migrated yet" branch anywhere in the client.
+      const layers = await ensureMapLayers(map.id);
+      const elements = await storage.getMapElements(map.id);
+      res.json({ ...map, grid: normalizeGrid(map.grid), objects, layers, elements });
     } catch (err) {
       console.error("Failed to fetch map:", err);
       res.status(500).json({ error: "Failed to fetch map", details: (err as any)?.message });

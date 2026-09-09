@@ -33,6 +33,7 @@ import {
   type Friendship, type InsertFriendship,
   type NoteFolder, type InsertNoteFolder,
   type Note, type InsertNote,
+  type MapLayer, type InsertMapLayer, type MapElement, type InsertMapElement,
   type BookChapter, type InsertBookChapter,
   type NoteReference, type InsertNoteReference,
   type NoteShare, type InsertNoteShare,
@@ -101,7 +102,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, asc, desc, sql, inArray, or, isNull, isNotNull, ne } from "drizzle-orm";
@@ -339,6 +340,17 @@ export interface IStorage {
   updateMap(id: string, data: Partial<InsertMap>): Promise<GameMap | undefined>;
   deleteMap(id: string): Promise<void>;
   getMapObjects(mapId: string): Promise<MapObject[]>;
+  // The map document: layers, and every non-terrain thing on the map.
+  getMapLayers(mapId: string): Promise<MapLayer[]>;
+  createMapLayer(layer: InsertMapLayer): Promise<MapLayer>;
+  updateMapLayer(id: string, data: Partial<InsertMapLayer>): Promise<MapLayer | undefined>;
+  deleteMapLayer(id: string): Promise<void>;
+  getMapElements(mapId: string): Promise<MapElement[]>;
+  getMapElement(id: string): Promise<MapElement | undefined>;
+  createMapElement(el: InsertMapElement): Promise<MapElement>;
+  createMapElements(els: InsertMapElement[]): Promise<MapElement[]>;
+  updateMapElement(id: string, data: Partial<InsertMapElement>): Promise<MapElement | undefined>;
+  deleteMapElements(mapId: string, ids: string[]): Promise<void>;
   createMapObject(obj: InsertMapObject): Promise<MapObject>;
   updateMapObject(id: string, data: Partial<InsertMapObject>): Promise<MapObject | undefined>;
   deleteMapObject(id: string): Promise<void>;
@@ -3058,6 +3070,60 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMap(id: string): Promise<void> {
     await db.delete(maps).where(eq(maps.id, id));
+  }
+
+  async getMapLayers(mapId: string): Promise<MapLayer[]> {
+    return await db.select().from(mapLayers)
+      .where(eq(mapLayers.mapId, mapId))
+      .orderBy(asc(mapLayers.sortOrder), asc(mapLayers.createdAt));
+  }
+
+  async createMapLayer(layer: InsertMapLayer): Promise<MapLayer> {
+    const [row] = await db.insert(mapLayers).values(layer).returning();
+    return row;
+  }
+
+  async updateMapLayer(id: string, data: Partial<InsertMapLayer>): Promise<MapLayer | undefined> {
+    const [row] = await db.update(mapLayers).set(data).where(eq(mapLayers.id, id)).returning();
+    return row;
+  }
+
+  async deleteMapLayer(id: string): Promise<void> {
+    await db.delete(mapLayers).where(eq(mapLayers.id, id));
+  }
+
+  async getMapElements(mapId: string): Promise<MapElement[]> {
+    return await db.select().from(mapElements)
+      .where(eq(mapElements.mapId, mapId))
+      .orderBy(asc(mapElements.zIndex), asc(mapElements.createdAt));
+  }
+
+  async getMapElement(id: string): Promise<MapElement | undefined> {
+    const [row] = await db.select().from(mapElements).where(eq(mapElements.id, id));
+    return row;
+  }
+
+  async createMapElement(el: InsertMapElement): Promise<MapElement> {
+    const [row] = await db.insert(mapElements).values(el).returning();
+    return row;
+  }
+
+  async createMapElements(els: InsertMapElement[]): Promise<MapElement[]> {
+    if (els.length === 0) return [];
+    return await db.insert(mapElements).values(els).returning();
+  }
+
+  async updateMapElement(id: string, data: Partial<InsertMapElement>): Promise<MapElement | undefined> {
+    const [row] = await db.update(mapElements)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(mapElements.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteMapElements(mapId: string, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await db.delete(mapElements).where(and(eq(mapElements.mapId, mapId), inArray(mapElements.id, ids)));
   }
 
   async getMapObjects(mapId: string): Promise<MapObject[]> {

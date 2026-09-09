@@ -259,6 +259,46 @@ async function ensureKnowledgeSystemSchema() {
        updated_at timestamp NOT NULL DEFAULT now()
      )`,
     `CREATE INDEX IF NOT EXISTS book_chapters_book_idx ON book_chapters (book_note_id, sort_order)`,
+    // The map document: layers, and every non-terrain thing on the map.
+    `ALTER TABLE IF EXISTS maps ADD COLUMN IF NOT EXISTS style text NOT NULL DEFAULT 'blank'`,
+    `ALTER TABLE IF EXISTS maps ADD COLUMN IF NOT EXISTS grid jsonb`,
+    `CREATE TABLE IF NOT EXISTS map_layers (
+       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+       map_id varchar NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+       name text NOT NULL,
+       kind text NOT NULL DEFAULT 'art',
+       sort_order integer NOT NULL DEFAULT 0,
+       visible boolean NOT NULL DEFAULT true,
+       locked boolean NOT NULL DEFAULT false,
+       opacity real NOT NULL DEFAULT 1,
+       parent_id varchar,
+       created_at timestamp NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS map_layers_map_idx ON map_layers (map_id, sort_order)`,
+    `CREATE TABLE IF NOT EXISTS map_elements (
+       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+       map_id varchar NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+       layer_id varchar REFERENCES map_layers(id) ON DELETE CASCADE,
+       kind text NOT NULL,
+       name text,
+       x real NOT NULL DEFAULT 0,
+       y real NOT NULL DEFAULT 0,
+       width real NOT NULL DEFAULT 100,
+       height real NOT NULL DEFAULT 100,
+       rotation real NOT NULL DEFAULT 0,
+       flip_x boolean NOT NULL DEFAULT false,
+       flip_y boolean NOT NULL DEFAULT false,
+       opacity real NOT NULL DEFAULT 1,
+       z_index integer NOT NULL DEFAULT 0,
+       locked boolean NOT NULL DEFAULT false,
+       hidden boolean NOT NULL DEFAULT false,
+       group_id varchar,
+       data jsonb NOT NULL DEFAULT '{}'::jsonb,
+       created_at timestamp NOT NULL DEFAULT now(),
+       updated_at timestamp NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS map_elements_map_idx ON map_elements (map_id)`,
+    `CREATE INDEX IF NOT EXISTS map_elements_layer_idx ON map_elements (layer_id, z_index)`,
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS effects jsonb NOT NULL DEFAULT '[]'::jsonb`,
     // Swampy keeps its own copies of the three C.A.-shaped columns so the two
     // systems' wound/body/pool mechanics can diverge independently.

@@ -2842,6 +2842,14 @@ export const maps = pgTable("maps", {
   // this index just clamps to its last one, so the map-wide hotkey can
   // step past an object's variant count with no per-object bookkeeping.
   activeVariantIndex: integer("active_variant_index").notNull().default(0),
+  // Which of MAP_STYLES this map was started from. A style picks the canvas,
+  // the grid and which asset packs come to hand; it does not change what the
+  // file is, so one editor serves world maps and battlemaps alike.
+  style: text("style").notNull().default("blank"),
+  // The grid, in full: type, size, offset, colour, and what one cell is worth
+  // in the world. Kept here rather than as loose columns because it travels to
+  // the campaign as a unit - see MapGrid in shared/mapDoc.ts.
+  grid: jsonb("grid").$type<Record<string, any>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2920,6 +2928,85 @@ export const insertMapObjectSchema = createInsertSchema(mapObjects).omit({
 });
 export type InsertMapObject = z.infer<typeof insertMapObjectSchema>;
 export type MapObject = typeof mapObjects.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// The map document
+//
+// A map is a structured document, not a picture: layers holding independent
+// elements over a terrain mask. See shared/mapDoc.ts for what each kind of
+// element is. The two tables below are that document; `terrainImage` above is
+// a rendering of part of it, and the PNG export is a rendering of all of it.
+// ---------------------------------------------------------------------------
+
+// One layer of a map. Art layers are drawn; VTT layers carry the data a
+// campaign needs to make the map playable and are left out of the art; GM
+// layers are both hidden from players and left out of a player-facing export.
+export const mapLayers = pgTable("map_layers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mapId: varchar("map_id").notNull().references(() => maps.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  // "art" | "vtt" | "gm" — see MAP_LAYER_KINDS.
+  kind: text("kind").notNull().default("art"),
+  // Bottom of the stack first, the way the map is drawn.
+  sortOrder: integer("sort_order").notNull().default(0),
+  visible: boolean("visible").notNull().default(true),
+  locked: boolean("locked").notNull().default(false),
+  opacity: real("opacity").notNull().default(1),
+  // Layer folders: a layer with a parent is nested inside it in the panel.
+  parentId: varchar("parent_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  mapIdx: index("map_layers_map_idx").on(t.mapId, t.sortOrder),
+}));
+export const insertMapLayerSchema = createInsertSchema(mapLayers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMapLayer = z.infer<typeof insertMapLayerSchema>;
+export type MapLayer = typeof mapLayers.$inferSelect;
+
+// Every non-terrain thing on a map: stamps, paths, walls, shapes, text,
+// lights, regions, doors and links. One table rather than nine because every
+// one of them is selected, moved, ordered, locked, hidden and grouped the same
+// way; only what is INSIDE `data` differs, and that is typed in shared/mapDoc.
+export const mapElements = pgTable("map_elements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mapId: varchar("map_id").notNull().references(() => maps.id, { onDelete: "cascade" }),
+  layerId: varchar("layer_id").references(() => mapLayers.id, { onDelete: "cascade" }),
+  // One of MAP_ELEMENT_KINDS.
+  kind: text("kind").notNull(),
+  // Optional author-given name, shown in the layers panel instead of "Stamp".
+  name: text("name"),
+  // The element's own box in map pixels, before rotation. Point-and-line
+  // kinds (paths, walls, regions) keep their geometry in `data` and use this
+  // as the bounding box the selection handles work from.
+  x: real("x").notNull().default(0),
+  y: real("y").notNull().default(0),
+  width: real("width").notNull().default(100),
+  height: real("height").notNull().default(100),
+  rotation: real("rotation").notNull().default(0),
+  flipX: boolean("flip_x").notNull().default(false),
+  flipY: boolean("flip_y").notNull().default(false),
+  opacity: real("opacity").notNull().default(1),
+  zIndex: integer("z_index").notNull().default(0),
+  locked: boolean("locked").notNull().default(false),
+  hidden: boolean("hidden").notNull().default(false),
+  // Elements sharing a group id move, scale and rotate together.
+  groupId: varchar("group_id"),
+  data: jsonb("data").$type<Record<string, any>>().notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  mapIdx: index("map_elements_map_idx").on(t.mapId),
+  layerIdx: index("map_elements_layer_idx").on(t.layerId, t.zIndex),
+}));
+export const insertMapElementSchema = createInsertSchema(mapElements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMapElement = z.infer<typeof insertMapElementSchema>;
+export type MapElement = typeof mapElements.$inferSelect;
 
 // ===========================================================================
 // Swampy — "The Lanterns Beyond the Veil"

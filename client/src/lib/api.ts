@@ -602,6 +602,52 @@ export interface GameMap {
   terrainImage: string | null;
   thumbnail: string | null;
   activeVariantIndex: number;
+  /** Which of MAP_STYLES this map was started from. */
+  style?: string;
+  /** The full grid: type, size, offset, colour, and what one cell is worth. */
+  grid?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MapLayer {
+  id: string;
+  mapId: string;
+  name: string;
+  /** "art" draws into the map, "vtt" is data the campaign reads, "gm" is both hidden and unexported. */
+  kind: string;
+  sortOrder: number;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  parentId: string | null;
+  createdAt: string;
+}
+
+/**
+ * Everything on a map that isn't terrain: stamps, paths, walls, shapes, text,
+ * lights, regions, doors and links. What is in `data` depends on `kind` - the
+ * per-kind shapes live in shared/mapDoc.ts.
+ */
+export interface MapElement {
+  id: string;
+  mapId: string;
+  layerId: string | null;
+  kind: string;
+  name: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  flipX: boolean;
+  flipY: boolean;
+  opacity: number;
+  zIndex: number;
+  locked: boolean;
+  hidden: boolean;
+  groupId: string | null;
+  data: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -1540,11 +1586,11 @@ class ApiClient {
     return this.request('/maps');
   }
 
-  async createMap(data: { name?: string; width?: number; height?: number; gridSize?: number; mapType?: string }): Promise<GameMap> {
+  async createMap(data: { name?: string; width?: number; height?: number; gridSize?: number; mapType?: string; style?: string; grid?: Record<string, any> }): Promise<GameMap> {
     return this.request('/maps', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  async getMap(id: string): Promise<GameMap & { objects: MapObject[] }> {
+  async getMap(id: string): Promise<GameMap & { objects: MapObject[]; layers: MapLayer[]; elements: MapElement[]; grid: Record<string, any> }> {
     return this.request(`/maps/${id}`);
   }
 
@@ -1566,6 +1612,33 @@ class ApiClient {
 
   async deleteMapObject(id: string): Promise<void> {
     return this.request(`/map-objects/${id}`, { method: 'DELETE' });
+  }
+
+  // The map document: layers, and every non-terrain element on the map.
+  // Elements are created, changed and deleted in batches because that is how
+  // the editor works - a scatter of fifty trees is one action, not fifty.
+  async createMapLayer(mapId: string, data: { name?: string; kind?: string; sortOrder?: number; parentId?: string | null }): Promise<MapLayer> {
+    return this.request(`/maps/${mapId}/layers`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateMapLayer(mapId: string, layerId: string, data: Partial<MapLayer>): Promise<MapLayer> {
+    return this.request(`/maps/${mapId}/layers/${layerId}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteMapLayer(mapId: string, layerId: string): Promise<{ success: boolean }> {
+    return this.request(`/maps/${mapId}/layers/${layerId}`, { method: 'DELETE' });
+  }
+
+  async createMapElements(mapId: string, elements: Array<Partial<MapElement>>): Promise<MapElement[]> {
+    return this.request(`/maps/${mapId}/elements`, { method: 'POST', body: JSON.stringify({ elements }) });
+  }
+
+  async updateMapElements(mapId: string, updates: Array<Partial<MapElement> & { id: string }>): Promise<MapElement[]> {
+    return this.request(`/maps/${mapId}/elements`, { method: 'PATCH', body: JSON.stringify({ updates }) });
+  }
+
+  async deleteMapElements(mapId: string, ids: string[]): Promise<{ success: boolean }> {
+    return this.request(`/maps/${mapId}/elements/delete`, { method: 'POST', body: JSON.stringify({ ids }) });
   }
 
   async getStampAssets(): Promise<StampAsset[]> {
