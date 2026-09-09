@@ -244,6 +244,21 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_name text`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_description text`,
     `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS roll_entry_id varchar REFERENCES roll_entries(id) ON DELETE CASCADE`,
+    // Books: a note that is an ordered list of other notes and characters.
+    `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS book_live_sync boolean NOT NULL DEFAULT false`,
+    `CREATE TABLE IF NOT EXISTS book_chapters (
+       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+       book_note_id varchar NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+       source_type text NOT NULL,
+       source_id varchar NOT NULL,
+       source_note_id varchar REFERENCES notes(id) ON DELETE SET NULL,
+       title text NOT NULL,
+       content text NOT NULL DEFAULT '',
+       sort_order integer NOT NULL DEFAULT 0,
+       created_at timestamp NOT NULL DEFAULT now(),
+       updated_at timestamp NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS book_chapters_book_idx ON book_chapters (book_note_id, sort_order)`,
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS effects jsonb NOT NULL DEFAULT '[]'::jsonb`,
     // Swampy keeps its own copies of the three C.A.-shaped columns so the two
     // systems' wound/body/pool mechanics can diverge independently.

@@ -1444,7 +1444,7 @@ export const notes = pgTable("notes", {
   folderId: varchar("folder_id").references(() => noteFolders.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   content: text("content").default("").notNull(), // Markdown content for regular notes
-  type: text("type").default("note").notNull(), // "note" or "canvas"
+  type: text("type").default("note").notNull(), // "note", "canvas", "scene" or "book"
   canvasData: jsonb("canvas_data"), // For canvas pages: nodes, positions, connections
   icon: text("icon"), // Optional custom icon
   coverImage: text("cover_image"), // Optional cover image
@@ -1458,6 +1458,10 @@ export const notes = pgTable("notes", {
   visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
   // Free-form wiki-style tags, campaign-scoped (not shared across campaigns).
   tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  // Books only (type = "book"): whether each chapter reads and writes its
+  // source note directly instead of keeping its own copy. Off by default -
+  // see bookChapters.
+  bookLiveSync: boolean("book_live_sync").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1470,6 +1474,46 @@ export const insertNoteSchema = createInsertSchema(notes).omit({
 
 export type InsertNote = z.infer<typeof insertNoteSchema>;
 export type Note = typeof notes.$inferSelect;
+
+/**
+ * A chapter of a Book.
+ *
+ * A Book is a note of type "book" that holds no text of its own - it is an
+ * ordered list of these, each one pointing at a note or a character. The
+ * point of it is sharing: whoever can read the book reads every chapter in
+ * full, whether or not they could open the note the chapter came from, and
+ * they are never told which note that was.
+ *
+ * A chapter keeps its own copy of the text (`content`), taken when it was
+ * added. Turn the book's `bookLiveSync` on and the copy is set aside: the
+ * chapter reads and writes the source note directly, so an edit in either
+ * place is an edit in both. Off by default, because a book is usually a
+ * fixed thing made from notes that keep moving.
+ */
+export const bookChapters = pgTable("book_chapters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookNoteId: varchar("book_note_id").notNull().references((): any => notes.id, { onDelete: "cascade" }),
+  // "note" or "character" - what was dropped in. A character chapter is
+  // backed by that character's sheet note, so both kinds read the same way.
+  sourceType: text("source_type").notNull(),
+  sourceId: varchar("source_id").notNull(),
+  // The note the text comes from when the book is in sync mode. Same as
+  // sourceId for a note chapter; the character's sheet note for a character.
+  sourceNoteId: varchar("source_note_id").references((): any => notes.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  content: text("content").default("").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertBookChapterSchema = createInsertSchema(bookChapters).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBookChapter = z.infer<typeof insertBookChapterSchema>;
+export type BookChapter = typeof bookChapters.$inferSelect;
 
 // Note References table (links from notes to game entities)
 export const noteReferences = pgTable("note_references", {

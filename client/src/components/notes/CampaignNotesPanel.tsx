@@ -64,6 +64,7 @@ import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID, TIMELINES_TAB_ID } from 
 import { clickEndsNoteEditing } from "@/lib/noteEditFocus";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { SceneNoteCard, type SceneNoteLink } from "@/components/notes/SceneNoteCard";
+import { BookView } from "@/components/notes/BookView";
 
 function sceneLinkFromNote(note: Note | undefined): SceneNoteLink | null {
   if (!note || note.type !== "scene") return null;
@@ -550,6 +551,10 @@ function FolderTreeItem({
                 >
                   {note.type === "canvas" ? (
                     <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : note.type === "scene" ? (
+                    <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : note.type === "book" ? (
+                    <BookOpen className="h-2.5 w-2.5 flex-shrink-0" />
                   ) : (
                     <FileText className="h-2.5 w-2.5 flex-shrink-0" />
                   )}
@@ -2017,6 +2022,7 @@ export function CampaignNotesPanel({
     { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
     { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
     { key: "scene", label: "New Scene", icon: MapIcon, run: () => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any) },
+    { key: "book", label: "New Book", icon: BookOpen, run: () => createNoteMutation.mutate({ title: "Untitled Book", content: "", type: "book", folderId: null, campaignId } as any) },
     ...(onOpenTimelines ? [{ separator: true as const }, { key: "timelines", label: "Timelines", icon: HistoryIcon, run: onOpenTimelines }] : []),
   ];
 
@@ -2293,6 +2299,8 @@ export function CampaignNotesPanel({
                         <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
                       ) : note.type === "scene" ? (
                         <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
+                      ) : note.type === "book" ? (
+                        <BookOpen className="h-2.5 w-2.5 flex-shrink-0" />
                       ) : (
                         <FileText className="h-2.5 w-2.5 flex-shrink-0" />
                       )}
@@ -2428,6 +2436,8 @@ export function CampaignNotesPanel({
                       <div className="flex items-center gap-1 flex-1 min-w-0">
                         {note.type === "canvas" ? (
                           <Grid3X3 className="h-3 w-3 text-amber-400 flex-shrink-0" />
+                        ) : note.type === "book" ? (
+                          <BookOpen className="h-3 w-3 flex-shrink-0" style={{ color: "var(--ca-gilt)" }} />
                         ) : (
                           <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
                         )}
@@ -2679,6 +2689,18 @@ export function CampaignNotesPanel({
         </div>
       )}
     </div>
+  );
+
+  const renderBookView = () => (
+    <BookView
+      noteId={selectedNoteId!}
+      campaignId={campaignId}
+      title={currentNote?.title || "Untitled Book"}
+      liveSyncStored={!!(currentNote as any)?.bookLiveSync}
+      onToggleLiveSync={(next) => updateNoteMutation.mutate({ id: selectedNoteId!, data: { bookLiveSync: next } as any })}
+      availableNotes={allNotesForTree.map((n) => ({ id: n.id, title: n.title, type: (n as any).type }))}
+      renderContent={(text) => formatEntityReferences(text)}
+    />
   );
 
   const renderNoteEditor = () => {
@@ -3108,7 +3130,7 @@ export function CampaignNotesPanel({
                   <LoadingLogo className="h-5 w-5 text-stone-500" />
                 </div>
               ) : selectedNoteId ? (
-                currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+                currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
               ) : null}
             </div>
           </div>
@@ -3155,7 +3177,7 @@ export function CampaignNotesPanel({
             <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
               <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
                 {selectedNoteId ? (
-                  currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+                  currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
                 ) : showHomeView ? (
                   renderHomeView()
                 ) : (

@@ -2677,6 +2677,43 @@ class ApiClient {
     });
   }
 
+  // Books - a note whose body is an ordered list of other notes and
+  // characters. Chapter text is resolved server-side against the BOOK's
+  // permissions, so a reader gets every chapter in full without being told
+  // which note it came from.
+  async getBook(noteId: string): Promise<{
+    liveSync: boolean;
+    canEdit: boolean;
+    chapters: Array<{
+      id: string;
+      title: string;
+      content: string;
+      sourceType: 'note' | 'character';
+      sortOrder: number;
+      character: { name: string; portrait: string | null } | null;
+      sourceId?: string;
+      sourceNoteId?: string | null;
+    }>;
+  }> {
+    return this.request(`/notes/${noteId}/book`);
+  }
+
+  async addBookChapter(noteId: string, data: { sourceType: 'note' | 'character'; sourceId: string; title?: string }): Promise<any> {
+    return this.request(`/notes/${noteId}/book/chapters`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateBookChapter(noteId: string, chapterId: string, data: { title?: string; content?: string; sortOrder?: number }): Promise<any> {
+    return this.request(`/notes/${noteId}/book/chapters/${chapterId}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteBookChapter(noteId: string, chapterId: string): Promise<void> {
+    return this.request(`/notes/${noteId}/book/chapters/${chapterId}`, { method: 'DELETE' });
+  }
+
+  async reorderBook(noteId: string, chapterIds: string[]): Promise<void> {
+    return this.request(`/notes/${noteId}/book/reorder`, { method: 'POST', body: JSON.stringify({ chapterIds }) });
+  }
+
   async getOrCreateEntityNote(campaignId: string, entityType: string, entityId: string, title?: string): Promise<Note> {
     return this.request('/notes/for-entity', {
       method: 'POST',

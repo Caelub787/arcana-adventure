@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { X, FileText, Grid3X3, Network, History, Map as MapIcon } from "lucide-react";
+import { X, FileText, Grid3X3, Network, History, Map as MapIcon, BookOpen } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 export const GRAPH_TAB_ID = "__graph__";
@@ -8,7 +8,7 @@ export const TIMELINES_TAB_ID = "__timelines__";
 export interface OpenNote {
   noteId: string;
   title: string;
-  type?: "markdown" | "canvas" | "graph" | "timeline" | "scene";
+  type?: "markdown" | "canvas" | "graph" | "timeline" | "scene" | "book";
 }
 
 interface NoteTabsProps {
@@ -136,6 +136,8 @@ export function NoteTabs({
                   <MapIcon className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-emerald-400' : 'text-stone-500'}`} />
                 ) : note.type === "canvas" ? (
                   <Grid3X3 className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-indigo-400' : 'text-stone-500'}`} />
+                ) : note.type === "book" ? (
+                  <BookOpen className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} style={isActive ? { color: 'var(--ca-gilt-bright)' } : undefined} />
                 ) : (
                   <FileText className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
                 )}

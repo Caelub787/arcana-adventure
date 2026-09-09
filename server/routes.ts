@@ -18211,6 +18211,246 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ---------------------------------------------------------------------
+  // Books
+  //
+  // A book is a note of type "book" whose body is an ordered list of other
+  // notes and characters. Whoever can read the book reads every chapter in
+  // full - that is the whole point of it: a GM assembles one out of notes the
+  // party cannot open and shares the book, not the notes. So chapter text is
+  // resolved here, on the server, against the BOOK's permissions, and the id
+  // of the note a chapter came from is only ever sent to someone who could
+  // have opened that note anyway.
+  // ---------------------------------------------------------------------
+  const resolveBookAccess = async (userId: string, bookId: string) => {
+    const note = await storage.getNote(bookId);
+    if (!note || note.type !== 'book') return null;
+    const role = await getKnowledgeRole(userId, note.campaignId);
+    const access = await storage.canAccessNote(userId, bookId);
+    const visibilityGrants = knowledgeVisibilityGrantsAccess(
+      (note as any).visibility, (note as any).visiblePlayerIds, userId, role);
+    // Deliberately NOT the "party visibility means everyone can edit it" rule
+    // ordinary notes follow. A book is shared TO be read: handing every
+    // reader edit rights would also hand them the ids of the notes each
+    // chapter came from, which is the one thing a book is supposed to keep
+    // back. Its author, anyone explicitly shared with edit, and the GM.
+    return {
+      note,
+      role,
+      canView: access.canAccess || visibilityGrants,
+      canEdit: role.isGm || (access.canAccess && (access.permission === 'owner' || access.permission === 'edit')),
+    };
+  };
+
+  app.get("/api/notes/:id/book", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const ctx = await resolveBookAccess(userId, req.params.id);
+      if (!ctx) return res.status(404).json({ error: "Book not found" });
+      if (!ctx.canView) return res.status(403).json({ error: "Not authorized to read this book" });
+
+      const chapters = await storage.getBookChapters(req.params.id);
+      const liveSync = !!(ctx.note as any).bookLiveSync;
+      const rendered = await Promise.all(chapters.map(async (ch) => {
+        let content = ch.content;
+        if (liveSync && ch.sourceNoteId) {
+          const source = await storage.getNote(ch.sourceNoteId);
+          // A source that has since been deleted falls back to the copy the
+          // chapter was made with, rather than the chapter going blank.
+          if (source) content = source.content;
+        }
+        let character: { name: string; portrait: string | null } | null = null;
+        if (ch.sourceType === 'character') {
+          const c = await storage.getCharacter(ch.sourceId);
+          if (c) character = { name: c.name, portrait: c.portrait ?? null };
+        }
+        return {
+          id: ch.id,
+          title: ch.title,
+          // GM secrets stay secret even inside a book.
+          content: redactGmSecrets(content, ctx.role.isGm),
+          sourceType: ch.sourceType,
+          sortOrder: ch.sortOrder,
+          character,
+          // Only someone who can edit the book is told where a chapter came
+          // from; a reader gets the text and nothing to follow.
+          sourceId: ctx.canEdit ? ch.sourceId : undefined,
+          sourceNoteId: ctx.canEdit ? ch.sourceNoteId : undefined,
+        };
+      }));
+      res.json({ liveSync, canEdit: ctx.canEdit, chapters: rendered });
+    } catch (e) {
+      console.error("Failed to read book:", e);
+      res.status(500).json({ error: "Failed to read book" });
+    }
+  });
+
+  // Add a chapter: a note, or a character (which is backed by that
+  // character's sheet note, so both kinds read and write the same way).
+  app.post("/api/notes/:id/book/chapters", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const ctx = await resolveBookAccess(userId, req.params.id);
+      if (!ctx) return res.status(404).json({ error: "Book not found" });
+      if (!ctx.canEdit) return res.status(403).json({ error: "Edit permission required" });
+
+      const sourceType = req.body.sourceType === 'character' ? 'character' : 'note';
+      const sourceId = String(req.body.sourceId || '');
+      if (!sourceId) return res.status(400).json({ error: "sourceId is required" });
+
+      let title = String(req.body.title || '').trim();
+      let sourceNoteId: string | null = null;
+      let content = '';
+
+      if (sourceType === 'note') {
+        const source = await storage.getNote(sourceId);
+        if (!source) return res.status(404).json({ error: "Note not found" });
+        if (source.campaignId !== ctx.note.campaignId) {
+          return res.status(400).json({ error: "That note is in another campaign" });
+        }
+        if (source.id === ctx.note.id) {
+          return res.status(400).json({ error: "A book can't be a chapter of itself" });
+        }
+        // You may only put something in a book that you could read yourself -
+        // otherwise a book is a way to read notes you were never given.
+        const srcAccess = await storage.canAccessNote(userId, source.id);
+        const srcVisible = knowledgeVisibilityGrantsAccess(
+          (source as any).visibility, (source as any).visiblePlayerIds, userId, ctx.role);
+        if (!srcAccess.canAccess && !srcVisible) {
+          return res.status(403).json({ error: "You don't have access to that note" });
+        }
+        sourceNoteId = source.id;
+        content = source.content || '';
+        if (!title) title = source.title || 'Untitled';
+      } else {
+        const character = await storage.getCharacter(sourceId);
+        if (!character) return res.status(404).json({ error: "Character not found" });
+        if (character.campaignId !== ctx.note.campaignId) {
+          return res.status(400).json({ error: "That character is in another campaign" });
+        }
+        const charAccess = await checkCharacterAccess(sourceId, userId, 'view');
+        if (!charAccess.allowed) {
+          return res.status(403).json({ error: "You don't have access to that character" });
+        }
+        // The character's own sheet note is the text of the chapter, so a
+        // character chapter behaves exactly like a note one from here on.
+        const backlinks = await storage.getBacklinks('character-sheet', sourceId);
+        for (const link of backlinks) {
+          const n = await storage.getNote(link.noteId);
+          if (n && n.campaignId === ctx.note.campaignId) { sourceNoteId = n.id; content = n.content || ''; break; }
+        }
+        if (!title) title = character.name;
+      }
+
+      const existing = await storage.getBookChapters(req.params.id);
+      const chapter = await storage.createBookChapter({
+        bookNoteId: req.params.id,
+        sourceType,
+        sourceId,
+        sourceNoteId,
+        title,
+        content,
+        sortOrder: existing.length,
+      } as any);
+      if (ctx.note.campaignId) {
+        broadcastToCampaign(ctx.note.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: ctx.note.campaignId, userId });
+      }
+      res.status(201).json(chapter);
+    } catch (e) {
+      console.error("Failed to add book chapter:", e);
+      res.status(500).json({ error: "Failed to add book chapter" });
+    }
+  });
+
+  app.patch("/api/notes/:id/book/chapters/:chapterId", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const ctx = await resolveBookAccess(userId, req.params.id);
+      if (!ctx) return res.status(404).json({ error: "Book not found" });
+      if (!ctx.canEdit) return res.status(403).json({ error: "Edit permission required" });
+      const chapter = await storage.getBookChapter(req.params.chapterId);
+      if (!chapter || chapter.bookNoteId !== req.params.id) {
+        return res.status(404).json({ error: "Chapter not found" });
+      }
+
+      const patch: Record<string, any> = {};
+      if (typeof req.body.title === 'string') patch.title = req.body.title.trim() || chapter.title;
+      if (typeof req.body.sortOrder === 'number') patch.sortOrder = Math.max(0, Math.floor(req.body.sortOrder));
+
+      if (typeof req.body.content === 'string') {
+        if ((ctx.note as any).bookLiveSync && chapter.sourceNoteId) {
+          // In sync mode the chapter has no text of its own: the edit goes
+          // to the source note, and comes back out of it on the next read.
+          const source = await storage.getNote(chapter.sourceNoteId);
+          if (source) {
+            const merged = mergeGmSecretsOnWrite(source.content || '', req.body.content, ctx.role.isGm);
+            await storage.updateNote(source.id, { content: merged } as any);
+            if (source.campaignId) {
+              broadcastToCampaign(source.campaignId, { type: 'note_changed', noteId: source.id, campaignId: source.campaignId, userId });
+            }
+          }
+        } else {
+          patch.content = mergeGmSecretsOnWrite(chapter.content || '', req.body.content, ctx.role.isGm);
+        }
+      }
+
+      const updated = Object.keys(patch).length > 0
+        ? await storage.updateBookChapter(chapter.id, patch)
+        : chapter;
+      if (ctx.note.campaignId) {
+        broadcastToCampaign(ctx.note.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: ctx.note.campaignId, userId });
+      }
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update book chapter:", e);
+      res.status(500).json({ error: "Failed to update book chapter" });
+    }
+  });
+
+  app.delete("/api/notes/:id/book/chapters/:chapterId", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const ctx = await resolveBookAccess(userId, req.params.id);
+      if (!ctx) return res.status(404).json({ error: "Book not found" });
+      if (!ctx.canEdit) return res.status(403).json({ error: "Edit permission required" });
+      const chapter = await storage.getBookChapter(req.params.chapterId);
+      if (!chapter || chapter.bookNoteId !== req.params.id) return res.json({ success: true });
+      // Removing a chapter removes the chapter, never the note it came from.
+      await storage.deleteBookChapter(chapter.id);
+      if (ctx.note.campaignId) {
+        broadcastToCampaign(ctx.note.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: ctx.note.campaignId, userId });
+      }
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to remove book chapter:", e);
+      res.status(500).json({ error: "Failed to remove book chapter" });
+    }
+  });
+
+  app.post("/api/notes/:id/book/reorder", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const ctx = await resolveBookAccess(userId, req.params.id);
+      if (!ctx) return res.status(404).json({ error: "Book not found" });
+      if (!ctx.canEdit) return res.status(403).json({ error: "Edit permission required" });
+      const order: string[] = Array.isArray(req.body.chapterIds) ? req.body.chapterIds : [];
+      const chapters = await storage.getBookChapters(req.params.id);
+      const known = new Set(chapters.map((c) => c.id));
+      let i = 0;
+      for (const id of order) {
+        if (!known.has(id)) continue;
+        await storage.updateBookChapter(id, { sortOrder: i++ } as any);
+      }
+      if (ctx.note.campaignId) {
+        broadcastToCampaign(ctx.note.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: ctx.note.campaignId, userId });
+      }
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to reorder book:", e);
+      res.status(500).json({ error: "Failed to reorder book" });
+    }
+  });
+
   app.put("/api/notes/:id", requireAuth, async (req, res) => {
     try {
       const note = await storage.getNote(req.params.id);

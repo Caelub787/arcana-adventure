@@ -33,6 +33,7 @@ import {
   type Friendship, type InsertFriendship,
   type NoteFolder, type InsertNoteFolder,
   type Note, type InsertNote,
+  type BookChapter, type InsertBookChapter,
   type NoteReference, type InsertNoteReference,
   type NoteShare, type InsertNoteShare,
   type Timeline, type InsertTimeline,
@@ -100,10 +101,10 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
+import { eq, and, asc, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
 
 // Shared helper: builds an owner-scope WHERE clause for personal-library tables.
 // - personal=true  → only rows where ownerUserId = scope[0] (strictly personal)
@@ -248,6 +249,13 @@ export interface IStorage {
   // Free hotbar operations (AA V3 per-user, per-campaign loadouts)
   getFreeHotbarEntry(id: string): Promise<FreeHotbarEntry | undefined>;
   getFreeHotbarEntries(userId: string, campaignId: string): Promise<FreeHotbarEntry[]>;
+  // Books: an ordered list of chapters hanging off a note of type "book".
+  getBookChapters(bookNoteId: string): Promise<BookChapter[]>;
+  getBookChapter(id: string): Promise<BookChapter | undefined>;
+  createBookChapter(chapter: InsertBookChapter): Promise<BookChapter>;
+  updateBookChapter(id: string, updates: Partial<InsertBookChapter>): Promise<BookChapter | undefined>;
+  deleteBookChapter(id: string): Promise<void>;
+
   upsertFreeHotbarEntry(entry: InsertFreeHotbarEntry): Promise<FreeHotbarEntry>;
   deleteFreeHotbarEntry(id: string): Promise<void>;
   deleteFreeHotbarEntriesByCharacter(characterId: string): Promise<void>;
@@ -2469,6 +2477,34 @@ export class DatabaseStorage implements IStorage {
         eq(freeHotbarEntries.userId, userId),
         eq(freeHotbarEntries.campaignId, campaignId),
       ));
+  }
+
+  async getBookChapters(bookNoteId: string): Promise<BookChapter[]> {
+    return await db.select().from(bookChapters)
+      .where(eq(bookChapters.bookNoteId, bookNoteId))
+      .orderBy(asc(bookChapters.sortOrder), asc(bookChapters.createdAt));
+  }
+
+  async getBookChapter(id: string): Promise<BookChapter | undefined> {
+    const [row] = await db.select().from(bookChapters).where(eq(bookChapters.id, id));
+    return row;
+  }
+
+  async createBookChapter(chapter: InsertBookChapter): Promise<BookChapter> {
+    const [row] = await db.insert(bookChapters).values(chapter).returning();
+    return row;
+  }
+
+  async updateBookChapter(id: string, updates: Partial<InsertBookChapter>): Promise<BookChapter | undefined> {
+    const [row] = await db.update(bookChapters)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(bookChapters.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteBookChapter(id: string): Promise<void> {
+    await db.delete(bookChapters).where(eq(bookChapters.id, id));
   }
 
   async upsertFreeHotbarEntry(entry: InsertFreeHotbarEntry): Promise<FreeHotbarEntry> {
