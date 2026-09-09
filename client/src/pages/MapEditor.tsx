@@ -51,14 +51,18 @@ import {
   ArrowLeft, MousePointer2, Image as ImageIcon, Wand2, Save,
   Upload, ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff, Maximize, Mountain, Trees,
   Undo2, Grid3x3, Layers as LayersIcon, PaintBucket, Plus, Trash2, Settings,
+  Paintbrush, Route, Frame, Square, Type, Lightbulb, DoorOpen,
 } from "lucide-react";
-import { api, type StampAsset, type MapObject } from "@/lib/api";
+import { api, type StampAsset, type MapObject, type MapLayer, type MapElement } from "@/lib/api";
+import { MAP_TOOL_DEFS, DEFAULT_MAP_TOOL, mapToolDef, toolForKey, type MapTool } from "@/components/mapmaker/tools";
+import { MapHistory } from "@/components/mapmaker/history";
+import { LayersPanel } from "@/components/mapmaker/LayersPanel";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { TERRAIN_KINDS, type TerrainKind, getTerrainPattern, getFullSizeTerrainTexture, floodFillTerrain, paintSoftDab, paintSoftMaskDab, fillSmoothPathFeathered } from "@/components/mapmaker/terrainTextures";
 import { traceSmoothClosedPath, traceSmoothOpenPath, type Point } from "@/components/mapmaker/pathSmoothing";
 
-type Tool = 'terrain' | 'assets' | 'select';
+type Tool = MapTool;
 type TerrainMode = 'brush' | 'shape' | 'path' | 'bucket';
 type PathKind = 'river' | 'road';
 type MobileSheet = null | 'terrain' | 'assets' | 'select' | 'layers';
@@ -412,6 +416,20 @@ const GEN_SCALE_PRESETS: { key: GenScaleKey; label: string; featureSize: number 
   { key: 'city', label: 'City / Local', featureSize: 150 },
 ];
 
+const TOOL_ICONS: Record<MapTool, any> = {
+  select: MousePointer2,
+  terrain: Mountain,
+  texture: Paintbrush,
+  stamp: Trees,
+  path: Route,
+  wall: Frame,
+  shape: Square,
+  text: Type,
+  grid: Grid3x3,
+  light: Lightbulb,
+  vtt: DoorOpen,
+};
+
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
 const UNDO_LIMIT = 8;
@@ -436,6 +454,15 @@ export default function MapEditor() {
     queryFn: () => api.getStampAssets(),
   });
 
+  // The map document proper: its layers, and every non-terrain element on it.
+  // Stamps still live in `objects` for now; both are the same document and
+  // will converge, which is why the layers panel reads from here.
+  const [docLayers, setDocLayers] = useState<MapLayer[]>([]);
+  const [docElements, setDocElements] = useState<MapElement[]>([]);
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const history = useRef(new MapHistory()).current;
+
   const [objects, setObjects] = useState<MapObject[]>([]);
   const [activeVariantIndex, setActiveVariantIndex] = useState(0);
   const [loadedTerrainFor, setLoadedTerrainFor] = useState<string | null>(null);
@@ -444,12 +471,104 @@ export default function MapEditor() {
     if (mapQuery.data) {
       setObjects(mapQuery.data.objects);
       setActiveVariantIndex(mapQuery.data.activeVariantIndex);
+      const layers = mapQuery.data.layers ?? [];
+      setDocLayers(layers);
+      setDocElements(mapQuery.data.elements ?? []);
+      // Land on the first art layer rather than whatever happens to be first,
+      // so a new placement goes somewhere sensible without being told.
+      setActiveLayerId((prev) => prev ?? layers.find((l) => l.kind === 'art')?.id ?? layers[0]?.id ?? null);
     }
   }, [mapQuery.data?.id]);
 
+  // Layer edits go through the history stack like everything else, so undo
+  // covers hiding a layer or renaming one, not just moving a tree.
+  const patchLayer = useCallback((layer: MapLayer, patch: Partial<MapLayer>) => {
+    const before = { ...layer };
+    const apply = (next: Partial<MapLayer>) => {
+      setDocLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, ...next } : l)));
+      if (id) api.updateMapLayer(id, layer.id, next).catch(() => {});
+    };
+    const changed = Object.keys(patch)[0] ?? 'layer';
+    history.push({
+      label: `Changed ${layer.name} ${changed}`,
+      coalesceKey: `layer:${layer.id}:${changed}`,
+      redo: () => apply(patch),
+      undo: () => apply(Object.fromEntries(Object.keys(patch).map((k) => [k, (before as any)[k]]))),
+    });
+  }, [history, id]);
+
+  const handleAddLayer = useCallback(async () => {
+    if (!id) return;
+    const created = await api.createMapLayer(id, {
+      name: 'New Layer', kind: 'art', sortOrder: docLayers.length,
+    });
+    history.push({
+      label: 'Added a layer',
+      redo: () => setDocLayers((prev) => (prev.some((l) => l.id === created.id) ? prev : [...prev, created])),
+      undo: () => { setDocLayers((prev) => prev.filter((l) => l.id !== created.id)); api.deleteMapLayer(id, created.id).catch(() => {}); },
+    });
+  }, [docLayers.length, history, id]);
+
+  const handleDeleteLayer = useCallback(async (layer: MapLayer) => {
+    if (!id) return;
+    const contents = docElements.filter((e) => e.layerId === layer.id);
+    if (contents.length > 0 && !confirm(`Delete "${layer.name}" and the ${contents.length} thing${contents.length === 1 ? '' : 's'} on it?`)) return;
+    setDocLayers((prev) => prev.filter((l) => l.id !== layer.id));
+    setDocElements((prev) => prev.filter((e) => e.layerId !== layer.id));
+    try {
+      await api.deleteMapLayer(id, layer.id);
+    } catch {
+      // The server refuses to remove the last layer; put it back rather than
+      // leaving the panel claiming something that isn't true.
+      setDocLayers((prev) => (prev.some((l) => l.id === layer.id) ? prev : [...prev, layer]));
+      setDocElements((prev) => [...prev, ...contents]);
+    }
+  }, [docElements, id]);
+
+  const handleReorderLayer = useCallback((layerId: string, beforeLayerId: string | null) => {
+    if (!id) return;
+    const ordered = [...docLayers].sort((a, b) => a.sortOrder - b.sortOrder);
+    const from = ordered.findIndex((l) => l.id === layerId);
+    const to = beforeLayerId ? ordered.findIndex((l) => l.id === beforeLayerId) : ordered.length - 1;
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...ordered];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    const renumbered = next.map((l, i) => ({ ...l, sortOrder: i }));
+    const previous = ordered;
+    const write = (rows: MapLayer[]) => {
+      setDocLayers(rows);
+      for (const l of rows) api.updateMapLayer(id, l.id, { sortOrder: l.sortOrder }).catch(() => {});
+    };
+    history.push({
+      label: 'Reordered layers',
+      redo: () => write(renumbered),
+      undo: () => write(previous),
+    });
+  }, [docLayers, history, id]);
+
+  // A single key picks a tool, the way every editor of this kind works, and
+  // never while something is being typed into.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) history.redo(); else history.undo();
+        return;
+      }
+      const next = toolForKey(e.key, { ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey, typing });
+      if (next) { e.preventDefault(); setTool(next); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [history]);
+
   const map = mapQuery.data;
 
-  const [tool, setTool] = useState<Tool>('terrain');
+  // Select, not a tool that paints: opening a map on a destructive tool means
+  // the first stray click edits it.
+  const [tool, setTool] = useState<Tool>(DEFAULT_MAP_TOOL);
   const [terrainMode, setTerrainMode] = useState<TerrainMode>('brush');
   const [terrainKind, setTerrainKind] = useState<TerrainKind>('grass');
   const [pathKind, setPathKind] = useState<PathKind>('river');
@@ -884,7 +1003,7 @@ export default function MapEditor() {
       } else {
         beginBrushStroke(x, y);
       }
-    } else if (tool === 'assets' && selectedStampAssetId) {
+    } else if (tool === 'stamp' && selectedStampAssetId) {
       scatterRef.current = { lastX: x, lastY: y, lastTime: performance.now(), placedAny: false };
       placeStamp(x, y, false);
     } else {
@@ -936,7 +1055,7 @@ export default function MapEditor() {
       if (terrainMode === 'shape') paintMaskAt(x, y); else paintAt(x, y);
       return;
     }
-    if (scatterRef.current && tool === 'assets' && selectedStampAssetId) {
+    if (scatterRef.current && tool === 'stamp' && selectedStampAssetId) {
       const { x, y } = toWorld(e.clientX, e.clientY);
       const s = scatterRef.current;
       const dist = Math.hypot(x - s.lastX, y - s.lastY);
@@ -1511,33 +1630,65 @@ export default function MapEditor() {
       </div>
 
       <div className="flex flex-1 min-h-0 relative">
-        {/* Desktop icon rail */}
+        {/* The toolbar chooses the editing mode; the panel beside it changes
+            completely to match. One properties panel holding every control at
+            once is how an editor becomes unusable at the point it becomes
+            capable. */}
         <div className="hidden md:flex w-12 bg-stone-950 border-r border-stone-800 flex-col items-center py-2 gap-1 shrink-0">
-          <button
-            className={`w-9 h-9 rounded flex items-center justify-center ${tool === 'terrain' ? 'bg-amber-700 text-white' : 'text-stone-400 hover:bg-stone-800'}`}
-            onClick={() => setTool('terrain')} title="Terrain" data-testid="button-tool-terrain"
-          >
-            <Mountain className="h-4.5 w-4.5" />
-          </button>
-          <button
-            className={`w-9 h-9 rounded flex items-center justify-center ${tool === 'assets' ? 'bg-amber-700 text-white' : 'text-stone-400 hover:bg-stone-800'}`}
-            onClick={() => setTool('assets')} title="Assets" data-testid="button-tool-assets"
-          >
-            <Trees className="h-4.5 w-4.5" />
-          </button>
-          <button
-            className={`w-9 h-9 rounded flex items-center justify-center ${tool === 'select' ? 'bg-amber-700 text-white' : 'text-stone-400 hover:bg-stone-800'}`}
-            onClick={() => setTool('select')} title="Select" data-testid="button-tool-select"
-          >
-            <MousePointer2 className="h-4.5 w-4.5" />
-          </button>
+          {MAP_TOOL_DEFS.map((def) => {
+            const Icon = TOOL_ICONS[def.key];
+            return (
+              <button
+                key={def.key}
+                className={`w-9 h-9 rounded flex items-center justify-center ${tool === def.key ? 'bg-amber-700 text-white' : 'text-stone-400 hover:bg-stone-800'}`}
+                onClick={() => setTool(def.key)}
+                title={`${def.label} (${def.shortcut}) — ${def.hint}`}
+                data-testid={`button-tool-${def.key}`}
+              >
+                <Icon className="h-4.5 w-4.5" />
+              </button>
+            );
+          })}
         </div>
 
         {/* Desktop contextual flyout panel */}
-        <div className="hidden md:block w-48 bg-stone-950 border-r border-stone-800 p-2 overflow-y-auto shrink-0">
-          {tool === 'terrain' && terrainFlyoutContent}
-          {tool === 'assets' && assetsFlyoutContent}
-          {tool === 'select' && selectInfoContent}
+        <div className="hidden md:flex w-56 bg-stone-950 border-r border-stone-800 flex-col shrink-0 min-h-0">
+          <div className="px-2 py-1.5 border-b border-stone-800 shrink-0">
+            <p className="text-xs font-medium text-stone-200">{mapToolDef(tool).label}</p>
+            <p className="text-[10px] text-stone-500 leading-snug">{mapToolDef(tool).hint}</p>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+            {tool === 'terrain' && terrainFlyoutContent}
+            {tool === 'stamp' && assetsFlyoutContent}
+            {tool === 'select' && selectInfoContent}
+            {!['terrain', 'stamp', 'select'].includes(tool) && (
+              <p className="text-[11px] text-stone-500 leading-relaxed" data-testid={`panel-tool-${tool}-placeholder`}>
+                Not built yet. The map document underneath already carries
+                {' '}{mapToolDef(tool).creates ? `${mapToolDef(tool).creates}s` : 'this'}, so nothing made here later
+                will need the maps you draw today to be redone.
+              </p>
+            )}
+          </div>
+          {/* Layers sit under whichever tool is up, because finding a thing
+              again is not a mode - it is how the map is navigated. */}
+          <div className="h-64 border-t border-stone-800 shrink-0">
+            <LayersPanel
+              layers={docLayers}
+              elements={docElements}
+              selectedIds={selectedElementIds}
+              activeLayerId={activeLayerId}
+              onSelectLayer={setActiveLayerId}
+              onSelectElements={(ids, additive) =>
+                setSelectedElementIds((prev) => (additive ? Array.from(new Set([...prev, ...ids])) : ids))}
+              onToggleVisible={(l) => patchLayer(l, { visible: !l.visible })}
+              onToggleLocked={(l) => patchLayer(l, { locked: !l.locked })}
+              onSetOpacity={(l, opacity) => patchLayer(l, { opacity })}
+              onRename={(l, name) => patchLayer(l, { name })}
+              onReorder={handleReorderLayer}
+              onAddLayer={handleAddLayer}
+              onDeleteLayer={handleDeleteLayer}
+            />
+          </div>
         </div>
 
         {/* Canvas viewport */}
@@ -1664,8 +1815,8 @@ export default function MapEditor() {
             <span className="text-[10px]">Terrain</span>
           </button>
           <button
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${tool === 'assets' ? 'text-amber-400' : 'text-stone-400'}`}
-            onClick={() => { setTool('assets'); setMobileSheet((s) => (s === 'assets' ? null : 'assets')); }}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${tool === 'stamp' ? 'text-amber-400' : 'text-stone-400'}`}
+            onClick={() => { setTool('stamp'); setMobileSheet((s) => (s === 'assets' ? null : 'assets')); }}
             data-testid="button-mobile-tool-assets"
           >
             <Trees className="h-5 w-5" />
