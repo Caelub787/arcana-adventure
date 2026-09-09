@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { Link, useLocation, useSearch } from "wouter";
+import { useAppBack } from "@/lib/appHistory";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { getSystemLabel, formatCreatedDate, formatLastOpened } from "@/lib/campa
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function MyCampaigns() {
+  const goBack = useAppBack("/");
   const [_, setLocation] = useLocation();
   const search = useSearch();
   const { toast } = useToast();
@@ -299,7 +301,7 @@ export default function MyCampaigns() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="text-stone-400 hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="icon" onClick={goBack} className="text-stone-400 hover:text-white hover:bg-white/10">
               <ArrowLeft />
             </Button>
             <h1 className="font-display text-4xl font-bold text-amber-500">My Campaigns</h1>

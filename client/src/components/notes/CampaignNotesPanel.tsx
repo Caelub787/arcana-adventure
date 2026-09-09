@@ -204,6 +204,8 @@ interface FolderTreeItemProps {
   onSelect: (id: string | null) => void;
   onNoteSelect: (noteId: string) => void;
   onContextMenu: (folder: NoteFolder) => void;
+  /** Only the folder's owner can share it, so this is absent for everyone else. */
+  onShareFolder?: (folder: NoteFolder) => void;
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
   onMoveFolder: (folderId: string, newParentId: string | null) => void;
@@ -237,6 +239,7 @@ function FolderTreeItem({
   onSelect,
   onNoteSelect,
   onContextMenu,
+  onShareFolder,
   onAddSubfolder,
   onDeleteFolder,
   onMoveFolder,
@@ -460,6 +463,14 @@ function FolderTreeItem({
           >
             <FolderPlus className="h-3 w-3 mr-2" /> Add Subfolder
           </ContextMenuItem>
+          {onShareFolder && (
+            <ContextMenuItem
+              onClick={() => onShareFolder(folder)}
+              data-testid={`context-menu-share-folder-${folder.id}`}
+            >
+              <Share2 className="h-3 w-3 mr-2" /> Share…
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
             onClick={() => onCreateNote(folder.id)}
@@ -503,6 +514,7 @@ function FolderTreeItem({
               onSelect={onSelect}
               onNoteSelect={onNoteSelect}
               onContextMenu={onContextMenu}
+              onShareFolder={onShareFolder}
               onAddSubfolder={onAddSubfolder}
               onDeleteFolder={onDeleteFolder}
               onMoveFolder={onMoveFolder}
@@ -652,6 +664,10 @@ export function CampaignNotesPanel({
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareNoteId, setShareNoteId] = useState<string | null>(null);
+  // Folders share the same dialog. Sharing one shares everything inside it,
+  // which is the point: handing someone a section rather than a note at a
+  // time. Exactly one of these is ever set.
+  const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [shareSearchUsername, setShareSearchUsername] = useState("");
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
   const [shareTab, setShareTab] = useState<"friends" | "players">("friends");
@@ -796,9 +812,9 @@ export function CampaignNotesPanel({
   });
 
   const { data: noteShares = [] } = useQuery<NoteShare[]>({
-    queryKey: ["/api/notes", shareNoteId, "shares"],
-    queryFn: () => api.getNoteShares(shareNoteId!),
-    enabled: !!shareNoteId,
+    queryKey: ["/api/notes", shareFolderId ? `folder:${shareFolderId}` : shareNoteId, "shares"],
+    queryFn: () => (shareFolderId ? api.getFolderShares(shareFolderId) : api.getNoteShares(shareNoteId!)),
+    enabled: !!shareNoteId || !!shareFolderId,
   });
 
   const { data: friends = [] } = useQuery<UserProfile[]>({
@@ -857,9 +873,13 @@ export function CampaignNotesPanel({
     const handleMessage = (data: any) => {
       if (data.type === 'notes_changed' || data.type === 'note_created' || data.type === 'note_deleted' || data.type === 'note_changed') {
         if (data.campaignId && data.campaignId !== campaignId) return;
-        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        // refetch, not invalidate: invalidate only marks stale, and a query
+        // whose panel is mounted but momentarily unobserved (a collapsed
+        // side panel, a note window behind another) would then not update
+        // until something else woke it. Notes are shared state; they update.
+        queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
         
         // A deleted note's tab has to go, whoever deleted it. Closing it only
         // for the person who pressed Delete left everyone else's tab open on
@@ -874,7 +894,9 @@ export function CampaignNotesPanel({
         }
       }
       if (data.type === 'note_folder_changed') {
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        if (data.campaignId && data.campaignId !== campaignId) return;
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       }
       if (data.type === 'timeline_changed') {
         if (data.campaignId && data.campaignId !== campaignId) return;
@@ -1119,8 +1141,10 @@ export function CampaignNotesPanel({
 
   const createFolderMutation = useMutation({
     mutationFn: (data: Partial<NoteFolder>) => api.createNoteFolder(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+    onSuccess: (newFolder) => {
+      queryClient.setQueryData<NoteFolder[]>(["/api/notes/folders", campaignId], (prev) =>
+        prev && !prev.some((f) => f.id === (newFolder as any)?.id) ? [...prev, newFolder as any] : prev);
+      queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       setFolderDialogOpen(false);
       resetFolderForm();
       toast({ title: "Folder created" });
@@ -1322,6 +1346,11 @@ export function CampaignNotesPanel({
   const createNoteMutation = useMutation({
     mutationFn: (data: Partial<Note>) => api.createNote(data),
     onSuccess: (newNote) => {
+      // Put it in the tree before the refetch comes back. A refetch is a
+      // round trip, and until it lands the sidebar looks like nothing
+      // happened - which is what "I had to refresh to see my new note" is.
+      queryClient.setQueryData<Note[]>(["/api/notes/all", campaignId], (prev) =>
+        prev && !prev.some((n) => n.id === newNote.id) ? [newNote, ...prev] : prev);
       queryClient.refetchQueries({ queryKey: ["/api/notes"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
@@ -1397,13 +1426,13 @@ export function CampaignNotesPanel({
       noteId: string;
       friendId: string;
       permission: string;
-    }) => api.shareNote(noteId, friendId, permission),
+    }) => (shareFolderId
+      ? api.shareFolder(shareFolderId, friendId, permission)
+      : api.shareNote(noteId, friendId, permission)),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/notes", shareNoteId, "shares"],
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       setShareSearchUsername("");
-      toast({ title: "Note shared" });
+      toast({ title: shareFolderId ? "Folder shared" : "Note shared" });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1411,11 +1440,9 @@ export function CampaignNotesPanel({
 
   const deleteShareMutation = useMutation({
     mutationFn: ({ noteId, shareId }: { noteId: string; shareId: string }) =>
-      api.deleteNoteShare(noteId, shareId),
+      (shareFolderId ? api.deleteFolderShare(shareFolderId, shareId) : api.deleteNoteShare(noteId, shareId)),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/notes", shareNoteId, "shares"],
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       toast({ title: "Share removed" });
     },
     onError: (err: any) =>
@@ -1573,12 +1600,19 @@ export function CampaignNotesPanel({
   };
 
   const openShareDialog = (noteId: string) => {
+    setShareFolderId(null);
     setShareNoteId(noteId);
     setShareDialogOpen(true);
   };
 
+  const openFolderShareDialog = (folderId: string) => {
+    setShareNoteId(null);
+    setShareFolderId(folderId);
+    setShareDialogOpen(true);
+  };
+
   const handleAddShare = () => {
-    if (!shareNoteId || !shareSearchUsername.trim()) return;
+    if ((!shareNoteId && !shareFolderId) || !shareSearchUsername.trim()) return;
     const friend = friends.find(
       (f) => f.username.toLowerCase() === shareSearchUsername.toLowerCase()
     );
@@ -1591,16 +1625,16 @@ export function CampaignNotesPanel({
       return;
     }
     shareNoteMutation.mutate({
-      noteId: shareNoteId,
+      noteId: shareNoteId ?? "",
       friendId: friend.id,
       permission: sharePermission,
     });
   };
 
   const handleShareWithMember = (member: { id: string; userId: string; username: string }) => {
-    if (!shareNoteId) return;
+    if (!shareNoteId && !shareFolderId) return;
     shareNoteMutation.mutate({
-      noteId: shareNoteId,
+      noteId: shareNoteId ?? "",
       friendId: member.userId,
       permission: sharePermission,
     });
@@ -2203,6 +2237,7 @@ export function CampaignNotesPanel({
                   setSelectedNoteId(id);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
+                onShareFolder={(f) => openFolderShareDialog(f.id)}
                 onAddSubfolder={(parentId) => {
                   setEditingFolder(null);
                   setFolderName("");
@@ -3511,8 +3546,13 @@ export function CampaignNotesPanel({
       <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
         <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-sm">Share Note</DialogTitle>
+            <DialogTitle className="text-sm">{shareFolderId ? "Share Folder" : "Share Note"}</DialogTitle>
           </DialogHeader>
+          {shareFolderId && (
+            <p className="text-xs text-stone-500 -mt-1">
+              Everything in this folder goes with it, subfolders included.
+            </p>
+          )}
           <Tabs value={shareTab} onValueChange={(v) => setShareTab(v as "friends" | "players")}>
             <TabsList className="w-full bg-stone-900">
               <TabsTrigger value="friends" className="flex-1 text-xs">Friends</TabsTrigger>
@@ -3656,9 +3696,9 @@ export function CampaignNotesPanel({
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            shareNoteId &&
+                            (shareNoteId || shareFolderId) &&
                             deleteShareMutation.mutate({
-                              noteId: shareNoteId,
+                              noteId: shareNoteId ?? "",
                               shareId: share.id,
                             })
                           }

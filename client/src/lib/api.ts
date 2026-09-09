@@ -2869,6 +2869,31 @@ class ApiClient {
     return this.request(`/notes/${noteId}/shares/${shareId}`, { method: 'DELETE' });
   }
 
+  // Folder shares. Sharing a folder shares everything inside it, subfolders
+  // included, so it is how you hand someone a whole section at once rather
+  // than a note at a time.
+  async getFolderShares(folderId: string): Promise<NoteShare[]> {
+    return this.request(`/notes/folders/${folderId}/shares`);
+  }
+
+  async shareFolder(folderId: string, friendId: string, permission?: string): Promise<NoteShare> {
+    return this.request(`/notes/folders/${folderId}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ friendId, permission: permission || 'view' }),
+    });
+  }
+
+  async updateFolderShare(folderId: string, shareId: string, permission: string): Promise<NoteShare> {
+    return this.request(`/notes/folders/${folderId}/shares/${shareId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permission }),
+    });
+  }
+
+  async deleteFolderShare(folderId: string, shareId: string): Promise<{ success: boolean }> {
+    return this.request(`/notes/folders/${folderId}/shares/${shareId}`, { method: 'DELETE' });
+  }
+
   // Entity search for note references. Passing campaignId scopes results to
   // that campaign's own characters/items plus admin-authored library
   // content only - never another GM's personal library or another

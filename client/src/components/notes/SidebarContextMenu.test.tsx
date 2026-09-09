@@ -7,7 +7,7 @@
  * halting it both menus fire at once - which is exactly the sort of thing
  * that looks fine in the code and is a mess on screen.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import {
@@ -17,6 +17,11 @@ import {
   ContextMenuItem,
 } from "@/components/ui/context-menu";
 
+// The rows are drag sources as well as right-click targets, and the outer
+// trigger wraps all of them. A trigger that swallowed the drag, or a Slot
+// that dropped `draggable` while merging props, would break moving notes
+// between folders and dropping one into a book - neither of which shows up
+// in a screenshot.
 function Sidebar() {
   return (
     <ContextMenu>
@@ -24,7 +29,17 @@ function Sidebar() {
         <div data-testid="scroller">
           <ContextMenu>
             <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
-              <div data-testid="row">A folder</div>
+              <div
+                data-testid="row"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/note-id", "n1");
+                  e.dataTransfer.effectAllowed = "move";
+                  e.stopPropagation();
+                }}
+              >
+                A note
+              </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem data-testid="row-item">Rename folder</ContextMenuItem>
@@ -61,5 +76,21 @@ describe("the notes sidebar's right-click menus", () => {
     fireEvent.contextMenu(screen.getByTestId("row"));
     expect(screen.getByTestId("row-item")).toBeTruthy();
     expect(screen.queryByTestId("root-item")).toBeNull();
+  });
+});
+
+describe("the notes sidebar's rows as drag sources", () => {
+  it("keeps a row draggable inside both context menus", () => {
+    render(<Sidebar />);
+    expect(screen.getByTestId("row").getAttribute("draggable")).toBe("true");
+  });
+
+  it("still hands over the note id when a row is dragged", () => {
+    render(<Sidebar />);
+    const setData = vi.fn();
+    fireEvent.dragStart(screen.getByTestId("row"), {
+      dataTransfer: { setData, types: [] },
+    });
+    expect(setData).toHaveBeenCalledWith("application/note-id", "n1");
   });
 });

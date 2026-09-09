@@ -5,9 +5,9 @@
  * window is an ordinary notes panel - so what's worth pinning is the window
  * bookkeeping, which is the part that would quietly go wrong.
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import React from "react";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // The panel itself is exercised elsewhere and drags in websockets, presence
@@ -46,6 +46,9 @@ function mount(initialNoteId?: string | null, onClose = () => {}) {
   );
 }
 
+// The workspace remembers its layout per campaign, so each test starts from
+// a clean slate rather than inheriting the previous one's windows.
+beforeEach(() => localStorage.clear());
 afterEach(() => { cleanup(); openFloating.current = null; });
 
 describe("the notes workspace", () => {
@@ -103,6 +106,33 @@ describe("the notes workspace", () => {
     const b = screen.getByTestId("workspace-window-n2") as HTMLElement;
     expect(a.style.top).toBe(b.style.top);
     expect(parseInt(b.style.left, 10)).toBeGreaterThan(parseInt(a.style.left, 10));
+  });
+
+  it("comes back the way it was left", () => {
+    const first = mount(null);
+    act(() => { openFloating.current?.("n1"); });
+    act(() => { openFloating.current?.("n2"); });
+    fireEvent.click(screen.getByTestId("button-workspace-split"));
+    const left = (screen.getByTestId("workspace-window-n1") as HTMLElement).style.left;
+    first.unmount();
+
+    mount(null);
+    expect(screen.getByTestId("workspace-window-n1")).toBeTruthy();
+    expect(screen.getByTestId("workspace-window-n2")).toBeTruthy();
+    expect((screen.getByTestId("workspace-window-n1") as HTMLElement).style.left).toBe(left);
+  });
+
+  it("forgets a window whose note is gone", async () => {
+    localStorage.setItem("aa-notes-workspace-c1", JSON.stringify([
+      { noteId: "n1", x: 0, y: 0, w: 400, h: 300, z: 1 },
+      { noteId: "deleted", x: 0, y: 0, w: 400, h: 300, z: 2 },
+    ]));
+    mount(null);
+    // Both are up until the note list arrives; the missing one goes then,
+    // rather than the saved layout being thrown away while it loads.
+    expect(screen.getByTestId("workspace-window-deleted")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId("workspace-window-deleted")).toBeNull());
+    expect(screen.getByTestId("workspace-window-n1")).toBeTruthy();
   });
 
   it("leaves the workspace on Escape", () => {

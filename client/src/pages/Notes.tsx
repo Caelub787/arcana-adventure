@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useLocation, useParams } from "wouter";
+import { useAppBack } from "@/lib/appHistory";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, gameWs, globalWs, NotePresence, GoogleDocInfo } from "@/lib/api";
@@ -521,6 +522,7 @@ function FolderTreeItem({
 }
 
 export default function Notes() {
+  const goBack = useAppBack("/");
   const [, setLocation] = useLocation();
   const params = useParams<{ id?: string }>();
   const { user } = useAuth();
@@ -1831,7 +1833,7 @@ export default function Notes() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setLocation("/")}
+            onClick={goBack}
             className="h-7 w-7 text-stone-400 hover:text-white shrink-0"
             data-testid="button-back-home"
           >

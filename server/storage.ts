@@ -104,7 +104,7 @@ import {
   spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, asc, desc, sql, inArray, or, isNull, ne } from "drizzle-orm";
+import { eq, and, asc, desc, sql, inArray, or, isNull, isNotNull, ne } from "drizzle-orm";
 
 // Shared helper: builds an owner-scope WHERE clause for personal-library tables.
 // - personal=true  → only rows where ownerUserId = scope[0] (strictly personal)
@@ -615,6 +615,7 @@ export interface IStorage {
 
   // Note Share operations
   createNoteShare(share: InsertNoteShare): Promise<NoteShare>;
+  getFolderShares(folderId: string): Promise<NoteShare[]>;
   getNoteShares(noteId: string): Promise<NoteShare[]>;
   getFolderShares(folderId: string): Promise<NoteShare[]>;
   getSharedWithUser(userId: string): Promise<NoteShare[]>;
@@ -4701,7 +4702,29 @@ export class DatabaseStorage implements IStorage {
       .from(noteShares)
       .innerJoin(notes, eq(noteShares.noteId, notes.id))
       .where(eq(noteShares.sharedWithId, userId));
-    return shares.map(s => s.notes);
+    const byId = new Map<string, Note>(shares.map((s) => [s.notes.id, s.notes]));
+
+    // Folder shares name no note, so the join above drops them entirely -
+    // which meant a shared folder appeared with nothing in it. Pull in every
+    // note under a shared folder, subfolders included.
+    const folderRows = await db.select({ folderId: noteShares.folderId })
+      .from(noteShares)
+      .where(and(eq(noteShares.sharedWithId, userId), isNotNull(noteShares.folderId)));
+    const rootIds = folderRows.map((r) => r.folderId!).filter(Boolean);
+    if (rootIds.length > 0) {
+      const scope = new Set<string>();
+      let frontier = rootIds;
+      while (frontier.length > 0) {
+        for (const id of frontier) scope.add(id);
+        const children = await db.select({ id: noteFolders.id })
+          .from(noteFolders)
+          .where(inArray(noteFolders.parentId, frontier));
+        frontier = children.map((c) => c.id).filter((id) => !scope.has(id));
+      }
+      const inScope = await db.select().from(notes).where(inArray(notes.folderId, Array.from(scope)));
+      for (const n of inScope) byId.set(n.id, n);
+    }
+    return Array.from(byId.values());
   }
 
   // Every note that exists in a campaign, regardless of owner - the raw
@@ -4873,17 +4896,25 @@ export class DatabaseStorage implements IStorage {
     if (share) {
       return { canAccess: true, permission: share.permission };
     }
-    if (note.folderId) {
+    // A folder share covers everything inside it, however deep. This used to
+    // check the note's own folder and stop, so sharing a folder shared the
+    // notes sitting directly in it and silently missed every subfolder.
+    let folderId: string | null | undefined = note.folderId;
+    const seen = new Set<string>();
+    while (folderId && !seen.has(folderId)) {
+      seen.add(folderId);
       const [folderShare] = await db.select()
         .from(noteShares)
         .where(and(
-          eq(noteShares.folderId, note.folderId),
+          eq(noteShares.folderId, folderId),
           eq(noteShares.sharedWithId, userId)
         ))
         .limit(1);
       if (folderShare) {
         return { canAccess: true, permission: folderShare.permission };
       }
+      const parent = await this.getNoteFolder(folderId);
+      folderId = parent?.parentId ?? null;
     }
     return { canAccess: false, permission: null };
   }

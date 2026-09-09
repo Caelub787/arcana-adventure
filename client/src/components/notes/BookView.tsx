@@ -122,9 +122,19 @@ export function BookView({
   // Drag a note out of the sidebar, or a character off the roster, onto the
   // book. Both already set these types for their own drop targets.
   const dropTypes = ["application/note-id", "application/character-id"];
+  // Chrome only treats an element as a drop target if BOTH dragenter and
+  // dragover call preventDefault, and it only offers the types (not the data)
+  // until the drop itself - so the check here is on `types`, and the answer to
+  // "is this something we take" has to be the same in both handlers.
+  const acceptsDrag = (e: React.DragEvent) =>
+    canEdit && dropTypes.some((t) => e.dataTransfer.types.includes(t));
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!acceptsDrag(e)) return;
+    e.preventDefault();
+    setDropActive(true);
+  };
   const handleDragOver = (e: React.DragEvent) => {
-    if (!canEdit) return;
-    if (!dropTypes.some((t) => e.dataTransfer.types.includes(t))) return;
+    if (!acceptsDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropActive(true);
@@ -133,10 +143,10 @@ export function BookView({
     if (!canEdit) return;
     const noteDrop = e.dataTransfer.getData("application/note-id");
     const charDrop = e.dataTransfer.getData("application/character-id");
+    setDropActive(false);
     if (!noteDrop && !charDrop) return;
     e.preventDefault();
     e.stopPropagation();
-    setDropActive(false);
     addChapter.mutate(noteDrop
       ? { sourceType: "note", sourceId: noteDrop }
       : { sourceType: "character", sourceId: charDrop });
@@ -165,8 +175,9 @@ export function BookView({
   return (
     <div
       className="flex-1 min-h-0 flex flex-col overflow-hidden"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
-      onDragLeave={() => setDropActive(false)}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropActive(false); }}
       onDrop={handleDrop}
       data-testid="book-view"
     >
@@ -209,6 +220,9 @@ export function BookView({
                   key={c.id}
                   draggable={canEdit}
                   onDragStart={() => { dragChapterId.current = c.id; }}
+                  // Only a chapter being reordered is handled here; a note or
+                  // character dragged in from outside falls through to the
+                  // book's own drop target rather than dying on a row.
                   onDragOver={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); } }}
                   onDrop={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); dropOnChapter(c.id); } }}
                   onClick={() => document.getElementById(`book-chapter-${c.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}

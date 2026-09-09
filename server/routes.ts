@@ -17633,9 +17633,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (folder?.parentId) walkUpFrom(folder.parentId);
         }
 
+        // Sharing a folder shares what is in it, so everything nested under a
+        // shared folder is visible too - not just the folder itself.
+        const shareScope = sharedFolderScope(
+          allFolders as any,
+          new Set(Array.from(sharedFolderIds).filter(Boolean) as string[]),
+        );
         const visible = allFolders.filter((f: any) =>
           f.userId === req.session.userId ||
           sharedFolderIds.has(f.id) ||
+          shareScope.has(f.id) ||
           ancestorFolderIds.has(f.id) ||
           knowledgeVisibilityGrantsAccess(f.visibility, f.visiblePlayerIds, req.session.userId!, role)
         );
@@ -17646,6 +17653,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to get note folders:", e);
       res.status(500).json({ error: "Failed to get note folders" });
+    }
+  });
+
+  // Folders are shareable the same way notes are, and sharing one shares
+  // everything inside it - subfolders and all. This turns the viewer's share
+  // rows into the full set of folder ids they can reach that way.
+  const sharedFolderScope = (
+    folders: Array<{ id: string; parentId: string | null }>,
+    directlyShared: Set<string>,
+  ): Set<string> => {
+    if (directlyShared.size === 0) return new Set();
+    const parentOf = new Map(folders.map((f) => [f.id, f.parentId]));
+    const scope = new Set<string>();
+    for (const f of folders) {
+      let cursor: string | null | undefined = f.id;
+      const walked: string[] = [];
+      while (cursor && !walked.includes(cursor)) {
+        walked.push(cursor);
+        if (directlyShared.has(cursor)) {
+          for (const id of walked) scope.add(id);
+          break;
+        }
+        cursor = parentOf.get(cursor) ?? null;
+      }
+    }
+    return scope;
+  };
+
+  const requireFolderOwner = async (userId: string, folderId: string) => {
+    const folder = await storage.getNoteFolder(folderId);
+    if (!folder) return { error: "Folder not found", status: 404 as const, folder: null };
+    if (folder.userId !== userId) return { error: "Only the owner can manage this folder's shares", status: 403 as const, folder: null };
+    return { error: null, status: 200 as const, folder };
+  };
+
+  app.get("/api/notes/folders/:id/shares", requireAuth, async (req, res) => {
+    try {
+      const check = await requireFolderOwner(req.session.userId!, req.params.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+      res.json(await storage.getFolderShares(req.params.id));
+    } catch (e) {
+      console.error("Failed to get folder shares:", e);
+      res.status(500).json({ error: "Failed to get folder shares" });
+    }
+  });
+
+  app.post("/api/notes/folders/:id/shares", requireAuth, async (req, res) => {
+    try {
+      const check = await requireFolderOwner(req.session.userId!, req.params.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+      const { friendId, permission } = req.body as { friendId?: string; permission?: string };
+      if (!friendId) return res.status(400).json({ error: "friendId is required" });
+
+      // Same rule notes follow: friends, or people in the same campaign.
+      const areFriends = await storage.areFriends(req.session.userId!, friendId);
+      let isCampaignMember = false;
+      if (check.folder!.campaignId) {
+        const members = await storage.getCampaignMembers(check.folder!.campaignId);
+        isCampaignMember = members.some((m: any) => m.userId === friendId);
+      }
+      if (!areFriends && !isCampaignMember) {
+        return res.status(400).json({ error: "Can only share with friends or campaign members" });
+      }
+
+      const share = await storage.createNoteShare({
+        folderId: req.params.id,
+        ownerId: req.session.userId!,
+        sharedWithId: friendId,
+        permission: permission || 'view',
+      } as any);
+      sendToUser(friendId, { type: 'note_folder_changed', campaignId: check.folder!.campaignId });
+      res.status(201).json(share);
+    } catch (e) {
+      console.error("Failed to share folder:", e);
+      res.status(500).json({ error: "Failed to share folder" });
+    }
+  });
+
+  app.put("/api/notes/folders/:id/shares/:shareId", requireAuth, async (req, res) => {
+    try {
+      const check = await requireFolderOwner(req.session.userId!, req.params.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+      const { permission } = req.body as { permission?: string };
+      if (!permission) return res.status(400).json({ error: "permission is required" });
+      res.json(await storage.updateNoteShare(req.params.shareId, permission));
+    } catch (e) {
+      console.error("Failed to update folder share:", e);
+      res.status(500).json({ error: "Failed to update folder share" });
+    }
+  });
+
+  app.delete("/api/notes/folders/:id/shares/:shareId", requireAuth, async (req, res) => {
+    try {
+      const check = await requireFolderOwner(req.session.userId!, req.params.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+      const shares = await storage.getFolderShares(req.params.id);
+      const share = shares.find((s) => s.id === req.params.shareId);
+      await storage.deleteNoteShare(req.params.shareId);
+      if (share) sendToUser(share.sharedWithId, { type: 'note_folder_changed', campaignId: check.folder!.campaignId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete folder share:", e);
+      res.status(500).json({ error: "Failed to delete folder share" });
     }
   });
 
@@ -17762,11 +17872,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const allNotes = await storage.getCampaignNotesRaw(campaignId);
         const shared = await storage.getSharedWithUser(req.session.userId!);
         const sharedNoteIds = new Set(shared.filter(s => s.noteId).map(s => s.noteId));
+        // A shared folder brings its notes with it, at any depth. Without this
+        // a folder could be shared and arrive looking empty.
+        const campaignFolders = await storage.getCampaignNoteFolders(campaignId);
+        const shareScope = sharedFolderScope(
+          campaignFolders as any,
+          new Set(shared.filter(s => s.folderId).map(s => s.folderId as string)),
+        );
         const visible = allNotes
           .filter((n: any) =>
             (!folderId || n.folderId === folderId) && (
               n.userId === req.session.userId ||
               sharedNoteIds.has(n.id) ||
+              (n.folderId && shareScope.has(n.folderId)) ||
               knowledgeVisibilityGrantsAccess(n.visibility, n.visiblePlayerIds, req.session.userId!, role)
             )
           )

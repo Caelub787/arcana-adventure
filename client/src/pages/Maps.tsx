@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useLocation } from "wouter";
+import { useAppBack } from "@/lib/appHistory";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -30,6 +31,7 @@ const BATTLE_SIZE_PRESETS = [
 ];
 
 export default function Maps() {
+  const goBack = useAppBack("/");
   const [, setLocation] = useLocation();
   const { isAdmin } = useAuth();
   const { toast } = useToast();
@@ -99,7 +101,7 @@ export default function Maps() {
       <div className="relative z-10 w-full p-6">
         <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="text-stone-400 hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="icon" onClick={goBack} className="text-stone-400 hover:text-white hover:bg-white/10">
               <ArrowLeft />
             </Button>
             <h1 className="font-display text-4xl font-bold text-amber-500">Maps</h1>

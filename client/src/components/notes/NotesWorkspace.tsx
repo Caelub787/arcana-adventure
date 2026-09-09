@@ -13,6 +13,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
+import { bringFloatingPanelToFront } from "@/components/ui/floating-panel";
+import { useOverlayHistory } from "@/lib/appHistory";
 import { Columns3, Grid2x2, Minimize2, Plus, X } from "lucide-react";
 
 interface WorkspaceWindow {
@@ -43,7 +45,34 @@ export function NotesWorkspace({
   /** The note the side panel was showing, so opening this keeps your place. */
   initialNoteId?: string | null;
 }) {
-  const [windows, setWindows] = useState<WorkspaceWindow[]>([]);
+  // The workspace takes its z from the same counter every panel and dialog
+  // draws from, rather than a number of its own. A hardcoded one sat above
+  // the dialog layer, so the Add-chapter picker, the share dialog and the
+  // folder dialog all opened behind the workspace and read as dead buttons.
+  const [baseZ] = useState(() => bringFloatingPanelToFront("notes-workspace", undefined, true));
+
+  // The workspace comes back the way it was left: which notes were open, and
+  // where each one sat. Per campaign, per browser - it is how you arranged
+  // your own screen, not something the campaign shares.
+  const layoutKey = `aa-notes-workspace-${campaignId}`;
+  const [windows, setWindows] = useState<WorkspaceWindow[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(layoutKey) || "[]");
+      if (!Array.isArray(saved)) return [];
+      return saved
+        .filter((w: any) => w && typeof w.noteId === "string")
+        .map((w: any, i: number) => ({
+          noteId: w.noteId,
+          x: Number(w.x) || 0,
+          y: Number(w.y) || 0,
+          w: Math.max(MIN_W, Number(w.w) || 480),
+          h: Math.max(MIN_H, Number(w.h) || 420),
+          z: Number(w.z) || i + 1,
+        }));
+    } catch {
+      return [];
+    }
+  });
   const topZ = useRef(1);
   const areaRef = useRef<HTMLDivElement>(null);
   const drag = useRef<
@@ -87,14 +116,43 @@ export function NotesWorkspace({
     });
   }, []);
 
+  useEffect(() => {
+    topZ.current = windows.reduce((m, w) => Math.max(m, w.z), 1);
+    // Only on the first render: from then on openWindow keeps it moving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Open on whatever the side panel was showing, so the button feels like
-  // "give this more room" rather than "start again".
+  // "give this more room" rather than "start again". A remembered layout is
+  // the stronger claim, so a note already in it is only brought forward.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
     if (initialNoteId) openWindow(initialNoteId);
   }, [initialNoteId, openWindow]);
+
+  // Written on every change rather than on close, so a tab closed or reloaded
+  // mid-session still comes back to the same arrangement.
+  useEffect(() => {
+    try {
+      localStorage.setItem(layoutKey, JSON.stringify(windows));
+    } catch {
+      // A browser with storage blocked just doesn't remember; nothing here
+      // is worth failing the workspace over.
+    }
+  }, [windows, layoutKey]);
+
+  // A note that has since been deleted (or that this viewer lost access to)
+  // would be a window that can never render. Drop it once the list is known.
+  useEffect(() => {
+    if (notes.length === 0) return;
+    setWindows((prev) => {
+      const known = new Set(notes.map((n) => n.id));
+      const kept = prev.filter((w) => known.has(w.noteId));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [notes]);
 
   const closeWindow = (noteId: string) =>
     setWindows((prev) => prev.filter((w) => w.noteId !== noteId));
@@ -175,6 +233,11 @@ export function NotesWorkspace({
     };
   };
 
+  // Back - the browser's, or the one on the side of a mouse - closes the
+  // workspace rather than leaving the campaign. It is a whole screen, so it
+  // ought to behave like a page even though it isn't one.
+  useOverlayHistory(true, onClose, "notes-workspace");
+
   // Escape leaves the workspace, the same as the button - but not while a
   // dialog inside it is open, since that swallows the key first.
   useEffect(() => {
@@ -186,7 +249,7 @@ export function NotesWorkspace({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[11000] bg-stone-950 flex flex-col" data-testid="notes-workspace">
+    <div className="fixed inset-0 bg-stone-950 flex flex-col" style={{ zIndex: baseZ }} data-testid="notes-workspace">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-800 shrink-0">
         <span className="font-display text-sm font-bold" style={{ color: "var(--ca-gilt-bright)" }}>
           Notes
