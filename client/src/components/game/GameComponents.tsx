@@ -11399,14 +11399,21 @@ export function rollsForTracked(
   );
 }
 
-export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, onOpenCharacterSheet }: {
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, orientation = 'OGPT', onOpenCharacterSheet }: {
   members: any[];
   characters: any[];
   campaignSystem?: string;
   rollFeed: PinnedRollFeedEntry[];
   isMobile?: boolean;
+  // 'OGPT' ("OG Player Tracker") is the original top-of-screen horizontal
+  // layout - kept completely untouched so it's trivially reversible by
+  // name. 'vertical-left' is an experimental desktop-only alternative
+  // stacked under the left toolbar with the dice tray opening sideways.
+  // Mobile always uses its own horizontal-scroll layout regardless.
+  orientation?: 'OGPT' | 'vertical-left';
   onOpenCharacterSheet?: (character: any) => void;
 }) {
+  const vertical = orientation === 'vertical-left' && !isMobile;
   // Mobile only has room for a couple of cards at once, so the row scrolls
   // horizontally instead of shrinking or wrapping. When a roll lands for a
   // chip that's currently scrolled out of view, the edge of the tracker on
@@ -11471,6 +11478,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             rolls={rolls}
             accentColor={characterTrackerColor(character, member)}
             compact={!!isMobile}
+            trayOrientation={vertical ? 'right' : 'below'}
             onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
             onNewRoll={handleNewRoll}
           />
@@ -11489,6 +11497,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             rolls={rolls}
             accentColor={characterTrackerColor(character)}
             compact={!!isMobile}
+            trayOrientation={vertical ? 'right' : 'below'}
             onOpenSheet={() => onOpenCharacterSheet?.(character)}
             onNewRoll={handleNewRoll}
           />
@@ -11498,7 +11507,11 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 
   if (!isMobile) {
-    return <div className="flex items-start gap-3 pointer-events-auto">{chips}</div>;
+    return (
+      <div className={vertical ? 'flex flex-col items-start gap-3 pointer-events-auto' : 'flex items-start gap-3 pointer-events-auto'}>
+        {chips}
+      </div>
+    );
   }
 
   return (
@@ -11533,7 +11546,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, compact = false, onOpenSheet, onNewRoll }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, compact = false, trayOrientation = 'below', onOpenSheet, onNewRoll }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11543,6 +11556,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   accentColor?: string;
   // Mobile: half-width card and roll tray, full height and full-size text.
   compact?: boolean;
+  // Where the roll popup opens relative to the card - 'below' (OGPT) or
+  // 'right' (the experimental vertical-left tracker, where chips stack
+  // top-to-bottom so the tray needs to open sideways instead).
+  trayOrientation?: 'below' | 'right';
   onOpenSheet?: () => void;
   // Called whenever a fresh roll lands, with this chip's own element and
   // accent color - lets the wrapping PinnedRosterBar (mobile only) detect
@@ -11839,23 +11856,27 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
        )}
       </div>
 
-      {/* Clipped to the revealed height so the card looks like it's sliding
-          out from underneath the tracker card above, instead of fading in
-          in place. */}
+      {/* Clipped to the revealed size so the card looks like it's sliding
+          out from underneath (OGPT) or out from beside (vertical-left) the
+          tracker card, instead of fading in in place. */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 top-full overflow-hidden z-10 transition-[height] duration-300 ease-out"
-        style={{
-          width: trayWidth,
-          height: visible ? trayHeight + 8 : 0,
-          pointerEvents: visible ? 'auto' : 'none',
-        }}
+        className={
+          trayOrientation === 'right'
+            ? 'absolute left-full top-1/2 -translate-y-1/2 overflow-hidden z-10 transition-[width] duration-300 ease-out'
+            : 'absolute left-1/2 -translate-x-1/2 top-full overflow-hidden z-10 transition-[height] duration-300 ease-out'
+        }
+        style={
+          trayOrientation === 'right'
+            ? { height: trayHeight, width: visible ? trayWidth + 8 : 0, pointerEvents: visible ? 'auto' : 'none' }
+            : { width: trayWidth, height: visible ? trayHeight + 8 : 0, pointerEvents: visible ? 'auto' : 'none' }
+        }
       >
         <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); rolls.length > 0 && setHistoryOpen(true); }}
-              className="relative mt-2 rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200"
+              className={`relative rounded-lg border shadow-lg text-center flex flex-col items-center justify-center gap-0.5 px-1 transition-[box-shadow] duration-200 ${trayOrientation === 'right' ? 'ml-2' : 'mt-2'}`}
               style={{
                 width: trayWidth,
                 height: trayHeight,

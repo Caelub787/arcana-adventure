@@ -6639,6 +6639,13 @@ function RulerInput({ value, onChange, ...rest }: { value: number; onChange: (v:
   );
 }
 
+// Experimental: the pinned player tracker's layout. 'OGPT' ("OG Player
+// Tracker") is the original top-of-screen horizontal layout - left fully
+// intact below - and 'vertical-left' is a new left-side vertical strip
+// being tried. Flip this one constant back to 'OGPT' to revert; nothing
+// else needs to change since the old code path is untouched.
+const PLAYER_TRACKER_LAYOUT: 'OGPT' | 'vertical-left' = 'vertical-left';
+
 export default function Campaign() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -10787,21 +10794,43 @@ export default function Campaign() {
           )}
         </div>
 
-        {/* Center - GM-pinned party tracker (portraits, wound/energy bars, live roll totals) - always centered on screen */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-auto">
-          <PinnedRosterBar
-            members={(members as any[]) || []}
-            characters={(characters as any[]) || []}
-            campaignSystem={(campaign as any)?.system}
-            rollFeed={rollFeed}
-            isMobile={isMobile}
-            onOpenCharacterSheet={(char: any) => {
-              if (!char?.id) return;
-              setCharacterSheetDefaultTab("overview");
-              openCharacterSheet(char);
-            }}
-          />
-        </div>
+        {/* GM-pinned party tracker (portraits, wound/energy bars, live roll
+            totals). OGPT: centered top of screen. vertical-left (desktop
+            only - see PLAYER_TRACKER_LAYOUT): stacked under the left
+            toolbar instead, dice tray opening to the right. */}
+        {PLAYER_TRACKER_LAYOUT === 'vertical-left' && !isMobile ? (
+          <div className="absolute pointer-events-auto" style={{ left: '16px', top: `${selectionToolsTop + 48}px` }}>
+            <PinnedRosterBar
+              members={(members as any[]) || []}
+              characters={(characters as any[]) || []}
+              campaignSystem={(campaign as any)?.system}
+              rollFeed={rollFeed}
+              isMobile={isMobile}
+              orientation="vertical-left"
+              onOpenCharacterSheet={(char: any) => {
+                if (!char?.id) return;
+                setCharacterSheetDefaultTab("overview");
+                openCharacterSheet(char);
+              }}
+            />
+          </div>
+        ) : (
+          <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-auto">
+            <PinnedRosterBar
+              members={(members as any[]) || []}
+              characters={(characters as any[]) || []}
+              campaignSystem={(campaign as any)?.system}
+              rollFeed={rollFeed}
+              isMobile={isMobile}
+              orientation="OGPT"
+              onOpenCharacterSheet={(char: any) => {
+                if (!char?.id) return;
+                setCharacterSheetDefaultTab("overview");
+                openCharacterSheet(char);
+              }}
+            />
+          </div>
+        )}
 
         {/* Right Side - panel tab icons. On desktop, a horizontal row pinned
             to the top-right corner - the side panel opens BELOW this row
