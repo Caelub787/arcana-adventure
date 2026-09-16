@@ -10799,10 +10799,19 @@ export default function Campaign() {
             only - see PLAYER_TRACKER_LAYOUT): stacked under the left
             toolbar instead, dice tray opening to the right. */}
         {PLAYER_TRACKER_LAYOUT === 'vertical-left' && !isMobile ? (
-          // selectionToolsTop is where the Select/Ruler button column starts;
-          // that column is exactly 2 buttons tall (40px + 8px gap + 40px =
-          // 88px), so this needs to clear all of that, not half of it.
-          <div className="absolute pointer-events-auto" style={{ left: '16px', top: `${selectionToolsTop + 88 + 16}px` }}>
+          // "Below the left toolbar" means below ALL of it, not just the
+          // Select/Ruler pair - BattleMap stacks a second column right
+          // under those (camera controls, token options, and up to three
+          // more conditional buttons: player-viewport toggle for a GM,
+          // notes, clear-placed-items), each the same 40px + 8px gap. That
+          // stack's own button count depends on role/notes/scene state that
+          // Campaign.tsx can't see from here, so this clears the worst
+          // case (5 buttons) rather than guess a live count - occasionally
+          // more gap than strictly needed, never an overlap.
+          <div
+            className="absolute pointer-events-auto"
+            style={{ left: '16px', top: `${selectionToolsTop + 88 + 8 + (5 * 40 + 4 * 8) + 16}px` }}
+          >
             <PinnedRosterBar
               members={(members as any[]) || []}
               characters={(characters as any[]) || []}
