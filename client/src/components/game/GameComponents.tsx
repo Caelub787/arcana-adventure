@@ -18414,9 +18414,13 @@ function CAAttrsAndSkillsTab({
   const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillPressFiredRef = React.useRef(false);
 
-  const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
-    // Rolling and editing don't collide: these ride on the skill's NAME, and
-    // the double-click that opens an editor rides on its VALUE.
+  const skillPressHandlers = (name: string, mod: number, dieOverride: string, fieldKey: string, rawValue: number) => {
+    // A tap rolls; a double-click edits the base mod (same editor the
+    // value's own double-click already opens - this just makes the bigger
+    // name target reach it too); a press-and-hold (mouse or touch, via
+    // Pointer Events so both share one code path) opens the roll panel for
+    // extra modifiers / advantage-disadvantage. onTouchMove cancelling the
+    // hold timer is what keeps a touch-scroll from triggering it.
     return {
       onClick: () => {
         if (skillPressFiredRef.current) {
@@ -18436,9 +18440,9 @@ function CAAttrsAndSkillsTab({
           clearTimeout(skillClickTimerRef.current);
           skillClickTimerRef.current = null;
         }
-        openRollPanel(name, mod, 'skill', dieOverride);
+        caEdit.open(fieldKey, rawValue);
       },
-      onTouchStart: () => {
+      onPointerDown: () => {
         skillPressFiredRef.current = false;
         if (skillPressTimerRef.current) clearTimeout(skillPressTimerRef.current);
         skillPressTimerRef.current = setTimeout(() => {
@@ -18450,19 +18454,25 @@ function CAAttrsAndSkillsTab({
           openRollPanel(name, mod, 'skill', dieOverride);
         }, 500);
       },
-      onTouchEnd: () => {
+      onPointerUp: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onPointerCancel: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onPointerLeave: () => {
         if (skillPressTimerRef.current) {
           clearTimeout(skillPressTimerRef.current);
           skillPressTimerRef.current = null;
         }
       },
       onTouchMove: () => {
-        if (skillPressTimerRef.current) {
-          clearTimeout(skillPressTimerRef.current);
-          skillPressTimerRef.current = null;
-        }
-      },
-      onTouchCancel: () => {
         if (skillPressTimerRef.current) {
           clearTimeout(skillPressTimerRef.current);
           skillPressTimerRef.current = null;
@@ -18625,7 +18635,7 @@ function CAAttrsAndSkillsTab({
                     type="button"
                     className="flex-1 text-left group"
                     title={skill.description}
-                    {...skillPressHandlers(skill.name, skillVal, dieType)}
+                    {...skillPressHandlers(skill.name, skillVal, dieType, `skill:${skill.key}`, rawSkillVal)}
                     data-testid={`button-roll-ca-skill-${skill.key}`}
                   >
                     <div className="text-xs">
