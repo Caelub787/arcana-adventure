@@ -1406,6 +1406,25 @@ class ApiClient {
     });
   }
 
+  // C.A. only: Beast Orb absorption into the character's Ability page.
+  async getAbsorbedItems(characterId: string): Promise<Item[]> {
+    return this.request(`/characters/${characterId}/absorbed-items`);
+  }
+
+  async absorbItem(characterId: string, itemId: string): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${itemId}/absorb`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async unabsorbItem(characterId: string, itemId: string): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${itemId}/unabsorb`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
   // GM-only: reverse a permanent V3 skill-boost (from skill scrolls). action
   // 'decrement' lowers the boost by `amount` (default 1, removed at <= 0);
   // 'clear' removes the entry entirely. AA V3 only.

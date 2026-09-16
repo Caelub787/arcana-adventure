@@ -20598,6 +20598,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     queryFn: () => api.getItems(character.id),
     enabled: !!character.id
   });
+  // C.A. only: Beast Orbs currently absorbed into the Ability tab (excluded
+  // from `items` above, which is the normal inventory view).
+  const { data: absorbedItems = [] } = useQuery({
+    queryKey: ['absorbed-items', character.id],
+    queryFn: () => api.getAbsorbedItems(character.id),
+    enabled: !!character.id && isCA,
+  });
 
   // AA V3 class visibility gating (client-side UX; server is authoritative).
   // A class is "locked" when its requirement isn't met. Locked classes the
@@ -20867,6 +20874,30 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       label: caAbilityRollLabel(character, rollEntry),
     });
   }, [character, campaignSystem]);
+
+  // An absorbed Beast Orb's rolls are owned by the item (unchanged from
+  // before it was absorbed) - same generic execution, labeled with the
+  // orb's own name rather than "Ability".
+  const executeAbsorbedOrbRoll = useCallback((rollEntry: any, orb: any) => {
+    executeCharacterRollEntry(rollEntry, {
+      character,
+      campaignSystem,
+      label: orb?.name || 'Beast Orb',
+    });
+  }, [character, campaignSystem]);
+
+  const [absorbedOrbSearch, setAbsorbedOrbSearch] = useState('');
+  const unabsorbMutation = useMutation({
+    mutationFn: (itemId: string) => api.unabsorbItem(character.id, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['absorbed-items', character.id] });
+      toast({ title: 'Removed', description: 'The orb returned to inventory.' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err?.message || 'Failed to remove orb', variant: 'destructive' });
+    },
+  });
 
   // Save to admin library mutation (admin only)
   const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
@@ -24835,6 +24866,73 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     onExecuteRoll={(roll: any) => executeAbilityRoll(roll)}
                   />
                 </CaSection>
+
+                {absorbedItems.length > 0 && (
+                  <>
+                    <CaDivider />
+                    <CaSection
+                      icon={<Package className="h-3.5 w-3.5" />}
+                      title="Absorbed"
+                      testId="card-ca-ability-absorbed"
+                    >
+                      <div className="space-y-2">
+                        {absorbedItems.length > 3 && (
+                          <Input
+                            placeholder="Search absorbed orbs..."
+                            value={absorbedOrbSearch}
+                            onChange={(e) => setAbsorbedOrbSearch(e.target.value)}
+                            className="bg-stone-900 border-stone-700 h-7 text-xs"
+                            data-testid="input-absorbed-orb-search"
+                          />
+                        )}
+                        {(absorbedItems as any[])
+                          .filter((orb) => orb.name?.toLowerCase().includes(absorbedOrbSearch.trim().toLowerCase()))
+                          .map((orb) => (
+                            <div
+                              key={orb.id}
+                              className="rounded border border-amber-800/40 bg-stone-900/50 p-2 space-y-2"
+                              data-testid={`row-absorbed-orb-${orb.id}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-sm text-amber-300 font-medium hover:underline text-left truncate"
+                                  onClick={() => { setSelectedItem(orb); setShowItemDetail(true); }}
+                                  title="Open this orb's info & notes"
+                                  data-testid={`button-absorbed-orb-info-${orb.id}`}
+                                >
+                                  {orb.name}
+                                </button>
+                                {(isOwner || isGM) && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 text-xs text-stone-400 hover:text-red-400 shrink-0"
+                                    onClick={() => unabsorbMutation.mutate(orb.id)}
+                                    disabled={unabsorbMutation.isPending}
+                                    data-testid={`button-unabsorb-${orb.id}`}
+                                  >
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+                              <RollEntriesEditor
+                                ownerType="item"
+                                ownerId={orb.id}
+                                canEdit={isGM}
+                                campaignSystem={campaignSystem}
+                                characterCustomSkills={characterCustomSkills as any[]}
+                                characterEnergy={liveCharacter?.energy ?? 0}
+                                characterMana={liveCharacter?.mana ?? 0}
+                                characterItems={items as any[]}
+                                onExecuteRoll={(roll: any) => executeAbsorbedOrbRoll(roll, orb)}
+                              />
+                            </div>
+                          ))}
+                      </div>
+                    </CaSection>
+                  </>
+                )}
               </div>
             </CaSheetFrame>
           </TabsContent>
@@ -24935,20 +25033,23 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
                       {isAAV3 && <SelectItem value="equipped">Equipped</SelectItem>}
-                      <SelectItem value="weapon">Weapons</SelectItem>
                       <SelectItem value="ammunition">Ammunition</SelectItem>
                       <SelectItem value="armor">Armor</SelectItem>
+                      {campaignSystem === 'ca' && (
+                        <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                      )}
                       <SelectItem value="consumable">Consumables</SelectItem>
-                      <SelectItem value="utility">Utilities</SelectItem>
                       <SelectItem value="container">Containers</SelectItem>
-                      <SelectItem value="currency">Currency</SelectItem>
-                      <SelectItem value="spellbook">Spellbooks</SelectItem>
-                      <SelectItem value="scroll">Scrolls</SelectItem>
-                      <SelectItem value="rune">Runes</SelectItem>
                       {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                         <SelectItem value="crafter">Crafter</SelectItem>
                       )}
+                      <SelectItem value="currency">Currency</SelectItem>
                       <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
+                      <SelectItem value="rune">Runes</SelectItem>
+                      <SelectItem value="scroll">Scrolls</SelectItem>
+                      <SelectItem value="spellbook">Spellbooks</SelectItem>
+                      <SelectItem value="utility">Utilities</SelectItem>
+                      <SelectItem value="weapon">Weapons</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -29015,7 +29116,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     setTemplateRarityFilter('all');
   };
 
-  const itemTypeOptions = ['weapon', 'ammunition', 'armor', 'consumable', 'utility', 'container', 'currency', 'spellbook', 'scroll', 'rune', 'miscellaneous'];
+  const itemTypeOptions = [
+    'ammunition', 'armor', ...(campaignSystem === 'ca' ? ['beast_orb'] : []), 'consumable',
+    'container', 'currency', 'miscellaneous', 'rune', 'scroll', 'spellbook', 'utility', 'weapon',
+  ];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
@@ -29463,7 +29567,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
                       {itemTypeOptions.map(type => (
-                        <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
+                        <SelectItem key={type} value={type}>
+                          {type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -29625,21 +29731,24 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="weapon">Weapon</SelectItem>
                     <SelectItem value="ammunition">Ammunition</SelectItem>
                     <SelectItem value="armor">Armor</SelectItem>
+                    {campaignSystem === 'ca' && (
+                      <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                    )}
                     <SelectItem value="consumable">Consumable</SelectItem>
-                    <SelectItem value="utility">Utility</SelectItem>
                     <SelectItem value="container">Container</SelectItem>
                     {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                       <SelectItem value="crafter">Crafter</SelectItem>
                     )}
                     {campaignSystem === 'aa-v3' && (
-                      <SelectItem value="spellbook">Spellbook</SelectItem>
-                    )}
-                    {campaignSystem === 'aa-v3' && (
                       <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                     )}
+                    {campaignSystem === 'aa-v3' && (
+                      <SelectItem value="spellbook">Spellbook</SelectItem>
+                    )}
+                    <SelectItem value="utility">Utility</SelectItem>
+                    <SelectItem value="weapon">Weapon</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -30341,12 +30450,15 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="weapon">Weapon</SelectItem>
                         <SelectItem value="ammunition">Ammunition</SelectItem>
                         <SelectItem value="armor">Armor</SelectItem>
+                        {campaignSystem === 'ca' && (
+                          <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                        )}
                         <SelectItem value="consumable">Consumable</SelectItem>
-                        <SelectItem value="utility">Utility</SelectItem>
                         <SelectItem value="container">Container</SelectItem>
+                        <SelectItem value="utility">Utility</SelectItem>
+                        <SelectItem value="weapon">Weapon</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -31892,6 +32004,22 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setSyncingTechniques(false);
     }
   };
+  const [absorbing, setAbsorbing] = useState(false);
+  const handleAbsorb = async () => {
+    if (!character?.id || !item?.id) return;
+    setAbsorbing(true);
+    try {
+      await api.absorbItem(character.id, item.id);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['absorbed-items', character.id] });
+      toast({ title: 'Absorbed', description: `${item.name} was absorbed into your Ability.` });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: 'Absorb failed', description: err?.message || 'Could not absorb this item', variant: 'destructive' });
+    } finally {
+      setAbsorbing(false);
+    }
+  };
   const [editData, setEditData] = useState<any>(null);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
   const { data: hotbars = [] } = useQuery({
@@ -32306,6 +32434,18 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                     <ScrollText className="h-4 w-4" />
                   </Button>
                 )}
+                {campaignSystem === 'ca' && item.itemType === 'beast_orb' && !item.isAbsorbed && (isOwner || isGM) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAbsorb}
+                    disabled={absorbing}
+                    className="text-amber-400 border-amber-700 hover:bg-amber-900/30"
+                    data-testid="button-absorb-item"
+                  >
+                    {absorbing ? 'Absorbing...' : 'Absorb'}
+                  </Button>
+                )}
                 {canEditItem && (
                   <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
                     Edit
@@ -32363,21 +32503,24 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="weapon">Weapon</SelectItem>
                         <SelectItem value="ammunition">Ammunition</SelectItem>
                         <SelectItem value="armor">Armor</SelectItem>
+                        {campaignSystem === 'ca' && (
+                          <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                        )}
                         <SelectItem value="consumable">Consumable</SelectItem>
-                        <SelectItem value="utility">Utility</SelectItem>
                         <SelectItem value="container">Container</SelectItem>
                         {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
                           <SelectItem value="crafter">Crafter</SelectItem>
                         )}
                         {campaignSystem === 'aa-v3' && (
-                          <SelectItem value="spellbook">Spellbook</SelectItem>
-                        )}
-                        {campaignSystem === 'aa-v3' && (
                           <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
                         )}
+                        {campaignSystem === 'aa-v3' && (
+                          <SelectItem value="spellbook">Spellbook</SelectItem>
+                        )}
+                        <SelectItem value="utility">Utility</SelectItem>
+                        <SelectItem value="weapon">Weapon</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : (

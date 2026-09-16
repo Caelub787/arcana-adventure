@@ -25,14 +25,18 @@ import { CraftRecipesEditor, type CraftRecipeDraft } from "../components/CraftRe
 import { ItemBuildRecipeEditor, type BuildRecipeDraft } from "../components/ItemBuildRecipeEditor";
 import { ItemTemplateLinksPanel } from "../components/ItemTemplateLinksPanel";
 import { EntityPickerModal } from "../components/EntityPickerModal";
-import { isAAv2, isBlankItemSheetSystem, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
+import { isAAv2, isBlankItemSheetSystem, isWoundSystem, AAV2_EFFECT_TYPES, LEGACY_DAMAGE_TYPES } from "../lib/effectTypes";
 import { optionalNum } from "../lib/utils";
 import type { DialogProps } from "../types";
 
 const ITEM_TYPES = [
-  "weapon", "ammunition", "armor", "consumable",
-  "utility", "container", "currency", "crafter", "spellbook", "scroll", "rune", "miscellaneous",
+  "ammunition", "armor", "beast_orb", "consumable", "container", "crafter",
+  "currency", "miscellaneous", "rune", "scroll", "spellbook", "utility", "weapon",
 ] as const;
+const ITEM_TYPE_LABELS: Record<string, string> = {
+  beast_orb: "Beast Orb",
+};
+const itemTypeLabel = (t: string): string => ITEM_TYPE_LABELS[t] ?? t;
 
 // AA V3 scroll effect modes (mirrors shared/schema scrollEffectMode).
 const V3_SCROLL_EFFECT_MODES: { value: string; label: string }[] = [
@@ -307,6 +311,8 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
   // C.A. and Swampy items are blank customizable sheets — most fixed mechanical
   // fields below are hidden for these systems in favor of Custom Fields + Rolls.
   const isCA = isBlankItemSheetSystem(campaignSystem ?? draft.system);
+  // Beast Orb is C.A.-only (not Swampy), unlike the blank-sheet-ness above.
+  const isTrueCA = isWoundSystem(campaignSystem ?? draft.system);
   const damageTypes = aav2 ? AAV2_EFFECT_TYPES : LEGACY_DAMAGE_TYPES;
   // Explicit `mode` prop wins; otherwise infer from initialValue.id.
   const editing = mode ? mode === "edit" : !!initialValue?.id;
@@ -464,8 +470,9 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                       if (t === "rune") return aav3;
                       if (t === "miscellaneous") return aav3;
                       if (t === "ammunition") return !isCA;
+                      if (t === "beast_orb") return isTrueCA;
                       return true;
-                    }).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    }).map(t => <SelectItem key={t} value={t}>{itemTypeLabel(t)}</SelectItem>)}
                   </Select>
                 </div>
                 {isCA || (aav3 && it === "rune") ? <div /> : (

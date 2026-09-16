@@ -799,7 +799,6 @@ export function CaAbilityHeader({
         <CaInfoHint label="How Abilities work" align="end" testId="button-ca-ability-info">
           <p>Every character has one Ability. The GM double-clicks the heading to name it, and the line under it to describe it in a sentence.</p>
           <p className="mt-2">What it does at length is written in its own note: press <span style={{ color: "var(--ca-gilt)" }}>Notes</span> at the top of the sheet while this tab is open and the ability's note opens instead of the character's. GM and player can both write in it.</p>
-          <p className="mt-2">The rolls below are built the same way an item's are, and roll the same way. Any of them can go on your hotbar.</p>
         </CaInfoHint>
       }
       testId="card-ca-ability"

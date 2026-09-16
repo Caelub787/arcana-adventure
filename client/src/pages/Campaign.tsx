@@ -9634,8 +9634,23 @@ export default function Campaign() {
         // every connected client refreshes instantly regardless of menu state.
         if (data.type === 'item_created' || data.type === 'item_updated' || data.type === 'item_deleted') {
           if (data.type === 'item_updated' && data.characterId && data.item) {
+            // A Beast Orb (C.A.) flipping isAbsorbed moves between the two
+            // lists entirely rather than just changing a field in place -
+            // the normal inventory list excludes absorbed items, and the
+            // Ability tab's absorbed-items list is the reverse.
             queryClientRef.current.setQueryData<any[]>(['items', data.characterId], (existing) => {
               if (!existing) return existing;
+              if (data.item.isAbsorbed) return existing.filter((it) => it.id !== data.item.id);
+              let found = false;
+              const next = existing.map((it) => {
+                if (it.id === data.item.id) { found = true; return { ...it, ...data.item }; }
+                return it;
+              });
+              return found ? next : [...existing, data.item];
+            });
+            queryClientRef.current.setQueryData<any[]>(['absorbed-items', data.characterId], (existing) => {
+              if (!existing) return existing;
+              if (!data.item.isAbsorbed) return existing.filter((it) => it.id !== data.item.id);
               let found = false;
               const next = existing.map((it) => {
                 if (it.id === data.item.id) { found = true; return { ...it, ...data.item }; }
@@ -12073,16 +12088,17 @@ export default function Campaign() {
                       data-testid="select-shop-import-type-filter"
                     >
                       <option value="all">All Types</option>
-                      <option value="weapon">Weapon</option>
+                      <option value="ammunition">Ammunition</option>
                       <option value="armor">Armor</option>
+                      {isCA && <option value="beast_orb">Beast Orb</option>}
                       <option value="consumable">Consumable</option>
-                      <option value="utility">Utility</option>
                       <option value="container">Container</option>
                       <option value="currency">Currency</option>
-                      <option value="ammunition">Ammunition</option>
-                      {isAAV3 && <option value="scroll">Scroll</option>}
-                      {isAAV3 && <option value="rune">Rune</option>}
                       {isAAV3 && <option value="miscellaneous">Miscellaneous</option>}
+                      {isAAV3 && <option value="rune">Rune</option>}
+                      {isAAV3 && <option value="scroll">Scroll</option>}
+                      <option value="utility">Utility</option>
+                      <option value="weapon">Weapon</option>
                     </select>
                     <select
                       value={shopImportRarityFilter}

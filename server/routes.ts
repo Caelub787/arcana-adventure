@@ -15037,9 +15037,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const items = await storage.getItemsByCharacter(req.params.characterId);
-      res.json(items);
+      // Absorbed Beast Orbs (C.A.) are "inside" the character, not sitting in
+      // the backpack - excluded from the normal inventory view (and from
+      // weight/currency totals, hotbar pickers, equip lists, everything that
+      // reads this endpoint). They still exist in the DB unchanged; see
+      // GET .../absorbed-items for the Ability tab's own view of them.
+      res.json(items.filter(i => !i.isAbsorbed));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch items" });
+    }
+  });
+
+  app.get("/api/characters/:characterId/absorbed-items", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'view');
+
+      if (!access.character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to view this character's items" });
+      }
+
+      const items = await storage.getItemsByCharacter(req.params.characterId);
+      res.json(items.filter(i => i.isAbsorbed));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch absorbed items" });
     }
   });
 
@@ -15641,6 +15665,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, mode, grantedSkill, character: updatedCharacter });
     } catch (err) {
       res.status(400).json({ error: "Failed to use scroll" });
+    }
+  });
+
+  // C.A. only: absorb a Beast Orb into the character's Ability page. The item
+  // row is kept exactly as-is (not deleted) - only isAbsorbed flips - so its
+  // existing rolls and entity-note keep working unmodified, and un-absorbing
+  // is the entire undo.
+  app.post("/api/characters/:characterId/items/:itemId/absorb", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "Beast Orbs are C.A. only" });
+
+      const orb = await storage.getItem(req.params.itemId);
+      if (!orb || orb.characterId !== req.params.characterId) return res.status(404).json({ error: "Item not found" });
+      if (orb.itemType !== 'beast_orb') return res.status(400).json({ error: "That item is not a Beast Orb" });
+      if (orb.isAbsorbed) return res.status(400).json({ error: "Already absorbed" });
+
+      const updated = await storage.updateItem(orb.id, { isAbsorbed: true });
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updated });
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to absorb item" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/items/:itemId/unabsorb", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+
+      const orb = await storage.getItem(req.params.itemId);
+      if (!orb || orb.characterId !== req.params.characterId) return res.status(404).json({ error: "Item not found" });
+      if (!orb.isAbsorbed) return res.status(400).json({ error: "That item isn't absorbed" });
+
+      const updated = await storage.updateItem(orb.id, { isAbsorbed: false });
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updated });
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to un-absorb item" });
     }
   });
 

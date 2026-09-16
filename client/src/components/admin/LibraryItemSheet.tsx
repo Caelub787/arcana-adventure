@@ -51,7 +51,10 @@ import { V3_SKILLS, V3_RUNE_TARGET_ITEM_TYPES, V3_RUNE_STAT_TARGETS } from "@sha
 
 const opts = (values: readonly string[], blank?: string) => [
   ...(blank === undefined ? [] : [{ value: "", label: blank }]),
-  ...values.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) })),
+  ...values.map((v) => ({
+    value: v,
+    label: v.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+  })),
 ];
 
 /**
@@ -62,13 +65,14 @@ const opts = (values: readonly string[], blank?: string) => [
  * because a select that cannot represent its own value is worse than a long
  * list.
  */
-const ITEM_TYPES_BASE = ["weapon", "ammunition", "armor", "consumable", "utility", "container"];
+const ITEM_TYPES_BASE = ["ammunition", "armor", "consumable", "container", "utility", "weapon"];
 function itemTypeOptions(systemSlug: string, current: string) {
   const list = [...ITEM_TYPES_BASE];
   if (systemSlug === "aa-v2" || systemSlug === "aa-v3") list.push("crafter");
-  if (systemSlug === "aa-v3") list.push("spellbook", "miscellaneous");
+  if (systemSlug === "aa-v3") list.push("miscellaneous", "spellbook");
+  if (systemSlug === "ca") list.push("beast_orb");
   if (current && !list.includes(current)) list.push(current);
-  return opts(list);
+  return opts(list.sort());
 }
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
 const CURRENCIES = ["copper", "silver", "gold", "platinum"];

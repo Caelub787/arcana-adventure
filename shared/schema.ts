@@ -608,11 +608,17 @@ export const items = pgTable("items", {
   // advanced item types it can repair — the cost lives here, on the item.
   repairAmount: integer("repair_amount").default(0).notNull(),
   repairIngredients: jsonb("repair_ingredients").$type<{ itemId: string | null; itemName: string; quantity: number }[]>().default(sql`'[]'::jsonb`).notNull(),
-  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3), "miscellaneous" (aa-v3)
+  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency", "rune" (aa-v3), "miscellaneous" (aa-v3), "beast_orb" (ca)
   rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
   isContainer: boolean("is_container").default(false).notNull(),
   carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container, affects max carry weight
   isEquipped: boolean("is_equipped").default(false).notNull(),
+  // C.A. only: a Beast Orb absorbed into the character's Ability page. The
+  // item row is kept exactly as-is (nothing deleted) so its rolls and its
+  // entity-note keep working unmodified - this flag just hides it from the
+  // normal inventory list while it's "inside" the character, and un-setting
+  // it is the entire undo (the item just reappears, unchanged).
+  isAbsorbed: boolean("is_absorbed").default(false).notNull(),
   // Armor-specific fields
   armorSlot: text("armor_slot"), // "helm", "chest", "arm", "legs", "boots" - which body part the armor covers
   armorBonus: integer("armor_bonus").default(0), // Bonus to DC when equipped

@@ -759,7 +759,13 @@ button[class~="bg-fuchsia-600"]:hover {
 [data-floating-panel]:not([class*="bg-gradient"]),
 [role="dialog"]:not([class*="bg-gradient"]) {
   --chrome-corner: 8px;
-  --chrome-inset: 3px;
+  /* Kept clear of the box's own rounded corner (the curve lives between
+     the box edge and this inset) so the straight bracket arms sit on the
+     flat edge past the curve instead of cutting across it - a straight
+     line crossing a round corner is what reads as "pointed". Chrome-frame
+     boxes are typically rounded-lg (9.6px via --radius-lg), so this needs
+     real margin past that, not just past zero. */
+  --chrome-inset: 12px;
   border-color: var(--ca-gilt-line-soft);
   background-image:
     linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
@@ -794,7 +800,7 @@ button[class~="bg-fuchsia-600"]:hover {
 [data-floating-panel],
 [role="dialog"] {
   --chrome-corner: 14px;
-  --chrome-inset: 5px;
+  --chrome-inset: 14px;
 }
 
 /* Icon buttons in the chrome. The icons were `text-stone-400` - grey icons
@@ -823,7 +829,9 @@ button[class~="bg-fuchsia-600"]:hover {
 [data-slot="card"],
 [data-radix-popper-content-wrapper] > * {
   --chrome-corner: 12px;
-  --chrome-inset: 4px;
+  /* See the .chrome-frame rule above for why this is well past the box's
+     own corner radius (rounded-xl, 12px) rather than a few px in from it. */
+  --chrome-inset: 14px;
   background-image:
     linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
     linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),

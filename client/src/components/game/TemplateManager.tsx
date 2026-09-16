@@ -22,7 +22,7 @@ interface TemplateManagerProps {
   campaignSystem?: string;
 }
 
-const ITEM_TYPES = ["weapon", "armor", "consumable", "utility", "container", "currency"];
+const ITEM_TYPES = ["armor", "consumable", "container", "currency", "utility", "weapon"];
 const RARITY_OPTIONS = ["common", "uncommon", "rare", "epic", "legendary"];
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
 
@@ -339,7 +339,8 @@ function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending, campa
               <Select value={itemType} onValueChange={setItemType}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
-                  {ITEM_TYPES.map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                  {(campaignSystem === 'ca' ? ["armor", "beast_orb", "consumable", "container", "currency", "utility", "weapon"] : ITEM_TYPES)
+                    .map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
