@@ -758,49 +758,16 @@ button[class~="bg-fuchsia-600"]:hover {
 .chrome-frame,
 [data-floating-panel]:not([class*="bg-gradient"]),
 [role="dialog"]:not([class*="bg-gradient"]) {
-  --chrome-corner: 8px;
-  /* Kept clear of the box's own rounded corner (the curve lives between
-     the box edge and this inset) so the straight bracket arms sit on the
-     flat edge past the curve instead of cutting across it - a straight
-     line crossing a round corner is what reads as "pointed". Chrome-frame
-     boxes are typically rounded-lg (9.6px via --radius-lg), so this needs
-     real margin past that, not just past zero. */
-  --chrome-inset: 12px;
+  /* A straight-line bracket (the old background-image technique) cannot
+     follow a rounded corner - it either cuts across the curve (too close
+     to the edge) or reads as disconnected floating hairlines (too far
+     in), and neither looks "curved". Real curved corner accents need
+     actual elements with their own border-radius (see CaCorner in
+     CASheetUI.tsx, used by Card below and by the character sheet's own
+     frame) - CSS alone can't fake that here, so this rule now only sets
+     the border color and leaves the box's normal rounded border to do
+     the work. */
   border-color: var(--ca-gilt-line-soft);
-  background-image:
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line));
-  background-repeat: no-repeat;
-  /* Each corner is an arm across and an arm down. */
-  background-size:
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner);
-  background-position:
-    left var(--chrome-inset) top var(--chrome-inset),
-    left var(--chrome-inset) top var(--chrome-inset),
-    right var(--chrome-inset) top var(--chrome-inset),
-    right var(--chrome-inset) top var(--chrome-inset),
-    left var(--chrome-inset) bottom var(--chrome-inset),
-    left var(--chrome-inset) bottom var(--chrome-inset),
-    right var(--chrome-inset) bottom var(--chrome-inset),
-    right var(--chrome-inset) bottom var(--chrome-inset);
-}
-
-/* Panels rather than buttons: a longer corner, held further in, so the
-   bracket is in proportion to the box the way the sheet's is. */
-.chrome-frame-lg,
-[data-floating-panel],
-[role="dialog"] {
-  --chrome-corner: 14px;
-  --chrome-inset: 14px;
 }
 
 /* Icon buttons in the chrome. The icons were `text-stone-400` - grey icons
@@ -823,39 +790,13 @@ button[class~="bg-fuchsia-600"]:hover {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 0 14px -3px var(--ca-gilt);
 }
 
-/* Cards and the menus that hang off a trigger get the corners too, so a
-   dropdown, a select list or a settings card is built the same way as a
-   sheet section rather than just sharing its border colour. */
-[data-slot="card"],
+/* Dropdown/select/popover menus that hang off a trigger: same reasoning
+   as the .chrome-frame rule above - no bracket decoration here (Radix
+   popper content isn't a component this file can inject real corner
+   elements into), just the plain border. Card gets its curved corners
+   directly, from real elements - see card.tsx / CaCorner. */
 [data-radix-popper-content-wrapper] > * {
-  --chrome-corner: 12px;
-  /* See the .chrome-frame rule above for why this is well past the box's
-     own corner radius (rounded-xl, 12px) rather than a few px in from it. */
-  --chrome-inset: 14px;
-  background-image:
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line)),
-    linear-gradient(var(--ca-gilt-line), var(--ca-gilt-line));
-  background-repeat: no-repeat;
-  background-size:
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner),
-    var(--chrome-corner) 1px, 1px var(--chrome-corner);
-  background-position:
-    left var(--chrome-inset) top var(--chrome-inset),
-    left var(--chrome-inset) top var(--chrome-inset),
-    right var(--chrome-inset) top var(--chrome-inset),
-    right var(--chrome-inset) top var(--chrome-inset),
-    left var(--chrome-inset) bottom var(--chrome-inset),
-    left var(--chrome-inset) bottom var(--chrome-inset),
-    right var(--chrome-inset) bottom var(--chrome-inset),
-    right var(--chrome-inset) bottom var(--chrome-inset);
+  border-color: var(--ca-gilt-line-soft);
 }
 
 /* Card and dialog titles are set in the metal by the primitives themselves

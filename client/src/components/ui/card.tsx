@@ -2,21 +2,52 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * A corner flourish - two hairlines meeting in an actually-rounded corner.
+ * A CSS-only background-image bracket can't follow a rounded corner (it
+ * either cuts across the curve or floats disconnected from it - neither
+ * reads as "curved"); a real element with its own border-radius can. This
+ * mirrors CaCorner in CASheetUI.tsx (kept as a separate, un-imported copy
+ * to avoid a card.tsx <-> CASheetUI.tsx circular import, since CASheetUI
+ * itself imports Card).
+ */
+function CardCorner({ at }: { at: "tl" | "tr" | "bl" | "br" }) {
+  const pos = {
+    tl: "top-1.5 left-1.5 border-t border-l rounded-tl",
+    tr: "top-1.5 right-1.5 border-t border-r rounded-tr",
+    bl: "bottom-1.5 left-1.5 border-b border-l rounded-bl",
+    br: "bottom-1.5 right-1.5 border-b border-r rounded-br",
+  }[at];
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute w-4 h-4 ${pos}`}
+      style={{ borderColor: "var(--ca-gilt-line)" }}
+    />
+  );
+}
+
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <div
     ref={ref}
     // A stable hook for theming every card at once — C.A. gilds them from
     // CSS rather than every call site adding classes.
     data-slot="card"
     className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow",
+      "relative rounded-xl border bg-card text-card-foreground shadow",
       className
     )}
     {...props}
-  />
+  >
+    <CardCorner at="tl" />
+    <CardCorner at="tr" />
+    <CardCorner at="bl" />
+    <CardCorner at="br" />
+    {children}
+  </div>
 ))
 Card.displayName = "Card"
 

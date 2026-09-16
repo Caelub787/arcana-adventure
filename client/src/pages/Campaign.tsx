@@ -10799,7 +10799,10 @@ export default function Campaign() {
             only - see PLAYER_TRACKER_LAYOUT): stacked under the left
             toolbar instead, dice tray opening to the right. */}
         {PLAYER_TRACKER_LAYOUT === 'vertical-left' && !isMobile ? (
-          <div className="absolute pointer-events-auto" style={{ left: '16px', top: `${selectionToolsTop + 48}px` }}>
+          // selectionToolsTop is where the Select/Ruler button column starts;
+          // that column is exactly 2 buttons tall (40px + 8px gap + 40px =
+          // 88px), so this needs to clear all of that, not half of it.
+          <div className="absolute pointer-events-auto" style={{ left: '16px', top: `${selectionToolsTop + 88 + 16}px` }}>
             <PinnedRosterBar
               members={(members as any[]) || []}
               characters={(characters as any[]) || []}
