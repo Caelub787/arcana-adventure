@@ -10795,10 +10795,12 @@ export default function Campaign() {
         </div>
 
         {/* GM-pinned party tracker (portraits, wound/energy bars, live roll
-            totals). OGPT: centered top of screen. vertical-left (desktop
-            only - see PLAYER_TRACKER_LAYOUT): stacked under the left
-            toolbar instead, dice tray opening to the right. */}
-        {PLAYER_TRACKER_LAYOUT === 'vertical-left' && !isMobile ? (
+            totals). OGPT: centered top of screen. vertical-left (see
+            PLAYER_TRACKER_LAYOUT): stacked under the left toolbar instead,
+            dice tray opening to the right - on mobile too, since the left
+            toolbar column renders at the same left:16px position and
+            heights regardless of device. */}
+        {PLAYER_TRACKER_LAYOUT === 'vertical-left' ? (
           // "Below the left toolbar" means below ALL of it, not just the
           // Select/Ruler pair - BattleMap stacks a second column right
           // under those (camera controls, token options, and up to three

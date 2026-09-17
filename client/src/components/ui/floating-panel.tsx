@@ -2,6 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { X, GripHorizontal, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCompactPanelsEnabled, COMPACT_PANEL_SCALE } from "@/lib/panelScale";
 
 // --- Shared stacking source of truth ----------------------------------------
 // A single module-level counter guarantees that whenever ANY floating panel
@@ -296,6 +297,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
   panelKey?: string;
 }) {
   const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
+  const compactPanels = useCompactPanelsEnabled();
   React.useLayoutEffect(() => {
     setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500), true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,7 +308,11 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
         "fixed inset-0 bg-stone-900 flex flex-col",
         className
       )}
-      style={{ zIndex: z }}
+      style={{
+        zIndex: z,
+        transform: compactPanels ? `scale(${COMPACT_PANEL_SCALE})` : undefined,
+        transformOrigin: "center",
+      }}
       data-testid="floating-panel"
       data-floating-panel
       data-panel-key={panelKey}
@@ -374,6 +380,17 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // else resized `inner` for a beat) actually locks the size.
   const fitSettleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [, forceRender] = React.useState(0);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isMinimized, setIsMinimized] = React.useState(false);
+
+  // Per-device "compact floating panels" preference (see lib/panelScale) -
+  // a plain visual scale-down, not a re-layout, so content keeps its exact
+  // current format at a smaller size. Skipped while fullscreen, which is
+  // its own explicit "fill the whole screen" request.
+  const compactPanels = useCompactPanelsEnabled();
+  const scale = compactPanels && !isFullscreen ? COMPACT_PANEL_SCALE : 1;
+
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
     const height = typeof window !== "undefined" ? window.innerHeight * 0.8 : 600;
@@ -384,11 +401,14 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     if (defaultPosition) return { ...defaultPosition };
     const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    // Center against the panel's VISUAL (scaled) footprint, not its logical
+    // size, so a shrunk panel doesn't look off-center by roughly half of
+    // what got trimmed off.
     return {
-      x: Math.max(20, (vw - computedDefaultSize.width) / 2),
-      y: Math.max(20, (vh - computedDefaultSize.height) / 2),
+      x: Math.max(20, (vw - computedDefaultSize.width * scale) / 2),
+      y: Math.max(20, (vh - computedDefaultSize.height * scale) / 2),
     };
-  }, [defaultPosition, computedDefaultSize]);
+  }, [defaultPosition, computedDefaultSize, scale]);
 
   const posRef = React.useRef<{ x: number; y: number }>({ ...initialPos });
   const sizeRef = React.useRef({ ...computedDefaultSize });
@@ -399,10 +419,6 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const rafRef = React.useRef<number | null>(null);
   const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
   const zIndexRef = React.useRef(zIndex);
-
-  const [, forceRender] = React.useState(0);
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
-  const [isMinimized, setIsMinimized] = React.useState(false);
 
   // Report this panel's fullscreen state into the shared registry so other UI
   // (e.g. a fallback roll notification) knows something is covering the screen.
@@ -456,8 +472,12 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   const applyTransform = React.useCallback(() => {
     const el = panelRef.current;
     if (!el) return;
-    el.style.transform = `translate(${posRef.current.x}px, ${posRef.current.y}px)`;
-  }, []);
+    // translate() runs in the parent's (unscaled) coordinate space, and
+    // scale() is anchored at transform-origin 0 0 (the panel's own visual
+    // top-left) - so appending the scale here doesn't shift where the panel
+    // ends up, it only changes how big it renders from that same point.
+    el.style.transform = `translate(${posRef.current.x}px, ${posRef.current.y}px) scale(${scale})`;
+  }, [scale]);
 
   const applySize = React.useCallback(() => {
     const el = panelRef.current;
@@ -567,7 +587,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     }
     applyTransform();
     applyZIndex();
-  }, [isFullscreen, isMinimized, applyZIndex]);
+  }, [isFullscreen, isMinimized, applyZIndex, applyTransform]);
 
   // Keep the panel's width in sync with the `width` prop, in place, instead
   // of only reading it once from defaultSize at mount - lets a caller grow
@@ -668,19 +688,25 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     if (!dir) return;
     const dx = e.clientX - resizeStartRef.current.x;
     const dy = e.clientY - resizeStartRef.current.y;
+    // Position deltas stay in raw screen px (translate runs unscaled - see
+    // applyTransform), but width/height are the panel's LOGICAL (pre-scale)
+    // size, so a screen-px drag has to be divided by scale for the visual
+    // edge to track the cursor 1:1 instead of lagging behind it.
+    const dxSize = dx / scale;
+    const dySize = dy / scale;
     let newWidth = resizeStartRef.current.width;
     let newHeight = resizeStartRef.current.height;
     let newX = resizeStartRef.current.posX;
     let newY = resizeStartRef.current.posY;
 
-    if (dir.includes('e')) newWidth = Math.max(minWidth, resizeStartRef.current.width + dx);
+    if (dir.includes('e')) newWidth = Math.max(minWidth, resizeStartRef.current.width + dxSize);
     if (dir.includes('w')) {
-      const pw = resizeStartRef.current.width - dx;
+      const pw = resizeStartRef.current.width - dxSize;
       if (pw >= minWidth) { newWidth = pw; newX = resizeStartRef.current.posX + dx; }
     }
-    if (dir.includes('s')) newHeight = Math.max(minHeight, resizeStartRef.current.height + dy);
+    if (dir.includes('s')) newHeight = Math.max(minHeight, resizeStartRef.current.height + dySize);
     if (dir.includes('n')) {
-      const ph = resizeStartRef.current.height - dy;
+      const ph = resizeStartRef.current.height - dySize;
       if (ph >= minHeight) { newHeight = ph; newY = resizeStartRef.current.posY + dy; }
     }
 
@@ -696,7 +722,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
         applySize();
       });
     }
-  }, [minWidth, minHeight, clampPosition, applyTransform, applySize]);
+  }, [minWidth, minHeight, clampPosition, applyTransform, applySize, scale]);
 
   const handleResizeEnd = React.useCallback((e: React.PointerEvent) => {
     if (!isResizingRef.current) return;
@@ -807,6 +833,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
           backfaceVisibility: 'hidden' as const,
           visibility: hidePreFit ? 'hidden' : undefined,
+          transformOrigin: '0 0',
         }}
         data-testid="floating-panel"
         data-floating-panel

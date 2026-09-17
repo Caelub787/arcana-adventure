@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
+import { getCompactPanelsEnabled, setCompactPanelsEnabled } from "@/lib/panelScale";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
 import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField, CaAbilityHeader } from "@/components/game/CASheetUI";
@@ -11376,7 +11377,7 @@ export function characterTrackerColor(character: any, member?: any): string {
 // layout instead: same 75px height and the same font sizes, laid out as a
 // stack (portrait + name on top, bars full width beneath) so the bars get the
 // full 92px rather than the ~40px a squeezed horizontal row would leave them.
-const TRACKER_WIDTH = 200;
+const TRACKER_WIDTH = 170;
 const TRACKER_COMPACT_WIDTH = 100;
 const TRACKER_HEIGHT = 75;
 
@@ -11406,14 +11407,15 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   rollFeed: PinnedRollFeedEntry[];
   isMobile?: boolean;
   // 'OGPT' ("OG Player Tracker") is the original top-of-screen horizontal
-  // layout - kept completely untouched so it's trivially reversible by
-  // name. 'vertical-left' is an experimental desktop-only alternative
-  // stacked under the left toolbar with the dice tray opening sideways.
-  // Mobile always uses its own horizontal-scroll layout regardless.
+  // layout - kept completely untouched (including its own mobile
+  // horizontal-scroll variant below) so it's trivially reversible by name.
+  // 'vertical-left' stacks under the left toolbar with the dice tray
+  // opening sideways, on mobile as well as desktop - mobile screens are
+  // exactly where "under the toolbar instead of on top of it" matters most.
   orientation?: 'OGPT' | 'vertical-left';
   onOpenCharacterSheet?: (character: any) => void;
 }) {
-  const vertical = orientation === 'vertical-left' && !isMobile;
+  const vertical = orientation === 'vertical-left';
   // Mobile only has room for a couple of cards at once, so the row scrolls
   // horizontally instead of shrinking or wrapping. When a roll lands for a
   // chip that's currently scrolled out of view, the edge of the tracker on
@@ -11506,9 +11508,20 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
     </>
   );
 
+  if (vertical) {
+    // Same column layout on mobile and desktop - there's no horizontal-scroll
+    // variant here since the whole point is sitting in the (already narrow)
+    // left margin rather than spanning the screen's width.
+    return (
+      <div className="flex flex-col items-start gap-3 pointer-events-auto">
+        {chips}
+      </div>
+    );
+  }
+
   if (!isMobile) {
     return (
-      <div className={vertical ? 'flex flex-col items-start gap-3 pointer-events-auto' : 'flex items-start gap-3 pointer-events-auto'}>
+      <div className="flex items-start gap-3 pointer-events-auto">
         {chips}
       </div>
     );
@@ -12923,7 +12936,32 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 data-testid="toggle-notification-style"
               />
             </div>
-            
+
+            {/* Compact floating panels - per-device, off by default; helps a
+                small/folded screen where character sheets, item dialogs etc.
+                otherwise open at full desktop size. */}
+            <div className="mt-4 pt-4 border-t border-stone-700">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="compact-panels-menu" className="text-stone-300">Compact Floating Panels</Label>
+                <input
+                  type="checkbox"
+                  id="compact-panels-menu"
+                  checked={getCompactPanelsEnabled()}
+                  onChange={(e) => {
+                    setCompactPanelsEnabled(e.target.checked);
+                    toast({
+                      title: e.target.checked ? "Compact panels on" : "Compact panels off",
+                      description: "Shrinks character sheets, item dialogs, and other floating panels on this device only.",
+                      duration: 2000,
+                    });
+                  }}
+                  className="h-5 w-5"
+                  data-testid="toggle-compact-panels"
+                />
+              </div>
+              <p className="text-xs text-stone-500 mt-1">Shrinks floating panels (not the side panel) - handy on a small or folded screen. This device only.</p>
+            </div>
+
             {/* Beacon Color Setting */}
             {onChangeBeaconColor && (
               <div className="mt-4 pt-4 border-t border-stone-700">
@@ -13275,6 +13313,27 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 className="h-5 w-5"
                 data-testid="toggle-notification-style-inline"
               />
+            </div>
+            <div className="pt-4 border-t border-stone-700">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="compact-panels-inline" className="text-stone-300">Compact Floating Panels</Label>
+                <input
+                  type="checkbox"
+                  id="compact-panels-inline"
+                  checked={getCompactPanelsEnabled()}
+                  onChange={(e) => {
+                    setCompactPanelsEnabled(e.target.checked);
+                    toast({
+                      title: e.target.checked ? "Compact panels on" : "Compact panels off",
+                      description: "Shrinks character sheets, item dialogs, and other floating panels on this device only.",
+                      duration: 2000,
+                    });
+                  }}
+                  className="h-5 w-5"
+                  data-testid="toggle-compact-panels-inline"
+                />
+              </div>
+              <p className="text-xs text-stone-500 mt-1">Shrinks floating panels (not the side panel) - handy on a small or folded screen. This device only.</p>
             </div>
             {onChangeBeaconColor && (
               <div className="pt-4 border-t border-stone-700">
