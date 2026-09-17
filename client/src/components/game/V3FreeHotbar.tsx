@@ -5,7 +5,7 @@
 // character-sheet hotbars, and GM character hotbar in V3 campaigns only.
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, gameWs } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,13 +13,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap } from "lucide-react";
 import { LazyItemImage, executeCharacterRollEntry } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
 import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
 import { isSwampySystem } from "@shared/systems";
 import { SWAMPY_MAX_HOPE } from "@shared/swampy";
-import { caAbilityRollLabel, caAuraOf } from "@shared/ca";
+import { caAbilityRollLabel, caAuraOf, CA_SKILLS, caAttrValueToDieSides, caEffectiveSkillMod } from "@shared/ca";
 import { AuraCurrentField } from "@/components/game/CAPanels";
 
 const NUM_LOADOUTS = 9;
@@ -53,6 +53,8 @@ export interface FreeHotbarEntryView {
   itemId: string | null;
   /** C.A. only: one roll off a character's Ability tab. */
   rollEntryId?: string | null;
+  /** C.A. only: one of characterId's skills, rolled live off its current mods. */
+  skillKey?: string | null;
   character: FreeHotbarCharView | null;
   item: any | null;
   rollEntry?: any | null;
@@ -220,7 +222,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   const setSlotMutation = useMutation({
-    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null }) =>
+    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null }) =>
       api.setFreeHotbarSlot(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['free-hotbar', campaignId] });
@@ -281,6 +283,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     if (entry.character) return entry.character.name;
     if (entry.item) return entry.item.name;
     if (entry.rollEntry) return caAbilityRollLabel(entry.sourceCharacter, entry.rollEntry);
+    if (entry.skillKey) return CA_SKILLS.find((s) => s.key === entry.skillKey)?.name ?? entry.skillKey;
     return undefined;
   };
 
@@ -306,6 +309,19 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
         campaignSystem,
         label: caAbilityRollLabel(owner, entry.rollEntry),
       });
+    } else if (entry.skillKey) {
+      // A skill roll, same as pressing it on the sheet: 1d{attribute die} +
+      // current skill mod (plus any active wound effect), read off the live
+      // character so gear/wounds/level-ups since the slot was filled apply.
+      const skillDef = CA_SKILLS.find((s) => s.key === entry.skillKey);
+      const owner = (entry.characterId && liveCharMap.get(entry.characterId)) || null;
+      if (skillDef && owner) {
+        const attrVal = (owner[skillDef.parent] as number) || 0;
+        const dieType = `d${caAttrValueToDieSides(attrVal)}`;
+        const woundEffect = woundRules ? woundRules.woundStatEffectTotal(woundRules.woundsOf(owner), skillDef.key) : 0;
+        const mod = caEffectiveSkillMod(owner, skillDef.key) + woundEffect;
+        gameWs.sendDiceRoll(dieType, mod, skillDef.name, owner.id);
+      }
     }
   };
 
@@ -419,14 +435,28 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         </span>
                       </div>
                     </div>
+                  ) : entry.skillKey ? (
+                    // A skill roll: same layout as an ability roll tile, whose
+                    // character it is behind, which skill in front.
+                    <div className="relative w-full h-full pointer-events-none">
+                      {rollOwnerPortrait(entry) ? (
+                        <img src={rollOwnerPortrait(entry)!} alt="" className="w-full h-full object-cover opacity-40" />
+                      ) : null}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                        <Zap className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: "var(--ca-gilt-bright)" }} />
+                        <span className="hidden sm:block text-[8px] leading-none px-0.5 w-full text-center truncate text-stone-200">
+                          {CA_SKILLS.find((s) => s.key === entry.skillKey)?.name ?? entry.skillKey}
+                        </span>
+                      </div>
+                    </div>
                   ) : null
                 ) : (
                   <Plus className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: "var(--ca-gilt-dim)" }} />
                 )}
               </button>
               {/* Source-character badge on items from a character's inventory,
-                  and on ability rolls, which always belong to a character. */}
-              {(entry?.item || entry?.rollEntry) && entry.sourceCharacter && (
+                  and on ability/skill rolls, which always belong to a character. */}
+              {(entry?.item || entry?.rollEntry || entry?.skillKey) && entry.sourceCharacter && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -467,6 +497,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           }
           onAssignRoll={(rollEntryId) =>
             setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, rollEntryId })
+          }
+          onAssignSkill={(characterId, skillKey) =>
+            setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, characterId, skillKey })
           }
           showAbilities={isWoundSystem(campaignSystem)}
         />
@@ -578,7 +611,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
             <DialogTitle className="text-stone-200">Remove from hotbar?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-stone-400">
-            {removeTarget?.character?.name || removeTarget?.item?.name || removeTarget?.rollEntry?.name || 'This entry'} will be removed from slot {(removeTarget?.slotIndex ?? 0) + 1}.
+            {removeTarget?.character?.name || removeTarget?.item?.name || removeTarget?.rollEntry?.name || (removeTarget?.skillKey ? CA_SKILLS.find((s) => s.key === removeTarget.skillKey)?.name : null) || 'This entry'} will be removed from slot {(removeTarget?.slotIndex ?? 0) + 1}.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setRemoveTarget(null)} className="border-stone-600" data-testid="button-cancel-remove">Cancel</Button>
@@ -596,19 +629,21 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   );
 }
 
-function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem, onAssignRoll, showAbilities }: {
+function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem, onAssignRoll, onAssignSkill, showAbilities }: {
   campaignId: string;
   isGM: boolean;
   onClose: () => void;
   onAssignCharacter: (characterId: string) => void;
   onAssignItem: (itemId: string) => void;
   onAssignRoll: (rollEntryId: string) => void;
-  /** C.A. only - no other system has abilities to put on a slot. */
+  onAssignSkill: (characterId: string, skillKey: string) => void;
+  /** C.A. only - no other system has abilities/skills to put on a slot. */
   showAbilities: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [browsingChar, setBrowsingChar] = useState<{ id: string; name: string } | null>(null);
   const [browsingAbilityOf, setBrowsingAbilityOf] = useState<{ id: string; name: string } | null>(null);
+  const [browsingSkillOf, setBrowsingSkillOf] = useState<{ id: string; name: string } | null>(null);
   const [librarySection, setLibrarySection] = useState<null | 'admin' | 'personal'>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
@@ -661,11 +696,17 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
 
   const inItemBrowser = !!browsingChar || !!librarySection;
   const inAbilityBrowser = !!browsingAbilityOf;
-  const inBrowser = inItemBrowser || inAbilityBrowser;
+  const inSkillBrowser = !!browsingSkillOf;
+  const inBrowser = inItemBrowser || inAbilityBrowser || inSkillBrowser;
   const browserTitle = browsingAbilityOf
     ? `${browsingAbilityOf.name}'s Ability`
+    : browsingSkillOf
+    ? `${browsingSkillOf.name}'s Skills`
     : browsingChar ? `${browsingChar.name}'s Inventory` : librarySection === 'personal' ? 'Campaign & My Library' : 'Admin Library';
   const filteredAbilityRolls = (abilityRolls as any[]).filter((r: any) => !q || r.name?.toLowerCase().includes(q));
+  const filteredSkills = [...CA_SKILLS]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((s) => !q || s.name.toLowerCase().includes(q));
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -674,7 +715,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
           <DialogTitle className="text-stone-200 flex items-center gap-2">
             {inBrowser && (
               <button
-                onClick={() => { setBrowsingChar(null); setBrowsingAbilityOf(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
+                onClick={() => { setBrowsingChar(null); setBrowsingAbilityOf(null); setBrowsingSkillOf(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
                 className="text-stone-400 hover:text-stone-200"
                 data-testid="button-picker-back"
                 aria-label="Back"
@@ -687,7 +728,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
         </DialogHeader>
         <div className="flex items-center gap-2">
           <Input
-            placeholder={inAbilityBrowser ? 'Search rolls...' : inItemBrowser ? 'Search items...' : 'Search characters...'}
+            placeholder={inAbilityBrowser ? 'Search rolls...' : inSkillBrowser ? 'Search skills...' : inItemBrowser ? 'Search items...' : 'Search characters...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-stone-800 border-stone-700 flex-1"
@@ -774,6 +815,12 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                       <Flame className="h-3 w-3 mr-1" /> Ability
                     </Button>
                   )}
+                  {showAbilities && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingSkillOf({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-skill-${c.id}`}>
+                      <Zap className="h-3 w-3 mr-1" /> Skill
+                    </Button>
+                  )}
                 </div>
               ))}
               {filteredChars.length === 0 && (
@@ -818,6 +865,29 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
               ))}
               {!abilityRollsLoading && filteredAbilityRolls.length === 0 && (
                 <p className="text-sm text-stone-500 text-center py-4">This character has no ability rolls yet.</p>
+              )}
+            </>
+          )}
+          {inSkillBrowser && (
+            <>
+              {filteredSkills.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => browsingSkillOf && onAssignSkill(browsingSkillOf.id, s.key)}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg bg-stone-800/70 border border-stone-700 hover:border-amber-600 text-left"
+                  data-testid={`picker-skill-${s.key}`}
+                >
+                  <div className="w-8 h-8 rounded-md bg-stone-700 flex items-center justify-center shrink-0">
+                    <Zap className="h-4 w-4" style={{ color: "var(--ca-gilt)" }} />
+                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-stone-200 truncate">{s.name}</span>
+                    <span className="block text-[11px] text-stone-500 truncate">{s.description}</span>
+                  </span>
+                </button>
+              ))}
+              {filteredSkills.length === 0 && (
+                <p className="text-sm text-stone-500 text-center py-4">No skills found</p>
               )}
             </>
           )}

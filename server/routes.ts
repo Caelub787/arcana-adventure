@@ -21,7 +21,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf } from "@shared/ca";
+import { caAuraOf, isCASkillKey } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -5320,7 +5320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const checkFreeHotbarTargetAccess = async (
     userId: string,
     campaignId: string,
-    body: { characterId?: string | null; itemId?: string | null; rollEntryId?: string | null },
+    body: { characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null },
   ): Promise<{ ok: boolean; error?: string; status?: number }> => {
     if (body.characterId) {
       // View access is enough to pin a character to your own hotbar (read-only
@@ -5397,6 +5397,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Re-validate access per entry on every read: permissions may have been
       // revoked since assignment, so stale entries must not leak data.
       const enriched = await Promise.all(entries.map(async (entry) => {
+        if (entry.characterId && entry.skillKey) {
+          // A skill slot: whose skill it is comes along for the ride, same as
+          // an ability roll, but there's no rollEntry row to look up — the
+          // die + mod are computed live client-side off the character's
+          // current attributes/skills, not snapshotted here.
+          const access = await checkCharacterAccess(entry.characterId, userId, 'view');
+          if (!access.character) {
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to clean up dangling free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
+          if (!access.allowed) {
+            try {
+              await storage.deleteFreeHotbarEntry(entry.id);
+            } catch (cleanupErr) {
+              console.warn(`Failed to remove revoked free hotbar entry ${entry.id}:`, cleanupErr);
+            }
+            return null;
+          }
+          const character = access.character;
+          return {
+            ...entry,
+            character: null,
+            item: null,
+            rollEntry: null,
+            sourceCharacter: { id: character.id, name: character.name, portrait: resolvePortrait(character) },
+          };
+        }
         if (entry.characterId) {
           const access = await checkCharacterAccess(entry.characterId, userId, 'view');
           if (!access.character) {
@@ -5516,6 +5547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const characterId = req.body.characterId || null;
       const itemId = req.body.itemId || null;
       const rollEntryId = req.body.rollEntryId || null;
+      const skillKey = req.body.skillKey || null;
 
       if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
         return res.status(400).json({ error: "loadoutIndex must be 0-8" });
@@ -5523,16 +5555,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
         return res.status(400).json({ error: "slotIndex must be 0-9" });
       }
-      if ([characterId, itemId, rollEntryId].filter(Boolean).length !== 1) {
+      if (skillKey) {
+        if (!isCASkillKey(skillKey)) return res.status(400).json({ error: "Unknown skill" });
+        if (!characterId) return res.status(400).json({ error: "skillKey requires a characterId" });
+        if (itemId || rollEntryId) return res.status(400).json({ error: "skillKey can't be combined with itemId or rollEntryId" });
+      } else if ([characterId, itemId, rollEntryId].filter(Boolean).length !== 1) {
         return res.status(400).json({ error: "Provide exactly one of characterId, itemId or rollEntryId" });
       }
 
-      const access = await checkFreeHotbarTargetAccess(userId, campaignId, { characterId, itemId, rollEntryId });
+      const access = await checkFreeHotbarTargetAccess(userId, campaignId, { characterId, itemId, rollEntryId, skillKey });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
       const entry = await storage.upsertFreeHotbarEntry({
         userId, campaignId, loadoutIndex, slotIndex,
-        characterId, itemId, rollEntryId,
+        characterId, itemId, rollEntryId, skillKey,
       });
       res.json(entry);
     } catch (err) {
@@ -15182,17 +15218,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('Failed to copy roll entries from template item:', rollErr);
         }
       }
-      
-      if (item.isDetonatable) {
-        const existingRolls = await storage.getRollEntries('item', item.id);
-        const hasDetonateRoll = existingRolls.some(r => r.name === 'Detonate');
-        if (!hasDetonateRoll) {
-          await storage.createRollEntry({
-            ownerType: 'item', ownerId: item.id, name: 'Detonate',
-            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
-            diceFormula: '1d6', sortOrder: 0,
-          } as any);
+
+      // The item row already exists at this point - a failure past here must
+      // never turn into a 400 for an item the client will believe was never
+      // created, so this (like the steps around it) is its own try/catch.
+      try {
+        if (item.isDetonatable) {
+          const existingRolls = await storage.getRollEntries('item', item.id);
+          const hasDetonateRoll = existingRolls.some(r => r.name === 'Detonate');
+          if (!hasDetonateRoll) {
+            await storage.createRollEntry({
+              ownerType: 'item', ownerId: item.id, name: 'Detonate',
+              rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+              diceFormula: '1d6', sortOrder: 0,
+            } as any);
+          }
         }
+      } catch (detonateErr) {
+        console.error('Failed to create Detonate roll for new item:', detonateErr);
       }
 
       // Clone any pre-loaded spells when granting a spellbook from a library
@@ -15285,18 +15328,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Auto-save to campaign library skipped:', autoSaveErr);
       }
 
-      if (access.character?.campaignId) {
-        broadcastToCampaign(access.character.campaignId, {
-          type: "item_created",
-          characterId: req.params.characterId,
-          item
-        });
+      // Same reasoning as above: the item is already committed, so a broadcast
+      // or audit failure must not turn a successful creation into a client-
+      // visible 400 (which would then roll back the optimistic UI item for
+      // one that actually exists on the server).
+      try {
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, {
+            type: "item_created",
+            characterId: req.params.characterId,
+            item
+          });
+        }
+        await emitTrustedAudit(access, req.session.userId!, `added item "${item?.name || ''}"`);
+      } catch (postCreateErr) {
+        console.error('Failed to broadcast/audit new item (item was still created):', postCreateErr);
       }
-
-      await emitTrustedAudit(access, req.session.userId!, `added item "${item?.name || ''}"`);
 
       res.json(item);
     } catch (err) {
+      console.error('Failed to create item:', err);
       res.status(400).json({ error: "Failed to create item" });
     }
   });

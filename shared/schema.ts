@@ -1161,8 +1161,12 @@ export type Hotbar = typeof hotbars.$inferSelect;
 // Each user has 9 loadouts (0-8) of 10 slots (0-9) per campaign. A slot holds
 // a character (open sheet shortcut), a direct link to an item row — a
 // character-owned inventory item, or an admin/My Library item (characterId
-// null on the item) — or, in C.A., one roll off a character's Ability.
-// Exactly one of characterId/itemId/rollEntryId is set per row.
+// null on the item) — or, in C.A., one roll off a character's Ability, or a
+// C.A. skill (characterId + skillKey together) rolled directly off that
+// character's current attribute/skill mods.
+// Exactly one of itemId/rollEntryId/skillKey is set per row; skillKey always
+// comes paired with characterId, while a bare characterId (no skillKey) is
+// the plain character-shortcut slot.
 export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -1174,6 +1178,10 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   // C.A.: a single roll off a character's Ability tab, so the roll a player
   // makes every turn is one press away instead of three panels deep.
   rollEntryId: varchar("roll_entry_id").references((): any => rollEntries.id, { onDelete: "cascade" }),
+  // C.A.: one of that character's skills (a CA_SKILLS key), rolled with
+  // whatever attribute die + skill mod the character currently has —
+  // computed live client-side, not snapshotted here.
+  skillKey: text("skill_key"),
 }, (table) => ({
   uniqueSlot: uniqueIndex("free_hotbar_user_campaign_loadout_slot_unique").on(
     table.userId,
