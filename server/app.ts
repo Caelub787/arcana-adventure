@@ -244,6 +244,14 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_name text`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_description text`,
     `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS roll_entry_id varchar REFERENCES roll_entries(id) ON DELETE CASCADE`,
+    // C.A. Beast Orbs (absorbed into the Ability tab) and the hotbar's Skill
+    // slot type - same build-time db:push unreliability as roll_entry_id
+    // above hit these too: every INSERT/RETURNING against `items` or
+    // `free_hotbar_entries` references every schema-declared column, so a
+    // missing one here throws on EVERY item create and EVERY hotbar
+    // assignment, not just the C.A.-specific ones.
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS is_absorbed boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS skill_key text`,
     // Books: a note that is an ordered list of other notes and characters.
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS book_live_sync boolean NOT NULL DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS book_chapters (
