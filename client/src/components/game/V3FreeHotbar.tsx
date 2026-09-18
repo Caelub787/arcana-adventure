@@ -118,7 +118,7 @@ function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCh
 interface V3FreeHotbarProps {
   campaignId: string;
   isGM: boolean;
-  onOpenCharacterSheet: (characterId: string) => void;
+  onOpenCharacterSheet: (characterId: string, opts?: { toggle?: boolean }) => void;
   onOpenItem: (item: any, sourceCharacterId: string | null) => void;
   // Campaign system slug ('aa-v3', 'ca', 'swampy', ...) — swaps the
   // HP/Energy/Mana stat-bar display for the wound systems' Wounds/Energy
@@ -440,9 +440,20 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   // Digit shortcut: only opens assigned slots; an empty slot does nothing
-  // (unlike a click, which opens the picker).
+  // (unlike a click, which opens the picker). Pressing it again for a
+  // character sheet that's already open closes it instead of doing nothing -
+  // a toggle, same as re-pressing a taskbar shortcut. Scoped to the keyboard
+  // path only: a mouse click on the tile keeps bringing an open sheet to
+  // front (handleSlotClick, below), since burying a sheet you clicked on by
+  // accident would be surprising.
   openSlotByKeyRef.current = (slotIndex: number) => {
-    if (currentEntries.get(slotIndex)) handleSlotClick(slotIndex);
+    const entry = currentEntries.get(slotIndex);
+    if (!entry) return;
+    if (entry.characterId && entry.character && entry.character.canEdit !== false) {
+      onOpenCharacterSheet(entry.characterId, { toggle: true });
+      return;
+    }
+    handleSlotClick(slotIndex);
   };
 
   return (

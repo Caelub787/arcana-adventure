@@ -46,6 +46,7 @@ import { NotesWorkspace } from "@/components/notes/NotesWorkspace";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
+import { getCharacterSheetPosition, setCharacterSheetPosition } from "@/lib/characterSheetPosition";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -13494,7 +13495,8 @@ export default function Campaign() {
             defaultSize={{ width: sheetPanelWidth(), height: Math.min(window.innerHeight - 70, sheetPanelHeight()) }}
             width={dockedCharNotes[sheet.id] ? sheetPanelWidth() + dockedNotesWidth() : sheetPanelWidth()}
             resizable={false}
-            defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
+            defaultPosition={getCharacterSheetPosition(sheet.id) ?? { x: 100 + (index * 30), y: 40 + (index * 30) }}
+            onPositionChange={(pos) => setCharacterSheetPosition(sheet.id, pos)}
             minWidth={400}
             minHeight={400}
             fitContent
@@ -14244,7 +14246,11 @@ export default function Campaign() {
           campaignId={campaignId!}
           isGM={role === 'gm'}
           campaignSystem={campaign?.system}
-          onOpenCharacterSheet={(characterId) => {
+          onOpenCharacterSheet={(characterId, opts) => {
+            if (opts?.toggle && openCharacterSheets.some((c: any) => c.id === characterId)) {
+              closeCharacterSheet(characterId);
+              return;
+            }
             const char = (characters as any[] | undefined)?.find((c: any) => c.id === characterId);
             if (char) openCharacterSheet(char);
           }}

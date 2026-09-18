@@ -190,6 +190,14 @@ interface FloatingPanelProps {
    */
   onFitLocked?: () => void;
   /**
+   * Fires once, when a drag finishes, with the panel's new position. Lets a
+   * caller persist "where I last put this" (e.g. per-character-sheet
+   * localStorage) without the panel itself knowing anything about storage.
+   * Not fired for the position shifts fitContent/clampPosition make on their
+   * own (e.g. re-clamping after a resize) - only an actual user drag.
+   */
+  onPositionChange?: (pos: { x: number; y: number }) => void;
+  /**
    * When provided, the panel's width is imperatively kept in sync with this
    * value on every change (unless the user has manually resized the panel)
    * instead of only being read once from defaultSize at mount. Lets a caller
@@ -240,6 +248,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   width,
   lockWidthResize,
   resizable = true,
+  onPositionChange,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -279,6 +288,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     width={width}
     lockWidthResize={lockWidthResize}
     resizable={resizable}
+    onPositionChange={onPositionChange}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -378,6 +388,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   width,
   lockWidthResize,
   resizable = true,
+  onPositionChange,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -549,7 +560,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
       fitLockedRef.current = true; // lock — never resize again
       onFitLocked?.(); // let caller react before reveal (e.g. switch tab back)
       setFitRevealed(true); // size is final; safe to show the panel
-    }, 350);
+    }, 120);
   }, [fitContent, fitContentActive, isFullscreen, isMinimized, minHeight, applySize, applyTransform, clampPosition, onFitLocked]);
 
   // Whether this panel should stay hidden until the fit locks. Mirrors the
@@ -561,15 +572,19 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // Reveal immediately when we are not waiting on a fit; otherwise keep a short
   // safety timer so the panel can never stay invisible if a measurement never
   // resolves (the common case reveals pre-paint via fitToContent's lock).
-  // Longer than fitToContent's own 350ms settle delay so it doesn't fire
-  // mid-settle and reveal a still-resizing panel.
+  // Longer than fitToContent's own 120ms settle delay so it doesn't fire
+  // mid-settle and reveal a still-resizing panel. Opening a character sheet
+  // from the hotbar was visibly held up by this pair of timers (350ms/900ms
+  // originally) waiting out every async query's own resize before showing
+  // anything at all - both are tuned down to the shortest delay that still
+  // reliably beats a normal render/query-settle cycle.
   React.useEffect(() => {
     if (fitRevealed) return;
     if (!waitingForFit) {
       setFitRevealed(true);
       return;
     }
-    const t = setTimeout(() => setFitRevealed(true), 900);
+    const t = setTimeout(() => setFitRevealed(true), 400);
     return () => clearTimeout(t);
   }, [fitRevealed, waitingForFit]);
 
@@ -670,7 +685,8 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
       rafRef.current = null;
     }
     applyTransform();
-  }, [applyTransform]);
+    onPositionChange?.({ ...posRef.current });
+  }, [applyTransform, onPositionChange]);
 
   const handleResizeStart = React.useCallback((e: React.PointerEvent, direction: string) => {
     // Strip the width-changing components (e/w) while locked - a pure e/w
