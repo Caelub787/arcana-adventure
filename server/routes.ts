@@ -19016,10 +19016,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const refs = await storage.getNoteReferences(req.params.id);
       const entityRef = refs.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet");
-      if (entityRef) {
+      // entityId carries no FK (a note can outlive the entity it was created
+      // for), so a stale ref left behind by a since-deleted character/item
+      // must not keep blocking real deletion forever - only a note whose
+      // sheet still exists is protected.
+      const linkedEntityStillExists = entityRef
+        ? !!(entityRef.entityType === "character-sheet"
+          ? await storage.getCharacter(entityRef.entityId)
+          : await storage.getItem(entityRef.entityId))
+        : false;
+      if (entityRef && linkedEntityStillExists) {
         // The sheet's Notes button always needs a note to open, so a note
-        // linked to a character/item keeps its row and entity link forever -
-        // "deleting" one clears its contents instead of removing it.
+        // linked to a character/item keeps its row and entity link for as
+        // long as that character/item exists - "deleting" one clears its
+        // contents instead of removing it. Delete the character/item first
+        // to actually delete the note.
         const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
         const entityAccess = await getLinkedEntityNoteAccess(req.session.userId!, note, role.isGm);
         if (!entityAccess?.canEdit) {
