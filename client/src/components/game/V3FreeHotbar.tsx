@@ -159,11 +159,6 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const hotbarRef = useRef<HTMLDivElement | null>(null);
   const [customPos, setCustomPos] = useState<HotbarPosition | null>(() => getHotbarPosition());
   const [resetPopoverOpen, setResetPopoverOpen] = useState(false);
-  const gripHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Tracked continuously from pointerdown (not just once dragging starts) so
-  // the hold-then-drag timer always has a fresh pointer position to seed the
-  // drag from - see handleGripPointerDown for why this matters.
-  const lastGripPointer = useRef({ x: 0, y: 0 });
   const dragState = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number }>({
     dragging: false, startX: 0, startY: 0, baseX: 0, baseY: 0,
   });
@@ -177,35 +172,27 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     return { x: Math.max(0, Math.min(vw - w, x)), y: Math.max(0, Math.min(vh - h, y)) };
   };
 
+  // Dragging starts immediately on press - there's no other action on this
+  // handle (a click does nothing) to disambiguate from, so the artificial
+  // hold delay this used to have only made the bar feel like it took a
+  // beat to start following the cursor.
   const handleGripPointerDown = (e: React.PointerEvent) => {
     const el = hotbarRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    lastGripPointer.current = { x: e.clientX, y: e.clientY };
-    // Capture immediately (not once the hold fires) so pointermove keeps
-    // reaching this handle even if the finger wanders off the thin grip
-    // line during the hold - otherwise those moves go to whatever's
-    // underneath instead, and lastGripPointer goes stale.
     try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-    if (gripHoldTimer.current) clearTimeout(gripHoldTimer.current);
-    gripHoldTimer.current = setTimeout(() => {
-      // Seed the drag from the pointer's CURRENT position, not where it was
-      // when the hold started - using the stale pointerdown coordinates here
-      // made the first move after the hold jump by however far the pointer
-      // had already traveled during the 350ms delay (a "teleport").
-      dragState.current = {
-        dragging: true,
-        startX: lastGripPointer.current.x,
-        startY: lastGripPointer.current.y,
-        baseX: rect.left,
-        baseY: rect.top,
-      };
-      // Switch into "custom position" layout mode (left/top instead of the
-      // docked bottom/centered classes) up front, via a single state update,
-      // so every subsequent move during this drag can write el.style
-      // directly without fighting the docked layout's own positioning.
-      if (!customPos) setCustomPos({ x: rect.left, y: rect.top });
-    }, 350);
+    dragState.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: rect.left,
+      baseY: rect.top,
+    };
+    // Switch into "custom position" layout mode (left/top instead of the
+    // docked bottom/centered classes) up front, via a single state update,
+    // so every subsequent move during this drag can write el.style
+    // directly without fighting the docked layout's own positioning.
+    if (!customPos) setCustomPos({ x: rect.left, y: rect.top });
   };
   // While dragging, position is written straight to the DOM instead of
   // through React state - a setState per pointermove forces the whole
@@ -214,7 +201,6 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   // The state update is deferred to pointerup, once movement has stopped.
   const pendingDragPos = useRef<HotbarPosition | null>(null);
   const handleGripPointerMove = (e: React.PointerEvent) => {
-    lastGripPointer.current = { x: e.clientX, y: e.clientY };
     if (!dragState.current.dragging) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
@@ -227,7 +213,6 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     }
   };
   const handleGripPointerUp = (e: React.PointerEvent) => {
-    if (gripHoldTimer.current) { clearTimeout(gripHoldTimer.current); gripHoldTimer.current = null; }
     if (dragState.current.dragging) {
       dragState.current.dragging = false;
       try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
@@ -476,7 +461,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           onPointerUp={handleGripPointerUp}
           onPointerCancel={handleGripPointerUp}
           onContextMenu={handleGripContextMenu}
-          title="Hold and drag to move the hotbar. Right-click to reset its position."
+          title="Drag to move the hotbar. Right-click to reset its position."
           aria-label="Move hotbar"
           data-testid="button-hotbar-move-handle"
         />
