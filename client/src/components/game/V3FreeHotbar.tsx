@@ -398,21 +398,36 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     >
       <div className="chrome-frame chrome-frame-lg relative flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
         {/* Move handle - hold to drag the whole hotbar to a new spot, saved
-            on this device only. Sits just outside the top-left corner so it
-            never crowds the loadout switcher or the first slot. */}
-        <button
-          type="button"
-          className="absolute -top-2 -left-2 w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600 cursor-grab active:cursor-grabbing touch-none"
-          onPointerDown={handleGripPointerDown}
-          onPointerMove={handleGripPointerMove}
-          onPointerUp={handleGripPointerUp}
-          onPointerCancel={handleGripPointerUp}
-          title="Hold and drag to move the hotbar"
-          aria-label="Move hotbar"
-          data-testid="button-hotbar-move-handle"
-        >
-          <Menu className="h-3 w-3" />
-        </button>
+            on this device only. A real flex child (not floated over the
+            frame's edge) so it sits fully on the bar instead of straddling
+            it. The reset button appears right next to it, once moved. */}
+        <div className="flex items-center gap-1 mr-0.5 sm:mr-1 shrink-0">
+          <button
+            type="button"
+            className="w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600 cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={handleGripPointerDown}
+            onPointerMove={handleGripPointerMove}
+            onPointerUp={handleGripPointerUp}
+            onPointerCancel={handleGripPointerUp}
+            title="Hold and drag to move the hotbar"
+            aria-label="Move hotbar"
+            data-testid="button-hotbar-move-handle"
+          >
+            <Menu className="h-3 w-3" />
+          </button>
+          {customPos && (
+            <button
+              type="button"
+              onClick={handleResetHotbarPosition}
+              className="w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600"
+              title="Reset hotbar position"
+              aria-label="Reset hotbar position"
+              data-testid="button-reset-hotbar-position"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          )}
+        </div>
         {/* Loadout switcher */}
         <div className="flex flex-col items-center mr-0.5 sm:mr-1 select-none">
           <button
@@ -701,20 +716,6 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Only shown once the hotbar has been dragged off its default spot -
-          this device's one way back, since there's nothing else on screen
-          that would tell you it moved. */}
-      {customPos && (
-        <button
-          type="button"
-          onClick={handleResetHotbarPosition}
-          className="fixed bottom-2 left-2 z-30 pointer-events-auto flex items-center gap-1 px-2 py-1 rounded-md bg-stone-900/95 border border-stone-700 text-stone-400 hover:text-amber-400 hover:border-amber-600 text-xs shadow-lg backdrop-blur-sm"
-          data-testid="button-reset-hotbar-position"
-        >
-          <RotateCcw className="h-3 w-3" /> Reset Hotbar Position
-        </button>
-      )}
     </div>
   );
 }
