@@ -20148,10 +20148,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
-  // The item opened for editing in its own floating panel, the way the
-  // library does it - a blank row gets created immediately and this is its
-  // id, rather than making the GM fill out a form before the item exists.
-  const [inlineItemSheetId, setInlineItemSheetId] = useState<string | null>(null);
   // V3: inventory delete buttons hidden by default, revealed via a toggle
   const [showInventoryDelete, setShowInventoryDelete] = useState(false);
   
@@ -21211,7 +21207,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const createBlankInventoryItem = () => {
     createItemMutation.mutate(
       { name: 'Untitled Item', itemType: 'utility', rarity: 'common', quantity: 1 },
-      { onSuccess: (created: any) => { if (created?.id) setInlineItemSheetId(created.id); } },
+      {
+        // Opens exactly the way clicking an existing item in the inventory
+        // list does - same ItemDetailDialog, same forwarding to a detached
+        // panel when this sheet is hosted by Campaign.tsx - rather than a
+        // separate bare-editor panel with none of that item's own actions.
+        onSuccess: (created: any) => {
+          if (!created?.id) return;
+          setSelectedItem(created);
+          setShowItemDetail(true);
+          bringToFront?.(`item-detail${charPanelSuffix}`);
+        },
+      },
     );
   };
 
@@ -27283,44 +27290,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         charPanelSuffix={charPanelSuffix}
         inventoryRunes={(items as any[]).filter((i: any) => i.itemType === 'rune')}
       />
-
-      {/* A freshly-created inventory item, edited in its own floating panel -
-          same sheet the admin library uses, so making an item here and
-          making one in the library are the same job. A real FloatingPanel
-          (not a full-screen overlay) so it doesn't cover the character sheet
-          underneath it. */}
-      {inlineItemSheetId && (() => {
-        const sheetItem = (items as any[]).find((i: any) => i.id === inlineItemSheetId);
-        if (!sheetItem) return null;
-        return (
-          <FloatingPanel
-            open={true}
-            onClose={() => setInlineItemSheetId(null)}
-            title={<span className="text-amber-500">{sheetItem.name || 'New Item'}</span>}
-            defaultSize={{ width: Math.min(462, window.innerWidth - 40), height: Math.min(660, window.innerHeight - 40) }}
-            minWidth={320}
-            minHeight={360}
-            resizable={false}
-            panelKey={`inline-item-${sheetItem.id}${charPanelSuffix}`}
-            zIndex={floatingZIndices?.[`inline-item-${sheetItem.id}${charPanelSuffix}`] || 10150}
-            onBringToFront={() => bringToFront?.(`inline-item-${sheetItem.id}${charPanelSuffix}`)}
-          >
-            <LibraryItemSheet
-              item={sheetItem}
-              systemSlug={campaignSystem || ''}
-              canEdit={isGM || isOwner}
-              onUpdate={(updates) => updateItemMutation.mutate({ id: sheetItem.id, data: updates })}
-              onDelete={() => {
-                if (!confirm('Delete this item?')) return;
-                setInlineItemSheetId(null);
-                deleteItemMutation.mutate(sheetItem.id);
-              }}
-              onClose={() => setInlineItemSheetId(null)}
-              hideCloseButton
-            />
-          </FloatingPanel>
-        );
-      })()}
 
       {/* Manage Templates Dialog (GM Only) */}
       {isGM && (

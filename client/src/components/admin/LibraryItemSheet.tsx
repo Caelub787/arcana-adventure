@@ -347,7 +347,12 @@ export function LibraryItemSheet({
         </div>
       </div>
 
-      <div className="p-4 space-y-3 overflow-y-auto" style={{ maxHeight: "70vh" }}>
+      {/* No height cap or scroll of its own - every host that embeds this
+          sheet (the admin full-screen overlay, a FloatingPanel's own
+          content area) already scrolls itself, and a second overflow-y-auto
+          in here just fought that one for the wheel/touch input instead of
+          actually letting the page scroll. */}
+      <div className="p-4 space-y-3">
         <CaSection icon={<Package className="h-3.5 w-3.5" />} title="Identity">
           <div className="flex gap-3 items-start">
             {/* The picture, in the same ringed square a character's portrait
