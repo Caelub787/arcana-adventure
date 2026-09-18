@@ -31380,7 +31380,6 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
 export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes, initialDockedNoteId = null }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
-  const [isEditing, setIsEditing] = useState(false);
   const [syncingTechniques, setSyncingTechniques] = useState(false);
   // Docked notes pane: shown as a sibling inside this same FloatingPanel
   // (not a separate floating window) so an item's notes stay visually
@@ -31422,7 +31421,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setAbsorbing(false);
     }
   };
-  const [editData, setEditData] = useState<any>(null);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
   const { data: hotbars = [] } = useQuery({
     queryKey: ['hotbars', character.id],
@@ -31443,54 +31441,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setShowEquipMenu(false);
     }
   });
-
-  const handleEditToggle = () => {
-    if (!isEditing) {
-      // Use totalQuantity for stacked items, otherwise use quantity
-      setEditData({ ...item, quantity: item.totalQuantity || item.quantity });
-    }
-    setIsEditing(!isEditing);
-  };
-
-  const handleSave = () => {
-    if (editData) {
-      // Helper to convert empty strings to undefined for optional numeric fields
-      const optionalNum = (val: string | number): number | undefined => {
-        if (val === '' || val === undefined || val === null) return undefined;
-        const num = Number(val);
-        return isNaN(num) ? undefined : num;
-      };
-      const cleanedData = {
-        ...editData,
-        mod: optionalNum(editData.mod),
-        range: optionalNum(editData.range),
-        itemWeight: optionalNum(editData.itemWeight),
-        price: optionalNum(editData.price),
-        currency: editData.currency || 'copper',
-        quantity: Number(editData.quantity) || 1,
-        carryCapacity: optionalNum(editData.carryCapacity),
-      };
-      // Non-GMs may only send the fields the server accepts for them —
-      // sending the full item would get the whole update rejected with a 403.
-      if (!isGM) {
-        const allowed = ['name', 'description', 'containerId', 'isEquipped'];
-        if (canEditDurability) allowed.push('durability');
-        const filtered: any = {};
-        for (const key of allowed) {
-          if (key in cleanedData && (cleanedData as any)[key] !== undefined) filtered[key] = (cleanedData as any)[key];
-        }
-        onUpdate(filtered);
-      } else {
-        onUpdate(cleanedData);
-      }
-      setIsEditing(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditData(null);
-    setIsEditing(false);
-  };
 
   const handleEquipToSlot = (hotbarType: string, slotNumber: number) => {
     if (!item) return;
@@ -31755,19 +31705,20 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
 
   if (!item) return null;
 
-  const currentData = isEditing ? editData : item;
+  // The fields below (Identity/Handling/type-specific sections/Rolls) are the
+  // same LibraryItemSheet the admin library and the blank-new-item flow use,
+  // so a single canEdit covers all of them - matching what a freshly created
+  // item already gets today, rather than the old form's separate GM-only
+  // lock on price/rarity/mechanical stats.
+  const currentData = item;
   const canEditItem = isOwner || isGM;
-  const canEditAllFields = isGM;
-  // Durability is GM-controlled bookkeeping, but trusted players (and assistant
-  // GMs, who arrive here with isGM=true) may adjust it too.
-  const canEditDurability = isGM || (isOwner && trustedPlayer);
 
   if (!open || !item) return null;
   return (
     <FloatingPanel
       open={open}
       onClose={() => onOpenChange(false)}
-      title={isEditing ? "Edit Item" : item.name}
+      title={item.name}
       defaultSize={{ width: 792, height: Math.min(968, window.innerHeight - 40) }}
       width={dockedNoteId ? 792 * 2 : 792}
       resizable={false}
@@ -31780,934 +31731,92 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
     >
       <div className="flex h-full min-h-0">
       <div className="p-4 flex-shrink-0 overflow-y-auto" style={{ width: '792px' }}>
-          <div className="flex items-center justify-between mb-4">
-            {isEditing ? (
-              <Input 
-                value={currentData.name} 
-                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                className="bg-stone-800 border-stone-700 text-lg font-bold text-amber-500"
-                data-testid="input-edit-name"
-              />
-            ) : (
-              <h2 className="text-amber-500 text-xl font-bold">{currentData.name}</h2>
+          <div className="flex items-center justify-end gap-1 mb-2">
+            {isAAV3 && item.itemType === 'weapon' && item.templateItemId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={handleSyncTechniques}
+                      disabled={syncingTechniques}
+                      className="h-8 w-8 text-stone-400 hover:text-stone-200"
+                      data-testid="button-sync-techniques-header"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${syncingTechniques ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Sync techniques from library</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
-            {!isEditing && (
-              <div className="flex items-center gap-1">
-                {isAAV3 && item.itemType === 'weapon' && item.templateItemId && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={handleSyncTechniques}
-                          disabled={syncingTechniques}
-                          className="h-8 w-8 text-stone-400 hover:text-stone-200"
-                          data-testid="button-sync-techniques-header"
-                        >
-                          <RefreshCw className={`h-4 w-4 ${syncingTechniques ? 'animate-spin' : ''}`} />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent><p>Sync techniques from library</p></TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {character?.campaignId && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={dockingNote}
-                    onClick={async () => {
-                      if (dockedNoteId) { setDockedNoteId(null); return; }
-                      setDockingNote(true);
-                      try {
-                        const note = await api.getOrCreateEntityNote(character.campaignId, 'item-sheet', item.id, item.name);
-                        setDockedNoteId(note.id);
-                      } catch (e: any) {
-                        toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
-                      } finally {
-                        setDockingNote(false);
-                      }
-                    }}
-                    className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${dockedNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
-                    title="Notes"
-                    data-testid="button-item-notes"
-                  >
-                    <ScrollText className="h-4 w-4" />
-                  </Button>
-                )}
-                {campaignSystem === 'ca' && item.itemType === 'beast_orb' && !item.isAbsorbed && (isOwner || isGM) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAbsorb}
-                    disabled={absorbing}
-                    className="text-amber-400 border-amber-700 hover:bg-amber-900/30"
-                    data-testid="button-absorb-item"
-                  >
-                    {absorbing ? 'Absorbing...' : 'Absorb'}
-                  </Button>
-                )}
-                {canEditItem && (
-                  <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
-                    Edit
-                  </Button>
-                )}
-              </div>
+            {character?.campaignId && (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={dockingNote}
+                onClick={async () => {
+                  if (dockedNoteId) { setDockedNoteId(null); return; }
+                  setDockingNote(true);
+                  try {
+                    const note = await api.getOrCreateEntityNote(character.campaignId, 'item-sheet', item.id, item.name);
+                    setDockedNoteId(note.id);
+                  } catch (e: any) {
+                    toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
+                  } finally {
+                    setDockingNote(false);
+                  }
+                }}
+                className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${dockedNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                title="Notes"
+                data-testid="button-item-notes"
+              >
+                <ScrollText className="h-4 w-4" />
+              </Button>
+            )}
+            {campaignSystem === 'ca' && item.itemType === 'beast_orb' && !item.isAbsorbed && (isOwner || isGM) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleAbsorb}
+                disabled={absorbing}
+                className="text-amber-400 border-amber-700 hover:bg-amber-900/30"
+                data-testid="button-absorb-item"
+              >
+                {absorbing ? 'Absorbing...' : 'Absorb'}
+              </Button>
             )}
           </div>
-          <div className="space-y-4">
-            <div className="flex gap-4">
-              <div className="flex-shrink-0">
-                {currentData.image ? (
-                  <img 
-                    src={currentData.image} 
-                    alt={currentData.name} 
-                    className="h-24 w-24 rounded object-cover border border-stone-600" 
-                  />
-                ) : (
-                  <div className="h-24 w-24 rounded bg-stone-700 flex items-center justify-center border border-stone-600">
-                    <Package className="h-10 w-10 text-stone-500" />
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 content-start">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-stone-400">Type</Label>
-                    {!canEditAllFields && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditAllFields ? (
-                    <Select value={currentData.itemType} onValueChange={(v) => {
-                      const clearedFields: Record<string, any> = {
-                        damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
-                        armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null, v3ArmorBoosts: [],
-                        ammunitionType: null, breakChance: 10,
-                        rationServings: 0, isDamaging: false,
-                        isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                        isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
-                        grantsDcBonus: false, dcBonusValue: 0,
-                      };
-                      setEditData({ ...editData, ...clearedFields, itemType: v });
-                    }}>
-                      <SelectTrigger className="bg-stone-800 border-amber-700">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ammunition">Ammunition</SelectItem>
-                        <SelectItem value="armor">Armor</SelectItem>
-                        {campaignSystem === 'ca' && (
-                          <SelectItem value="beast_orb">Beast Orb</SelectItem>
-                        )}
-                        <SelectItem value="consumable">Consumable</SelectItem>
-                        <SelectItem value="container">Container</SelectItem>
-                        {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
-                          <SelectItem value="crafter">Crafter</SelectItem>
-                        )}
-                        {campaignSystem === 'aa-v3' && (
-                          <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
-                        )}
-                        {campaignSystem === 'aa-v3' && (
-                          <SelectItem value="spellbook">Spellbook</SelectItem>
-                        )}
-                        <SelectItem value="utility">Utility</SelectItem>
-                        <SelectItem value="weapon">Weapon</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-stone-200 capitalize">{currentData.itemType}</p>
-                  )}
-                </div>
-                {!(isAAV3 && currentData.itemType === 'rune') && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-stone-400">Rarity</Label>
-                    {!canEditAllFields && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditAllFields ? (
-                    <Select value={currentData.rarity} onValueChange={(v) => setEditData({ ...editData, rarity: v })}>
-                      <SelectTrigger className="bg-stone-800 border-amber-700">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="common">Common</SelectItem>
-                        <SelectItem value="uncommon">Uncommon</SelectItem>
-                        <SelectItem value="rare">Rare</SelectItem>
-                        <SelectItem value="epic">Epic</SelectItem>
-                        <SelectItem value="legendary">Legendary</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className={`capitalize font-medium ${
-                      currentData.rarity === 'legendary' ? 'text-amber-400' :
-                      currentData.rarity === 'epic' ? 'text-amber-400' :
-                      currentData.rarity === 'rare' ? 'text-blue-400' :
-                      currentData.rarity === 'uncommon' ? 'text-green-400' :
-                      'text-stone-300'
-                    }`}>{currentData.rarity}</p>
-                  )}
-                </div>
-                )}
-                <div>
-                  <Label className="text-xs text-stone-400">Quantity</Label>
-                  <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
-                </div>
-                {isAAV3 && (
-                  <>
-                    <div>
-                      <Label className="text-xs text-stone-400">Weight</Label>
-                      {isEditing && canEditAllFields ? (
-                        <NumberInput min={0} integer={false} optional value={typeof currentData.itemWeight === 'number' ? currentData.itemWeight : undefined} fallback={0} onChange={(v) => setEditData({ ...editData, itemWeight: v ?? '' })} className="bg-stone-800 border-amber-700" />
-                      ) : (
-                        <p className="text-stone-200 text-sm">{currentData.itemWeight} lbs <span className="text-stone-400 text-xs">(total: {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(2)} lbs)</span></p>
-                      )}
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-400">Durability</Label>
-                      {isEditing && canEditDurability ? (
-                        <div className="space-y-1">
-                          <Slider value={[currentData.durability]} onValueChange={(v) => setEditData({ ...editData, durability: v[0] })} min={0} max={currentData.maxDurability ?? 10} step={1} className="mt-1" data-testid="slider-durability" />
-                          <div className="text-xs text-stone-400">{currentData.durability}/{currentData.maxDurability ?? 10}</div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <div className="flex-1 h-2 bg-stone-700 rounded overflow-hidden min-w-0">
-                            <div className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${Math.min(100, (currentData.durability / Math.max(1, currentData.maxDurability ?? 10)) * 100)}%` }} />
-                          </div>
-                          <span className="text-xs text-stone-200 whitespace-nowrap">{currentData.durability}/{currentData.maxDurability ?? 10}</span>
-                        </div>
-                      )}
-                      {(currentData.maxDurability ?? 10) < 10 && (
-                        <p className="text-[11px] text-amber-400/90 mt-1" data-testid="text-durability-lowered">
-                          Max durability lowered to {currentData.maxDurability ?? 10} (was 10) by removed runes.
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-400">Price</Label>
-                      {isEditing && canEditAllFields ? (
-                        <div className="flex gap-1">
-                          <NumberInput min={0} optional value={typeof currentData.price === 'number' ? currentData.price : undefined} fallback={0} onChange={(v) => setEditData({ ...editData, price: v ?? '' })} className="bg-stone-800 border-amber-700 flex-1" data-testid="input-price" />
-                          <Select value={currentData.currency || 'copper'} onValueChange={(v) => setEditData({ ...editData, currency: v })}>
-                            <SelectTrigger className="bg-stone-800 border-amber-700 w-24" data-testid="select-currency"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="copper">Copper</SelectItem>
-                              <SelectItem value="silver">Silver</SelectItem>
-                              <SelectItem value="gold">Gold</SelectItem>
-                              <SelectItem value="platinum">Platinum</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ) : (
-                        (() => {
-                          if (isAAV3) {
-                            const adj = v3DurabilityAdjustedValue(currentData.price, currentData.currency, currentData.durability);
-                            if (adj.isDiscounted) {
-                              const adjStr = formatV3AdjustedValue(adj);
-                              const origStr = formatV3OriginalValue(currentData.price, currentData.currency);
-                              return (
-                                <p className="text-stone-200 text-sm">
-                                  <span className="text-amber-400 font-medium">{adjStr}</span>{' '}
-                                  <span className="line-through text-stone-500 text-xs">{origStr}</span>
-                                  <span className="text-stone-500 text-xs ml-1">(durability)</span>
-                                </p>
-                              );
-                            }
-                          }
-                          return (
-                            <p className="text-stone-200 text-sm">{currentData.price || 0} <span className={`capitalize ${currentData.currency === 'platinum' ? 'text-cyan-400' : currentData.currency === 'gold' ? 'text-amber-400' : currentData.currency === 'silver' ? 'text-stone-300' : 'text-orange-400'}`}>{currentData.currency || 'copper'}</span></p>
-                          );
-                        })()
-                      )}
-                    </div>
-                    {currentData.itemType === 'armor' && (
-                      <div>
-                        <Label className="text-xs text-stone-400">Armor Slot</Label>
-                        {isEditing && canEditAllFields ? (
-                          <Select value={currentData.armorSlot || ''} onValueChange={(v) => setEditData({ ...editData, armorSlot: v })}>
-                            <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-armor-slot"><SelectValue placeholder="Select slot..." /></SelectTrigger>
-                            <SelectContent>
-                              {isAAV3 ? (
-                                <>
-                                  <SelectItem value="helm">Helm</SelectItem>
-                                  <SelectItem value="torso">Torso</SelectItem>
-                                  <SelectItem value="leggings">Leggings</SelectItem>
-                                  <SelectItem value="boots">Boots</SelectItem>
-                                </>
-                              ) : (
-                                <>
-                                  <SelectItem value="helm">Helm</SelectItem>
-                                  <SelectItem value="chest">Chest</SelectItem>
-                                  <SelectItem value="arm">Arm</SelectItem>
-                                  <SelectItem value="legs">Legs</SelectItem>
-                                  <SelectItem value="boots">Boots</SelectItem>
-                                </>
-                              )}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <p className="text-stone-200 capitalize">{currentData.armorSlot || 'Not specified'}</p>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
 
-            {isAAV3 && currentData.itemType === 'armor' && (
-              <div>
-                {isEditing && canEditAllFields ? (
-                  <V3ArmorBoostsEditor
-                    boosts={(currentData.v3ArmorBoosts as V3ArmorBoost[]) || []}
-                    onChange={(next) => setEditData({ ...editData, v3ArmorBoosts: next })}
-                  />
-                ) : (
-                  <div>
-                    <Label className="text-xs text-stone-400">Boosts when equipped</Label>
-                    {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).map((b, i) => {
-                          const label = V3_BOOST_TARGETS.find(t => t.value === b.target)?.label ?? b.target;
-                          const amt = Math.trunc(Number(b.amount) || 0);
-                          return (
-                            <span key={i} className="px-2 py-0.5 rounded bg-emerald-900/40 border border-emerald-700 text-emerald-300 text-xs" data-testid={`text-armor-boost-${i}`}>
-                              {label} {amt >= 0 ? `+${amt}` : amt}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-stone-500 text-sm mt-1">None</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+          {/* Every field an item carries - the same sheet the admin library
+              and blank-new-item flow use, so making an item and viewing one
+              you already have are the same screen. Everything below this is
+              gameplay ACTIONS (equip, container, rune sockets, crafting)
+              that stay their own thing rather than being folded into the
+              sheet itself. */}
+          <LibraryItemSheet
+            item={item}
+            systemSlug={campaignSystem || ''}
+            canEdit={canEditItem}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onClose={() => onOpenChange(false)}
+            hideCloseButton
+            onExecuteRoll={executeRoll}
+            characterEnergy={character?.energy}
+            characterMana={character?.mana}
+            characterItems={items}
+            characterCustomSkills={characterCustomSkills as any[]}
+          />
 
-            {(isEditing || currentData.description || !isAAV3) && (
-              <div>
-                <Label className="text-xs text-stone-400">Description</Label>
-                {isEditing ? (
-                  <Textarea 
-                    value={currentData.description || ''} 
-                    onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                    className="bg-stone-800 border-stone-700 min-h-[60px]"
-                    placeholder="Item description..."
-                    data-testid="textarea-edit-description"
-                  />
-                ) : (
-                  <p className="text-stone-200 text-sm">{currentData.description || (!isAAV3 ? 'No description' : '')}</p>
-                )}
-              </div>
-            )}
+          <div className="space-y-4 mt-4">
 
-            {!isAAV3 && (currentData.aoe || isEditing) && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Area of Effect</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    {isEditing && canEditAllFields ? (
-                      <Select value={currentData.aoe || 'none'} onValueChange={(v) => setEditData({ ...editData, aoe: v })}>
-                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-aoe">
-                          <SelectValue placeholder="None" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="cone">Cone</SelectItem>
-                          <SelectItem value="sphere">Sphere</SelectItem>
-                          <SelectItem value="line">Line</SelectItem>
-                          <SelectItem value="cube">Cube</SelectItem>
-                          <SelectItem value="cylinder">Cylinder</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-stone-200 capitalize">{currentData.aoe && currentData.aoe !== 'none' ? currentData.aoe : 'N/A'}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentData.itemType === 'ammunition' && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Ammunition Settings</h3>
-                <div className="space-y-4">
-                  {isEditing && canEditAllFields ? (
-                    <>
-                      <div>
-                        <Label>Ammunition Type</Label>
-                        <Select value={currentData.ammunitionType || ''} onValueChange={(v) => setEditData({ ...editData, ammunitionType: v })}>
-                          <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-ammunition-type">
-                            <SelectValue placeholder="Select ammunition type..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="arrow">Arrow</SelectItem>
-                            <SelectItem value="bolt">Bolt</SelectItem>
-                            <SelectItem value="bullet">Bullet</SelectItem>
-                            <SelectItem value="dart">Dart</SelectItem>
-                            <SelectItem value="stone">Stone</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label>Break Chance: {currentData.breakChance ?? 10}%</Label>
-                        <Slider 
-                          value={[currentData.breakChance ?? 10]} 
-                          onValueChange={(v) => setEditData({ ...editData, breakChance: v[0] })} 
-                          min={0} 
-                          max={100} 
-                          step={1} 
-                          className="mt-2"
-                          data-testid="slider-edit-break-chance"
-                        />
-                        <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <Label className="text-xs text-stone-400">Ammunition Type</Label>
-                        <p className="text-stone-200 capitalize">{currentData.ammunitionType || 'Not specified'}</p>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-stone-400">Break Chance</Label>
-                        <p className="text-stone-200">{currentData.breakChance ?? 10}%</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {currentData.itemType === 'weapon' && !isAAV3 && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Weapon Settings</h3>
-                <div className="space-y-4">
-                  {isEditing && canEditAllFields ? (
-                    <>
-                      <div>
-                        <Label>Weapon Category</Label>
-                        <Select value={currentData.weaponCategory || ''} onValueChange={(v) => setEditData({ ...editData, weaponCategory: v })}>
-                          <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-weapon-category">
-                            <SelectValue placeholder="Select weapon category..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="melee">Melee</SelectItem>
-                            <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                            <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                            <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                            <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                            <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {!isAAV3 && (
-                        <div className="flex items-center gap-2">
-                          <Checkbox 
-                            id="editIsHeavy" 
-                            checked={currentData.isHeavy || false} 
-                            onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
-                            data-testid="checkbox-edit-is-heavy"
-                          />
-                          <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <Checkbox 
-                          id="editIsDetonatable" 
-                          checked={currentData.isDetonatable || false} 
-                          onCheckedChange={async (checked) => {
-                            const newVal = !!checked;
-                            setEditData({ ...editData, isDetonatable: newVal });
-                            try {
-                              await api.updateItem(item.id, { isDetonatable: newVal });
-                              queryClient.invalidateQueries({ queryKey: ['rollEntries', 'item', item.id] });
-                              queryClient.invalidateQueries({ queryKey: ['items', character.id] });
-                              queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
-                            } catch (e) {
-                              console.error('Failed to toggle detonatable:', e);
-                              setEditData((prev: any) => ({ ...prev, isDetonatable: !newVal }));
-                              toast({ title: 'Error', description: 'Failed to toggle detonatable', variant: 'destructive' });
-                            }
-                          }}
-                          data-testid="checkbox-edit-is-detonatable"
-                        />
-                        <Label htmlFor="editIsDetonatable" className="cursor-pointer">Is Detonatable</Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Checkbox 
-                          id="editCanApplyEffects" 
-                          checked={currentData.canApplyEffects || false} 
-                          onCheckedChange={(checked) => setEditData({ ...editData, canApplyEffects: !!checked })}
-                          data-testid="checkbox-edit-can-apply-effects"
-                        />
-                        <Label htmlFor="editCanApplyEffects" className="cursor-pointer flex items-center gap-2">
-                          <Flame className="h-4 w-4 text-amber-400" />
-                          Can Apply Effects on Hit
-                        </Label>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      {currentData.weaponCategory && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Weapon Category</Label>
-                          <p className="text-stone-200 capitalize">{currentData.weaponCategory}</p>
-                        </div>
-                      )}
-                      <div>
-                        <Label className="text-xs text-stone-400">Two-Handed</Label>
-                        <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
-                      </div>
-                      {currentData.isDetonatable && (
-                        <>
-                          <div>
-                            <Label className="text-xs text-stone-400">Detonatable</Label>
-                            <p className="text-stone-200">Yes</p>
-                          </div>
-                          {currentData.detonateAoeRange && (
-                            <div>
-                              <Label className="text-xs text-stone-400">AOE Range</Label>
-                              <p className="text-stone-200">{currentData.detonateAoeRange}ft</p>
-                            </div>
-                          )}
-                          {currentData.detonateAoeShape && (
-                            <div>
-                              <Label className="text-xs text-stone-400">AOE Shape</Label>
-                              <p className="text-stone-200 capitalize">{currentData.detonateAoeShape}</p>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {campaignSystem === 'aa-v3' && !isEditing && currentData.itemType !== 'rune' && (
+            {campaignSystem === 'aa-v3' && currentData.itemType !== 'rune' && (
               <V3RuneSocketPanel item={currentData} character={character} items={items} canEdit={isOwner || isGM} />
             )}
 
-            {currentData.itemType === 'armor' && !isAAV3 && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Armor Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Armor Slot</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    {isEditing && canEditAllFields ? (
-                      <Select value={currentData.armorSlot || ''} onValueChange={(v) => setEditData({ ...editData, armorSlot: v })}>
-                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-armor-slot">
-                          <SelectValue placeholder="Select slot..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {isAAV3 ? (
-                            <>
-                              <SelectItem value="helm">Helm</SelectItem>
-                              <SelectItem value="torso">Torso</SelectItem>
-                              <SelectItem value="leggings">Leggings</SelectItem>
-                              <SelectItem value="boots">Boots</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="helm">Helm</SelectItem>
-                              <SelectItem value="chest">Chest</SelectItem>
-                              <SelectItem value="arm">Arm</SelectItem>
-                              <SelectItem value="legs">Legs</SelectItem>
-                              <SelectItem value="boots">Boots</SelectItem>
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-stone-200 capitalize">{currentData.armorSlot || 'Not specified'}</p>
-                    )}
-                  </div>
-                  {!isAAV3 && (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Armor Bonus</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    {isEditing && canEditAllFields ? (
-                      <NumberInput 
-                        optional value={typeof currentData.armorBonus === 'number' ? currentData.armorBonus : undefined} fallback={0}
-                        onChange={(v) => setEditData({ ...editData, armorBonus: v ?? '' })}
-                        className="bg-stone-800 border-amber-700"
-                        data-testid="input-armor-bonus"
-                      />
-                    ) : (
-                      <p className="text-stone-200">{currentData.armorBonus >= 0 ? `+${currentData.armorBonus || 0}` : currentData.armorBonus}</p>
-                    )}
-                  </div>
-                  )}
-                  {!isAAV3 && (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Damage Reduction</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    {isEditing && canEditAllFields ? (
-                      <NumberInput 
-                        min={0} optional value={typeof currentData.damageReduction === 'number' ? currentData.damageReduction : undefined} fallback={0}
-                        onChange={(v) => setEditData({ ...editData, damageReduction: v ?? '' })}
-                        className="bg-stone-800 border-amber-700"
-                        data-testid="input-damage-reduction"
-                      />
-                    ) : (
-                      <p className="text-stone-200">{currentData.damageReduction || 0}</p>
-                    )}
-                  </div>
-                  )}
-                  {!isAAV3 && (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Reduction Type</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    {isEditing && canEditAllFields ? (
-                      <Select value={currentData.damageReductionType || ''} onValueChange={(v) => setEditData({ ...editData, damageReductionType: v })}>
-                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-damage-reduction-type">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Sharp">Sharp</SelectItem>
-                          <SelectItem value="Blunt">Blunt</SelectItem>
-                          <SelectItem value="Piercing">Piercing</SelectItem>
-                          <SelectItem value="Flame">Flame</SelectItem>
-                          <SelectItem value="Frost">Frost</SelectItem>
-                          <SelectItem value="Storm">Storm</SelectItem>
-                          <SelectItem value="Tide">Tide</SelectItem>
-                          <SelectItem value="Stone">Stone</SelectItem>
-                          <SelectItem value="Flux">Flux</SelectItem>
-                          <SelectItem value="Light">Light</SelectItem>
-                          <SelectItem value="Dark">Dark</SelectItem>
-                          <SelectItem value="Sound">Sound</SelectItem>
-                          <SelectItem value="Mind">Mind</SelectItem>
-                          <SelectItem value="Poison">Poison</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-stone-200">{currentData.damageReductionType || 'None'}</p>
-                    )}
-                  </div>
-                  )}
-                </div>
-                {isAAV3 && (
-                  isEditing && canEditAllFields ? (
-                    <V3ArmorBoostsEditor
-                      boosts={(currentData.v3ArmorBoosts as V3ArmorBoost[]) || []}
-                      onChange={(next) => setEditData({ ...editData, v3ArmorBoosts: next })}
-                    />
-                  ) : (
-                    <div className="mt-2">
-                      <Label className="text-xs text-stone-400">Boosts when equipped</Label>
-                      {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || []).filter(b => b?.target && Number(b?.amount)).length > 0 ? (
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {((currentData.v3ArmorBoosts as V3ArmorBoost[]) || [])
-                            .filter(b => b?.target && Number(b?.amount))
-                            .map((b, i) => {
-                              const label = V3_BOOST_TARGETS.find(t => t.value === b.target)?.label ?? b.target;
-                              const amt = Math.trunc(Number(b.amount) || 0);
-                              return (
-                                <span key={i} className="px-2 py-0.5 rounded bg-emerald-900/40 border border-emerald-700 text-emerald-300 text-xs" data-testid={`text-armor-boost-${i}`}>
-                                  {label} {amt >= 0 ? `+${amt}` : amt}
-                                </span>
-                              );
-                            })}
-                        </div>
-                      ) : (
-                        <p className="text-stone-500 text-sm mt-1">None</p>
-                      )}
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-
-            {!isAAV3 && (
-            <div className="pt-4 border-t border-stone-700">
-              <h3 className="text-sm font-bold text-stone-300 mb-2">DC Bonus</h3>
-              {isEditing && canEditAllFields ? (
-                <>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Checkbox
-                      id="editGrantsDcBonus"
-                      checked={currentData.grantsDcBonus || false}
-                      onCheckedChange={(checked) => setEditData({ ...editData, grantsDcBonus: !!checked })}
-                      data-testid="checkbox-edit-grants-dc-bonus"
-                    />
-                    <Label htmlFor="editGrantsDcBonus" className="cursor-pointer">Grants DC Bonus</Label>
-                  </div>
-                  {currentData.grantsDcBonus && (
-                    <div>
-                      <Label>DC Bonus Value</Label>
-                      <NumberInput
-                        value={typeof currentData.dcBonusValue === 'number' ? currentData.dcBonusValue : 0} fallback={0}
-                        onChange={(v) => setEditData({ ...editData, dcBonusValue: v ?? 0 })}
-                        className="bg-stone-800 border-amber-700"
-                        data-testid="input-edit-dc-bonus-value"
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                currentData.grantsDcBonus && (
-                  <div>
-                    <Label className="text-xs text-stone-400">DC Bonus</Label>
-                    <p className="text-stone-200">+{currentData.dcBonusValue || 0}</p>
-                  </div>
-                )
-              )}
-            </div>
-            )}
-
-            {!isAAV3 && <div className="pt-4 border-t border-stone-700">
-              <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-stone-400">Weight (per unit)</Label>
-                    {isEditing && !canEditAllFields && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditAllFields ? (
-                    <NumberInput 
-                      min={0} integer={false} optional value={typeof currentData.itemWeight === 'number' ? currentData.itemWeight : undefined} fallback={0}
-                      onChange={(v) => setEditData({ ...editData, itemWeight: v ?? '' })}
-                      className="bg-stone-800 border-amber-700"
-                    />
-                  ) : (
-                    <p className="text-stone-200">{currentData.itemWeight} lbs</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-xs text-stone-400">Total Weight</Label>
-                  <p className="text-stone-200">
-                    {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(2)} lbs
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Label className="text-xs text-stone-400">Durability</Label>
-                    {isEditing && !canEditDurability && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs and trusted players can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditDurability ? (
-                    <div className="space-y-2">
-                      <Slider 
-                        value={[currentData.durability]} 
-                        onValueChange={(v) => setEditData({ ...editData, durability: v[0] })}
-                        min={0}
-                        max={currentData.maxDurability ?? 10}
-                        step={1}
-                        className="mt-2"
-                        data-testid="slider-durability"
-                      />
-                      <div className="text-sm text-stone-400">
-                        {currentData.durability}/{currentData.maxDurability ?? 10}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-3 bg-stone-700 rounded overflow-hidden">
-                        <div 
-                          className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                          style={{ width: `${(currentData.durability / Math.max(1, currentData.maxDurability ?? 10)) * 100}%` }} 
-                        />
-                      </div>
-                      <span className="text-sm text-stone-200">{currentData.durability}/{currentData.maxDurability ?? 10}</span>
-                    </div>
-                  )}
-                </div>
-                {/* Price Display */}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-stone-400">Price</Label>
-                    {isEditing && !canEditAllFields && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditAllFields ? (
-                    <NumberInput 
-                      min={0} optional value={typeof currentData.price === 'number' ? currentData.price : undefined} fallback={0}
-                      onChange={(v) => setEditData({ ...editData, price: v ?? '' })}
-                      className="bg-stone-800 border-amber-700"
-                      data-testid="input-price"
-                    />
-                  ) : (
-                    <p className="text-stone-200">{currentData.price || 0}</p>
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-stone-400">Currency</Label>
-                    {isEditing && !canEditAllFields && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="h-3 w-3 text-amber-600" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Only GMs can edit this field</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {isEditing && canEditAllFields ? (
-                    <Select value={currentData.currency || 'copper'} onValueChange={(v) => setEditData({ ...editData, currency: v })}>
-                      <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-currency">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="copper">Copper</SelectItem>
-                        <SelectItem value="silver">Silver</SelectItem>
-                        <SelectItem value="gold">Gold</SelectItem>
-                        <SelectItem value="platinum">Platinum</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className={`text-sm capitalize ${
-                      currentData.currency === 'platinum' ? 'text-cyan-400' :
-                      currentData.currency === 'gold' ? 'text-amber-400' :
-                      currentData.currency === 'silver' ? 'text-stone-300' :
-                      'text-orange-400'
-                    }`}>{currentData.currency || 'copper'}</p>
-                  )}
-                </div>
-              </div>
-              {/* AA V3: durability-adjusted effective value */}
-              {isAAV3 && !isEditing && (() => {
-                const adj = v3DurabilityAdjustedValue(currentData.price, currentData.currency, currentData.durability);
-                if (!adj.isDiscounted) return null;
-                const adjStr = formatV3AdjustedValue(adj);
-                const origStr = formatV3OriginalValue(currentData.price, currentData.currency);
-                return (
-                  <p className="text-xs text-amber-400 mt-1" data-testid="text-durability-value">
-                    Effective value: <span className="font-medium">{adjStr}</span>{' '}
-                    <span className="line-through text-stone-500">{origStr}</span>
-                    <span className="text-stone-500 ml-1">(reduced by durability)</span>
-                  </p>
-                );
-              })()}
-            </div>}
-
-            {(isOwner || isGM) && !currentData.isContainer && !isEditing && !isAAV3 && (
+            {(isOwner || isGM) && !currentData.isContainer && !isAAV3 && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
                 <div className="space-y-2">
@@ -32747,7 +31856,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             )}
 
             {/* Container Contents Management - GM Only */}
-            {isGM && currentData.isContainer && !isEditing && (
+            {isGM && currentData.isContainer && (
               <ContainerContentsManager 
                 containerId={currentData.id}
                 containerName={currentData.name}
@@ -32767,7 +31876,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               />
             )}
 
-            {!isEditing && !isAAV3 && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
+            {!isAAV3 && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Quick Actions</h3>
                 <div className="space-y-2">
@@ -32790,77 +31899,16 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
                 </div>
               </div>
             )}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && !isEditing && (
+            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && (
               <CraftSection item={currentData} character={character} canCraft={isOwner} isGM={isGM} />
             )}
-            {/* Recipe editing only on library templates (no characterId).
-                Server admin endpoints reject edits on inventory copies, so
-                hide the editor there to avoid a misleading edit surface. */}
-            {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && isEditing && !currentData.characterId && isGM && (
-              <div className="pt-4 border-t border-stone-700">
-                <CraftRecipesEditor
-                  itemId={currentData.id}
-                  systemSlug={campaignSystem === 'aa-v3' ? 'aa-v3' : isWoundSystem(campaignSystem) ? (campaignSystem as string) : 'aa-v2'}
-                />
-              </div>
-            )}
 
-            {campaignSystem === 'aa-v3' && currentData.itemType === 'consumable' && isEditing && (
-              <div className="pt-4 border-t border-stone-700 space-y-2" data-testid="section-v3-consumable-edit">
-                <h3 className="text-sm font-bold text-green-300">Use Effect</h3>
-                <p className="text-xs text-stone-500">When used, applies these to the character. Positive adds, negative subtracts. Leave 0 for none.</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs text-stone-400">HP</Label>
-                    <NumberInput value={currentData.consumableHpChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableHpChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-hp" />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-stone-400">Mana</Label>
-                    <NumberInput value={currentData.consumableManaChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableManaChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-mana" />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-stone-400">Energy</Label>
-                    <NumberInput value={currentData.consumableEnergyChange ?? 0} fallback={0} onChange={(v) => setEditData({ ...editData, consumableEnergyChange: v ?? 0 })} className="bg-stone-800 border-stone-700" data-testid="input-consumable-energy" />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs text-stone-400">Effect description</Label>
-                  <Textarea value={currentData.consumableEffectDescription || ''} onChange={(e) => setEditData({ ...editData, consumableEffectDescription: e.target.value })} className="bg-stone-800 border-stone-700 min-h-[50px]" placeholder="Describe what using this does..." data-testid="textarea-consumable-effect" />
-                </div>
-              </div>
-            )}
-
-            {campaignSystem !== 'aa-v3' && (
-            <RollEntriesEditor 
-              ownerType="item" 
-              ownerId={item.id} 
-              canEdit={isGM || isOwner} 
-              onExecuteRoll={executeRoll}
-              characterCustomSkills={characterCustomSkills as any[]}
-              campaignSystem={campaignSystem}
-              characterEnergy={character?.energy ?? 0}
-              characterMana={character?.mana ?? 0}
-              characterItems={items as any[]}
-            />
-            )}
-
-            {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && !isEditing && (
+            {currentData.itemType === 'weapon' && campaignSystem === 'aa-v3' && (
               <V3WeaponUsePanel item={currentData} character={character} items={items} hideSyncButton={true} canManage={isGM || trustedPlayer} />
             )}
 
-            {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && !isEditing && (
+            {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && (
               <V3ConsumableUsePanel item={currentData} character={character} canUse={isOwner || isGM} />
-            )}
-
-            {isEditing && (
-              <div className="flex gap-2 pt-4">
-                <Button size="sm" onClick={handleSave} data-testid="button-save-item">
-                  Save Changes
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleCancel} data-testid="button-cancel-edit">
-                  Cancel
-                </Button>
-              </div>
             )}
           </div>
         </div>

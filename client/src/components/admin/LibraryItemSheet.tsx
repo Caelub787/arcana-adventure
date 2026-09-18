@@ -233,6 +233,11 @@ export function LibraryItemSheet({
   onDelete,
   onClose,
   hideCloseButton = false,
+  onExecuteRoll,
+  characterEnergy,
+  characterMana,
+  characterItems,
+  characterCustomSkills,
 }: {
   item: any;
   systemSlug: string;
@@ -246,6 +251,19 @@ export function LibraryItemSheet({
    * in its own chrome (e.g. a FloatingPanel title bar) - avoids two close
    * buttons stacked on top of each other. */
   hideCloseButton?: boolean;
+  /**
+   * In-game context for the Rolls section at the bottom of the sheet. Left
+   * unset (as the admin library and blank-item-creation flows do), Rolls are
+   * editable but not executable - there's no character to roll for yet.
+   * A host with a live character (the in-game item view) passes these so the
+   * same Rolls section becomes a real "use this item" control, matching what
+   * the old item-detail view's own roll button did.
+   */
+  onExecuteRoll?: (roll: any) => void;
+  characterEnergy?: number;
+  characterMana?: number;
+  characterItems?: any[];
+  characterCustomSkills?: any[];
 }) {
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const type = String(item?.itemType || "");
@@ -730,6 +748,11 @@ export function LibraryItemSheet({
             ownerId={item.id}
             canEdit={canEdit}
             campaignSystem={systemSlug}
+            onExecuteRoll={onExecuteRoll}
+            characterEnergy={characterEnergy}
+            characterMana={characterMana}
+            characterItems={characterItems}
+            characterCustomSkills={characterCustomSkills}
           />
         ))}
       </div>
