@@ -235,6 +235,11 @@ interface FolderTreeItemProps {
   sortMode: FolderSortMode;
   expandedFolderIds: Set<string>;
   setExpandedFolderIds: (ids: Set<string>) => void;
+  /** Set right after this folder is created - swaps its name for an
+   * editable, auto-selected input instead of opening a dialog to rename it. */
+  renamingFolderId: string | null;
+  onRenameCommit: (folderId: string, name: string) => void;
+  onRenameCancel: () => void;
 }
 
 function FolderTreeItem({
@@ -269,6 +274,9 @@ function FolderTreeItem({
   sortMode,
   expandedFolderIds,
   setExpandedFolderIds,
+  renamingFolderId,
+  onRenameCommit,
+  onRenameCancel,
 }: FolderTreeItemProps) {
   const expanded = expandedFolderIds.has(folder.id);
   const setExpanded = (isExpanded: boolean) => {
@@ -282,6 +290,15 @@ function FolderTreeItem({
   };
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<"before" | "into" | "after" | null>(null);
+  const isRenaming = renamingFolderId === folder.id;
+  const [renameDraft, setRenameDraft] = useState(folder.name);
+  useEffect(() => {
+    if (isRenaming) setRenameDraft(folder.name);
+  }, [isRenaming, folder.name]);
+  const commitRename = () => {
+    const trimmed = renameDraft.trim();
+    onRenameCommit(folder.id, trimmed || folder.name);
+  };
   const children = folders
     .filter((f) => f.parentId === folder.id)
     .sort((a, b) => {
@@ -439,7 +456,24 @@ function FolderTreeItem({
         ) : (
           <Folder className={`h-3 w-3 ${getFolderColorClass(folder.color)}`} />
         )}
-        <span className="flex-1 truncate">{folder.name}</span>
+        {isRenaming ? (
+          <input
+            autoFocus
+            value={renameDraft}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+              else if (e.key === "Escape") { e.preventDefault(); onRenameCancel(); }
+            }}
+            className="flex-1 min-w-0 bg-stone-800 border border-amber-600 rounded px-1 text-stone-100 outline-none"
+            data-testid={`input-rename-folder-${folder.id}`}
+          />
+        ) : (
+          <span className="flex-1 truncate">{folder.name}</span>
+        )}
         {isGlobal && (
           <span title="Global folder">
             <Network className="h-2.5 w-2.5 text-stone-500" />
@@ -546,6 +580,9 @@ function FolderTreeItem({
               sortMode={sortMode}
               expandedFolderIds={expandedFolderIds}
               setExpandedFolderIds={setExpandedFolderIds}
+              renamingFolderId={renamingFolderId}
+              onRenameCommit={onRenameCommit}
+              onRenameCancel={onRenameCancel}
             />
           ))}
           {folderNotes.map((note) => (
@@ -666,6 +703,11 @@ export function CampaignNotesPanel({
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
 
   const [folderCampaignAssignment, setFolderCampaignAssignment] = useState<string | null>(null);
+  // A freshly-created folder goes straight into rename mode in the tree
+  // itself (its name shown as an input, auto-selected) instead of opening
+  // the full folder dialog first - the dialog is still there for changing
+  // color/campaign assignment later via the existing Rename menu item.
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
 
   const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
@@ -1624,6 +1666,17 @@ export function CampaignNotesPanel({
     setFolderCampaignAssignment(campaignId);
   };
 
+  // Creates the folder right away with a placeholder name and drops it
+  // straight into inline-rename mode, instead of making the GM fill out the
+  // full folder dialog before anything exists - matches how a new note,
+  // canvas, scene or book already get created in this tree.
+  const createFolderInline = (parentId: string | null) => {
+    createFolderMutation.mutate(
+      { name: "New Folder", color: null, parentId, campaignId } as any,
+      { onSuccess: (created: any) => { if (created?.id) setRenamingFolderId(created.id); } },
+    );
+  };
+
   const openFolderDialog = (folder?: NoteFolder) => {
     if (folder) {
       setEditingFolder(folder);
@@ -2152,7 +2205,7 @@ export function CampaignNotesPanel({
   // Timelines isn't a creation action, so it stays available either way.
   const rootCreateActions: Array<{ key: string; label: string; icon: any; run: () => void } | { separator: true }> = [
     ...(isGm ? [
-      { key: "folder", label: "New Folder", icon: FolderPlus, run: () => openFolderDialog() },
+      { key: "folder", label: "New Folder", icon: FolderPlus, run: () => createFolderInline(null) },
       { separator: true as const },
       { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
       { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
@@ -2340,14 +2393,7 @@ export function CampaignNotesPanel({
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
                 onShareFolder={(f) => openFolderShareDialog(f.id)}
-                onAddSubfolder={(parentId) => {
-                  setEditingFolder(null);
-                  setFolderName("");
-                  setFolderColor(null);
-                  setFolderParentId(parentId);
-                  setFolderCampaignAssignment(campaignId);
-                  setFolderDialogOpen(true);
-                }}
+                onAddSubfolder={(parentId) => createFolderInline(parentId)}
                 onDeleteFolder={(f) => {
                   setFolderToDelete(f);
                   setDeleteFolderDialogOpen(true);
@@ -2409,6 +2455,12 @@ export function CampaignNotesPanel({
                 sortMode={folderSortMode}
                 expandedFolderIds={expandedFolderIds}
                 setExpandedFolderIds={setExpandedFolderIds}
+                renamingFolderId={renamingFolderId}
+                onRenameCommit={(folderId, name) => {
+                  setRenamingFolderId(null);
+                  updateFolderMutation.mutate({ id: folderId, data: { name } });
+                }}
+                onRenameCancel={() => setRenamingFolderId(null)}
               />
             ))
           )}

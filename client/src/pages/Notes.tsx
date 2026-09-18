@@ -841,22 +841,27 @@ export default function Notes() {
 
   useEffect(() => {
     const handleNoteMessage = (data: any) => {
+      // refetch, not invalidate: invalidate only marks a query stale, and one
+      // whose panel is mounted but momentarily unobserved doesn't actually
+      // re-fetch until something else wakes it - the same "only updates
+      // after a refresh" bug CampaignNotesPanel's own handler hit and fixed
+      // the same way.
       if (data.type === 'note_deleted') {
-        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
         if (data.noteId === noteId) {
           setLocation("/notes");
           setShowHomeView(true);
         }
       }
       if (data.type === 'note_created' || data.type === 'note_changed' || data.type === 'notes_changed') {
-        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       }
       if (data.type === 'note_folder_changed') {
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       }
     };
     const unsub1 = gameWs.onMessage(handleNoteMessage);
