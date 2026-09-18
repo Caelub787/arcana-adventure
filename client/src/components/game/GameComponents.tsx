@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useId } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, memo, useId } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
@@ -824,6 +824,12 @@ interface BattleMapProps {
   // Where the Select/Ruler column starts. The map's own button column
   // continues below it, so it has to know.
   selectionToolsTop?: number;
+  // Reports the actual bottom edge (viewport px) of this map's own left
+  // button column (camera/token controls + up to three conditional
+  // buttons) every time it changes, so a caller positioning something
+  // below the WHOLE left toolbar (Select/Ruler + this column) doesn't have
+  // to guess a worst-case button count.
+  onLeftToolbarBottomChange?: (bottom: number) => void;
 }
 
 // Roll Item-Cost helpers. A roll can require the player to have specific
@@ -1264,10 +1270,25 @@ function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: Rule
   );
 }
 
-export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176 }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
-  
+
+  // Reports the left button column's actual bottom edge to whoever asked
+  // (Campaign.tsx positions the player tracker below it) - measured, not
+  // guessed, since which of the trailing conditional buttons render depends
+  // on role/scene state the caller can't see.
+  const leftToolbarColumnRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = leftToolbarColumnRef.current;
+    if (!el || !onLeftToolbarBottomChange) return;
+    const report = () => onLeftToolbarBottomChange(el.getBoundingClientRect().bottom);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onLeftToolbarBottomChange]);
+
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -3007,6 +3028,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
 
         return (
           <div
+            ref={leftToolbarColumnRef}
             className="absolute z-40 flex flex-col gap-2 pointer-events-auto"
             style={{ left: '16px', top: `${leftToolbarTop}px` }}
           >

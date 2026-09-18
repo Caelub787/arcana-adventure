@@ -96,6 +96,10 @@ function makeEntry(overrides: Record<string, any> = {}) {
 
 function renderHotbar(entries: any[], onOpenCharacterSheet = vi.fn()) {
   getFreeHotbar.mockResolvedValue(entries);
+  // Fixture entries all target loadout 0; a first-ever visit (no saved
+  // preference, which is the case after afterEach's localStorage.clear())
+  // now defaults to loadout 1, so pin the viewed loadout to match the data.
+  localStorage.setItem(`aa-free-hotbar-loadout-${campaignId}`, "0");
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, queryFn: async () => [] },

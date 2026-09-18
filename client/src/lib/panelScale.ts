@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 const COMPACT_PANELS_KEY = "arcana_compact_floating_panels";
 const COMPACT_PANELS_EVENT = "compact-panels-changed";
 
-export const COMPACT_PANEL_SCALE = 0.6;
+export const COMPACT_PANEL_SCALE = 0.7;
 
 export function getCompactPanelsEnabled(): boolean {
   if (typeof window === "undefined") return false;

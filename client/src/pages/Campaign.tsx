@@ -7682,6 +7682,11 @@ export default function Campaign() {
   const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
   const selectionToolsTop =
     LEFT_TOOLBAR_TOP + leftToolbarButtons * (LEFT_TOOLBAR_BUTTON + LEFT_TOOLBAR_GAP);
+  // BattleMap's own left button column reports its real (measured) bottom
+  // edge here - the vertical-left player tracker sits right below it. null
+  // until BattleMap first mounts and measures, so the tracker uses a
+  // worst-case fallback until then (see its mount point below).
+  const [leftToolbarBottom, setLeftToolbarBottom] = useState<number | null>(null);
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   useEffect(() => {
@@ -10802,17 +10807,22 @@ export default function Campaign() {
             heights regardless of device. */}
         {PLAYER_TRACKER_LAYOUT === 'vertical-left' ? (
           // "Below the left toolbar" means below ALL of it, not just the
-          // Select/Ruler pair - BattleMap stacks a second column right
-          // under those (camera controls, token options, and up to three
-          // more conditional buttons: player-viewport toggle for a GM,
-          // notes, clear-placed-items), each the same 40px + 8px gap. That
-          // stack's own button count depends on role/notes/scene state that
-          // Campaign.tsx can't see from here, so this clears the worst
-          // case (5 buttons) rather than guess a live count - occasionally
-          // more gap than strictly needed, never an overlap.
+          // Select/Ruler pair - BattleMap stacks a second column right under
+          // those (camera controls, token options, and up to three more
+          // conditional buttons), whose count depends on role/notes/scene
+          // state Campaign.tsx can't see. BattleMap now measures and reports
+          // that column's real bottom edge (leftToolbarBottom) via
+          // onLeftToolbarBottomChange, so the tracker sits exactly one 8px
+          // gap below it - the same gap the toolbar's own buttons use
+          // between themselves - instead of a worst-case guess. Falls back
+          // to that worst case only for the first paint, before BattleMap
+          // has mounted and measured.
           <div
             className="absolute pointer-events-auto"
-            style={{ left: '16px', top: `${selectionToolsTop + 88 + 8 + (5 * 40 + 4 * 8) + 16}px` }}
+            style={{
+              left: '16px',
+              top: `${(leftToolbarBottom ?? (selectionToolsTop + 88 + 8 + 5 * 40 + 4 * 8)) + 8}px`,
+            }}
           >
             <PinnedRosterBar
               members={(members as any[]) || []}
@@ -13149,6 +13159,7 @@ export default function Campaign() {
              pinSnapToGrid={pinSnapToGrid}
              campaignSystem={(campaign as any)?.system}
              selectionToolsTop={selectionToolsTop}
+             onLeftToolbarBottomChange={setLeftToolbarBottom}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

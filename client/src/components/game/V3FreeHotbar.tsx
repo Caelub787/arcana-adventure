@@ -13,9 +13,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap, Menu, RotateCcw } from "lucide-react";
 import { LazyItemImage, executeCharacterRollEntry } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
+import { getHotbarPosition, setHotbarPosition, clearHotbarPosition, type HotbarPosition } from "@/lib/hotbarPosition";
 import { isWoundSystem, woundSystemRules, type WoundSystemRules } from "@shared/systemRules";
 import { isSwampySystem } from "@shared/systems";
 import { SWAMPY_MAX_HOPE } from "@shared/swampy";
@@ -132,8 +133,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [loadout, setLoadout] = useState(() => {
-    const saved = Number(localStorage.getItem(`aa-free-hotbar-loadout-${campaignId}`));
-    return Number.isInteger(saved) && saved >= 0 && saved < NUM_LOADOUTS ? saved : 0;
+    // Distinguish "never saved" from "explicitly saved 0" - Number(null) is
+    // 0, so reading the raw string first is what lets a first-ever visit to
+    // this campaign default to loadout 1 instead of 0, while a real saved
+    // preference (0 included) is still remembered afterward.
+    const raw = localStorage.getItem(`aa-free-hotbar-loadout-${campaignId}`);
+    if (raw === null) return 1;
+    const saved = Number(raw);
+    return Number.isInteger(saved) && saved >= 0 && saved < NUM_LOADOUTS ? saved : 1;
   });
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<FreeHotbarEntryView | null>(null);
@@ -145,6 +152,57 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   useEffect(() => {
     localStorage.setItem(`aa-free-hotbar-loadout-${campaignId}`, String(loadout));
   }, [loadout, campaignId]);
+
+  // Free-floating position, per device (see lib/hotbarPosition). Holding the
+  // grip handle drags the whole bar; null means "use the default docked
+  // position" (bottom-center desktop / bottom-right mobile, unchanged).
+  const hotbarRef = useRef<HTMLDivElement | null>(null);
+  const [customPos, setCustomPos] = useState<HotbarPosition | null>(() => getHotbarPosition());
+  const gripHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragState = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number }>({
+    dragging: false, startX: 0, startY: 0, baseX: 0, baseY: 0,
+  });
+
+  const clampHotbarPos = (x: number, y: number): HotbarPosition => {
+    const el = hotbarRef.current;
+    const w = el?.offsetWidth ?? 300;
+    const h = el?.offsetHeight ?? 80;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    return { x: Math.max(0, Math.min(vw - w, x)), y: Math.max(0, Math.min(vh - h, y)) };
+  };
+
+  const handleGripPointerDown = (e: React.PointerEvent) => {
+    const el = hotbarRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (gripHoldTimer.current) clearTimeout(gripHoldTimer.current);
+    gripHoldTimer.current = setTimeout(() => {
+      dragState.current = { dragging: true, startX: e.clientX, startY: e.clientY, baseX: rect.left, baseY: rect.top };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    }, 350);
+  };
+  const handleGripPointerMove = (e: React.PointerEvent) => {
+    if (!dragState.current.dragging) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    setCustomPos(clampHotbarPos(dragState.current.baseX + dx, dragState.current.baseY + dy));
+  };
+  const handleGripPointerUp = (e: React.PointerEvent) => {
+    if (gripHoldTimer.current) { clearTimeout(gripHoldTimer.current); gripHoldTimer.current = null; }
+    if (dragState.current.dragging) {
+      dragState.current.dragging = false;
+      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+      setCustomPos((pos) => {
+        if (pos) setHotbarPosition(pos);
+        return pos;
+      });
+    }
+  };
+  const handleResetHotbarPosition = () => {
+    clearHotbarPosition();
+    setCustomPos(null);
+  };
 
   // Keyboard shortcuts: H + digit switches loadouts; a plain digit (1-9, 0)
   // opens the assigned slot (1 = first slot, 0 = tenth). Both are ignored
@@ -333,10 +391,28 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
 
   return (
     <div
-      className={`fixed bottom-2 sm:bottom-4 z-30 pointer-events-auto ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
+      ref={hotbarRef}
+      className={customPos ? 'fixed z-30 pointer-events-auto' : `fixed bottom-2 sm:bottom-4 z-30 pointer-events-auto ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
+      style={customPos ? { left: customPos.x, top: customPos.y } : undefined}
       data-testid="v3-free-hotbar"
     >
-      <div className="chrome-frame chrome-frame-lg flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
+      <div className="chrome-frame chrome-frame-lg relative flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
+        {/* Move handle - hold to drag the whole hotbar to a new spot, saved
+            on this device only. Sits just outside the top-left corner so it
+            never crowds the loadout switcher or the first slot. */}
+        <button
+          type="button"
+          className="absolute -top-2 -left-2 w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600 cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={handleGripPointerDown}
+          onPointerMove={handleGripPointerMove}
+          onPointerUp={handleGripPointerUp}
+          onPointerCancel={handleGripPointerUp}
+          title="Hold and drag to move the hotbar"
+          aria-label="Move hotbar"
+          data-testid="button-hotbar-move-handle"
+        >
+          <Menu className="h-3 w-3" />
+        </button>
         {/* Loadout switcher */}
         <div className="flex flex-col items-center mr-0.5 sm:mr-1 select-none">
           <button
@@ -625,6 +701,20 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Only shown once the hotbar has been dragged off its default spot -
+          this device's one way back, since there's nothing else on screen
+          that would tell you it moved. */}
+      {customPos && (
+        <button
+          type="button"
+          onClick={handleResetHotbarPosition}
+          className="fixed bottom-2 left-2 z-30 pointer-events-auto flex items-center gap-1 px-2 py-1 rounded-md bg-stone-900/95 border border-stone-700 text-stone-400 hover:text-amber-400 hover:border-amber-600 text-xs shadow-lg backdrop-blur-sm"
+          data-testid="button-reset-hotbar-position"
+        >
+          <RotateCcw className="h-3 w-3" /> Reset Hotbar Position
+        </button>
+      )}
     </div>
   );
 }
