@@ -56,7 +56,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, Home, ArrowUp, ArrowLeft, BookOpen, Globe, History as HistoryIcon, Map as MapIcon } from "lucide-react";
+import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Eraser, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, Home, ArrowUp, ArrowLeft, BookOpen, Globe, History as HistoryIcon, Map as MapIcon } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
@@ -2970,6 +2970,26 @@ export function CampaignNotesPanel({
             >
               <Share2 className="h-3 w-3" />
             </Button>
+            {/* Wipes the note's own content without touching the note object
+                itself - the one way to clear out a note that's attached to a
+                character/item sheet and can't be deleted (see Delete below). */}
+            {!!noteContent && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-stone-400 hover:text-amber-400"
+                title="Clear this note's content"
+                onClick={() => {
+                  if (!selectedNoteId) return;
+                  if (!window.confirm("Clear all content from this note? This can't be undone.")) return;
+                  setNoteContent("");
+                  updateNoteMutation.mutate({ id: selectedNoteId, data: { content: "" } });
+                }}
+                data-testid="button-clear-note-content"
+              >
+                <Eraser className="h-3 w-3" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

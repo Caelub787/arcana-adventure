@@ -210,6 +210,14 @@ interface FloatingPanelProps {
    * only resize width at a point where doing so can't corrupt that sync.
    */
   lockWidthResize?: boolean;
+  /**
+   * Whether the panel shows resize handles at all. Defaults to true.
+   * Character and item sheets pass false - since the notes-workspace
+   * rework, resizing those has only caused layout issues (fitContent
+   * fighting a manual size, content overflowing a shrunk panel), and
+   * resizing is meant to stay available only on the notes panels.
+   */
+  resizable?: boolean;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -231,6 +239,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   onFitLocked,
   width,
   lockWidthResize,
+  resizable = true,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -269,6 +278,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     onFitLocked={onFitLocked}
     width={width}
     lockWidthResize={lockWidthResize}
+    resizable={resizable}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -367,6 +377,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   onFitLocked,
   width,
   lockWidthResize,
+  resizable = true,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -931,7 +942,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
         ) : children}
       </div>
 
-      {!isMinimized && (
+      {!isMinimized && resizable && (
         <>
           <div
             className={`${resizeHandleBase} top-0 cursor-n-resize`}

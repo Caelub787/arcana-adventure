@@ -18081,9 +18081,32 @@ function V3AttrsAndSkillsTab({
       }
     },
   });
-  const [editing, setEditing] = React.useState(false);
-  const [attrData, setAttrData] = React.useState<Record<string, number>>({});
-  const [skillData, setSkillData] = React.useState<Record<string, number>>({});
+  // No edit mode: each attribute and skill is edited on its own, in place -
+  // double-click (PC) or long-press (mobile) a value, same gesture as C.A.
+  // (which was forked from this tab). The budget is enforced as you type
+  // rather than checked on a Save that no longer exists.
+  const v3Edit = useCaInlineEdit(
+    (updates) => {
+      // Attributes are their own columns and go straight through. Skills all
+      // live in one v3Skills map, so a skill edit has to be merged into the
+      // whole map rather than written under its own key - the field name is
+      // prefixed so the two can be told apart here.
+      const patch: Record<string, any> = {};
+      const skillEdits = Object.entries(updates).filter(([key]) => key.startsWith('skill:'));
+      for (const [key, value] of Object.entries(updates)) {
+        if (!key.startsWith('skill:')) patch[key] = value;
+      }
+      if (skillEdits.length > 0) {
+        const skills: Record<string, number> = { ...makeEmptyV3Skills(), ...(liveCharacter.v3Skills || {}) };
+        for (const [key, value] of skillEdits) {
+          skills[key.slice('skill:'.length)] = Number(value) || 0;
+        }
+        patch.v3Skills = skills;
+      }
+      updateCharacterMutation.mutate(patch);
+    },
+    canEditSheet,
+  );
 
   // Resolve the character's V3 species so we can exclude its (free) attribute
   // bonuses from the player's spent-points count. Campaign species win over the
@@ -18122,7 +18145,7 @@ function V3AttrsAndSkillsTab({
   // species bonus baked into that column. Attributes cannot go negative.
   const attrPointBudget = v3AttrPointBudget(level);
   const attrPointsUsed = V3_ATTRIBUTES.reduce((sum, at) => {
-    const stored = editing ? (attrData[at.key] ?? 0) : ((liveCharacter[at.key] as number) || 0);
+    const stored = (liveCharacter[at.key] as number) || 0;
     const bonus = Number(speciesAttrBonuses[at.key] || 0);
     return sum + Math.max(0, stored - bonus);
   }, 0);
@@ -18130,25 +18153,51 @@ function V3AttrsAndSkillsTab({
   // Skill points: budget = 8 + (level-1). Negatives (down to -2 per skill)
   // reclaim points to spend elsewhere, up to a total of 6.
   const skillBaseBudget = v3SkillPointBudget(level);
-  const skillValues = V3_SKILLS.map(s =>
-    editing ? (skillData[s.key] ?? 0) : ((liveCharacter.v3Skills?.[s.key] as number) ?? 0)
-  );
+  const skillValues = V3_SKILLS.map(s => (liveCharacter.v3Skills?.[s.key] as number) ?? 0);
   const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((a, v) => a + v, 0);
   const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((a, v) => a + v, 0));
   const skillReclaimed = Math.min(negativeSkillUsed, V3_MAX_NEGATIVE_SKILL_POINTS);
   const skillPointBudget = skillBaseBudget + skillReclaimed;
 
+  // How far one attribute/skill can move right now - the editor for one
+  // value is bounded by what is actually left to spend (plus, for a skill,
+  // how much negative room the OTHER skills have left), so the totals can
+  // never go over in the first place. Mirrors shared/ca.ts's
+  // caAttributeBounds/caSkillBounds, with V3's species-bonus and
+  // scroll-boost wrinkles folded in.
+  const v3AttrBounds = (key: string) => {
+    const speciesBonus = Number(speciesAttrBonuses[key] || 0);
+    const minAttr = Math.max(0, speciesBonus);
+    const current = (liveCharacter[key] as number) || 0;
+    const spentThis = Math.max(0, current - speciesBonus);
+    const leftForThis = attrPointBudget - (attrPointsUsed - spentThis);
+    return { current, min: minAttr, max: Math.min(5, current + Math.max(0, leftForThis)) };
+  };
+  const v3SkillBoundsCalc = (key: string) => {
+    const current = (liveCharacter.v3Skills?.[key] as number) ?? 0;
+    const scrollBoost = Number(liveCharacter.v3SkillBoosts?.[key] || 0);
+    const spentThis = Math.max(0, current);
+    const leftForThis = skillPointBudget - (positiveSkillUsed - spentThis);
+    const negativeThis = Math.max(0, -current);
+    const negativesElsewhere = negativeSkillUsed - negativeThis;
+    const negativeRoom = Math.max(0, V3_MAX_NEGATIVE_SKILL_POINTS - negativesElsewhere);
+    // `|| 0` rather than plain negation: with no negative room left this
+    // would otherwise be -0, a real value a NumberInput will happily show.
+    const floor = -Math.min(2, negativeRoom) || 0;
+    return { current, min: floor, max: Math.min(5 + Math.max(0, Math.floor(scrollBoost)), current + Math.max(0, leftForThis)) };
+  };
+
   const skillPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const skillPressFiredRef = React.useRef(false);
 
-  // Tap a skill rolls directly; long-press (touch) / double-click (mouse) opens
-  // the Advantage/Disadvantage + extra-modifier roll panel (AA V3 only).
-  // The single-click roll is deferred so a double-click can cancel it before it
-  // fires (onClick fires before onDoubleClick in the DOM).
-  const skillPressHandlers = (name: string, mod: number, dieOverride: string) => {
-    // Rolling and editing don't collide: these ride on the skill's NAME, and
-    // the double-click that opens an editor rides on its VALUE.
+  // A tap rolls; a double-click edits the base mod (same editor the value's
+  // own double-click already opens - this just makes the bigger name target
+  // reach it too); a press-and-hold (mouse or touch, via Pointer Events so
+  // both share one code path) opens the roll panel for extra modifiers /
+  // advantage-disadvantage. onTouchMove cancelling the hold timer is what
+  // keeps a touch-scroll from triggering it.
+  const skillPressHandlers = (name: string, mod: number, dieOverride: string, fieldKey: string, rawValue: number) => {
     return {
       onClick: () => {
         if (skillPressFiredRef.current) {
@@ -18168,9 +18217,9 @@ function V3AttrsAndSkillsTab({
           clearTimeout(skillClickTimerRef.current);
           skillClickTimerRef.current = null;
         }
-        openRollPanel(name, mod, 'skill', dieOverride);
+        v3Edit.open(fieldKey, rawValue);
       },
-      onTouchStart: () => {
+      onPointerDown: () => {
         skillPressFiredRef.current = false;
         if (skillPressTimerRef.current) clearTimeout(skillPressTimerRef.current);
         skillPressTimerRef.current = setTimeout(() => {
@@ -18182,21 +18231,25 @@ function V3AttrsAndSkillsTab({
           openRollPanel(name, mod, 'skill', dieOverride);
         }, 500);
       },
-      onTouchEnd: () => {
+      onPointerUp: () => {
         if (skillPressTimerRef.current) {
           clearTimeout(skillPressTimerRef.current);
           skillPressTimerRef.current = null;
         }
       },
-      // Cancel the long-press when the finger moves (scrolling), so starting a
-      // scroll on a skill row never opens the roll panel.
+      onPointerCancel: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
+      onPointerLeave: () => {
+        if (skillPressTimerRef.current) {
+          clearTimeout(skillPressTimerRef.current);
+          skillPressTimerRef.current = null;
+        }
+      },
       onTouchMove: () => {
-        if (skillPressTimerRef.current) {
-          clearTimeout(skillPressTimerRef.current);
-          skillPressTimerRef.current = null;
-        }
-      },
-      onTouchCancel: () => {
         if (skillPressTimerRef.current) {
           clearTimeout(skillPressTimerRef.current);
           skillPressTimerRef.current = null;
@@ -18205,108 +18258,83 @@ function V3AttrsAndSkillsTab({
     };
   };
 
-  const startEdit = () => {
-    const a: Record<string, number> = {};
-    for (const at of V3_ATTRIBUTES) {
-      a[at.key] = (liveCharacter[at.key] as number) || 0;
-    }
-    const s: Record<string, number> = { ...makeEmptyV3Skills(), ...(liveCharacter.v3Skills || {}) };
-    setAttrData(a);
-    setSkillData(s);
-    setEditing(true);
-  };
-
-  const save = () => {
-    updateCharacterMutation.mutate({
-      ...attrData,
-      v3Skills: skillData,
-    });
-    setEditing(false);
-  };
-
   return (
     <Card className="bg-stone-800 border-stone-700" data-testid="card-v3-attrs-skills">
       <CardContent className="pt-4 space-y-3">
-        {canEditSheet && !editing && (
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={startEdit} data-testid="button-edit-v3-attrs">
-              Edit
-            </Button>
-          </div>
-        )}
         <div className="flex justify-end">
           <CaInfoHint label="How attributes and skills roll" align="end" testId="button-v3-skills-info">
             Attribute value → die: 0=d6, 1=d8, 2=d10, 3=d12, 4+=d20. Skill rolls use the parent attribute's die plus the skill modifier.
+            {canEditSheet && ' Double-click (or long-press) a number to change it.'}
           </CaInfoHint>
         </div>
 
-        {editing && (
-          <div className="grid grid-cols-2 gap-2" data-testid="v3-point-budgets">
-            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-stone-400">Attribute Points</span>
-                <span
-                  className={
-                    attrPointsUsed === attrPointBudget
-                      ? 'text-green-400 font-semibold'
-                      : attrPointsUsed > attrPointBudget
-                        ? 'text-red-400 font-semibold'
-                        : 'text-amber-400 font-semibold'
-                  }
-                  data-testid="text-v3-attr-points"
-                >
-                  {attrPointsUsed} / {attrPointBudget}
-                  {attrPointsUsed > attrPointBudget && ' (too many)'}
-                </span>
-              </div>
-              <p className="text-[10px] text-stone-500 mt-1">Species bonuses are free. Attributes can't go below 0.</p>
+        {/* The budgets are always on screen now rather than only inside an
+            edit mode, because they are what tells you whether there is
+            anything left to spend before you go looking for it. */}
+        <div className="grid grid-cols-2 gap-2" data-testid="v3-point-budgets">
+          <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-stone-400">Attribute Points</span>
+              <span
+                className={
+                  attrPointsUsed === attrPointBudget
+                    ? 'text-green-400 font-semibold'
+                    : attrPointsUsed > attrPointBudget
+                      ? 'text-red-400 font-semibold'
+                      : 'text-amber-400 font-semibold'
+                }
+                data-testid="text-v3-attr-points"
+              >
+                {attrPointsUsed} / {attrPointBudget}
+                {attrPointsUsed > attrPointBudget && ' (too many)'}
+              </span>
             </div>
-            <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-stone-400">Skill Points</span>
-                <span
-                  className={
-                    positiveSkillUsed === skillPointBudget
-                      ? 'text-green-400 font-semibold'
-                      : positiveSkillUsed > skillPointBudget
-                        ? 'text-red-400 font-semibold'
-                        : 'text-amber-400 font-semibold'
-                  }
-                  data-testid="text-v3-skill-points"
-                >
-                  {positiveSkillUsed} / {skillPointBudget}
-                  {positiveSkillUsed > skillPointBudget && ' (too many)'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-stone-500 text-[10px]">Reclaimed from negatives</span>
-                <span
-                  className={negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
-                  data-testid="text-v3-skill-neg-points"
-                >
-                  {negativeSkillUsed} / {V3_MAX_NEGATIVE_SKILL_POINTS}
-                  {negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
-                </span>
-              </div>
+            <p className="text-[10px] text-stone-500 mt-1">Species bonuses are free. Attributes can't go below 0.</p>
+          </div>
+          <div className="p-2 rounded bg-stone-900 border border-stone-700 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-stone-400">Skill Points</span>
+              <span
+                className={
+                  positiveSkillUsed === skillPointBudget
+                    ? 'text-green-400 font-semibold'
+                    : positiveSkillUsed > skillPointBudget
+                      ? 'text-red-400 font-semibold'
+                      : 'text-amber-400 font-semibold'
+                }
+                data-testid="text-v3-skill-points"
+              >
+                {positiveSkillUsed} / {skillPointBudget}
+                {positiveSkillUsed > skillPointBudget && ' (too many)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-stone-500 text-[10px]">Reclaimed from negatives</span>
+              <span
+                className={negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS ? 'text-red-400 text-[10px]' : 'text-stone-400 text-[10px]'}
+                data-testid="text-v3-skill-neg-points"
+              >
+                {negativeSkillUsed} / {V3_MAX_NEGATIVE_SKILL_POINTS}
+                {negativeSkillUsed > V3_MAX_NEGATIVE_SKILL_POINTS && ' (too many)'}
+              </span>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {V3_ATTRIBUTES.map(attr => {
-            const attrVal = editing ? (attrData[attr.key] ?? 0) : ((liveCharacter[attr.key] as number) || 0);
-            const armorBoost = editing ? 0 : Number(armorBoosts[attr.key] || 0);
+            const attrVal = (liveCharacter[attr.key] as number) || 0;
+            const armorBoost = Number(armorBoosts[attr.key] || 0);
             const effectiveAttrVal = attrVal + armorBoost;
             const dieType = `d${attrValueToDieSides(effectiveAttrVal)}`;
             const speciesBonus = Number(speciesAttrBonuses[attr.key] || 0);
-            // Player allocation can't go negative, so the stored value (which
-            // includes the free species bonus) can't drop below that bonus.
-            const minAttr = Math.max(0, speciesBonus);
+            const open = v3Edit.field === attr.key;
+            const bounds = v3AttrBounds(attr.key);
             return (
               <Card
                 key={attr.key}
-                className={`bg-stone-900 ${editing ? 'border-amber-700' : 'border-stone-600'}`}
+                className={`bg-stone-900 ${open ? 'border-amber-700' : 'border-stone-600'}`}
                 data-testid={`card-v3-attr-${attr.key}`}
               >
                 <CardContent className="p-3 text-center">
@@ -18314,25 +18342,30 @@ function V3AttrsAndSkillsTab({
                     <Label className="text-xs text-stone-400">{attr.name}</Label>
                     <span className="text-[10px] text-stone-500">({attr.abbr})</span>
                   </div>
-                  {editing ? (
-                    <>
+                  {open ? (
+                    <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <NumberInput
-                        min={minAttr} max={5} value={attrData[attr.key] ?? 0} fallback={minAttr}
-                        onChange={v => setAttrData({ ...attrData, [attr.key]: v ?? minAttr })}
-                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                        className="text-xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
+                        min={bounds.min} max={bounds.max} value={v3Edit.draft} fallback={bounds.min}
+                        onChange={v => v3Edit.setDraft(v ?? bounds.min)}
+                        className="text-xl font-bold text-amber-500 text-center bg-stone-800 border-amber-700 min-w-0"
                         data-testid={`input-v3-attr-${attr.key}`}
+                        {...v3Edit.keyHandlers(attr.key, (d) => clampToBounds(d, bounds))}
                       />
-                      {speciesBonus > 0 && (
-                        <p className="text-[10px] text-emerald-400/80 mt-1" data-testid={`text-v3-attr-species-${attr.key}`}>
-                          incl. +{speciesBonus} species
-                        </p>
-                      )}
-                    </>
+                      <CaInlineActions edit={v3Edit} field={attr.key} transform={(d) => clampToBounds(d, bounds)} />
+                    </div>
                   ) : (
-                    <div className="mt-1" data-testid={`text-v3-attr-${attr.key}`}>
+                    <div
+                      className={`mt-1 ${canEditSheet ? 'cursor-pointer select-none' : ''}`}
+                      data-testid={`text-v3-attr-${attr.key}`}
+                      {...v3Edit.pressHandlers(attr.key, attrVal)}
+                    >
                       <span className="text-2xl font-bold text-amber-500">{attrVal >= 0 ? `+${attrVal}` : attrVal}</span>
                       <span className="text-[10px] text-stone-400 ml-1">{dieType}</span>
+                      {speciesBonus > 0 && (
+                        <span className="text-[10px] text-emerald-400/80 ml-1" data-testid={`text-v3-attr-species-${attr.key}`}>
+                          (+{speciesBonus} species)
+                        </span>
+                      )}
                       {armorBoost !== 0 && (
                         <span
                           className={`text-[10px] ml-1 cursor-help ${armorBoost > 0 ? 'text-emerald-400' : 'text-red-400'}`}
@@ -18364,11 +18397,11 @@ function V3AttrsAndSkillsTab({
           <CardContent className="pt-0 pb-2 space-y-1">
             {[...V3_SKILLS].sort((a, b) => a.name.localeCompare(b.name)).map(skill => {
               const parent = V3_ATTRIBUTES.find(a => a.key === skill.parent);
-              const attrVal = editing ? (attrData[skill.parent] ?? 0) : ((liveCharacter[skill.parent] as number) || 0);
-              const attrArmorBoost = editing ? 0 : Number(armorBoosts[skill.parent] || 0);
+              const attrVal = (liveCharacter[skill.parent] as number) || 0;
+              const attrArmorBoost = Number(armorBoosts[skill.parent] || 0);
               const dieType = `d${attrValueToDieSides(attrVal + attrArmorBoost)}`;
-              const rawSkillVal = editing ? (skillData[skill.key] ?? 0) : ((liveCharacter.v3Skills?.[skill.key] as number) ?? 0);
-              const skillArmorBoost = editing ? 0 : Number(armorBoosts[skill.key] || 0);
+              const rawSkillVal = (liveCharacter.v3Skills?.[skill.key] as number) ?? 0;
+              const skillArmorBoost = Number(armorBoosts[skill.key] || 0);
               // Scroll boost (Task #198): a permanent free per-skill bonus that
               // raises the modifier AND the allocation cap by X (can exceed +5).
               const skillScrollBoost = Number(liveCharacter.v3SkillBoosts?.[skill.key] || 0);
@@ -18376,12 +18409,13 @@ function V3AttrsAndSkillsTab({
               // -1/Clear buttons only apply to the excess above it.
               const skillSpeciesFloor = Math.min(skillScrollBoost, Math.max(0, Number(speciesSkillBonuses[skill.key]) || 0));
               const skillRemovableBoost = skillScrollBoost - skillSpeciesFloor;
-              const skillMax = 5 + skillScrollBoost;
-              const skillVal = rawSkillVal + skillArmorBoost + (editing ? 0 : skillScrollBoost);
+              const skillVal = rawSkillVal + skillArmorBoost + skillScrollBoost;
               // Display split: base = player points + species bonus (permanent);
               // temp = equipped-armor boosts + scroll boosts, shown as "(+N)".
-              const skillBaseVal = rawSkillVal + (editing ? 0 : skillSpeciesFloor);
-              const skillTempBoost = editing ? 0 : skillArmorBoost + skillRemovableBoost;
+              const skillBaseVal = rawSkillVal + skillSpeciesFloor;
+              const skillTempBoost = skillArmorBoost + skillRemovableBoost;
+              const skillOpen = v3Edit.field === `skill:${skill.key}`;
+              const skillLimits = v3SkillBoundsCalc(skill.key);
               const skillTempSources = [
                 skillArmorBoost !== 0 ? `${skillArmorBoost > 0 ? '+' : ''}${skillArmorBoost} from equipped armor` : null,
                 skillRemovableBoost !== 0 ? `${skillRemovableBoost > 0 ? '+' : ''}${skillRemovableBoost} from scrolls` : null,
@@ -18396,7 +18430,7 @@ function V3AttrsAndSkillsTab({
                     type="button"
                     className="flex-1 text-left group"
                     title={skill.description}
-                    {...skillPressHandlers(skill.name, skillVal, dieType)}
+                    {...skillPressHandlers(skill.name, skillVal, dieType, `skill:${skill.key}`, rawSkillVal)}
                     data-testid={`button-roll-v3-skill-${skill.key}`}
                   >
                     <div className="text-xs">
@@ -18406,21 +18440,28 @@ function V3AttrsAndSkillsTab({
                     </div>
                     <div className="text-[10px] text-stone-500 leading-tight">{skill.description}</div>
                   </button>
-                  {editing ? (
-                    <div className="flex flex-col items-end shrink-0">
+                  {skillOpen ? (
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <NumberInput
-                        min={-2} max={skillMax} value={skillData[skill.key] ?? 0} fallback={0}
-                        onChange={v => setSkillData({ ...skillData, [skill.key]: v ?? 0 })}
+                        min={skillLimits.min} max={skillLimits.max} value={v3Edit.draft} fallback={0}
+                        onChange={v => v3Edit.setDraft(v ?? 0)}
                         className="w-14 h-7 text-center bg-stone-800 border-amber-700 text-amber-400 text-xs"
                         data-testid={`input-v3-skill-${skill.key}`}
+                        {...v3Edit.keyHandlers(`skill:${skill.key}`, (d) => clampToBounds(d, skillLimits))}
                       />
-                      {skillScrollBoost > 0 && (
-                        <span className="text-[10px] text-sky-400/80 mt-0.5" data-testid={`text-v3-skill-scroll-${skill.key}`}>+{skillScrollBoost} scroll</span>
-                      )}
+                      <CaInlineActions
+                        edit={v3Edit}
+                        field={`skill:${skill.key}`}
+                        transform={(d) => clampToBounds(d, skillLimits)}
+                      />
                     </div>
                   ) : (
                     <div className="flex flex-col items-end shrink-0">
-                      <span className="text-xs font-semibold text-right text-amber-400" data-testid={`text-v3-skill-${skill.key}`}>
+                      <span
+                        className={`text-xs font-semibold text-right text-amber-400 ${canEditSheet ? 'cursor-pointer select-none' : ''}`}
+                        data-testid={`text-v3-skill-${skill.key}`}
+                        {...v3Edit.pressHandlers(`skill:${skill.key}`, rawSkillVal)}
+                      >
                         {skillBaseVal >= 0 ? `+${skillBaseVal}` : skillBaseVal}
                         {skillTempBoost !== 0 && (
                           <span
@@ -18467,12 +18508,6 @@ function V3AttrsAndSkillsTab({
             })}
           </CardContent>
         </Card>
-        {editing && (
-          <div className="flex gap-2 pt-2 border-t border-stone-700">
-            <Button size="sm" onClick={save} data-testid="button-save-v3-attrs">Save Changes</Button>
-            <Button size="sm" variant="outline" onClick={() => setEditing(false)} data-testid="button-cancel-v3-attrs">Cancel</Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -27265,6 +27300,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             defaultSize={{ width: Math.min(420, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
             minWidth={320}
             minHeight={360}
+            resizable={false}
             panelKey={`inline-item-${sheetItem.id}${charPanelSuffix}`}
             zIndex={floatingZIndices?.[`inline-item-${sheetItem.id}${charPanelSuffix}`] || 10150}
             onBringToFront={() => bringToFront?.(`inline-item-${sheetItem.id}${charPanelSuffix}`)}
@@ -31734,7 +31770,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       title={isEditing ? "Edit Item" : item.name}
       defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
       width={dockedNoteId ? 720 * 2 : 720}
-      lockWidthResize={!dockedNoteId}
+      resizable={false}
       defaultPosition={defaultPosition}
       minWidth={350}
       minHeight={300}

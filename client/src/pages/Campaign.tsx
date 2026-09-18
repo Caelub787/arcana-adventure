@@ -13493,7 +13493,7 @@ export default function Campaign() {
             } : undefined}
             defaultSize={{ width: sheetPanelWidth(), height: Math.min(window.innerHeight - 70, sheetPanelHeight()) }}
             width={dockedCharNotes[sheet.id] ? sheetPanelWidth() + dockedNotesWidth() : sheetPanelWidth()}
-            lockWidthResize={!dockedCharNotes[sheet.id]}
+            resizable={false}
             defaultPosition={{ x: 100 + (index * 30), y: 40 + (index * 30) }}
             minWidth={400}
             minHeight={400}

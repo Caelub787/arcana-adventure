@@ -200,24 +200,43 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
         baseX: rect.left,
         baseY: rect.top,
       };
+      // Switch into "custom position" layout mode (left/top instead of the
+      // docked bottom/centered classes) up front, via a single state update,
+      // so every subsequent move during this drag can write el.style
+      // directly without fighting the docked layout's own positioning.
+      if (!customPos) setCustomPos({ x: rect.left, y: rect.top });
     }, 350);
   };
+  // While dragging, position is written straight to the DOM instead of
+  // through React state - a setState per pointermove forces the whole
+  // hotbar (every slot, every stat bar) to re-render on each pixel of
+  // movement, which is what made the drag visibly lag behind the cursor.
+  // The state update is deferred to pointerup, once movement has stopped.
+  const pendingDragPos = useRef<HotbarPosition | null>(null);
   const handleGripPointerMove = (e: React.PointerEvent) => {
     lastGripPointer.current = { x: e.clientX, y: e.clientY };
     if (!dragState.current.dragging) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
-    setCustomPos(clampHotbarPos(dragState.current.baseX + dx, dragState.current.baseY + dy));
+    const pos = clampHotbarPos(dragState.current.baseX + dx, dragState.current.baseY + dy);
+    pendingDragPos.current = pos;
+    const el = hotbarRef.current;
+    if (el) {
+      el.style.left = `${pos.x}px`;
+      el.style.top = `${pos.y}px`;
+    }
   };
   const handleGripPointerUp = (e: React.PointerEvent) => {
     if (gripHoldTimer.current) { clearTimeout(gripHoldTimer.current); gripHoldTimer.current = null; }
     if (dragState.current.dragging) {
       dragState.current.dragging = false;
       try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-      setCustomPos((pos) => {
-        if (pos) setHotbarPosition(pos);
-        return pos;
-      });
+      const pos = pendingDragPos.current;
+      pendingDragPos.current = null;
+      if (pos) {
+        setHotbarPosition(pos);
+        setCustomPos(pos);
+      }
     }
   };
   const handleGripContextMenu = (e: React.MouseEvent) => {
