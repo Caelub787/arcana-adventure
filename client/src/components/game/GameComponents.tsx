@@ -3150,8 +3150,18 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
               const effectiveGridSize = gridSize;
               const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
-              const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
-              const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
+              // Tokens render as a gridSize x gridSize box anchored at its
+              // top-left corner (token.x/token.y). With the grid on, that
+              // corner has to be the TOP-LEFT of the cell the click actually
+              // landed in - flooring does that for any point in the cell.
+              // Rounding to the nearest grid LINE (the old behavior) put the
+              // corner one cell over from the click for anything past the
+              // cell's own midpoint, which is why placement felt random.
+              // With the grid off there's no cell to land in, so the token
+              // is centered on the press point instead of anchored by its
+              // corner there.
+              const snappedX = gridEnabled ? Math.floor(worldX / effectiveGridSize) * effectiveGridSize : worldX - effectiveGridSize / 2;
+              const snappedY = gridEnabled ? Math.floor(worldY / effectiveGridSize) * effectiveGridSize : worldY - effectiveGridSize / 2;
               onMapClickToPlace(snappedX, snappedY);
             }
           }
