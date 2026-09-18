@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
 import { getCompactPanelsEnabled, setCompactPanelsEnabled, getCompactPanelScale, setCompactPanelScale, COMPACT_PANEL_SCALE_MIN, COMPACT_PANEL_SCALE_MAX } from "@/lib/panelScale";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
+import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField, CaAbilityHeader } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -20087,6 +20088,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
+  // The item opened for editing in its own floating panel, the way the
+  // library does it - a blank row gets created immediately and this is its
+  // id, rather than making the GM fill out a form before the item exists.
+  const [inlineItemSheetId, setInlineItemSheetId] = useState<string | null>(null);
   // V3: inventory delete buttons hidden by default, revealed via a toggle
   const [showInventoryDelete, setShowInventoryDelete] = useState(false);
   
@@ -21142,6 +21147,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
     }
   });
+
+  const createBlankInventoryItem = () => {
+    createItemMutation.mutate(
+      { name: 'Untitled Item', itemType: 'utility', rarity: 'common', quantity: 1 },
+      { onSuccess: (created: any) => { if (created?.id) setInlineItemSheetId(created.id); } },
+    );
+  };
 
   // AA V3 equip/unequip — server enforces one-per-armor-slot and returns any
   // auto-unequipped sibling ids; the query invalidation picks everything up.
@@ -27198,10 +27210,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       )}
 
       {/* Add/Edit Item Floating Panel */}
-      <AddItemDialog 
+      <AddItemDialog
         open={showAddItem}
         onOpenChange={setShowAddItem}
         onSave={(itemData) => createItemMutation.mutate(itemData)}
+        onCreateNew={createBlankInventoryItem}
         isGM={isGM}
         campaignId={campaignId}
         campaignSystem={campaignSystem}
@@ -27210,6 +27223,43 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         charPanelSuffix={charPanelSuffix}
         inventoryRunes={(items as any[]).filter((i: any) => i.itemType === 'rune')}
       />
+
+      {/* A freshly-created inventory item, edited in its own floating panel -
+          same sheet the admin library uses, so making an item here and
+          making one in the library are the same job. A real FloatingPanel
+          (not a full-screen overlay) so it doesn't cover the character sheet
+          underneath it. */}
+      {inlineItemSheetId && (() => {
+        const sheetItem = (items as any[]).find((i: any) => i.id === inlineItemSheetId);
+        if (!sheetItem) return null;
+        return (
+          <FloatingPanel
+            open={true}
+            onClose={() => setInlineItemSheetId(null)}
+            title={<span className="text-amber-500">{sheetItem.name || 'New Item'}</span>}
+            defaultSize={{ width: Math.min(420, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
+            minWidth={320}
+            minHeight={360}
+            panelKey={`inline-item-${sheetItem.id}${charPanelSuffix}`}
+            zIndex={floatingZIndices?.[`inline-item-${sheetItem.id}${charPanelSuffix}`] || 10150}
+            onBringToFront={() => bringToFront?.(`inline-item-${sheetItem.id}${charPanelSuffix}`)}
+          >
+            <LibraryItemSheet
+              item={sheetItem}
+              systemSlug={campaignSystem || ''}
+              canEdit={isGM || isOwner}
+              onUpdate={(updates) => updateItemMutation.mutate({ id: sheetItem.id, data: updates })}
+              onDelete={() => {
+                if (!confirm('Delete this item?')) return;
+                setInlineItemSheetId(null);
+                deleteItemMutation.mutate(sheetItem.id);
+              }}
+              onClose={() => setInlineItemSheetId(null)}
+              hideCloseButton
+            />
+          </FloatingPanel>
+        );
+      })()}
 
       {/* Manage Templates Dialog (GM Only) */}
       {isGM && (
@@ -29208,20 +29258,22 @@ function AddItemQuantityDialog({ template, onConfirm, onCancel }: {
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '', inventoryRunes }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string; inventoryRunes?: any[] }) {
+function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices, charPanelSuffix = '', inventoryRunes }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; onCreateNew: () => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number>; charPanelSuffix?: string; inventoryRunes?: any[] }) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
   const [templateRarityFilter, setTemplateRarityFilter] = useState('all');
+  const [templateSourceFilter, setTemplateSourceFilter] = useState<'all' | 'admin' | 'mine'>('all');
   const [quantityPickerTemplate, setQuantityPickerTemplate] = useState<any>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const hasActiveItemFilters = templateTypeFilter !== 'all' || templateRarityFilter !== 'all';
+  const hasActiveItemFilters = templateTypeFilter !== 'all' || templateRarityFilter !== 'all' || templateSourceFilter !== 'all';
 
   const clearItemFilters = () => {
     setTemplateTypeFilter('all');
     setTemplateRarityFilter('all');
+    setTemplateSourceFilter('all');
   };
 
   const itemTypeOptions = [
@@ -29246,16 +29298,25 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
 
   const isLoading = campaignId ? isLoadingTemplate : isLoadingSystem;
 
-  // Combine items from either source - campaign templates or system items only.
-  // De-dup in two passes to avoid showing the same item twice:
+  // Combine items from either source - campaign templates ("My Library") or
+  // admin-published system items ("Admin"). De-dup in two passes to avoid
+  // showing the same item twice when both sources are shown together:
   //   Pass 1 — exact id: the same template record can appear in both lists; keep it once.
   //   Pass 2 — name+system composite: a system item re-published as a campaign template
   //     (possible with older data, before the server fix) produces two distinct IDs for
   //     the same concept; prefer the campaign entry, suppress the system duplicate.
-  const allTemplates = campaignId
-    ? dedupeLibraryTemplates(templateSummaries?.systemItems || [], templateSummaries?.campaignItems || [])
-    : (systemItemSummaries || []);
+  const rawSystemItems = campaignId ? (templateSummaries?.systemItems || []) : (systemItemSummaries || []);
+  const rawCampaignItems = campaignId ? (templateSummaries?.campaignItems || []) : [];
+  const allTemplates = templateSourceFilter === 'admin'
+    ? rawSystemItems
+    : templateSourceFilter === 'mine'
+      ? rawCampaignItems
+      : dedupeLibraryTemplates(rawSystemItems, rawCampaignItems);
   const filteredTemplates = sortItemsByNameThenRarity(allTemplates.filter((item: any) => {
+    // A template row missing a name (a stale/orphaned entry left behind by a
+    // since-deleted source item) has nothing sensible to show or add - drop
+    // it rather than rendering a blank, unusable row.
+    if (!item?.id || !item?.name) return false;
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
     const matchesRarity = templateRarityFilter === 'all' || item.rarity === templateRarityFilter;
@@ -29291,100 +29352,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
       setQuantityPickerTemplate(null);
     }
   };
-
-  const [formData, setFormData] = useState<{
-    name: string;
-    image: string;
-    description: string;
-    rules: string;
-    rulesVisible: boolean;
-    itemType: string;
-    rarity: string;
-    quantity: number | string;
-    damage: string;
-    damageType: string;
-    mod: number | string;
-    range: number | string;
-    aoe: string;
-    attribute: string;
-    size: string;
-    weight: string;
-    itemWeight: number | string;
-    price: number | string;
-    currency: string;
-    durability: number;
-    isContainer: boolean;
-    carryCapacity: number | string;
-    ammunitionType: string;
-    weaponCategory: string;
-    isHeavy: boolean;
-    armorSlot: string;
-    armorBonus: number | string;
-    damageReduction: number | string;
-    damageReductionType: string;
-    rationServings: number | string;
-    breakChance: number | string;
-    isDamaging: boolean;
-    isDetonatable: boolean;
-    detonateAoeShape: string;
-    detonateAoeRange: number | string;
-    canApplyEffects: boolean;
-    grantsDcBonus: boolean;
-    dcBonusValue: number | string;
-    v3ArmorBoosts: V3ArmorBoost[];
-    socketedRunes: V3SocketedRune[];
-  }>({
-    name: '',
-    image: '',
-    description: '',
-    rules: '',
-    rulesVisible: true,
-    itemType: 'utility',
-    rarity: 'common',
-    quantity: 1,
-    damage: '',
-    damageType: '',
-    mod: '',
-    range: '',
-    aoe: '',
-    attribute: '',
-    size: '',
-    weight: 'light',
-    itemWeight: '',
-    price: '',
-    currency: 'copper',
-    durability: 10,
-    isContainer: false,
-    carryCapacity: '',
-    ammunitionType: '',
-    weaponCategory: '',
-    isHeavy: false,
-    armorSlot: '',
-    armorBonus: '',
-    damageReduction: '',
-    damageReductionType: '',
-    rationServings: '',
-    breakChance: 10,
-    isDamaging: false,
-    isDetonatable: false,
-    detonateAoeShape: '',
-    detonateAoeRange: 10,
-    canApplyEffects: false,
-    grantsDcBonus: false,
-    dcBonusValue: 0,
-    v3ArmorBoosts: [],
-    socketedRunes: [],
-  });
-
-  const [showImageCrop, setShowImageCrop] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [cropPosition, setCropPosition] = useState({ x: 0, y: 0, size: 150 });
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const cropImageRef = useRef<HTMLImageElement>(null);
-  
-  // Image browser state for item images
-  const [showItemImageBrowser, setShowItemImageBrowser] = useState(false);
 
   const handleAddFromTemplate = async (templateSummary: any, quantity: number = 1) => {
     // Fetch full item data from the server (summaries only have basic fields)
@@ -29456,163 +29423,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
     legendary: 'bg-amber-600',
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
-        setShowImageCrop(true);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleImageLoad = () => {
-    if (cropImageRef.current) {
-      const img = cropImageRef.current;
-      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-      const minDim = Math.min(img.naturalWidth, img.naturalHeight);
-      const initialSize = Math.min(150, minDim);
-      setCropPosition({
-        x: (img.naturalWidth - initialSize) / 2,
-        y: (img.naturalHeight - initialSize) / 2,
-        size: initialSize
-      });
-    }
-  };
-
-  // Stored in the image's natural pixels while the box is drawn as a
-  // percentage of the displayed image, so a CSS pixel of travel is worth the
-  // natural-to-displayed ratio.
-  const itemCrop = useCropDrag(cropPosition, setCropPosition, () => {
-    const img = cropImageRef.current;
-    const scaleX = img && img.clientWidth ? img.naturalWidth / img.clientWidth : 1;
-    const scaleY = img && img.clientHeight ? img.naturalHeight / img.clientHeight : 1;
-    return {
-      maxX: Math.max(0, (img?.naturalWidth ?? imageDimensions.width) - cropPosition.size),
-      maxY: Math.max(0, (img?.naturalHeight ?? imageDimensions.height) - cropPosition.size),
-      scaleX,
-      scaleY,
-    };
-  });
-  useEffect(() => {
-    if (!showImageCrop) itemCrop.cancel();
-  }, [showImageCrop]);
-
-  const handleCropConfirm = () => {
-    if (!uploadedImage || !cropImageRef.current) return;
-    
-    const canvas = document.createElement('canvas');
-    const outputSize = 128;
-    canvas.width = outputSize;
-    canvas.height = outputSize;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(
-        img,
-        cropPosition.x, cropPosition.y, cropPosition.size, cropPosition.size,
-        0, 0, outputSize, outputSize
-      );
-      const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
-      setFormData(prev => ({ ...prev, image: croppedImage }));
-      setShowImageCrop(false);
-      setUploadedImage(null);
-      if (imageInputRef.current) imageInputRef.current.value = '';
-    };
-    img.src = uploadedImage;
-  };
-
-  const handleCropCancel = () => {
-    setShowImageCrop(false);
-    setUploadedImage(null);
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  };
-
-  const handleSubmit = () => {
-    if (!formData.name) return;
-    // Helper to convert empty strings to undefined for optional numeric fields
-    const optionalNum = (val: string | number): number | undefined => {
-      if (val === '' || val === undefined || val === null) return undefined;
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    };
-    const cleanedData = {
-      ...formData,
-      rules: formData.rules || '',
-      rulesVisible: formData.rulesVisible,
-      mod: optionalNum(formData.mod),
-      range: optionalNum(formData.range),
-      itemWeight: optionalNum(formData.itemWeight),
-      price: optionalNum(formData.price),
-      currency: formData.currency || 'copper',
-      quantity: Number(formData.quantity) || 1,
-      carryCapacity: optionalNum(formData.carryCapacity),
-      armorBonus: optionalNum(formData.armorBonus),
-      damageReduction: optionalNum(formData.damageReduction),
-      rationServings: optionalNum(formData.rationServings),
-      breakChance: Number(formData.breakChance) || 10,
-      isDamaging: formData.isDamaging,
-      isDetonatable: formData.isDetonatable,
-      detonateAoeShape: formData.detonateAoeShape || undefined,
-      detonateAoeRange: optionalNum(formData.detonateAoeRange),
-      canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
-      grantsDcBonus: formData.grantsDcBonus,
-      dcBonusValue: formData.grantsDcBonus
-        ? (Number(formData.dcBonusValue) || 0)
-        : (aggregateRuneStatEffects(formData.socketedRunes)['dcBonusValue'] || 0),
-      v3ArmorBoosts: (isAAV3 && formData.itemType === 'armor')
-        ? (formData.v3ArmorBoosts || []).filter(b => b.target && Number(b.amount))
-        : [],
-    };
-    onSave(cleanedData);
-    setFormData({
-      name: '',
-      image: '',
-      description: '',
-      rules: '',
-      rulesVisible: true,
-      itemType: 'utility',
-      rarity: 'common',
-      quantity: 1,
-      damage: '',
-      damageType: '',
-      mod: '',
-      range: '',
-      aoe: '',
-      attribute: '',
-      size: '',
-      weight: 'light',
-      itemWeight: '',
-      price: '',
-      currency: 'copper',
-      durability: 10,
-      isContainer: false,
-      carryCapacity: '',
-      ammunitionType: '',
-      weaponCategory: '',
-      isHeavy: false,
-      armorSlot: '',
-      armorBonus: '',
-      damageReduction: '',
-      damageReductionType: '',
-      rationServings: '',
-      breakChance: 10,
-      isDamaging: false,
-      isDetonatable: false,
-      detonateAoeShape: '',
-      detonateAoeRange: 10,
-      canApplyEffects: false,
-      grantsDcBonus: false,
-      dcBonusValue: 0,
-      v3ArmorBoosts: [],
-      socketedRunes: [],
-    });
-  };
-
   return (
     <FloatingPanel
       open={open}
@@ -29666,6 +29476,18 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
                     className="pl-9 bg-stone-800 border-stone-700"
                     data-testid="input-template-search"
                   />
+                </div>
+                <div className="flex gap-2" data-testid="picker-item-source-filter">
+                  <Select value={templateSourceFilter} onValueChange={(v) => setTemplateSourceFilter(v as 'all' | 'admin' | 'mine')}>
+                    <SelectTrigger className="flex-1 bg-stone-800 border-stone-700 h-8 text-xs" data-testid="select-item-source-filter">
+                      <SelectValue placeholder="All Sources" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="mine">My Library</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex gap-2" data-testid="picker-item-type-filter">
                   <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
@@ -29758,612 +29580,23 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignS
               />
             </div>
           ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Name *</Label>
-                <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-stone-800 border-stone-700" />
-              </div>
-              <div>
-                <Label>Item Image</Label>
-                <div className="flex items-center gap-2">
-                  {formData.image ? (
-                    <div className="relative">
-                      <img src={formData.image} alt="Item" className="h-12 w-12 rounded object-cover border border-stone-600" />
-                      <button 
-                        type="button"
-                        onClick={() => setFormData({...formData, image: ''})}
-                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-4 w-4 text-xs flex items-center justify-center hover:bg-red-500"
-                      >×</button>
-                    </div>
-                  ) : (
-                    <div className="h-12 w-12 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500">
-                      <ImageIcon className="h-6 w-6" />
-                    </div>
-                  )}
-                  <input 
-                    ref={imageInputRef}
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    data-testid="input-item-image"
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setShowItemImageBrowser(true)}
-                    className="bg-stone-800 border-stone-600 hover:bg-stone-700"
-                    data-testid="button-browse-item-library"
-                  >
-                    <FolderOpen className="h-4 w-4 mr-1" /> Library
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => imageInputRef.current?.click()}
-                    className="bg-stone-800 border-stone-600 hover:bg-stone-700"
-                    data-testid="button-upload-item-image"
-                  >
-                    <Upload className="h-4 w-4 mr-1" /> Upload
-                  </Button>
-                </div>
-                
-                {/* Image Browser Dialog for Item Images */}
-                <ImageBrowser
-                  open={showItemImageBrowser}
-                  onOpenChange={setShowItemImageBrowser}
-                  onSelect={(imageBase64) => {
-                    setFormData({...formData, image: imageBase64});
-                  }}
-                  title="Select Item Image"
-                />
-              </div>
-              <div>
-                <Label>Item Type</Label>
-                <Select value={formData.itemType} onValueChange={(v) => {
-                  const clearedFields: Record<string, any> = {
-                    damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
-                    armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
-                    ammunitionType: null, breakChance: 10,
-                    rationServings: 0, isDamaging: false,
-                    isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                    isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
-                    grantsDcBonus: false, dcBonusValue: 0,
-                  };
-                  setFormData({...formData, ...clearedFields, itemType: v});
-                }}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ammunition">Ammunition</SelectItem>
-                    <SelectItem value="armor">Armor</SelectItem>
-                    {campaignSystem === 'ca' && (
-                      <SelectItem value="beast_orb">Beast Orb</SelectItem>
-                    )}
-                    <SelectItem value="consumable">Consumable</SelectItem>
-                    <SelectItem value="container">Container</SelectItem>
-                    {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
-                      <SelectItem value="crafter">Crafter</SelectItem>
-                    )}
-                    {campaignSystem === 'aa-v3' && (
-                      <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
-                    )}
-                    {campaignSystem === 'aa-v3' && (
-                      <SelectItem value="spellbook">Spellbook</SelectItem>
-                    )}
-                    <SelectItem value="utility">Utility</SelectItem>
-                    <SelectItem value="weapon">Weapon</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Rarity</Label>
-                <Select value={formData.rarity} onValueChange={(v) => setFormData({...formData, rarity: v})}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="common">Common</SelectItem>
-                    <SelectItem value="uncommon">Uncommon</SelectItem>
-                    <SelectItem value="rare">Rare</SelectItem>
-                    <SelectItem value="epic">Epic</SelectItem>
-                    <SelectItem value="legendary">Legendary</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Quantity</Label>
-                <NumberInput min={1} value={formData.quantity} fallback={1} onChange={(v) => setFormData({...formData, quantity: v ?? 1})} className="bg-stone-800 border-stone-700" />
-              </div>
-              <div>
-                <Label>Weight (lbs)</Label>
-                <NumberInput min={0} integer={false} optional value={typeof formData.itemWeight === 'number' ? formData.itemWeight : undefined} fallback={0} onChange={(v) => setFormData({...formData, itemWeight: v ?? ''})} className="bg-stone-800 border-stone-700" />
-              </div>
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <Package className="h-12 w-12 text-stone-600" />
+              <p className="text-stone-400 max-w-xs">
+                Create a blank item and edit it in its own panel - name,
+                description, rolls, custom fields, and every system-specific
+                setting live there, same as the library's own item editor.
+              </p>
+              <Button
+                onClick={() => { onCreateNew(); onOpenChange(false); }}
+                className="bg-amber-700 hover:bg-amber-600"
+                data-testid="button-create-item"
+              >
+                <Plus className="h-4 w-4 mr-1" /> Create New Item
+              </Button>
             </div>
-            <div>
-              <Label>Description</Label>
-              <Textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="bg-stone-800 border-stone-700 min-h-[80px]" />
-            </div>
-            <div>
-              <Label>Rules / Mechanics</Label>
-              <Textarea 
-                value={formData.rules} 
-                onChange={(e) => setFormData({...formData, rules: e.target.value})} 
-                className="bg-stone-800 border-stone-700 min-h-[80px]"
-                placeholder="Item rules, special abilities, or mechanics..."
-                data-testid="textarea-item-rules"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox 
-                id="rulesVisible" 
-                checked={formData.rulesVisible} 
-                onCheckedChange={(checked) => setFormData({...formData, rulesVisible: !!checked})}
-                data-testid="checkbox-rules-visible"
-              />
-              <Label htmlFor="rulesVisible" className="cursor-pointer">
-                Rules visible to players
-              </Label>
-            </div>
-            {campaignSystem !== 'aa-v3' && (
-            <div className="border-t border-stone-700 pt-4">
-              <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Damage (dice notation)</Label>
-                  <Input value={formData.damage} onChange={(e) => setFormData({...formData, damage: e.target.value})} placeholder="1d6" className="bg-stone-800 border-stone-700" />
-                </div>
-                <div>
-                  <Label>{getEffectTypeLabel(campaignSystem)}</Label>
-                  <Select value={formData.damageType} onValueChange={(v) => setFormData({...formData, damageType: v})}>
-                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-type">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(isAAv2(campaignSystem)
-                        ? getEffectTypes(campaignSystem)
-                        : ['Sharp','Blunt','Piercing','Flame','Frost','Storm','Tide','Stone','Flux','Light','Dark','Sound','Mind','Poison','Health']
-                      ).map((dt) => (
-                        <SelectItem key={dt} value={dt}>{dt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Modifier</Label>
-                  <NumberInput value={typeof formData.mod === 'number' ? formData.mod : undefined} fallback={0} onChange={(v) => setFormData({...formData, mod: v ?? ''})} className="bg-stone-800 border-stone-700" />
-                </div>
-                <div>
-                  <Label>Range (feet)</Label>
-                  <NumberInput min={0} value={typeof formData.range === 'number' ? formData.range : undefined} fallback={0} onChange={(v) => setFormData({...formData, range: v ?? ''})} className="bg-stone-800 border-stone-700" />
-                </div>
-              </div>
-            </div>
-            )}
-            <div className="border-t border-stone-700 pt-4">
-              <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Price</Label>
-                  <NumberInput min={0} value={typeof formData.price === 'number' ? formData.price : undefined} fallback={0} onChange={(v) => setFormData({...formData, price: v ?? ''})} className="bg-stone-800 border-stone-700" />
-                </div>
-                <div>
-                  <Label>Currency</Label>
-                  <Select value={formData.currency} onValueChange={(v) => setFormData({...formData, currency: v})}>
-                    <SelectTrigger className="bg-stone-800 border-stone-700">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="copper">Copper</SelectItem>
-                      <SelectItem value="silver">Silver</SelectItem>
-                      <SelectItem value="gold">Gold</SelectItem>
-                      <SelectItem value="platinum">Platinum</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-stone-700 pt-4">
-              <Label>Durability: {formData.durability}/{formData.maxDurability ?? 10}</Label>
-              <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={formData.maxDurability ?? 10} step={1} className="mt-2" />
-            </div>
-            {formData.itemType === 'consumable' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Consumable Settings</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="isRation" 
-                        checked={(formData.rationServings !== '' && Number(formData.rationServings) > 0)}
-                        onCheckedChange={(checked) => setFormData({...formData, rationServings: checked ? 1 : ''})}
-                        data-testid="checkbox-is-ration"
-                      />
-                      <Label htmlFor="isRation" className="cursor-pointer">
-                        This item is a ration (consumable for resting)
-                      </Label>
-                    </div>
-                    {(formData.rationServings !== '' && Number(formData.rationServings) > 0) && (
-                      <div className="mt-3">
-                        <Label>Ration Servings</Label>
-                        <NumberInput 
-                          min={1} value={typeof formData.rationServings === 'number' ? formData.rationServings : undefined} fallback={1}
-                          onChange={(v) => setFormData({...formData, rationServings: v ?? ''})} 
-                          className="bg-stone-800 border-stone-700 w-32"
-                          data-testid="input-ration-servings"
-                        />
-                        <p className="text-xs text-stone-500 mt-1">
-                          How many rations this item provides when consumed
-                        </p>
-                      </div>
-                    )}
-                    <p className="text-xs text-stone-500 mt-2">
-                      Ration items are consumed during rests. Short rest requires 2, long rest requires 4.
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="isDamaging" 
-                        checked={formData.isDamaging}
-                        onCheckedChange={(checked) => setFormData({...formData, isDamaging: !!checked})}
-                        data-testid="checkbox-is-damaging"
-                      />
-                      <Label htmlFor="isDamaging" className="cursor-pointer">
-                        Damaging Consumable
-                      </Label>
-                    </div>
-                    <p className="text-xs text-stone-500 mt-1">
-                      When enabled, can be rolled from hotbar like weapons (click: attack, double-click: damage). Uses 5ft range.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {formData.itemType === 'ammunition' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Ammunition Type</Label>
-                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({...formData, ammunitionType: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
-                        <SelectValue placeholder="Select ammunition type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="arrow">Arrow</SelectItem>
-                        <SelectItem value="bolt">Bolt</SelectItem>
-                        <SelectItem value="bullet">Bullet</SelectItem>
-                        <SelectItem value="dart">Dart</SelectItem>
-                        <SelectItem value="stone">Stone</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Break Chance: {formData.breakChance ?? 10}%</Label>
-                    <Slider 
-                      value={[formData.breakChance ?? 10]} 
-                      onValueChange={(v) => setFormData({...formData, breakChance: v[0]})} 
-                      min={0} 
-                      max={100} 
-                      step={1} 
-                      className="mt-2"
-                      data-testid="slider-break-chance"
-                    />
-                    <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {formData.itemType === 'weapon' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Weapon Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Weapon Category</Label>
-                    <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="melee">Melee</SelectItem>
-                        <SelectItem value="ranged">Ranged</SelectItem>
-                        <SelectItem value="thrown">Thrown</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Ammunition Required</Label>
-                    <Select value={formData.ammunitionType || '_none'} onValueChange={(v) => setFormData({...formData, ammunitionType: v === '_none' ? '' : v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-ammo">
-                        <SelectValue placeholder="None" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_none">None</SelectItem>
-                        <SelectItem value="arrow">Arrow</SelectItem>
-                        <SelectItem value="bolt">Bolt</SelectItem>
-                        <SelectItem value="bullet">Bullet</SelectItem>
-                        <SelectItem value="dart">Dart</SelectItem>
-                        <SelectItem value="stone">Stone</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {!isAAV3 && (
-                    <div className="col-span-2 flex items-center gap-2">
-                      <Checkbox 
-                        id="isHeavy" 
-                        checked={formData.isHeavy || false} 
-                        onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
-                        data-testid="checkbox-is-heavy"
-                      />
-                      <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed / Heavy Weapon (requires both hands)</Label>
-                    </div>
-                  )}
-                  <div className="col-span-2 border-t border-stone-600 pt-3 mt-2 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="isDetonatable" 
-                        checked={formData.isDetonatable || false} 
-                        onCheckedChange={(checked) => setFormData({...formData, isDetonatable: !!checked})}
-                        data-testid="checkbox-is-detonatable"
-                      />
-                      <Label htmlFor="isDetonatable" className="cursor-pointer">Is Detonatable</Label>
-                    </div>
-                    {formData.isDetonatable && (
-                      <p className="text-xs text-amber-400 pl-6 border-l-2 border-stone-600">A "Detonate" roll entry will be auto-created when this item is saved. You can configure it afterwards in the item details.</p>
-                    )}
-                  </div>
-                </div>
-                <div className="border-t border-stone-600 pt-4 mt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Checkbox
-                      id="canApplyEffects"
-                      checked={formData.canApplyEffects || false}
-                      onCheckedChange={(checked) => setFormData({...formData, canApplyEffects: !!checked})}
-                      data-testid="checkbox-can-apply-effects"
-                    />
-                    <Label htmlFor="canApplyEffects" className="cursor-pointer flex items-center gap-2">
-                      <Flame className="h-4 w-4 text-amber-400" />
-                      Can Apply Effects on Hit
-                    </Label>
-                  </div>
-                  <p className="text-xs text-stone-500">Enable this to apply token effects when the weapon lands an attack</p>
-                </div>
-              </div>
-            )}
-            {formData.itemType === 'armor' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Armor Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Body Part *</Label>
-                    <Select value={formData.armorSlot || ''} onValueChange={(v) => setFormData({...formData, armorSlot: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-armor-slot">
-                        <SelectValue placeholder="Select body part..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isAAV3 ? (
-                          <>
-                            <SelectItem value="helm">Helm</SelectItem>
-                            <SelectItem value="torso">Torso</SelectItem>
-                            <SelectItem value="leggings">Leggings</SelectItem>
-                            <SelectItem value="boots">Boots</SelectItem>
-                          </>
-                        ) : (
-                          <>
-                            <SelectItem value="helm">Helm</SelectItem>
-                            <SelectItem value="chest">Chest</SelectItem>
-                            <SelectItem value="arm">Arm</SelectItem>
-                            <SelectItem value="legs">Legs</SelectItem>
-                            <SelectItem value="boots">Boots</SelectItem>
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {!isAAV3 && (
-                  <div>
-                    <Label>Armor Bonus (DC)</Label>
-                    <NumberInput 
-                      min={0} value={typeof formData.armorBonus === 'number' ? formData.armorBonus : undefined} fallback={0}
-                      onChange={(v) => setFormData({...formData, armorBonus: v ?? ''})} 
-                      className="bg-stone-800 border-stone-700"
-                      placeholder="0"
-                      data-testid="input-armor-bonus"
-                    />
-                  </div>
-                  )}
-                  {!isAAV3 && (
-                  <div>
-                    <Label>Damage Reduction Type</Label>
-                    <Select value={formData.damageReductionType || ''} onValueChange={(v) => setFormData({...formData, damageReductionType: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-reduction-type">
-                        <SelectValue placeholder="Select damage type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Sharp">Sharp</SelectItem>
-                        <SelectItem value="Blunt">Blunt</SelectItem>
-                        <SelectItem value="Piercing">Piercing</SelectItem>
-                        <SelectItem value="Flame">Flame</SelectItem>
-                        <SelectItem value="Frost">Frost</SelectItem>
-                        <SelectItem value="Storm">Storm</SelectItem>
-                        <SelectItem value="Tide">Tide</SelectItem>
-                        <SelectItem value="Stone">Stone</SelectItem>
-                        <SelectItem value="Flux">Flux</SelectItem>
-                        <SelectItem value="Light">Light</SelectItem>
-                        <SelectItem value="Dark">Dark</SelectItem>
-                        <SelectItem value="Sound">Sound</SelectItem>
-                        <SelectItem value="Mind">Mind</SelectItem>
-                        <SelectItem value="Poison">Poison</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  )}
-                  {!isAAV3 && (
-                  <div>
-                    <Label>Damage Reduction Amount</Label>
-                    <NumberInput 
-                      min={0} value={typeof formData.damageReduction === 'number' ? formData.damageReduction : undefined} fallback={0}
-                      onChange={(v) => setFormData({...formData, damageReduction: v ?? ''})} 
-                      className="bg-stone-800 border-stone-700"
-                      placeholder="0"
-                      data-testid="input-damage-reduction"
-                    />
-                  </div>
-                  )}
-                </div>
-                {isAAV3 && (
-                  <V3ArmorBoostsEditor
-                    boosts={formData.v3ArmorBoosts || []}
-                    onChange={(next) => setFormData({ ...formData, v3ArmorBoosts: next })}
-                  />
-                )}
-              </div>
-            )}
-            {formData.itemType === 'container' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Container Settings</h3>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="isContainer" 
-                      checked={formData.isContainer} 
-                      onCheckedChange={(checked) => setFormData({...formData, isContainer: !!checked})}
-                      data-testid="checkbox-is-container"
-                    />
-                    <Label htmlFor="isContainer" className="cursor-pointer">This is a container</Label>
-                  </div>
-                  {formData.isContainer && (
-                    <div className="flex items-center gap-2">
-                      <Label>Carry Capacity Bonus:</Label>
-                      <NumberInput 
-                        min={0} value={typeof formData.carryCapacity === 'number' ? formData.carryCapacity : undefined} fallback={0}
-                        onChange={(v) => setFormData({...formData, carryCapacity: v ?? ''})} 
-                        className="w-20 bg-stone-800 border-stone-700"
-                        data-testid="input-carry-capacity"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            {isAAV3 && formData.itemType !== 'rune' && (
-              <div className="border-t border-stone-700 pt-4">
-                <h3 className="text-sm font-bold text-stone-300 mb-3">Runes</h3>
-                <V3RuneAttachEditor
-                  host={formData}
-                  onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
-                  campaignSystem={campaignSystem}
-                  campaignId={campaignId}
-                  availableRunes={inventoryRunes}
-                  emptyPickerLabel="No runes in this character's inventory"
-                />
-              </div>
-            )}
-            <div className="border-t border-stone-700 pt-4">
-              <h3 className="text-sm font-bold text-stone-300 mb-3">DC Bonus</h3>
-              <div className="flex items-center gap-2 mb-3">
-                <Checkbox
-                  id="grantsDcBonus"
-                  checked={formData.grantsDcBonus || false}
-                  onCheckedChange={(checked) => setFormData({...formData, grantsDcBonus: !!checked})}
-                  data-testid="checkbox-grants-dc-bonus"
-                />
-                <Label htmlFor="grantsDcBonus" className="cursor-pointer">Grants DC Bonus</Label>
-              </div>
-              {formData.grantsDcBonus && (
-                <div>
-                  <Label>DC Bonus Value</Label>
-                  <NumberInput
-                    value={typeof formData.dcBonusValue === 'number' ? formData.dcBonusValue : undefined} fallback={0}
-                    onChange={(v) => setFormData({...formData, dcBonusValue: v ?? ''})}
-                    className="bg-stone-800 border-stone-700"
-                    placeholder="0"
-                    data-testid="input-dc-bonus-value"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2 pt-4 pb-4">
-              <Button onClick={handleSubmit} disabled={!formData.name} data-testid="button-create-item">Add Item</Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            </div>
-          </div>
         )}
         </div>
-
-      {/* Image Cropping Dialog */}
-      <Dialog open={showImageCrop} onOpenChange={setShowImageCrop}>
-        <DialogContent className="bg-stone-900 border-stone-700 max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-amber-500">Crop Item Image</DialogTitle>
-            <DialogDescription className="text-stone-400">
-              Drag to position the crop area. The image will be cropped as a square.
-            </DialogDescription>
-          </DialogHeader>
-          {uploadedImage && (
-            <div className="relative">
-              <div className="relative overflow-hidden bg-stone-800 rounded-lg" style={{ maxHeight: '400px' }}>
-                <img 
-                  ref={cropImageRef}
-                  src={uploadedImage} 
-                  alt="Crop preview"
-                  className="max-w-full h-auto"
-                  onLoad={handleImageLoad}
-                  draggable={false}
-                />
-                {imageDimensions.width > 0 && cropImageRef.current && (
-                  <div
-                    className="absolute border-2 border-amber-500 bg-amber-500/20 cursor-move"
-                    style={{
-                      left: `${(cropPosition.x / imageDimensions.width) * 100}%`,
-                      top: `${(cropPosition.y / imageDimensions.height) * 100}%`,
-                      width: `${(cropPosition.size / imageDimensions.width) * 100}%`,
-                      height: `${(cropPosition.size / imageDimensions.height) * 100}%`,
-                    }}
-                    {...itemCrop.handlers}
-                  />
-                )}
-              </div>
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-stone-300">Crop Size</Label>
-                  <span className="text-xs text-amber-500">{Math.round(cropPosition.size)}px</span>
-                </div>
-                <Slider
-                  value={[cropPosition.size]}
-                  onValueChange={(v) => {
-                    const newSize = v[0];
-                    const maxSize = Math.min(imageDimensions.width, imageDimensions.height);
-                    setCropPosition(prev => ({
-                      ...prev,
-                      size: Math.min(newSize, maxSize),
-                      x: Math.min(prev.x, imageDimensions.width - newSize),
-                      y: Math.min(prev.y, imageDimensions.height - newSize)
-                    }));
-                  }}
-                  min={50}
-                  max={Math.min(imageDimensions.width, imageDimensions.height) || 300}
-                  step={10}
-                  className="accent-amber-600"
-                />
-              </div>
-              <div className="flex gap-2 mt-4">
-                <Button onClick={handleCropConfirm} className="flex-1 bg-amber-700 hover:bg-amber-600">
-                  Crop & Save
-                </Button>
-                <Button variant="outline" onClick={handleCropCancel} className="flex-1 bg-stone-800 border-stone-600">
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
       </div>
     </FloatingPanel>
   );

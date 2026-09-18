@@ -232,6 +232,7 @@ export function LibraryItemSheet({
   onUpdate,
   onDelete,
   onClose,
+  hideCloseButton = false,
 }: {
   item: any;
   systemSlug: string;
@@ -241,6 +242,10 @@ export function LibraryItemSheet({
   onUpdate: (updates: Record<string, any>) => void;
   onDelete: () => void;
   onClose: () => void;
+  /** Hides the sheet's own close button for a host that already provides one
+   * in its own chrome (e.g. a FloatingPanel title bar) - avoids two close
+   * buttons stacked on top of each other. */
+  hideCloseButton?: boolean;
 }) {
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const type = String(item?.itemType || "");
@@ -316,9 +321,11 @@ export function LibraryItemSheet({
           <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-red-400" onClick={onDelete} data-testid="button-library-item-delete">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={onClose} data-testid="button-library-item-close">
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          {!hideCloseButton && (
+            <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={onClose} data-testid="button-library-item-close">
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       </div>
 
