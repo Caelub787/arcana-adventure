@@ -27,9 +27,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { FloatingPanel, TopLayerOverlay, useAnyPanelFullscreen } from "@/components/ui/floating-panel";
-import { getCompactPanelsEnabled, setCompactPanelsEnabled } from "@/lib/panelScale";
+import { getCompactPanelsEnabled, setCompactPanelsEnabled, getCompactPanelScale, setCompactPanelScale, COMPACT_PANEL_SCALE_MIN, COMPACT_PANEL_SCALE_MAX } from "@/lib/panelScale";
 import { CaRankBadge, CaAuraEditor, CharacterAuraMark, AuraShapeMark, AuraEdgeField, AuraCurrentField } from "@/components/game/CAPanels";
-import { LibraryItemSheet } from "@/components/admin/LibraryItemSheet";
 import { useCaInlineEdit, CaInlineNumber, CaInlineText, CaInlineActions, CaCard, CaFieldGrid, CaField, CaStatRow, CaValue, caWholeNumber, clampToBounds, CaSheetFrame, CaDivider, CaChip, CaChipGroup, CaChipCell, CaSection, CaSectionHeader, CaMedallion, CaInset, CaInfoHint, CaInlineField, CaAbilityHeader } from "@/components/game/CASheetUI";
 import { SpellbookPanel, V3SpellDetailDialog, v3SpellSummary } from "./SpellbookPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -12030,6 +12029,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
   const [, navigate] = useLocation();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
+  const [compactPanelScale, setCompactPanelScaleState] = useState(getCompactPanelScale);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
   const [levelUpMode, setLevelUpMode] = useState<'set' | 'add'>('add');
   const [targetLevel, setTargetLevel] = useState(1);
@@ -12982,6 +12982,23 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 />
               </div>
               <p className="text-xs text-stone-500 mt-1">Shrinks floating panels (not the side panel) - handy on a small or folded screen. This device only.</p>
+              {getCompactPanelsEnabled() && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-stone-400 text-xs">Panel Scale</Label>
+                    <span className="text-xs text-stone-500" data-testid="text-compact-panel-scale">{Math.round(compactPanelScale * 100)}%</span>
+                  </div>
+                  <Slider
+                    value={[compactPanelScale]}
+                    onValueChange={(v) => setCompactPanelScaleState(v[0])}
+                    onValueCommit={(v) => setCompactPanelScale(v[0])}
+                    min={COMPACT_PANEL_SCALE_MIN}
+                    max={COMPACT_PANEL_SCALE_MAX}
+                    step={0.05}
+                    data-testid="slider-compact-panel-scale"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Beacon Color Setting */}
@@ -13356,6 +13373,23 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                 />
               </div>
               <p className="text-xs text-stone-500 mt-1">Shrinks floating panels (not the side panel) - handy on a small or folded screen. This device only.</p>
+              {getCompactPanelsEnabled() && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-stone-400 text-xs">Panel Scale</Label>
+                    <span className="text-xs text-stone-500" data-testid="text-compact-panel-scale-inline">{Math.round(compactPanelScale * 100)}%</span>
+                  </div>
+                  <Slider
+                    value={[compactPanelScale]}
+                    onValueChange={(v) => setCompactPanelScaleState(v[0])}
+                    onValueCommit={(v) => setCompactPanelScale(v[0])}
+                    min={COMPACT_PANEL_SCALE_MIN}
+                    max={COMPACT_PANEL_SCALE_MAX}
+                    step={0.05}
+                    data-testid="slider-compact-panel-scale-inline"
+                  />
+                </div>
+              )}
             </div>
             {onChangeBeaconColor && (
               <div className="pt-4 border-t border-stone-700">
@@ -20053,8 +20087,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
-  // The item opened as an inline-edit sheet, the way the library does it.
-  const [inlineItemSheetId, setInlineItemSheetId] = useState<string | null>(null);
   // V3: inventory delete buttons hidden by default, revealed via a toggle
   const [showInventoryDelete, setShowInventoryDelete] = useState(false);
   
@@ -21110,18 +21142,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       if (variables?.id) queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
     }
   });
-
-  /**
-   * Add Item makes the row and opens its sheet, the same way the library does
-   * - no form to fill in before the item exists. The old add form is still
-   *   the deep editor, reachable from the sheet.
-   */
-  const createBlankInventoryItem = () => {
-    createItemMutation.mutate(
-      { name: 'Untitled Item', itemType: 'utility', rarity: 'common', quantity: 1 },
-      { onSuccess: (created: any) => { if (created?.id) setInlineItemSheetId(created.id); } },
-    );
-  };
 
   // AA V3 equip/unequip — server enforces one-per-armor-slot and returns any
   // auto-unequipped sibling ids; the query invalidation picks everything up.
@@ -25090,7 +25110,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </Button>
                   )}
                   {canEditAsGM && (
-                    <Button size="sm" onClick={createBlankInventoryItem} data-testid="button-add-item">
+                    <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
                   )}
@@ -27176,30 +27196,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           } : undefined}
         />
       )}
-
-      {/* An inventory item, edited in place. Same sheet the library uses, so
-          making an item in a campaign and making one in your library are the
-          same job rather than two different forms. */}
-      {inlineItemSheetId && (() => {
-        const sheetItem = (items as any[]).find((i: any) => i.id === inlineItemSheetId);
-        if (!sheetItem) return null;
-        return (
-          <div className="fixed inset-0 z-[10600] bg-stone-950/95 flex items-start justify-center overflow-auto p-4" data-testid="overlay-inventory-item-sheet">
-            <LibraryItemSheet
-              item={sheetItem}
-              systemSlug={campaignSystem || ''}
-              canEdit={isGM || isOwner}
-              onUpdate={(updates) => updateItemMutation.mutate({ id: sheetItem.id, data: updates })}
-              onDelete={() => {
-                if (!confirm('Delete this item?')) return;
-                setInlineItemSheetId(null);
-                deleteItemMutation.mutate(sheetItem.id);
-              }}
-              onClose={() => setInlineItemSheetId(null)}
-            />
-          </div>
-        );
-      })()}
 
       {/* Add/Edit Item Floating Panel */}
       <AddItemDialog 

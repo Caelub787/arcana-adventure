@@ -2,7 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { X, GripHorizontal, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCompactPanelsEnabled, COMPACT_PANEL_SCALE } from "@/lib/panelScale";
+import { useCompactPanelsEnabled, useCompactPanelScale } from "@/lib/panelScale";
 
 // --- Shared stacking source of truth ----------------------------------------
 // A single module-level counter guarantees that whenever ANY floating panel
@@ -298,6 +298,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
 }) {
   const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
   const compactPanels = useCompactPanelsEnabled();
+  const compactScale = useCompactPanelScale();
   React.useLayoutEffect(() => {
     setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500), true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,7 +311,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
       )}
       style={{
         zIndex: z,
-        transform: compactPanels ? `scale(${COMPACT_PANEL_SCALE})` : undefined,
+        transform: compactPanels ? `scale(${compactScale})` : undefined,
         transformOrigin: "center",
       }}
       data-testid="floating-panel"
@@ -389,7 +390,8 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // current format at a smaller size. Skipped while fullscreen, which is
   // its own explicit "fill the whole screen" request.
   const compactPanels = useCompactPanelsEnabled();
-  const scale = compactPanels && !isFullscreen ? COMPACT_PANEL_SCALE : 1;
+  const compactScale = useCompactPanelScale();
+  const scale = compactPanels && !isFullscreen ? compactScale : 1;
 
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;

@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap, Menu, RotateCcw } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap, RotateCcw } from "lucide-react";
 import { LazyItemImage, executeCharacterRollEntry } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
 import { getHotbarPosition, setHotbarPosition, clearHotbarPosition, type HotbarPosition } from "@/lib/hotbarPosition";
@@ -158,7 +158,12 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   // position" (bottom-center desktop / bottom-right mobile, unchanged).
   const hotbarRef = useRef<HTMLDivElement | null>(null);
   const [customPos, setCustomPos] = useState<HotbarPosition | null>(() => getHotbarPosition());
+  const [resetPopoverOpen, setResetPopoverOpen] = useState(false);
   const gripHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracked continuously from pointerdown (not just once dragging starts) so
+  // the hold-then-drag timer always has a fresh pointer position to seed the
+  // drag from - see handleGripPointerDown for why this matters.
+  const lastGripPointer = useRef({ x: 0, y: 0 });
   const dragState = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number }>({
     dragging: false, startX: 0, startY: 0, baseX: 0, baseY: 0,
   });
@@ -176,13 +181,29 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     const el = hotbarRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    lastGripPointer.current = { x: e.clientX, y: e.clientY };
+    // Capture immediately (not once the hold fires) so pointermove keeps
+    // reaching this handle even if the finger wanders off the thin grip
+    // line during the hold - otherwise those moves go to whatever's
+    // underneath instead, and lastGripPointer goes stale.
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     if (gripHoldTimer.current) clearTimeout(gripHoldTimer.current);
     gripHoldTimer.current = setTimeout(() => {
-      dragState.current = { dragging: true, startX: e.clientX, startY: e.clientY, baseX: rect.left, baseY: rect.top };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      // Seed the drag from the pointer's CURRENT position, not where it was
+      // when the hold started - using the stale pointerdown coordinates here
+      // made the first move after the hold jump by however far the pointer
+      // had already traveled during the 350ms delay (a "teleport").
+      dragState.current = {
+        dragging: true,
+        startX: lastGripPointer.current.x,
+        startY: lastGripPointer.current.y,
+        baseX: rect.left,
+        baseY: rect.top,
+      };
     }, 350);
   };
   const handleGripPointerMove = (e: React.PointerEvent) => {
+    lastGripPointer.current = { x: e.clientX, y: e.clientY };
     if (!dragState.current.dragging) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
@@ -199,10 +220,26 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       });
     }
   };
+  const handleGripContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setResetPopoverOpen((v) => !v);
+  };
   const handleResetHotbarPosition = () => {
     clearHotbarPosition();
     setCustomPos(null);
+    setResetPopoverOpen(false);
   };
+
+  const resetPopoverRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!resetPopoverOpen) return;
+    const close = (e: PointerEvent) => {
+      if (resetPopoverRef.current?.contains(e.target as Node)) return;
+      setResetPopoverOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [resetPopoverOpen]);
 
   // Keyboard shortcuts: H + digit switches loadouts; a plain digit (1-9, 0)
   // opens the assigned slot (1 = first slot, 0 = tenth). Both are ignored
@@ -396,38 +433,40 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       style={customPos ? { left: customPos.x, top: customPos.y } : undefined}
       data-testid="v3-free-hotbar"
     >
-      <div className="chrome-frame chrome-frame-lg relative flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 shadow-xl backdrop-blur-sm">
-        {/* Move handle - hold to drag the whole hotbar to a new spot, saved
-            on this device only. A real flex child (not floated over the
-            frame's edge) so it sits fully on the bar instead of straddling
-            it. The reset button appears right next to it, once moved. */}
-        <div className="flex items-center gap-1 mr-0.5 sm:mr-1 shrink-0">
-          <button
-            type="button"
-            className="w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600 cursor-grab active:cursor-grabbing touch-none"
-            onPointerDown={handleGripPointerDown}
-            onPointerMove={handleGripPointerMove}
-            onPointerUp={handleGripPointerUp}
-            onPointerCancel={handleGripPointerUp}
-            title="Hold and drag to move the hotbar"
-            aria-label="Move hotbar"
-            data-testid="button-hotbar-move-handle"
+      <div className="chrome-frame chrome-frame-lg relative flex items-center gap-1 sm:gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-1 sm:p-2 pb-2.5 sm:pb-3 shadow-xl backdrop-blur-sm">
+        {/* Move handle - a solid swipe-style bar (like a phone's home
+            indicator) at the bottom-middle of the hotbar. Hold it to drag the
+            whole bar to a new spot, saved on this device only; right-click
+            (or long-press-free tap on some setups) pops a small "Reset
+            Position" menu instead of leaving a second button on-screen. */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 bottom-1 w-10 h-1.5 rounded-full bg-stone-500/70 hover:bg-amber-500/80 active:bg-amber-400 cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={handleGripPointerDown}
+          onPointerMove={handleGripPointerMove}
+          onPointerUp={handleGripPointerUp}
+          onPointerCancel={handleGripPointerUp}
+          onContextMenu={handleGripContextMenu}
+          title="Hold and drag to move the hotbar. Right-click to reset its position."
+          aria-label="Move hotbar"
+          data-testid="button-hotbar-move-handle"
+        />
+        {resetPopoverOpen && (
+          <div
+            ref={resetPopoverRef}
+            className="absolute left-1/2 -translate-x-1/2 bottom-4 z-10 bg-stone-800 border border-stone-600 rounded-md shadow-lg py-1"
+            data-testid="popover-reset-hotbar-position"
           >
-            <Menu className="h-3 w-3" />
-          </button>
-          {customPos && (
             <button
               type="button"
               onClick={handleResetHotbarPosition}
-              className="w-5 h-5 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-600"
-              title="Reset hotbar position"
-              aria-label="Reset hotbar position"
+              disabled={!customPos}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-stone-300 hover:text-amber-400 hover:bg-stone-700 disabled:opacity-40 disabled:hover:text-stone-300 disabled:hover:bg-transparent whitespace-nowrap"
               data-testid="button-reset-hotbar-position"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3" /> Reset Position
             </button>
-          )}
-        </div>
+          </div>
+        )}
         {/* Loadout switcher */}
         <div className="flex flex-col items-center mr-0.5 sm:mr-1 select-none">
           <button
