@@ -1955,9 +1955,9 @@ export function CampaignNotesPanel({
           type: "markdown",
           campaignId: campaignId,
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
         setSelectedNoteId(newNote.id);
         toast({ title: `Note "${noteName}" created` });
       } catch (err: any) {
