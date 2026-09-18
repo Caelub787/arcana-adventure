@@ -110,6 +110,12 @@ interface CampaignNotesPanelProps {
   // floating panel for a note with no entity link, mobile's fullscreen note
   // view) so navigation chrome only ever appears in the sidebar itself.
   contentOnly?: boolean;
+  // contentOnly's own title bar (file icon + note title) is only useful when
+  // nothing else on screen already shows the title - a caller that docks
+  // this panel inside its own titled chrome (e.g. NotesWorkspace's window,
+  // which already has a draggable header showing the same title) sets this
+  // to skip the second copy entirely rather than stack two title rows.
+  hideNoteHeader?: boolean;
 }
 
 const FOLDER_COLORS = [
@@ -612,6 +618,7 @@ export function CampaignNotesPanel({
   onOpenEntityNote,
   onOpenTimelines,
   contentOnly = false,
+  hideNoteHeader = false,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -2637,58 +2644,6 @@ export function CampaignNotesPanel({
 
   const renderNoteReadView = () => (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-end p-2 border-b border-stone-700">
-        <div className="flex items-center gap-1">
-          {remotePresence.length > 0 && (
-            <div className="flex items-center gap-0.5 mr-2" data-testid="panel-presence-indicators-read">
-              {remotePresence.slice(0, 3).map((p, i) => (
-                <div
-                  key={p.userId}
-                  className="relative group"
-                  style={{ zIndex: remotePresence.length - i }}
-                >
-                  <div
-                    className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-stone-900 border border-stone-800 ring-1 ring-green-500/50"
-                    title={p.username}
-                  >
-                    {p.username.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-stone-800" />
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-[10px] text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                    {p.username}
-                  </div>
-                </div>
-              ))}
-              {remotePresence.length > 3 && (
-                <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center text-[10px] font-bold text-stone-300 border border-stone-800">
-                  +{remotePresence.length - 3}
-                </div>
-              )}
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={() => selectedNoteId && openShareDialog(selectedNoteId)}
-          >
-            <Share2 className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 text-red-400"
-            onClick={() => {
-              if (currentNote) {
-                setNoteToDelete(currentNote);
-                setDeleteNoteDialogOpen(true);
-              }
-            }}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <LoadingLogo className="h-5 w-5 text-stone-500" />
@@ -2703,7 +2658,9 @@ export function CampaignNotesPanel({
         <div className="flex-1 min-h-0 overflow-y-auto p-3">
           {/* The whole card is the click target, including the empty space
               under a short note - an empty note would otherwise have almost
-              nothing to click. */}
+              nothing to click. Share/Delete/presence used to be a whole
+              separate header bar above this card - folded into the title
+              row instead so a short note isn't mostly empty chrome. */}
           <div
             role="textbox"
             tabIndex={0}
@@ -2713,9 +2670,61 @@ export function CampaignNotesPanel({
             style={{ border: '1px solid var(--ca-gilt-line-soft)' }}
             data-testid="panel-note-read-surface"
           >
-            <h1 className="text-2xl font-bold text-stone-100 mb-1 font-display" data-testid="panel-text-note-read-title">
-              {currentNote?.title}
-            </h1>
+            <div className="flex items-start justify-between gap-2">
+              <h1 className="text-2xl font-bold text-stone-100 mb-1 font-display min-w-0 truncate" data-testid="panel-text-note-read-title">
+                {currentNote?.title}
+              </h1>
+              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                {remotePresence.length > 0 && (
+                  <div className="flex items-center gap-0.5 mr-1" data-testid="panel-presence-indicators-read">
+                    {remotePresence.slice(0, 3).map((p, i) => (
+                      <div
+                        key={p.userId}
+                        className="relative group"
+                        style={{ zIndex: remotePresence.length - i }}
+                      >
+                        <div
+                          className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-stone-900 border border-stone-800 ring-1 ring-green-500/50"
+                          title={p.username}
+                        >
+                          {p.username.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-stone-800" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-[10px] text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          {p.username}
+                        </div>
+                      </div>
+                    ))}
+                    {remotePresence.length > 3 && (
+                      <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center text-[10px] font-bold text-stone-300 border border-stone-800">
+                        +{remotePresence.length - 3}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => selectedNoteId && openShareDialog(selectedNoteId)}
+                >
+                  <Share2 className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-red-400"
+                  onClick={() => {
+                    if (currentNote) {
+                      setNoteToDelete(currentNote);
+                      setDeleteNoteDialogOpen(true);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
             <div onClick={(e) => e.stopPropagation()}>{renderTagRow()}</div>
             <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
               {formatEntityReferences(currentNote?.content || "")}
@@ -3044,6 +3053,7 @@ export function CampaignNotesPanel({
           header, the Home row and the note rows rather than framing them - a
           stray box on top of the content instead of a border around it. The
           edge rule on the root is the frame. */}
+      {!hideNoteHeader && (
       <div className="flex items-center justify-between p-2 border-b border-stone-700 bg-stone-900">
         <div className="flex items-center gap-2 min-w-0">
           {/* The sidebar-toggle/title header only applies to the two-pane
@@ -3140,6 +3150,7 @@ export function CampaignNotesPanel({
           )}
         </div>
       </div>
+      )}
 
       {!navOnly && !contentOnly && openNotes.length > 0 && (
         <NoteTabs

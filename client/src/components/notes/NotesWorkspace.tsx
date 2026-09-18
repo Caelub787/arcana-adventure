@@ -226,6 +226,12 @@ export function NotesWorkspace({
   const startDrag = (kind: "move" | "resize", win: WorkspaceWindow, e: React.PointerEvent) => {
     e.preventDefault();
     bringToFront(win.noteId);
+    // Without capturing the pointer, a touch drag on a header with the
+    // default touch-action lets the browser treat the gesture as a page
+    // scroll instead of handing pointermove events to us - the window never
+    // actually moved on a touchscreen because of this, not because the drag
+    // logic itself was wrong.
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     drag.current = {
       kind, noteId: win.noteId,
       startX: e.clientX, startY: e.clientY,
@@ -321,8 +327,8 @@ export function NotesWorkspace({
               data-testid={`workspace-window-${win.noteId}`}
             >
               <div
-                className="flex items-center gap-1 px-2 shrink-0 border-b border-stone-800 cursor-move select-none"
-                style={{ height: HEADER_HEIGHT }}
+                className="flex items-center gap-1 px-2 shrink-0 border-b border-stone-800 cursor-move select-none touch-none"
+                style={{ height: HEADER_HEIGHT, touchAction: 'none' }}
                 onPointerDown={(e) => startDrag("move", win, e)}
                 data-testid={`workspace-window-header-${win.noteId}`}
               >
@@ -346,11 +352,13 @@ export function NotesWorkspace({
                   campaignMembers={campaignMembers}
                   contentOnly
                   hideCloseButton
+                  hideNoteHeader
                   initialNoteId={win.noteId}
                 />
               </div>
               <div
-                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize touch-none"
+                style={{ touchAction: 'none' }}
                 onPointerDown={(e) => { e.stopPropagation(); startDrag("resize", win, e); }}
                 data-testid={`workspace-window-resize-${win.noteId}`}
               >
