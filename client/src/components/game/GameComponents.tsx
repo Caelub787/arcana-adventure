@@ -29968,96 +29968,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
   );
 }
 
-// Container Contents Manager - Allows GMs to add items to containers
-interface ContainerContentsManagerProps {
-  containerId: string;
-  containerName: string;
-  items: any[];
-  onAddItem: (itemId: string) => void;
-}
-
-function ContainerContentsManager({ containerId, containerName, items, onAddItem }: ContainerContentsManagerProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Get items that are NOT in this container and are NOT containers themselves
-  const availableItems = items.filter((item: any) => 
-    item.containerId !== containerId && 
-    !item.isContainer && 
-    item.id !== containerId
-  );
-  
-  const filteredItems = availableItems.filter((item: any) =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Get items currently in this container
-  const containedItems = items.filter((item: any) => item.containerId === containerId);
-
-  return (
-    <div className="pt-4 border-t border-stone-700">
-      <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
-        <Package className="h-4 w-4" />
-        Container Contents ({containedItems.length} items)
-      </h3>
-      
-      {/* Current contents */}
-      {containedItems.length > 0 && (
-        <div className="mb-3 space-y-1">
-          {containedItems.map((item: any) => (
-            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded text-sm">
-              <span className="text-stone-200">{item.name}</span>
-              <Badge variant="outline" className="text-[10px]">{item.itemType}</Badge>
-            </div>
-          ))}
-        </div>
-      )}
-      
-      {/* Search and add items */}
-      <div className="space-y-2">
-        <Label className="text-xs text-stone-400">Add Item to {containerName}</Label>
-        <Input
-          placeholder="Search items to add..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-stone-900 border-stone-700"
-          data-testid="input-container-search"
-        />
-        
-        {searchQuery && filteredItems.length > 0 && (
-          <div className="max-h-32 overflow-y-auto space-y-1 bg-stone-900 border border-stone-700 rounded p-1">
-            {filteredItems.slice(0, 10).map((item: any) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  onAddItem(item.id);
-                  setSearchQuery('');
-                }}
-                className="w-full flex items-center justify-between p-2 hover:bg-stone-800 rounded text-sm text-left"
-                data-testid={`button-add-item-${item.id}`}
-              >
-                <span className="text-stone-200">{item.name}</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-[10px]">{item.itemType}</Badge>
-                  <Plus className="h-4 w-4 text-green-500" />
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-        
-        {searchQuery && filteredItems.length === 0 && (
-          <p className="text-xs text-stone-500 p-2">No items found matching "{searchQuery}"</p>
-        )}
-        
-        {!searchQuery && availableItems.length === 0 && (
-          <p className="text-xs text-stone-500">No items available to add</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Item Detail Dialog Component with Edit Mode and Equip to Hotbar
+// Item Detail Dialog Component
 interface ItemDetailDialogProps {
   item: any;
   open: boolean;
@@ -31390,64 +31301,11 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setAbsorbing(false);
     }
   };
-  const [showEquipMenu, setShowEquipMenu] = useState(false);
-  const { data: hotbars = [] } = useQuery({
-    queryKey: ['hotbars', character.id],
-    queryFn: () => api.getHotbars(character.id),
-    enabled: !!character.id
-  });
   const { data: characterCustomSkills = [] } = useQuery({
     queryKey: ['character-custom-skills', character.id],
     queryFn: () => api.getCharacterCustomSkills(character.id),
     enabled: !!character.id,
   });
-
-  const upsertHotbarMutation = useMutation({
-    mutationFn: (data: any) => api.upsertHotbar(character.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
-      toast({ title: "Item Equipped", description: "Item equipped to hotbar successfully" });
-      setShowEquipMenu(false);
-    }
-  });
-
-  const handleEquipToSlot = (hotbarType: string, slotNumber: number) => {
-    if (!item) return;
-
-    if (!isAAV3 && hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
-      upsertHotbarMutation.mutate({ hotbarType, slotNumber: 0, itemId: item.id });
-      upsertHotbarMutation.mutate({ hotbarType, slotNumber: 2, itemId: item.id });
-    } else {
-      upsertHotbarMutation.mutate({ hotbarType, slotNumber, itemId: item.id });
-    }
-  };
-
-  const getAvailableSlots = () => {
-    if (!item) return [];
-    
-    const slots: { label: string; hotbarType: string; slotNumber: number }[] = [];
-    
-    if (item.itemType === 'weapon') {
-      if (isAAV3) {
-        slots.push({ label: 'Weapon', hotbarType: 'weapons', slotNumber: 0 });
-      } else if (item.isHeavy || item.weight === 'heavy') {
-        slots.push({ label: 'Weapons (Both Hands)', hotbarType: 'weapons', slotNumber: 0 });
-      } else {
-        slots.push({ label: 'Weapons - Left Hand', hotbarType: 'weapons', slotNumber: 0 });
-        slots.push({ label: 'Weapons - Ammo', hotbarType: 'weapons', slotNumber: 1 });
-        slots.push({ label: 'Weapons - Right Hand', hotbarType: 'weapons', slotNumber: 2 });
-      }
-    } else if (item.itemType === 'consumable') {
-      slots.push({ label: 'Consumables - Slot 1', hotbarType: 'consumables', slotNumber: 0 });
-      slots.push({ label: 'Consumables - Slot 2', hotbarType: 'consumables', slotNumber: 1 });
-    } else if (item.itemType === 'utility') {
-      for (let i = 0; i < 5; i++) {
-        slots.push({ label: `Utility - Slot ${i + 1}`, hotbarType: 'utility', slotNumber: i });
-      }
-    }
-    
-    return slots;
-  };
 
   const executeRoll = async (rollEntry: any) => {
     // Item Cost gating — block before any resource cost or roll fires.
@@ -31785,89 +31643,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               <V3RuneSocketPanel item={currentData} character={character} items={items} canEdit={isOwner || isGM} />
             )}
 
-            {(isOwner || isGM) && !currentData.isContainer && !isAAV3 && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
-                <div className="space-y-2">
-                  {currentData.containerId ? (
-                    <div>
-                      <Label className="text-xs text-stone-400 mb-2 block">Currently in container</Label>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => onUpdate({ containerId: null })}
-                        data-testid="button-remove-from-container"
-                      >
-                        Remove from Container
-                      </Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Label className="text-xs text-stone-400 mb-2 block">Move to Container</Label>
-                      <Select 
-                        onValueChange={(containerId) => onUpdate({ containerId })}
-                      >
-                        <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-move-to-container">
-                          <SelectValue placeholder="Select container..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {items.filter((i: any) => i.isContainer && i.id !== currentData.id).map((container: any) => (
-                            <SelectItem key={container.id} value={container.id}>
-                              {container.name} ({(container.children?.length || 0)} / {container.carryCapacity || 0})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Container Contents Management - GM Only */}
-            {isGM && currentData.isContainer && (
-              <ContainerContentsManager 
-                containerId={currentData.id}
-                containerName={currentData.name}
-                items={items}
-                onAddItem={(itemId) => {
-                  const updateItemMutation = async () => {
-                    try {
-                      await api.updateItem(itemId, { containerId: currentData.id });
-                      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
-                      toast({ title: "Item Added", description: "Item added to container" });
-                    } catch (err: any) {
-                      toast({ title: "Error", description: err.message || "Failed to add item", variant: "destructive" });
-                    }
-                  };
-                  updateItemMutation();
-                }}
-              />
-            )}
-
-            {!isAAV3 && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
-              <div className="pt-4 border-t border-stone-700">
-                <h3 className="text-sm font-bold text-stone-300 mb-2">Quick Actions</h3>
-                <div className="space-y-2">
-                  <Label className="text-xs text-stone-400 mb-2 block">Equip to Hotbar</Label>
-                  <Select onValueChange={(value) => {
-                    const [hotbarType, slotNumber] = value.split('-');
-                    handleEquipToSlot(hotbarType, parseInt(slotNumber));
-                  }}>
-                    <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-equip-slot">
-                      <SelectValue placeholder="Select slot..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getAvailableSlots().map((slot) => (
-                        <SelectItem key={`${slot.hotbarType}-${slot.slotNumber}`} value={`${slot.hotbarType}-${slot.slotNumber}`}>
-                          {slot.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
             {currentData.itemType === 'crafter' && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || isWoundSystem(campaignSystem)) && (
               <CraftSection item={currentData} character={character} canCraft={isOwner} isGM={isGM} />
             )}
