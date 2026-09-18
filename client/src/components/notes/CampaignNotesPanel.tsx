@@ -764,6 +764,20 @@ export function CampaignNotesPanel({
   const [noteFont, setNoteFont] = useState<NoteFont>("inherit");
   const [canvasData, setCanvasData] = useState<CanvasData>({ nodes: [], connections: [] });
   const [sheetData, setSheetData] = useState<SheetData>(makeEmptySheet());
+  // An inline markdown table (in an ordinary note's body) is edited as a
+  // real table directly in the read view, not as raw pipe text - this
+  // tracks which cell of which table block is currently being edited.
+  // rowKind is "header" or a body-row index; colCount/rowCount are captured
+  // at edit-start so Tab/Enter navigation doesn't have to re-derive them.
+  const [editingTableCell, setEditingTableCell] = useState<{
+    tableStart: number;
+    rowKind: "header" | number;
+    colIndex: number;
+    colCount: number;
+    rowCount: number;
+  } | null>(null);
+  const [editingTableValue, setEditingTableValue] = useState("");
+  const suppressTableBlurRef = useRef(false);
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
   // Live collaboration lane. 1s felt like "type, wait, save"; this is short
@@ -2159,7 +2173,146 @@ export function CampaignNotesPanel({
   const parseTableRow = (l: string) =>
     l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
 
-  const formatEntityReferences = (content: string): React.ReactNode => {
+  // Applies `mutate` to the current note's content split into lines, then
+  // saves the result the same way any other one-off note edit does
+  // (tags, pin, archive, ...) - immediate, not routed through the
+  // raw-textarea's debounced save.
+  const updateNoteContentLines = (mutate: (lines: string[]) => void) => {
+    if (!selectedNoteId) return;
+    const lines = (currentNote?.content || "").split("\n");
+    mutate(lines);
+    updateNoteMutation.mutate({ id: selectedNoteId, data: { content: lines.join("\n") } });
+  };
+
+  const startEditingTableCell = (
+    tableStart: number,
+    rowKind: "header" | number,
+    colIndex: number,
+    colCount: number,
+    rowCount: number,
+    initialValue: string
+  ) => {
+    setEditingTableCell({ tableStart, rowKind, colIndex, colCount, rowCount });
+    setEditingTableValue(initialValue);
+  };
+
+  // Commits the cell being edited and, if `moveTo` is given, immediately
+  // starts editing the next cell (Tab/Enter navigation) using the value
+  // read from the very same line mutation, since the server's copy of the
+  // note hasn't round-tripped back yet.
+  const commitEditingTableCell = (moveTo?: { rowKind: "header" | number; colIndex: number }) => {
+    if (!editingTableCell) return;
+    const { tableStart, rowKind, colIndex, colCount, rowCount } = editingTableCell;
+    let nextValue = "";
+    updateNoteContentLines((lines) => {
+      const lineIdx = rowKind === "header" ? tableStart : tableStart + 2 + rowKind;
+      if (lineIdx < lines.length) {
+        const cells = parseTableRow(lines[lineIdx]);
+        cells[colIndex] = editingTableValue;
+        lines[lineIdx] = `| ${cells.join(" | ")} |`;
+      }
+      if (moveTo) {
+        const nextLineIdx = moveTo.rowKind === "header" ? tableStart : tableStart + 2 + moveTo.rowKind;
+        if (nextLineIdx < lines.length) {
+          const nextCells = parseTableRow(lines[nextLineIdx]);
+          nextValue = nextCells[moveTo.colIndex] ?? "";
+        }
+      }
+    });
+    if (moveTo) {
+      setEditingTableCell({ tableStart, rowKind: moveTo.rowKind, colIndex: moveTo.colIndex, colCount, rowCount });
+      setEditingTableValue(nextValue);
+    } else {
+      setEditingTableCell(null);
+    }
+  };
+
+  const handleTableCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!editingTableCell) return;
+    const { rowKind, colIndex, colCount, rowCount } = editingTableCell;
+    if (e.key === "Escape") {
+      suppressTableBlurRef.current = true;
+      setEditingTableCell(null);
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      suppressTableBlurRef.current = true;
+      if (colIndex < colCount - 1) {
+        commitEditingTableCell({ rowKind, colIndex: colIndex + 1 });
+      } else if (rowKind === "header" && rowCount > 0) {
+        commitEditingTableCell({ rowKind: 0, colIndex: 0 });
+      } else if (typeof rowKind === "number" && rowKind < rowCount - 1) {
+        commitEditingTableCell({ rowKind: rowKind + 1, colIndex: 0 });
+      } else {
+        commitEditingTableCell();
+      }
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      suppressTableBlurRef.current = true;
+      if (rowKind === "header" && rowCount > 0) {
+        commitEditingTableCell({ rowKind: 0, colIndex });
+      } else if (typeof rowKind === "number" && rowKind < rowCount - 1) {
+        commitEditingTableCell({ rowKind: rowKind + 1, colIndex });
+      } else {
+        commitEditingTableCell();
+      }
+    }
+  };
+
+  const handleTableCellBlur = () => {
+    if (suppressTableBlurRef.current) {
+      suppressTableBlurRef.current = false;
+      return;
+    }
+    commitEditingTableCell();
+  };
+
+  const addTableRow = (colCount: number, insertAtLineIdx: number) => {
+    updateNoteContentLines((lines) => {
+      const newRow = `| ${Array(colCount).fill("").join(" | ")} |`;
+      lines.splice(insertAtLineIdx, 0, newRow);
+    });
+  };
+
+  const addTableColumn = (tableStart: number, endLineIdx: number) => {
+    updateNoteContentLines((lines) => {
+      for (let i = tableStart; i < endLineIdx; i++) {
+        const cells = parseTableRow(lines[i]);
+        if (i === tableStart) {
+          cells.push(`Column ${cells.length + 1}`);
+        } else if (i === tableStart + 1) {
+          cells.push("---");
+        } else {
+          cells.push("");
+        }
+        lines[i] = `| ${cells.join(" | ")} |`;
+      }
+    });
+  };
+
+  const removeTableColumn = (tableStart: number, endLineIdx: number, colIndex: number, colCount: number) => {
+    if (colCount <= 1) return;
+    updateNoteContentLines((lines) => {
+      for (let i = tableStart; i < endLineIdx; i++) {
+        const cells = parseTableRow(lines[i]);
+        cells.splice(colIndex, 1);
+        lines[i] = `| ${cells.join(" | ")} |`;
+      }
+    });
+    setEditingTableCell(null);
+  };
+
+  const removeTableRow = (lineIdx: number) => {
+    updateNoteContentLines((lines) => {
+      lines.splice(lineIdx, 1);
+    });
+    setEditingTableCell(null);
+  };
+
+  const formatEntityReferences = (content: string, editable: boolean = false): React.ReactNode => {
     const lines = content.split('\n');
     const blocks: React.ReactNode[] = [];
     let lineIndex = 0;
@@ -2176,33 +2329,146 @@ export function CampaignNotesPanel({
           bodyRows.push(parseTableRow(lines[j]));
           j++;
         }
+        const colCount = headerCells.length;
+        const rowCount = bodyRows.length;
+        const tableEndLineIdx = j;
         blocks.push(
-          <div key={tableStart} className="my-2 overflow-x-auto">
+          <div
+            key={tableStart}
+            className="my-2 overflow-x-auto"
+            onClick={editable ? (e) => e.stopPropagation() : undefined}
+          >
             <table className="border-collapse text-sm w-full">
               <thead>
                 <tr>
-                  {headerCells.map((cell, ci) => (
-                    <th
-                      key={ci}
-                      className="border border-stone-700 bg-stone-800/60 px-2 py-1 text-left font-medium text-stone-200"
-                    >
-                      {formatInlineReferences(cell, `th-${tableStart}-${ci}`)}
+                  {headerCells.map((cell, ci) => {
+                    const isEditingThis =
+                      editable &&
+                      editingTableCell?.tableStart === tableStart &&
+                      editingTableCell.rowKind === "header" &&
+                      editingTableCell.colIndex === ci;
+                    return (
+                      <th
+                        key={ci}
+                        className="relative group border border-stone-700 bg-stone-800/60 px-2 py-1 text-left font-medium text-stone-200"
+                      >
+                        {isEditingThis ? (
+                          <Input
+                            autoFocus
+                            value={editingTableValue}
+                            onChange={(e) => setEditingTableValue(e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={handleTableCellKeyDown}
+                            onBlur={handleTableCellBlur}
+                            className="h-6 px-1 py-0 bg-stone-900 border-amber-600"
+                          />
+                        ) : (
+                          <div
+                            className={editable ? "cursor-text pr-3" : undefined}
+                            onClick={
+                              editable
+                                ? () => startEditingTableCell(tableStart, "header", ci, colCount, rowCount, cell)
+                                : undefined
+                            }
+                          >
+                            {formatInlineReferences(cell, `th-${tableStart}-${ci}`)}
+                          </div>
+                        )}
+                        {editable && colCount > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeTableColumn(tableStart, tableEndLineIdx, ci, colCount)}
+                            className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 text-stone-500 hover:text-red-400"
+                            title="Remove column"
+                            data-testid={`button-remove-table-col-${tableStart}-${ci}`}
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        )}
+                      </th>
+                    );
+                  })}
+                  {editable && (
+                    <th className="border border-stone-700 bg-stone-800/60 w-6 p-0">
+                      <button
+                        type="button"
+                        onClick={() => addTableColumn(tableStart, tableEndLineIdx)}
+                        className="w-full h-full flex items-center justify-center text-stone-500 hover:text-amber-400 py-1"
+                        title="Add column"
+                        data-testid={`button-add-table-col-${tableStart}`}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
                     </th>
-                  ))}
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {bodyRows.map((row, ri) => (
-                  <tr key={ri}>
-                    {row.map((cell, ci) => (
-                      <td key={ci} className="border border-stone-700 px-2 py-1 align-top">
-                        {formatInlineReferences(cell, `td-${tableStart}-${ri}-${ci}`)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {bodyRows.map((row, ri) => {
+                  const lineIdx = tableStart + 2 + ri;
+                  return (
+                    <tr key={ri} className="group">
+                      {row.map((cell, ci) => {
+                        const isEditingThis =
+                          editable &&
+                          editingTableCell?.tableStart === tableStart &&
+                          editingTableCell.rowKind === ri &&
+                          editingTableCell.colIndex === ci;
+                        return (
+                          <td key={ci} className="border border-stone-700 px-2 py-1 align-top">
+                            {isEditingThis ? (
+                              <Input
+                                autoFocus
+                                value={editingTableValue}
+                                onChange={(e) => setEditingTableValue(e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={handleTableCellKeyDown}
+                                onBlur={handleTableCellBlur}
+                                className="h-6 px-1 py-0 bg-stone-900 border-amber-600"
+                              />
+                            ) : (
+                              <div
+                                className={editable ? "cursor-text min-h-[1.25rem]" : undefined}
+                                onClick={
+                                  editable
+                                    ? () => startEditingTableCell(tableStart, ri, ci, colCount, rowCount, cell)
+                                    : undefined
+                                }
+                              >
+                                {formatInlineReferences(cell, `td-${tableStart}-${ri}-${ci}`)}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                      {editable && (
+                        <td className="border border-stone-700 w-6 p-0 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeTableRow(lineIdx)}
+                            className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-red-400"
+                            title="Remove row"
+                            data-testid={`button-remove-table-row-${tableStart}-${ri}`}
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => addTableRow(colCount, tableEndLineIdx)}
+                className="mt-1 text-xs text-stone-500 hover:text-amber-400 flex items-center gap-1"
+                data-testid={`button-add-table-row-${tableStart}`}
+              >
+                <Plus className="h-3 w-3" /> Add row
+              </button>
+            )}
           </div>
         );
         lineIndex = j;
@@ -3007,7 +3273,7 @@ export function CampaignNotesPanel({
             </div>
             <div onClick={(e) => e.stopPropagation()}>{renderTagRow()}</div>
             <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
-              {formatEntityReferences(currentNote?.content || "")}
+              {formatEntityReferences(currentNote?.content || "", true)}
             </div>
           </div>
         </div>

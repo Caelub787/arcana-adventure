@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Minus } from "lucide-react";
@@ -23,10 +23,15 @@ const MAX_COLS = 52;
 export function NoteSheetGrid({ data, onChange, readOnly = false }: NoteSheetGridProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  // Tab/Enter commit-and-move by calling commitEdit(nextRef), which also
+  // starts editing nextRef - the blur that follows (focus leaving the old
+  // input) would otherwise re-commit the old cell's now-stale closure and
+  // immediately cancel the cell we just moved into, so it's suppressed once.
+  const suppressBlurRef = useRef(false);
 
   const displayValues = useMemo(() => evaluateSheet(data), [data]);
 
-  const commitEdit = () => {
+  const commitEdit = (moveToRef?: string) => {
     if (!editingCell) return;
     const cells = { ...data.cells };
     if (editValue === "") {
@@ -35,7 +40,12 @@ export function NoteSheetGrid({ data, onChange, readOnly = false }: NoteSheetGri
       cells[editingCell] = editValue;
     }
     onChange({ ...data, cells });
-    setEditingCell(null);
+    if (moveToRef) {
+      setEditingCell(moveToRef);
+      setEditValue(cells[moveToRef] ?? "");
+    } else {
+      setEditingCell(null);
+    }
   };
 
   const startEdit = (ref: string) => {
@@ -84,7 +94,7 @@ export function NoteSheetGrid({ data, onChange, readOnly = false }: NoteSheetGri
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 border-stone-700" onClick={removeCol} data-testid="button-sheet-remove-col">
             <Minus className="h-3 w-3 mr-1" /> Col
           </Button>
-          <span className="ml-2 text-stone-500">Double-click a cell to edit. Formulas start with =, e.g. =SUM(A1:A5)</span>
+          <span className="ml-2 text-stone-500">Click a cell to edit, Tab/Enter to move on. Formulas start with =, e.g. =SUM(A1:A5)</span>
         </div>
       )}
       <div className="overflow-auto border border-stone-700 rounded-md max-h-[60vh]">
@@ -116,7 +126,7 @@ export function NoteSheetGrid({ data, onChange, readOnly = false }: NoteSheetGri
                     <td
                       key={ref}
                       className="border border-stone-700 px-0 py-0 align-top"
-                      onDoubleClick={() => startEdit(ref)}
+                      onClick={() => !isEditing && startEdit(ref)}
                       data-testid={`sheet-cell-${ref}`}
                     >
                       {isEditing ? (
@@ -124,13 +134,27 @@ export function NoteSheetGrid({ data, onChange, readOnly = false }: NoteSheetGri
                           autoFocus
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
-                          onBlur={commitEdit}
+                          onBlur={() => {
+                            if (suppressBlurRef.current) {
+                              suppressBlurRef.current = false;
+                              return;
+                            }
+                            commitEdit();
+                          }}
                           onFocus={(e) => e.target.select()}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              commitEdit();
+                              suppressBlurRef.current = true;
+                              commitEdit(r + 1 < data.rowCount ? cellAddress(r + 1, c) : undefined);
+                            } else if (e.key === "Tab") {
+                              e.preventDefault();
+                              suppressBlurRef.current = true;
+                              const nextCol = c + 1 < data.colCount ? c + 1 : 0;
+                              const nextRow = c + 1 < data.colCount ? r : r + 1;
+                              commitEdit(nextRow < data.rowCount ? cellAddress(nextRow, nextCol) : undefined);
                             } else if (e.key === "Escape") {
+                              suppressBlurRef.current = true;
                               setEditingCell(null);
                             }
                           }}
