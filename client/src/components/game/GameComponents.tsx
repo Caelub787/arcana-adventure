@@ -27297,7 +27297,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
             open={true}
             onClose={() => setInlineItemSheetId(null)}
             title={<span className="text-amber-500">{sheetItem.name || 'New Item'}</span>}
-            defaultSize={{ width: Math.min(420, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
+            defaultSize={{ width: Math.min(462, window.innerWidth - 40), height: Math.min(660, window.innerHeight - 40) }}
             minWidth={320}
             minHeight={360}
             resizable={false}
@@ -31768,8 +31768,8 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Item" : item.name}
-      defaultSize={{ width: 720, height: Math.min(880, window.innerHeight - 40) }}
-      width={dockedNoteId ? 720 * 2 : 720}
+      defaultSize={{ width: 792, height: Math.min(968, window.innerHeight - 40) }}
+      width={dockedNoteId ? 792 * 2 : 792}
       resizable={false}
       defaultPosition={defaultPosition}
       minWidth={350}
@@ -31779,7 +31779,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       onBringToFront={() => bringToFront?.(`item-detail${charPanelSuffix}`)}
     >
       <div className="flex h-full min-h-0">
-      <div className="p-4 flex-shrink-0 overflow-y-auto" style={{ width: '720px' }}>
+      <div className="p-4 flex-shrink-0 overflow-y-auto" style={{ width: '792px' }}>
           <div className="flex items-center justify-between mb-4">
             {isEditing ? (
               <Input 
@@ -32865,7 +32865,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
           </div>
         </div>
       {dockedNoteId && character?.campaignId && (
-        <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: '720px' }}>
+        <div className="flex-shrink-0 border-l border-stone-700 h-full min-h-0" style={{ width: '792px' }}>
           <CampaignNotesPanel
             campaignId={character.campaignId}
             onClose={() => setDockedNoteId(null)}
