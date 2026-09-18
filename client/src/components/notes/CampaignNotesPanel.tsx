@@ -218,7 +218,8 @@ interface FolderTreeItemProps {
   onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
-  onCreateScene: (folderId: string) => void;
+  /** Scene notes are a GM tool - absent for a non-GM viewer. */
+  onCreateScene?: (folderId: string) => void;
   onShareNote: (noteId: string) => void;
   onDeleteNote: (note: Note) => void;
   onMoveNote: (noteId: string, folderId: string | null) => void;
@@ -490,12 +491,14 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
           </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => onCreateScene(folder.id)}
-            data-testid={`context-menu-new-scene-${folder.id}`}
-          >
-            <MapIcon className="h-3 w-3 mr-2" /> New Scene
-          </ContextMenuItem>
+          {onCreateScene && (
+            <ContextMenuItem
+              onClick={() => onCreateScene(folder.id)}
+              data-testid={`context-menu-new-scene-${folder.id}`}
+            >
+              <MapIcon className="h-3 w-3 mr-2" /> New Scene
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
             onClick={() => onDeleteFolder(folder)}
@@ -668,6 +671,11 @@ export function CampaignNotesPanel({
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
   const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<NoteFolder | null>(null);
+  // A note attached to a character/item sheet can't be deleted while that
+  // sheet still exists - this holds the note + the reference that's blocking
+  // it, driving the "can't delete, delete the sheet first" dialog.
+  const [protectedDeleteState, setProtectedDeleteState] = useState<{ note: Note; ref: NoteReference } | null>(null);
+  const [confirmDeleteSheet, setConfirmDeleteSheet] = useState(false);
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareNoteId, setShareNoteId] = useState<string | null>(null);
@@ -863,6 +871,24 @@ export function CampaignNotesPanel({
         
         // Open in tabs when selecting a note
         openNoteTab(currentNote.id, currentNote.title, currentNote.type as OpenNote["type"]);
+      } else {
+        // Same note as before, but the underlying data changed - a REST-only
+        // update (tags, visibility, a save that landed while this client's
+        // own noteWs join was reconnecting) that only reached us via the
+        // `note_changed` broadcast's query refetch, not the live noteWs
+        // `note_update` path (which already applies its own updates as they
+        // arrive and does not need this). Without this, the fetched data
+        // sat in the query cache updated while the screen kept showing
+        // whatever was here when the note was first opened - the classic
+        // "only shows up after a refresh" bug. Skipped while the user is
+        // actively typing (don't clobber unsaved keystrokes) or while a live
+        // remote update is already being applied (avoid fighting it).
+        const el = textareaRef.current;
+        const isTyping = !!el && document.activeElement === el;
+        if (!isTyping && !isReceivingRemoteUpdateRef.current) {
+          if (currentNote.title !== noteTitle) setNoteTitle(currentNote.title);
+          if ((currentNote.content || "") !== noteContent) setNoteContent(currentNote.content || "");
+        }
       }
     }
   }, [currentNote, openNoteTab]);
@@ -1297,6 +1323,69 @@ export function CampaignNotesPanel({
   // so they count as linked here too - otherwise clicking one in the sidebar
   // opened it as a loose note with no sheet beside it.
   const linkedEntityRef = currentNoteRefs.find(r => ["character-sheet", "item-sheet", "character-ability"].includes(r.entityType));
+
+  // Whether the open note's linked sheet still exists - drives the Delete
+  // button's disabled state. A stale reference left behind by a
+  // since-deleted character/item no longer protects the note.
+  const { data: openNoteLinkExists = false } = useQuery({
+    queryKey: ["note-linked-entity-exists", linkedEntityRef?.entityType, linkedEntityRef?.entityId],
+    queryFn: async () => {
+      if (!linkedEntityRef) return false;
+      try {
+        if (linkedEntityRef.entityType === "item-sheet") await api.getItem(linkedEntityRef.entityId);
+        else await api.getCharacter(linkedEntityRef.entityId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!linkedEntityRef,
+  });
+  const openNoteIsProtected = !!linkedEntityRef && openNoteLinkExists;
+
+  const deleteAttachedSheetMutation = useMutation({
+    mutationFn: async (ref: NoteReference) => {
+      if (ref.entityType === "item-sheet") await api.deleteItem(ref.entityId);
+      else await api.deleteCharacter(ref.entityId);
+    },
+    onSuccess: () => {
+      if (!protectedDeleteState) return;
+      const { note } = protectedDeleteState;
+      queryClient.invalidateQueries({ queryKey: ["note-linked-entity-exists"] });
+      setProtectedDeleteState(null);
+      setConfirmDeleteSheet(false);
+      // The sheet is gone, so the note is a normal, deletable note now.
+      setNoteToDelete(note);
+      setDeleteNoteDialogOpen(true);
+    },
+    onError: (err: any) =>
+      toast({ title: "Couldn't delete the attached sheet", description: err.message, variant: "destructive" }),
+  });
+
+  // Every "delete this note" entry point (sidebar rows, the open note's own
+  // header) routes through here so none of them can silently fall into the
+  // server's clear-content fallback: a note whose sheet still exists shows
+  // the "delete the sheet first" dialog instead of a real delete attempt.
+  const requestDeleteNote = async (note: Note) => {
+    try {
+      const refs = await api.getNoteReferences(note.id);
+      const ref = refs.find(r => ["character-sheet", "item-sheet", "character-ability"].includes(r.entityType));
+      if (ref) {
+        const exists = await (ref.entityType === "item-sheet" ? api.getItem(ref.entityId) : api.getCharacter(ref.entityId))
+          .then(() => true)
+          .catch(() => false);
+        if (exists) {
+          setProtectedDeleteState({ note, ref });
+          return;
+        }
+      }
+    } catch {
+      // Reference lookup failed - fall through to the normal delete flow
+      // rather than silently doing nothing.
+    }
+    setNoteToDelete(note);
+    setDeleteNoteDialogOpen(true);
+  };
 
   // Sidebar (navOnly) mode never shows note content inline - whatever set
   // selectedNoteId (folder tree click, search result, "New Note", etc.) gets
@@ -2057,13 +2146,19 @@ export function CampaignNotesPanel({
   // What you can make at the top level of this campaign's notes. One list,
   // shown two ways: as the sidebar's New button and as the right-click menu,
   // so the two can't drift apart.
+  // Root-level (unfiled) creation is a GM tool - a player's only place to
+  // create a note is inside their own player folder (via the per-folder
+  // "New Note" context menu), not floating unfiled at the top of the tree.
+  // Timelines isn't a creation action, so it stays available either way.
   const rootCreateActions: Array<{ key: string; label: string; icon: any; run: () => void } | { separator: true }> = [
-    { key: "folder", label: "New Folder", icon: FolderPlus, run: () => openFolderDialog() },
-    { separator: true },
-    { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
-    { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
-    { key: "scene", label: "New Scene", icon: MapIcon, run: () => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any) },
-    { key: "book", label: "New Book", icon: BookOpen, run: () => createNoteMutation.mutate({ title: "Untitled Book", content: "", type: "book", folderId: null, campaignId } as any) },
+    ...(isGm ? [
+      { key: "folder", label: "New Folder", icon: FolderPlus, run: () => openFolderDialog() },
+      { separator: true as const },
+      { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
+      { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
+      { key: "scene", label: "New Scene", icon: MapIcon, run: () => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any) },
+      { key: "book", label: "New Book", icon: BookOpen, run: () => createNoteMutation.mutate({ title: "Untitled Book", content: "", type: "book", folderId: null, campaignId } as any) },
+    ] : []),
     ...(onOpenTimelines ? [{ separator: true as const }, { key: "timelines", label: "Timelines", icon: HistoryIcon, run: onOpenTimelines }] : []),
   ];
 
@@ -2283,7 +2378,7 @@ export function CampaignNotesPanel({
                     campaignId: campaignId,
                   });
                 }}
-                onCreateScene={(folderId) => {
+                onCreateScene={isGm ? (folderId) => {
                   createNoteMutation.mutate({
                     title: "Untitled Scene",
                     content: "",
@@ -2292,14 +2387,11 @@ export function CampaignNotesPanel({
                     folderId: folderId,
                     campaignId: campaignId,
                   });
-                }}
+                } : undefined}
                 onShareNote={(id) => {
                   openShareDialog(id);
                 }}
-                onDeleteNote={(note) => {
-                  setNoteToDelete(note);
-                  setDeleteNoteDialogOpen(true);
-                }}
+                onDeleteNote={requestDeleteNote}
                 onMoveNote={(noteId, folderId) => {
                   updateNoteMutation.mutate({
                     id: noteId,
@@ -2358,10 +2450,7 @@ export function CampaignNotesPanel({
                     </ContextMenuItem>
                     <ContextMenuSeparator className="bg-stone-700" />
                     <ContextMenuItem
-                      onClick={() => {
-                        setNoteToDelete(note);
-                        setDeleteNoteDialogOpen(true);
-                      }}
+                      onClick={() => requestDeleteNote(note)}
                       className="text-red-400 focus:text-red-400"
                       data-testid={`panel-sidebar-unfiled-note-delete-${note.id}`}
                     >
@@ -2503,7 +2592,7 @@ export function CampaignNotesPanel({
                             <Share2 className="h-3 w-3" />
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                            onClick={(e) => { e.stopPropagation(); requestDeleteNote(note); }}
                             className="p-0.5 hover:bg-stone-700 rounded text-red-400 hover:text-red-300"
                             data-testid={`panel-card-note-delete-mobile-${note.id}`}
                           >
@@ -2534,7 +2623,7 @@ export function CampaignNotesPanel({
                       </ContextMenuItem>
                       <ContextMenuSeparator className="bg-stone-700" />
                       <ContextMenuItem
-                        onClick={() => { setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                        onClick={() => requestDeleteNote(note)}
                         className="text-red-400 focus:text-red-400"
                       >
                         <Trash2 className="h-3 w-3 mr-2" />
@@ -2713,13 +2802,18 @@ export function CampaignNotesPanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 text-red-400"
+                  className={openNoteIsProtected ? "h-6 w-6 p-0 text-stone-600 cursor-not-allowed" : "h-6 w-6 p-0 text-red-400"}
+                  title={openNoteIsProtected ? "Can't delete - attached to a character/item sheet" : undefined}
                   onClick={() => {
-                    if (currentNote) {
-                      setNoteToDelete(currentNote);
-                      setDeleteNoteDialogOpen(true);
+                    if (!currentNote) return;
+                    if (openNoteIsProtected && linkedEntityRef) {
+                      setProtectedDeleteState({ note: currentNote, ref: linkedEntityRef });
+                      return;
                     }
+                    setNoteToDelete(currentNote);
+                    setDeleteNoteDialogOpen(true);
                   }}
+                  data-testid="button-delete-note"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -2879,13 +2973,18 @@ export function CampaignNotesPanel({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 text-red-400"
+              className={openNoteIsProtected ? "h-6 w-6 p-0 text-stone-600 cursor-not-allowed" : "h-6 w-6 p-0 text-red-400"}
+              title={openNoteIsProtected ? "Can't delete - attached to a character/item sheet" : undefined}
               onClick={() => {
-                if (currentNote) {
-                  setNoteToDelete(currentNote);
-                  setDeleteNoteDialogOpen(true);
+                if (!currentNote) return;
+                if (openNoteIsProtected && linkedEntityRef) {
+                  setProtectedDeleteState({ note: currentNote, ref: linkedEntityRef });
+                  return;
                 }
+                setNoteToDelete(currentNote);
+                setDeleteNoteDialogOpen(true);
               }}
+              data-testid="button-delete-note"
             >
               <Trash2 className="h-3 w-3" />
             </Button>
@@ -3515,7 +3614,7 @@ export function CampaignNotesPanel({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-red-500 text-sm">Delete Note?</AlertDialogTitle>
             <AlertDialogDescription className="text-stone-400 text-xs">
-              Are you sure you want to delete "{noteToDelete?.title}"? If this note is attached to a character or item sheet, its contents will be cleared but the note page will stay. Otherwise, this action cannot be undone.
+              Are you sure you want to delete "{noteToDelete?.title}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3531,6 +3630,70 @@ export function CampaignNotesPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* A note attached to a still-existing character/item can't be deleted
+          directly - the sheet's Notes button always needs a note to open.
+          This explains why and offers the one real way to unblock it: delete
+          the attached sheet first (with its own confirmation step). */}
+      <Dialog
+        open={!!protectedDeleteState}
+        onOpenChange={(open) => { if (!open) { setProtectedDeleteState(null); setConfirmDeleteSheet(false); } }}
+      >
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500 text-sm">Can't Delete This Note</DialogTitle>
+          </DialogHeader>
+          {!confirmDeleteSheet ? (
+            <>
+              <p className="text-stone-400 text-xs">
+                "{protectedDeleteState?.note.title}" is attached to a{" "}
+                {protectedDeleteState?.ref.entityType === "item-sheet" ? "item" : "character"} sheet and can't be
+                removed while that sheet still exists. Delete the attached sheet first to free up this note.
+              </p>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  className="h-8 text-xs bg-stone-900 border-stone-700 text-stone-100 hover:bg-stone-800"
+                  onClick={() => { setProtectedDeleteState(null); setConfirmDeleteSheet(false); }}
+                >
+                  Close
+                </Button>
+                <Button
+                  className="h-8 text-xs bg-red-700 hover:bg-red-600"
+                  onClick={() => setConfirmDeleteSheet(true)}
+                  data-testid="button-delete-attached-sheet"
+                >
+                  Delete Attached Sheet
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <p className="text-stone-400 text-xs">
+                This permanently deletes the attached {protectedDeleteState?.ref.entityType === "item-sheet" ? "item" : "character"}
+                {" "}sheet, not just this note. Are you sure?
+              </p>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  className="h-8 text-xs bg-stone-900 border-stone-700 text-stone-100 hover:bg-stone-800"
+                  onClick={() => setConfirmDeleteSheet(false)}
+                >
+                  Back
+                </Button>
+                <Button
+                  className="h-8 text-xs bg-red-700 hover:bg-red-600"
+                  disabled={deleteAttachedSheetMutation.isPending}
+                  onClick={() => protectedDeleteState && deleteAttachedSheetMutation.mutate(protectedDeleteState.ref)}
+                  data-testid="button-confirm-delete-attached-sheet"
+                >
+                  {deleteAttachedSheetMutation.isPending ? "Deleting..." : "Yes, Delete It"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteFolderDialogOpen} onOpenChange={setDeleteFolderDialogOpen}>
         <AlertDialogContent className="bg-stone-950 border-stone-800 text-stone-100">

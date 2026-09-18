@@ -17925,6 +17925,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const folder = fid ? folderById.get(fid as string) : undefined;
           if (folder?.parentId) walkUpFrom(folder.parentId);
         }
+        // A folder visible only through ownership - a player's own folder,
+        // nested under the GM-only "Players" container - needs its ancestor
+        // chain revealed too, or it's unreachable in the tree even though the
+        // player can see the folder itself. Same "reveals the chain, not the
+        // siblings" reasoning as the shared-note/shared-folder cases above:
+        // the container's OTHER children stay hidden since none of them are
+        // owned by, or visibility-granted to, this viewer.
+        for (const f of allFolders as any[]) {
+          if (f.userId === req.session.userId && f.parentId) walkUpFrom(f.parentId);
+        }
 
         // Sharing a folder shares what is in it, so everything nested under a
         // shared folder is visible too - not just the folder itself.
@@ -18231,6 +18241,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/notes", requireAuth, async (req, res) => {
     try {
+      // Scene notes drive the battle map (fog, pins, tokens) - a GM tool,
+      // not something a player should be able to create for themselves.
+      if (req.body.type === "scene" && req.body.campaignId) {
+        const role = await getKnowledgeRole(req.session.userId!, req.body.campaignId);
+        if (!role.isGm) {
+          return res.status(403).json({ error: "Only the GM can create scene notes" });
+        }
+      }
       const note = await storage.createNote({
         ...req.body,
         userId: req.session.userId!,
@@ -19015,15 +19033,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Note not found" });
       }
       const refs = await storage.getNoteReferences(req.params.id);
-      const entityRef = refs.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet");
+      const entityRef = refs.find(r => r.entityType === "character-sheet" || r.entityType === "item-sheet" || r.entityType === "character-ability");
       // entityId carries no FK (a note can outlive the entity it was created
       // for), so a stale ref left behind by a since-deleted character/item
       // must not keep blocking real deletion forever - only a note whose
       // sheet still exists is protected.
       const linkedEntityStillExists = entityRef
-        ? !!(entityRef.entityType === "character-sheet"
-          ? await storage.getCharacter(entityRef.entityId)
-          : await storage.getItem(entityRef.entityId))
+        ? !!(entityRef.entityType === "item-sheet"
+          ? await storage.getItem(entityRef.entityId)
+          : await storage.getCharacter(entityRef.entityId))
         : false;
       if (entityRef && linkedEntityStillExists) {
         // The sheet's Notes button always needs a note to open, so a note

@@ -11954,7 +11954,12 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const pinnedMembers = (members || []).filter((m: any) => m.pinned);
-  const pinnedCharacters = (characters || []).filter((c: any) => c.pinned);
+  // Same dedup as PinnedRosterBar: a character directly pinned that's ALSO
+  // the assigned character of an already-pinned member is that same
+  // player's character, not a second, separate pin.
+  const pinnedCharacters = (characters || []).filter((c: any) =>
+    c.pinned && !pinnedMembers.some((m: any) => m.assignedCharacterId === c.id)
+  );
 
   const colorFor = (entry: PinnedRollFeedEntry): string => {
     const member = pinnedMembers.find((m: any) =>
@@ -12570,8 +12575,19 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
   const setPinnedMutation = useMutation({
     mutationFn: ({ memberId, pinned }: { memberId: string; pinned: boolean }) =>
       api.setMemberPinned(campaignId!, memberId, pinned),
-    onSuccess: (_, { pinned }) => {
+    onSuccess: (_, { memberId, pinned }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      // A player and their own character showing as two separate tracker
+      // entries is the same person twice - the character (the thing actually
+      // shown on the map) wins, so pinning the player unpins their character
+      // if it was pinned directly.
+      if (pinned) {
+        const member = (members || []).find((m: any) => m.id === memberId);
+        const ownCharacter = member && (characters || []).find((c: any) => c.id === member.assignedCharacterId);
+        if (ownCharacter?.pinned) {
+          toggleCharacterPinMutation.mutate({ characterId: ownCharacter.id, pinned: false });
+        }
+      }
       toast({
         title: pinned ? "Player Pinned" : "Player Unpinned",
         description: pinned ? "Now shown in the top party tracker bar" : "Removed from the top party tracker bar",
@@ -12588,8 +12604,17 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
   const toggleCharacterPinMutation = useMutation({
     mutationFn: ({ characterId, pinned }: { characterId: string; pinned: boolean }) =>
       api.updateCharacter(characterId, { pinned } as any),
-    onSuccess: (_, { pinned }) => {
+    onSuccess: (_, { characterId, pinned }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      // Same rule from the other direction: pinning a character that's
+      // already shown via its player's own pin drops the redundant player
+      // pin, since the character pin is the one that should remain.
+      if (pinned) {
+        const owningMember = (members || []).find((m: any) => m.assignedCharacterId === characterId && m.pinned);
+        if (owningMember) {
+          setPinnedMutation.mutate({ memberId: owningMember.id, pinned: false });
+        }
+      }
       toast({
         title: pinned ? "Character Pinned" : "Character Unpinned",
         description: pinned ? "Now shown in the top party tracker bar" : "Removed from the top party tracker bar",

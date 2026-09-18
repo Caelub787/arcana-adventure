@@ -64,7 +64,7 @@ import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryMa
 import { LibraryItemSheet } from '@/components/admin/LibraryItemSheet';
 import { isWoundSystem } from "@shared/systemRules";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
-import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs } from "@shared/systems";
+import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS } from "@shared/systems";
 
 type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
@@ -246,9 +246,21 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
   })();
   
+  // My Library opened from inside a campaign (the "My Library" panel button)
+  // carries the campaign's own system, so it opens straight to that system
+  // instead of whatever was last picked (or the hard C.A. fallback) - a GM
+  // running an A.A. V3 game and popping open their library shouldn't have to
+  // re-switch systems every time.
+  const librarySystemFromCampaign = (() => {
+    if (!forcePersonal) return null;
+    const raw = new URLSearchParams(search).get('system');
+    return raw && (SYSTEM_SLUGS as string[]).includes(raw) ? systemLabel(raw) : null;
+  })();
+
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState(() => {
     if (embedded && embeddedSystem) return embeddedSystem;
+    if (librarySystemFromCampaign) return librarySystemFromCampaign;
     if (!isAdmin) {
       // My Library (forcePersonal, e.g. players): default to C.A., but still
       // remember a manual switch across visits like admins already do.
