@@ -1458,8 +1458,8 @@ export const notes = pgTable("notes", {
   folderId: varchar("folder_id").references(() => noteFolders.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   content: text("content").default("").notNull(), // Markdown content for regular notes
-  type: text("type").default("note").notNull(), // "note", "canvas", "scene" or "book"
-  canvasData: jsonb("canvas_data"), // For canvas pages: nodes, positions, connections
+  type: text("type").default("note").notNull(), // "note", "canvas", "sheet", "scene" or "book"
+  canvasData: jsonb("canvas_data"), // For canvas pages: nodes, positions, connections. For sheet pages: SheetData (rowCount/colCount/cells) from client/src/lib/sheetFormula.ts
   icon: text("icon"), // Optional custom icon
   coverImage: text("cover_image"), // Optional cover image
   isPinned: boolean("is_pinned").default(false).notNull(),

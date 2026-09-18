@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff } from "lucide-react";
+import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff, Table } from "lucide-react";
 
 export type NoteFont = "inherit" | "serif" | "sans-serif" | "monospace";
 
@@ -128,6 +128,27 @@ export function FormattingToolbar({
     }, 0);
   };
 
+  const insertTable = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const beforeText = content.slice(0, start);
+    const afterText = content.slice(start);
+    const needsLeadingNewline = beforeText.length > 0 && !beforeText.endsWith("\n");
+    const needsTrailingNewline = afterText.length > 0 && !afterText.startsWith("\n");
+    const table = "| Column 1 | Column 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |";
+    const insertion = (needsLeadingNewline ? "\n" : "") + table + (needsTrailingNewline ? "\n" : "");
+    const newContent = beforeText + insertion + afterText;
+    onContentChange(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      const cursorPos = start + insertion.length;
+      textarea.setSelectionRange(cursorPos, cursorPos);
+    }, 0);
+  };
+
   const handleImageInsert = () => {
     if (imageUrl.trim()) {
       insertImage(imageUrl.trim(), imageAlt.trim());
@@ -230,6 +251,17 @@ export function FormattingToolbar({
           data-testid="button-insert-image"
         >
           <Image className={iconSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={insertTable}
+          title="Insert Table"
+          data-testid="button-insert-table"
+        >
+          <Table className={iconSize} />
         </Button>
         <div className="w-px h-5 bg-stone-700 mx-1" />
         <Select value={font} onValueChange={(v) => onFontChange(v as NoteFont)}>

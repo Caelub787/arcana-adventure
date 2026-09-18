@@ -56,9 +56,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Eraser, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, Home, ArrowUp, ArrowLeft, BookOpen, Globe, History as HistoryIcon, Map as MapIcon } from "lucide-react";
+import { Plus, Folder, FolderOpen, FolderPlus, FileText, Pin, Archive, Trash2, Eraser, Share2, MoreVertical, ChevronRight, ChevronDown, ChevronLeft, Users, Search, X, Edit, Eye, EyeOff, Link2, Grid3X3, Network, CloudUpload, Home, ArrowUp, ArrowLeft, BookOpen, Globe, History as HistoryIcon, Map as MapIcon, Table as TableIcon } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
+import { NoteSheetGrid } from "@/components/notes/NoteSheetGrid";
+import { type SheetData, makeEmptySheet } from "@/lib/sheetFormula";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID, TIMELINES_TAB_ID } from "@/components/notes/NoteTabs";
 import { clickEndsNoteEditing } from "@/lib/noteEditFocus";
@@ -218,6 +220,7 @@ interface FolderTreeItemProps {
   onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
+  onCreateSheet: (folderId: string) => void;
   /** Scene notes are a GM tool - absent for a non-GM viewer. */
   onCreateScene?: (folderId: string) => void;
   onShareNote: (noteId: string) => void;
@@ -258,6 +261,7 @@ function FolderTreeItem({
   onReorderFolder,
   onCreateNote,
   onCreateCanvas,
+  onCreateSheet,
   onCreateScene,
   onShareNote,
   onDeleteNote,
@@ -525,6 +529,12 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
           </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onCreateSheet(folder.id)}
+            data-testid={`context-menu-new-sheet-${folder.id}`}
+          >
+            <TableIcon className="h-3 w-3 mr-2" /> New Sheet
+          </ContextMenuItem>
           {onCreateScene && (
             <ContextMenuItem
               onClick={() => onCreateScene(folder.id)}
@@ -564,6 +574,7 @@ function FolderTreeItem({
               onReorderFolder={onReorderFolder}
               onCreateNote={onCreateNote}
               onCreateCanvas={onCreateCanvas}
+              onCreateSheet={onCreateSheet}
               onCreateScene={onCreateScene}
               onShareNote={onShareNote}
               onDeleteNote={onDeleteNote}
@@ -609,6 +620,8 @@ function FolderTreeItem({
                 >
                   {note.type === "canvas" ? (
                     <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : note.type === "sheet" ? (
+                    <TableIcon className="h-2.5 w-2.5 flex-shrink-0" />
                   ) : note.type === "scene" ? (
                     <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
                   ) : note.type === "book" ? (
@@ -750,6 +763,7 @@ export function CampaignNotesPanel({
   const [noteContent, setNoteContent] = useState("");
   const [noteFont, setNoteFont] = useState<NoteFont>("inherit");
   const [canvasData, setCanvasData] = useState<CanvasData>({ nodes: [], connections: [] });
+  const [sheetData, setSheetData] = useState<SheetData>(makeEmptySheet());
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
   // Live collaboration lane. 1s felt like "type, wait, save"; this is short
@@ -758,6 +772,7 @@ export function CampaignNotesPanel({
   const liveTitle = useDebouncedValue(noteTitle, 150);
   const liveContent = useDebouncedValue(noteContent, 150);
   const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
+  const debouncedSheetData = useDebouncedValue(sheetData, 1000);
 
   const [addingTag, setAddingTag] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
@@ -816,6 +831,7 @@ export function CampaignNotesPanel({
   const lastLoadedNoteIdRef = useRef<string | null>(null);
   const lastSavedContentRef = useRef<{ title: string; content: string } | null>(null);
   const lastSavedCanvasRef = useRef<CanvasData | null>(null);
+  const lastSavedSheetRef = useRef<SheetData | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
     queryKey: ["/api/notes/folders", campaignId],
@@ -902,9 +918,13 @@ export function CampaignNotesPanel({
         lastLoadedNoteIdRef.current = currentNote.id;
         lastSavedContentRef.current = null;
         lastSavedCanvasRef.current = null;
-        
+        lastSavedSheetRef.current = null;
+
         if (currentNote.type === "canvas" && currentNote.canvasData) {
           setCanvasData(currentNote.canvasData as CanvasData);
+          setNoteMode("edit");
+        } else if (currentNote.type === "sheet") {
+          setSheetData((currentNote.canvasData as SheetData) || makeEmptySheet());
           setNoteMode("edit");
         } else {
           setCanvasData({ nodes: [], connections: [] });
@@ -1588,9 +1608,10 @@ export function CampaignNotesPanel({
   });
 
   // Clicking into the note body starts editing; clicking anywhere outside the
-  // editor ends it. Canvas notes are always in their own editor and opt out.
+  // editor ends it. Canvas and Sheet notes are always in their own editor
+  // and opt out.
   const beginInlineEdit = () => {
-    if (currentNote?.type === "canvas") return;
+    if (currentNote?.type === "canvas" || currentNote?.type === "sheet") return;
     focusEditorOnRenderRef.current = true;
     setNoteMode("edit");
   };
@@ -1658,6 +1679,24 @@ export function CampaignNotesPanel({
       data: { canvasData: debouncedCanvasData },
     });
   }, [debouncedCanvasData, selectedNoteId]);
+
+  useEffect(() => {
+    if (!selectedNoteId || currentNote?.type !== "sheet" || noteLoading) return;
+
+    if (!lastSavedSheetRef.current) {
+      lastSavedSheetRef.current = debouncedSheetData;
+      return;
+    }
+    if (JSON.stringify(lastSavedSheetRef.current) === JSON.stringify(debouncedSheetData)) {
+      return;
+    }
+
+    lastSavedSheetRef.current = debouncedSheetData;
+    updateNoteMutation.mutate({
+      id: selectedNoteId,
+      data: { canvasData: debouncedSheetData as any },
+    });
+  }, [debouncedSheetData, selectedNoteId]);
 
   const resetFolderForm = () => {
     setFolderName("");
@@ -1729,6 +1768,17 @@ export function CampaignNotesPanel({
       content: "",
       type: "canvas",
       canvasData: { nodes: [], connections: [] },
+      folderId: selectedFolderId ?? undefined,
+      campaignId: campaignId,
+    });
+  };
+
+  const handleCreateSheet = () => {
+    createNoteMutation.mutate({
+      title: "Untitled Sheet",
+      content: "",
+      type: "sheet",
+      canvasData: makeEmptySheet() as any,
       folderId: selectedFolderId ?? undefined,
       campaignId: campaignId,
     });
@@ -2100,56 +2150,116 @@ export function CampaignNotesPanel({
     return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix);
   };
 
+  // A markdown table is a header row immediately followed by a
+  // |---|---| separator row - detected here (not in the per-line map
+  // below) since rendering one means consuming several lines at once.
+  const isTableRow = (l: string) => /\|/.test(l) && l.trim().length > 0;
+  const isTableSeparatorRow = (l: string) =>
+    /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/.test(l);
+  const parseTableRow = (l: string) =>
+    l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
   const formatEntityReferences = (content: string): React.ReactNode => {
     const lines = content.split('\n');
-    
-    return (
-      <div className="space-y-1">
-        {lines.map((line, lineIndex) => {
-          const bulletMatch = line.match(/^(\s*)(-|\*)\s+(.*)$/);
-          if (bulletMatch) {
-            const [, indent, , text] = bulletMatch;
-            const indentLevel = Math.floor(indent.length / 2);
-            return (
-              <div 
-                key={lineIndex} 
-                className="flex items-start gap-2"
-                style={{ paddingLeft: `${indentLevel * 16}px` }}
-              >
-                <span className="text-amber-500 mt-0.5">•</span>
-                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
-              </div>
-            );
-          }
-          
-          const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
-          if (numberedMatch) {
-            const [, indent, num, text] = numberedMatch;
-            const indentLevel = Math.floor(indent.length / 2);
-            return (
-              <div 
-                key={lineIndex} 
-                className="flex items-start gap-2"
-                style={{ paddingLeft: `${indentLevel * 16}px` }}
-              >
-                <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
-                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
-              </div>
-            );
-          }
-          
-          if (line.trim() === '') {
-            return <div key={lineIndex} className="h-4" />;
-          }
-          
-          return (
-            <div key={lineIndex}>
-              {formatInlineReferences(line, `line-${lineIndex}`)}
-            </div>
-          );
-        })}
-      </div>
-    );
+    const blocks: React.ReactNode[] = [];
+    let lineIndex = 0;
+
+    while (lineIndex < lines.length) {
+      const line = lines[lineIndex];
+
+      if (isTableRow(line) && lineIndex + 1 < lines.length && isTableSeparatorRow(lines[lineIndex + 1])) {
+        const headerCells = parseTableRow(line);
+        const tableStart = lineIndex;
+        let j = lineIndex + 2;
+        const bodyRows: string[][] = [];
+        while (j < lines.length && isTableRow(lines[j]) && !isTableSeparatorRow(lines[j])) {
+          bodyRows.push(parseTableRow(lines[j]));
+          j++;
+        }
+        blocks.push(
+          <div key={tableStart} className="my-2 overflow-x-auto">
+            <table className="border-collapse text-sm w-full">
+              <thead>
+                <tr>
+                  {headerCells.map((cell, ci) => (
+                    <th
+                      key={ci}
+                      className="border border-stone-700 bg-stone-800/60 px-2 py-1 text-left font-medium text-stone-200"
+                    >
+                      {formatInlineReferences(cell, `th-${tableStart}-${ci}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bodyRows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="border border-stone-700 px-2 py-1 align-top">
+                        {formatInlineReferences(cell, `td-${tableStart}-${ri}-${ci}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        lineIndex = j;
+        continue;
+      }
+
+      const bulletMatch = line.match(/^(\s*)(-|\*)\s+(.*)$/);
+      if (bulletMatch) {
+        const [, indent, , text] = bulletMatch;
+        const indentLevel = Math.floor(indent.length / 2);
+        blocks.push(
+          <div
+            key={lineIndex}
+            className="flex items-start gap-2"
+            style={{ paddingLeft: `${indentLevel * 16}px` }}
+          >
+            <span className="text-amber-500 mt-0.5">•</span>
+            <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+          </div>
+        );
+        lineIndex++;
+        continue;
+      }
+
+      const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+      if (numberedMatch) {
+        const [, indent, num, text] = numberedMatch;
+        const indentLevel = Math.floor(indent.length / 2);
+        blocks.push(
+          <div
+            key={lineIndex}
+            className="flex items-start gap-2"
+            style={{ paddingLeft: `${indentLevel * 16}px` }}
+          >
+            <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
+            <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+          </div>
+        );
+        lineIndex++;
+        continue;
+      }
+
+      if (line.trim() === '') {
+        blocks.push(<div key={lineIndex} className="h-4" />);
+        lineIndex++;
+        continue;
+      }
+
+      blocks.push(
+        <div key={lineIndex}>
+          {formatInlineReferences(line, `line-${lineIndex}`)}
+        </div>
+      );
+      lineIndex++;
+    }
+
+    return <div className="space-y-1">{blocks}</div>;
   };
 
   // Notes with no folder never show up by browsing the folder tree above -
@@ -2209,6 +2319,7 @@ export function CampaignNotesPanel({
       { separator: true as const },
       { key: "note", label: "New Note", icon: FileText, run: () => createNoteMutation.mutate({ title: "Untitled Note", content: "", folderId: null, type: "markdown", campaignId } as any) },
       { key: "canvas", label: "New Canvas", icon: Grid3X3, run: () => createNoteMutation.mutate({ title: "Untitled Canvas", content: "", type: "canvas", canvasData: { nodes: [], connections: [] }, folderId: null, campaignId } as any) },
+      { key: "sheet", label: "New Sheet", icon: TableIcon, run: () => createNoteMutation.mutate({ title: "Untitled Sheet", content: "", type: "sheet", canvasData: makeEmptySheet(), folderId: null, campaignId } as any) },
       { key: "scene", label: "New Scene", icon: MapIcon, run: () => createNoteMutation.mutate({ title: "Untitled Scene", content: "", type: "scene", canvasData: {}, folderId: null, campaignId } as any) },
       { key: "book", label: "New Book", icon: BookOpen, run: () => createNoteMutation.mutate({ title: "Untitled Book", content: "", type: "book", folderId: null, campaignId } as any) },
     ] : []),
@@ -2424,6 +2535,16 @@ export function CampaignNotesPanel({
                     campaignId: campaignId,
                   });
                 }}
+                onCreateSheet={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Sheet",
+                    content: "",
+                    type: "sheet",
+                    canvasData: makeEmptySheet() as any,
+                    folderId: folderId,
+                    campaignId: campaignId,
+                  });
+                }}
                 onCreateScene={isGm ? (folderId) => {
                   createNoteMutation.mutate({
                     title: "Untitled Scene",
@@ -2483,6 +2604,8 @@ export function CampaignNotesPanel({
                     >
                       {note.type === "canvas" ? (
                         <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                      ) : note.type === "sheet" ? (
+                        <TableIcon className="h-2.5 w-2.5 flex-shrink-0" />
                       ) : note.type === "scene" ? (
                         <MapIcon className="h-2.5 w-2.5 flex-shrink-0" />
                       ) : note.type === "book" ? (
@@ -2568,6 +2691,15 @@ export function CampaignNotesPanel({
             <Grid3X3 className="h-3 w-3 mr-1" />
             Canvas
           </Button>
+          <Button
+            onClick={handleCreateSheet}
+            size="sm"
+            className="bg-stone-700 hover:bg-stone-600 border border-amber-700/50"
+            data-testid="panel-button-home-create-sheet"
+          >
+            <TableIcon className="h-3 w-3 mr-1" />
+            Sheet
+          </Button>
         </div>
       </div>
     </div>
@@ -2619,6 +2751,8 @@ export function CampaignNotesPanel({
                       <div className="flex items-center gap-1 flex-1 min-w-0">
                         {note.type === "canvas" ? (
                           <Grid3X3 className="h-3 w-3 text-amber-400 flex-shrink-0" />
+                        ) : note.type === "sheet" ? (
+                          <TableIcon className="h-3 w-3 text-teal-400 flex-shrink-0" />
                         ) : note.type === "book" ? (
                           <BookOpen className="h-3 w-3 flex-shrink-0" style={{ color: "var(--ca-gilt)" }} />
                         ) : (
@@ -2916,7 +3050,31 @@ export function CampaignNotesPanel({
         </div>
       );
     }
-    
+
+    if (currentNote?.type === "sheet") {
+      if (noteLoading) {
+        return (
+          <div className="flex-1 flex items-center justify-center">
+            <LoadingLogo className="h-5 w-5 text-stone-500" />
+          </div>
+        );
+      }
+      return (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden p-3">
+          <Input
+            value={noteTitle}
+            onChange={(e) => setNoteTitle(e.target.value)}
+            className="text-lg font-display font-bold bg-transparent border-0 border-b border-stone-700 rounded-none px-0 mb-3 focus-visible:ring-0"
+            placeholder="Untitled Sheet"
+            data-testid="input-sheet-title"
+          />
+          <div className="flex-1 min-h-0 overflow-auto">
+            <NoteSheetGrid data={sheetData} onChange={setSheetData} readOnly={false} />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div ref={noteEditorRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="flex items-center justify-end p-2 border-b border-stone-700">
@@ -3002,7 +3160,7 @@ export function CampaignNotesPanel({
                 <HistoryIcon className="h-3 w-3" />
               </Button>
             )}
-            {isGm && currentNote && currentNote.type !== "canvas" && currentNote.type !== "scene" && !linkedEntityRef && (
+            {isGm && currentNote && currentNote.type !== "canvas" && currentNote.type !== "scene" && currentNote.type !== "sheet" && !linkedEntityRef && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -3347,7 +3505,7 @@ export function CampaignNotesPanel({
                   <LoadingLogo className="h-5 w-5 text-stone-500" />
                 </div>
               ) : selectedNoteId ? (
-                currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+                currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || currentNote?.type === "sheet" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
               ) : null}
             </div>
           </div>
@@ -3394,7 +3552,7 @@ export function CampaignNotesPanel({
             <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
               <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
                 {selectedNoteId ? (
-                  currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+                  currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || currentNote?.type === "sheet" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
                 ) : showHomeView ? (
                   renderHomeView()
                 ) : (
