@@ -172,6 +172,12 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     return { x: Math.max(0, Math.min(vw - w, x)), y: Math.max(0, Math.min(vh - h, y)) };
   };
 
+  // Right-click opens the reset popover, but touch devices have no
+  // right-click - a double press on the grip is the touch equivalent, so
+  // it's tracked here from plain pointerdown timing/position (works for
+  // mouse too, as an alternate trigger alongside the context menu).
+  const lastGripTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
   // Dragging starts immediately on press - there's no other action on this
   // handle (a click does nothing) to disambiguate from, so the artificial
   // hold delay this used to have only made the bar feel like it took a
@@ -179,6 +185,22 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const handleGripPointerDown = (e: React.PointerEvent) => {
     const el = hotbarRef.current;
     if (!el) return;
+
+    const now = Date.now();
+    const lastTap = lastGripTapRef.current;
+    const isDoubleTap =
+      !!lastTap &&
+      now - lastTap.time < 350 &&
+      Math.abs(e.clientX - lastTap.x) < 24 &&
+      Math.abs(e.clientY - lastTap.y) < 24;
+    lastGripTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+
+    if (isDoubleTap) {
+      lastGripTapRef.current = null;
+      setResetPopoverOpen((v) => !v);
+      return;
+    }
+
     const rect = el.getBoundingClientRect();
     try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     dragState.current = {
@@ -452,8 +474,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
         {/* Move handle - a solid swipe-style bar (like a phone's home
             indicator) at the bottom-middle of the hotbar. Hold it to drag the
             whole bar to a new spot, saved on this device only; right-click
-            (or long-press-free tap on some setups) pops a small "Reset
-            Position" menu instead of leaving a second button on-screen. */}
+            (or a double press, for touch devices with no right-click) pops
+            a small "Reset Position" menu instead of leaving a second button
+            on-screen. */}
         <div
           className="absolute left-1/2 -translate-x-1/2 bottom-1 w-10 h-1.5 rounded-full bg-stone-500/70 hover:bg-amber-500/80 active:bg-amber-400 cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={handleGripPointerDown}
@@ -461,7 +484,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           onPointerUp={handleGripPointerUp}
           onPointerCancel={handleGripPointerUp}
           onContextMenu={handleGripContextMenu}
-          title="Drag to move the hotbar. Right-click to reset its position."
+          title="Drag to move the hotbar. Right-click or double press to reset its position."
           aria-label="Move hotbar"
           data-testid="button-hotbar-move-handle"
         />

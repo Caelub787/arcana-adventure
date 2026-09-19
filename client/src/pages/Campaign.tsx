@@ -6764,13 +6764,13 @@ export default function Campaign() {
   // second panel of the same width: a note is something you read alongside
   // the sheet, not a second sheet.
   //
-  // C.A.'s is trimmed 10% in both directions so more than one fits on screen
-  // at once. The docked-notes width is a ratio of the sheet's, so it comes
-  // down with it. The other systems keep theirs: they are already a quarter
-  // smaller than C.A.'s was, and shrinking them further only risks pushing
-  // their tabs into a scroll for no one who asked.
-  const CA_SHEET_WIDTH = 792;
-  const CA_SHEET_HEIGHT = 468;
+  // C.A.'s is 5% narrower and 5% taller than its own previous size. The
+  // docked-notes width is a ratio of the sheet's, so it comes down with it.
+  // The other systems keep theirs: they are already a quarter smaller than
+  // C.A.'s was, and shrinking them further only risks pushing their tabs
+  // into a scroll for no one who asked.
+  const CA_SHEET_WIDTH = 752;
+  const CA_SHEET_HEIGHT = 491;
   const DEFAULT_SHEET_WIDTH = 652;
   const DEFAULT_SHEET_HEIGHT = 480;
   const DOCKED_NOTES_RATIO = 0.7;
