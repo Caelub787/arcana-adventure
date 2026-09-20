@@ -876,12 +876,20 @@ export function CaAuraEditor({
   angle,
   shape,
   onChange,
+  onReset,
 }: {
   color: string | null | undefined;
   color2?: string | null;
   angle?: number | null;
   shape: string | null | undefined;
   onChange: (next: { color: string; color2: string | null; angle: number; shape: CAAuraShape }) => void;
+  /**
+   * Clears the aura back to "none of their own" - distinct from the "single"
+   * button below, which only drops the gradient's second colour. Without
+   * this there was no way back to unset once any colour had been picked,
+   * since every other control here always emits a real hex colour.
+   */
+  onReset?: () => void;
 }) {
   const resolved = caAuraOf({
     caAuraColor: color,
@@ -964,6 +972,16 @@ export function CaAuraEditor({
       <AuraShapeMark {...resolved} size={30} />
       {resolved.color.toLowerCase() === CA_AURA_DEFAULT_COLOR.toLowerCase() && !color && (
         <span className="text-[10px] text-stone-500">default</span>
+      )}
+      {onReset && (!!color || resolved.shape !== 'none') && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-[10px] text-stone-500 hover:text-red-400 underline"
+          data-testid="button-ca-aura-reset"
+        >
+          remove aura
+        </button>
       )}
     </div>
   );

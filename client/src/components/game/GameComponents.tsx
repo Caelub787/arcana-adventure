@@ -20118,6 +20118,43 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     !!onUpdate && isGM,
   );
 
+  // The Aura editor writes on every change instead of waiting for a Save
+  // click (see its own comment below), but a native <input type="color">
+  // fires React's onChange continuously while the picker is being dragged -
+  // that was flooding onUpdate with dozens of overlapping saves per drag,
+  // which is what showed up as the color "glitching" and not sticking (a
+  // slower early request landing after a later one would win and silently
+  // revert the color). The preview stays instant either way since it's
+  // driven by caEdit's own draft state, not by this save.
+  const auraSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (auraSaveTimerRef.current) clearTimeout(auraSaveTimerRef.current);
+  }, []);
+  const scheduleAuraSave = useCallback((next: { color: string; color2: string | null; angle: number; shape: string }) => {
+    if (auraSaveTimerRef.current) clearTimeout(auraSaveTimerRef.current);
+    auraSaveTimerRef.current = setTimeout(() => {
+      auraSaveTimerRef.current = null;
+      onUpdate?.({
+        caAuraColor: next.color,
+        caAuraColor2: next.color2,
+        caAuraAngle: next.angle,
+        caAuraShape: next.shape,
+      } as any);
+    }, 400);
+  }, [onUpdate]);
+  const flushAuraSave = useCallback((draft: { color: string; color2: string | null; angle: number; shape: string } | null | undefined) => {
+    if (!auraSaveTimerRef.current) return;
+    clearTimeout(auraSaveTimerRef.current);
+    auraSaveTimerRef.current = null;
+    if (!draft) return;
+    onUpdate?.({
+      caAuraColor: draft.color,
+      caAuraColor2: draft.color2,
+      caAuraAngle: draft.angle,
+      caAuraShape: draft.shape,
+    } as any);
+  }, [onUpdate]);
+
   const caAbilityNameSet = String((liveCharacter as any)?.caAbilityName || '').trim();
   const caAbilityDescription = String((liveCharacter as any)?.caAbilityDescription || '').trim();
 
@@ -22419,9 +22456,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     )}
                     {caEdit.field === 'aura' ? (
                       <div className="p-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        {/* The aura is two values, so it writes on every change
-                            rather than waiting for a tick - there is nothing to
-                            get half-committed. */}
+                        {/* The aura is several values, so it writes on every
+                            change rather than waiting for a tick - there is
+                            nothing to get half-committed. That write is
+                            debounced (see scheduleAuraSave above) so a color
+                            drag doesn't flood the server; the preview here
+                            still updates instantly via setDraft. */}
                         <CaAuraEditor
                           color={caEdit.draft?.color}
                           color2={caEdit.draft?.color2}
@@ -22429,11 +22469,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           shape={caEdit.draft?.shape}
                           onChange={(next) => {
                             caEdit.setDraft(next);
+                            scheduleAuraSave(next);
+                          }}
+                          onReset={() => {
+                            const cleared = { color: null, color2: null, angle: 180, shape: 'none' };
+                            caEdit.setDraft(cleared);
+                            if (auraSaveTimerRef.current) {
+                              clearTimeout(auraSaveTimerRef.current);
+                              auraSaveTimerRef.current = null;
+                            }
                             onUpdate?.({
-                              caAuraColor: next.color,
-                              caAuraColor2: next.color2,
-                              caAuraAngle: next.angle,
-                              caAuraShape: next.shape,
+                              caAuraColor: null,
+                              caAuraColor2: null,
+                              caAuraAngle: null,
+                              caAuraShape: null,
                             } as any);
                           }}
                         />
@@ -22441,7 +22490,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           size="sm"
                           variant="outline"
                           className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
-                          onClick={(e) => { e.stopPropagation(); caEdit.close(); }}
+                          onClick={(e) => { e.stopPropagation(); flushAuraSave(caEdit.draft); caEdit.close(); }}
                           aria-label="Done"
                           data-testid="button-ca-cancel-aura"
                         >
