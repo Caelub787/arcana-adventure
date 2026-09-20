@@ -1130,17 +1130,21 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // reflects which one we're actually on.
   const renderLibraryModeTabs = () => {
     if (!isAdmin || embedded) return null;
+    // Carries `from`/`system` (see returnTo above) across the switch - without
+    // this, an admin who opened My Library from a campaign and then hopped to
+    // Admin mode lost the breadcrumb back to it, and Back fell through to home.
+    const modeQuery = search ? `?${search}` : '';
     return (
       <div className="flex items-center gap-1 border border-stone-800 rounded-md p-0.5 bg-stone-900/60 w-fit">
         <button
-          onClick={() => setLocation('/admin')}
+          onClick={() => setLocation(`/admin${modeQuery}`)}
           className={`px-3 py-1 text-xs font-medium rounded transition-colors ${!forcePersonal ? 'bg-amber-900/25 text-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
           data-testid="tab-admin-mode"
         >
           Admin
         </button>
         <button
-          onClick={() => setLocation('/library')}
+          onClick={() => setLocation(`/library${modeQuery}`)}
           className={`px-3 py-1 text-xs font-medium rounded transition-colors ${forcePersonal ? 'bg-amber-900/25 text-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
           data-testid="tab-my-library-mode"
         >

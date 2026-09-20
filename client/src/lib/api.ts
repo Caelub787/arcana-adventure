@@ -2815,6 +2815,12 @@ class ApiClient {
     return this.request(`/notes/search?q=${encodeURIComponent(query)}`);
   }
 
+  // Every note in every campaign the caller GMs - the "All" side of a
+  // canvas note's link picker (the "Campaign" side reuses getNotes above).
+  async getGmAllNotes(): Promise<Note[]> {
+    return this.request('/notes/gm-all');
+  }
+
   async createNote(note: Partial<Note>): Promise<Note> {
     return this.request('/notes', {
       method: 'POST',

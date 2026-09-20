@@ -18406,6 +18406,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // The "All" side of a canvas note's link picker: every note in every
+  // campaign this user GMs, regardless of which campaign the picker was
+  // opened from. "Campaign" (the default) already works via the existing
+  // GET /api/notes?campaignId= below.
+  app.get("/api/notes/gm-all", requireAuth, async (req, res) => {
+    try {
+      const notes = await storage.getNotesAcrossGmCampaigns(req.session.userId!);
+      res.json(notes);
+    } catch (e) {
+      console.error("Failed to get GM-wide notes:", e);
+      res.status(500).json({ error: "Failed to get notes" });
+    }
+  });
+
   app.get("/api/notes/search", requireAuth, async (req, res) => {
     try {
       const query = req.query.q as string;

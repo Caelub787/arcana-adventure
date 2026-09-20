@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -190,6 +190,11 @@ export function CanvasEditor({
   
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
+  // Only meaningful when linking from inside a campaign (campaignId set) and
+  // not a custom provider (e.g. Canvas Realms world-building, which brings
+  // its own search entirely). Defaults to this campaign's own notes rather
+  // than every note across every campaign the GM runs.
+  const [noteScope, setNoteScope] = useState<"campaign" | "all">("campaign");
   const [entityPickerOpen, setEntityPickerOpen] = useState(false);
   const [arrowSettingsOpen, setArrowSettingsOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -245,16 +250,32 @@ export function CanvasEditor({
     }
   }, [canvasData]);
 
-  const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
+  // Campaign/All is scoped and fetched whole, then filtered client-side below
+  // as the user types - one request per tab switch instead of one per
+  // keystroke, and it's the same "fetch the whole campaign's notes" the
+  // sidebar already does for GET /api/notes?campaignId=.
+  const scopedToCampaign = !noteSearchProvider && !!campaignId;
+  const { data: rawNoteList = [], isLoading: notesLoading } = useQuery({
     queryKey: noteSearchProvider
       ? ["/canvas/custom-note-search", noteSearchQuery]
-      : ["/api/notes/search", noteSearchQuery],
+      : scopedToCampaign
+        ? ["/api/notes", "canvas-link-picker", campaignId, noteScope]
+        : ["/api/notes/search", noteSearchQuery],
     queryFn: () => noteSearchProvider
       ? noteSearchProvider.search(noteSearchQuery)
-      : (noteSearchQuery.length > 0 ? api.searchNotes(noteSearchQuery) : api.getNotes()),
+      : scopedToCampaign
+        ? (noteScope === "all" ? api.getGmAllNotes() : api.getNotes(undefined, campaignId))
+        : (noteSearchQuery.length > 0 ? api.searchNotes(noteSearchQuery) : api.getNotes()),
     enabled: noteSearchOpen,
     staleTime: 30000,
   });
+
+  const searchedNotes = useMemo(() => {
+    if (!scopedToCampaign) return rawNoteList;
+    const q = noteSearchQuery.trim().toLowerCase();
+    if (!q) return rawNoteList;
+    return rawNoteList.filter((note: any) => note.title?.toLowerCase().includes(q));
+  }, [rawNoteList, scopedToCampaign, noteSearchQuery]);
 
   const screenToWorld = useCallback((screenX: number, screenY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -2420,6 +2441,27 @@ export function CanvasEditor({
               <DialogTitle className="text-stone-200">{noteSearchProvider?.label ? `Link to ${noteSearchProvider.label}` : "Link to Note"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              {scopedToCampaign && (
+                <div className="flex items-center gap-1 border border-stone-800 rounded-md p-0.5 bg-stone-900/60 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setNoteScope("campaign")}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${noteScope === "campaign" ? "bg-amber-900/25 text-amber-400" : "text-stone-400 hover:text-stone-200"}`}
+                    data-testid="tab-note-scope-campaign"
+                  >
+                    Campaign
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNoteScope("all")}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${noteScope === "all" ? "bg-amber-900/25 text-amber-400" : "text-stone-400 hover:text-stone-200"}`}
+                    title="Notes from every campaign you GM"
+                    data-testid="tab-note-scope-all"
+                  >
+                    All
+                  </button>
+                </div>
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
                 <Input
@@ -2435,7 +2477,7 @@ export function CanvasEditor({
                       );
                       if (exactMatch) {
                         handleNoteSelect(exactMatch);
-                      } else {
+                      } else if (noteScope !== "all") {
                         handleCreateNoteFromSearch(noteSearchQuery);
                       }
                     }
@@ -2450,7 +2492,7 @@ export function CanvasEditor({
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {noteSearchQuery.trim() && !searchedNotes.find(
+                    {noteSearchQuery.trim() && noteScope !== "all" && !searchedNotes.find(
                       (note) => note.title.toLowerCase() === noteSearchQuery.toLowerCase()
                     ) && (
                       <button

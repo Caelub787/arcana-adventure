@@ -626,6 +626,7 @@ export interface IStorage {
   updateNote(id: string, data: Partial<Note>): Promise<Note | undefined>;
   deleteNote(id: string): Promise<void>;
   searchNotes(userId: string, query: string): Promise<Note[]>;
+  getNotesAcrossGmCampaigns(userId: string): Promise<Note[]>;
 
   // Note Reference operations
   createNoteReference(ref: InsertNoteReference): Promise<NoteReference>;
@@ -4921,6 +4922,23 @@ export class DatabaseStorage implements IStorage {
         sql`(${notes.title} ILIKE ${searchPattern} OR ${notes.content} ILIKE ${searchPattern})`
       ))
       .orderBy(desc(notes.updatedAt));
+  }
+
+  // Every note in every campaign this user GMs - the "All" side of the
+  // Campaign/All picker used when linking a note from a canvas. A GM already
+  // sees everything in their own campaigns, so this skips per-note
+  // visibility filtering (unlike getCampaignNotesRaw's caller, which applies
+  // it for a campaign that may not be theirs to run).
+  async getNotesAcrossGmCampaigns(userId: string): Promise<Note[]> {
+    const gmCampaigns = await db.select({ id: campaigns.id })
+      .from(campaigns)
+      .where(eq(campaigns.gmUserId, userId));
+    if (gmCampaigns.length === 0) return [];
+    const campaignIds = gmCampaigns.map((c) => c.id);
+    return await db.select()
+      .from(notes)
+      .where(inArray(notes.campaignId, campaignIds))
+      .orderBy(desc(notes.isPinned), notes.sortOrder, desc(notes.updatedAt));
   }
 
   // Note Reference operations
