@@ -26,6 +26,7 @@ import {
   type CharacterCustomSkill, type InsertCharacterCustomSkill,
   type SystemTrait, type InsertSystemTrait,
   type CharacterTrait, type InsertCharacterTrait,
+  type CaAbility, type InsertCaAbility,
   type CharacterFolder, type InsertCharacterFolder,
   type CharacterTemplateFolder, type InsertCharacterTemplateFolder,
   type SceneFolder, type InsertSceneFolder,
@@ -102,7 +103,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, caAbilities, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, asc, desc, sql, inArray, or, isNull, isNotNull, ne } from "drizzle-orm";
@@ -560,6 +561,14 @@ export interface IStorage {
   createSystemTrait(trait: InsertSystemTrait): Promise<SystemTrait>;
   updateSystemTrait(id: string, data: Partial<InsertSystemTrait>): Promise<SystemTrait | undefined>;
   deleteSystemTrait(id: string): Promise<void>;
+
+  // C.A. only: Ability template library (admin-authored or personal "My
+  // Library" rows a GM assigns to a character's blank Ability).
+  getCaAbilities(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<CaAbility[]>;
+  getCaAbility(id: string): Promise<CaAbility | undefined>;
+  createCaAbility(ability: InsertCaAbility): Promise<CaAbility>;
+  updateCaAbility(id: string, data: Partial<InsertCaAbility>): Promise<CaAbility | undefined>;
+  deleteCaAbility(id: string): Promise<void>;
 
   // Character Trait operations
   getCharacterTraits(characterId: string): Promise<CharacterTrait[]>;
@@ -4352,6 +4361,40 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemTrait(id: string): Promise<void> {
     await db.delete(systemTraits).where(eq(systemTraits.id, id));
+  }
+
+  async getCaAbilities(opts?: { ownerScope?: string[]; personal?: boolean }): Promise<CaAbility[]> {
+    const ownerCond = buildOwnerScopeCondition(caAbilities.ownerUserId, opts);
+    return await db.select()
+      .from(caAbilities)
+      .where(ownerCond)
+      .orderBy(caAbilities.name);
+  }
+
+  async getCaAbility(id: string): Promise<CaAbility | undefined> {
+    const [ability] = await db.select()
+      .from(caAbilities)
+      .where(eq(caAbilities.id, id))
+      .limit(1);
+    return ability;
+  }
+
+  async createCaAbility(ability: InsertCaAbility): Promise<CaAbility> {
+    const [created] = await db.insert(caAbilities).values(ability).returning();
+    return created;
+  }
+
+  async updateCaAbility(id: string, data: Partial<InsertCaAbility>): Promise<CaAbility | undefined> {
+    const [updated] = await db.update(caAbilities)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(caAbilities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCaAbility(id: string): Promise<void> {
+    await this.deleteRollEntriesByOwner('ca-ability-template', id);
+    await db.delete(caAbilities).where(eq(caAbilities.id, id));
   }
 
   // Character Trait operations

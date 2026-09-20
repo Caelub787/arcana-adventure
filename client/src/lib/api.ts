@@ -710,6 +710,16 @@ export interface SystemTrait {
   createdAt: string;
 }
 
+export interface CaAbility {
+  id: string;
+  name: string;
+  description: string;
+  note: string;
+  ownerUserId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CharacterTrait {
   id: string;
   characterId: string;
@@ -2276,6 +2286,49 @@ class ApiClient {
 
   async deleteSystemTrait(id: string): Promise<void> {
     return this.request(`/admin/traits/${id}`, { method: 'DELETE' });
+  }
+
+  // C.A. Ability template library (admin + My Library)
+  async getCaAbilities(personal?: boolean): Promise<CaAbility[]> {
+    const p = new URLSearchParams();
+    if (personal) p.set('personal', 'true');
+    const qs = p.toString();
+    return this.request(`/admin/ca-abilities${qs ? '?' + qs : ''}`);
+  }
+
+  async getCaAbility(id: string): Promise<CaAbility> {
+    return this.request(`/admin/ca-abilities/${id}`);
+  }
+
+  async createCaAbility(data: Partial<CaAbility> & { personal?: boolean }): Promise<CaAbility> {
+    return this.request('/admin/ca-abilities', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCaAbility(id: string, data: Partial<CaAbility>): Promise<CaAbility> {
+    return this.request(`/admin/ca-abilities/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCaAbility(id: string): Promise<void> {
+    return this.request(`/admin/ca-abilities/${id}`, { method: 'DELETE' });
+  }
+
+  async getCaAbilityTemplateRolls(abilityId: string): Promise<RollEntry[]> {
+    return this.request(`/ca-abilities/${abilityId}/rolls`);
+  }
+
+  // GM-only: assign a library Ability template to a character with a blank
+  // Ability. See server route for the full copy semantics.
+  async assignCaAbility(characterId: string, abilityId: string): Promise<any> {
+    return this.request(`/characters/${characterId}/assign-ca-ability`, {
+      method: 'POST',
+      body: JSON.stringify({ abilityId }),
+    });
   }
 
   // Public traits (for character sheet)

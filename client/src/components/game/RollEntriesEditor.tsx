@@ -76,7 +76,7 @@ interface RollEntry {
 }
 
 interface RollEntriesEditorProps {
-  ownerType: "item" | "spell" | "trait" | "ability";
+  ownerType: "item" | "spell" | "trait" | "ability" | "ca-ability-template";
   ownerId?: string;
   canEdit: boolean;
   onExecuteRoll?: (roll: any) => void;
@@ -1323,6 +1323,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
       ownerType === "item" ? api.getItemRolls(ownerId!) :
       ownerType === "spell" ? api.getSpellRolls(ownerId!) :
       ownerType === "ability" ? api.getAbilityRolls(ownerId!) :
+      ownerType === "ca-ability-template" ? api.getCaAbilityTemplateRolls(ownerId!) :
       api.getTraitRolls(ownerId!)
     ),
     enabled: !isDraftMode && !!ownerId,

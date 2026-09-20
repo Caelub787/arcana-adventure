@@ -5986,6 +5986,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // C.A. only: the rolls authored on an Ability template in the admin/My
+  // Library screen, before any character has been assigned it.
+  app.get("/api/ca-abilities/:id/rolls", requireAuth, async (req, res) => {
+    try {
+      const ability = await storage.getCaAbility(req.params.id);
+      if (!ability) return res.status(404).json({ error: "Ability not found" });
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      if (!await enforceLibraryRead(req, res, ability.ownerUserId)) return;
+      const rolls = await storage.getRollEntries("ca-ability-template", req.params.id);
+      const enriched = await enrichWithTemplateNames(rolls);
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch ability template roll entries" });
+    }
+  });
+
   // Helper: check if user can modify roll entries for a given owner
   const canModifyRollEntries = async (userId: string, ownerType: string, ownerId: string): Promise<boolean> => {
     const user = await storage.getUser(userId);
@@ -6049,6 +6065,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!trait) return false;
       const access = await checkCharacterAccess(trait.characterId, userId, 'edit');
       return access.isOwner || access.isGM;
+    } else if (ownerType === 'ca-ability-template') {
+      // Admin/shared Ability templates (ownerUserId null) stay admin-only.
+      // Personal "My Library" templates are owned by their creator.
+      const ability = await storage.getCaAbility(ownerId);
+      if (!ability) return false;
+      return isAdmin || (!!ability.ownerUserId && ability.ownerUserId === userId);
     }
     return false;
   };
@@ -6078,6 +6100,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (ownerType === 'ability' || ownerType === 'character') {
       return await viaCharacter(ownerId);
     }
+    // Ability templates (ownerType 'ca-ability-template') live in the
+    // admin/personal library, not a campaign - falls through to null below,
+    // so nothing gets broadcast for them.
     return null;
   };
   const broadcastRollEntriesChanged = async (ownerType: string, ownerId: string) => {
@@ -14618,6 +14643,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete trait" });
+    }
+  });
+
+  // C.A. Ability template library (admin + My Library), same shape as
+  // system traits above: an admin authors global rows, anyone authors their
+  // own personal ones. A GM assigns one to a character whose Ability is
+  // still blank via POST /api/characters/:characterId/assign-ca-ability.
+  app.get("/api/admin/ca-abilities", requireAuth, async (req, res) => {
+    try {
+      const isA = await isAdminUser(req.session.userId);
+      const personal = req.query.personal === 'true';
+      const { getLibraryScope } = await import("./lib/library-acl");
+      const scope = await getLibraryScope(req.session.userId, undefined, personal);
+      const opts = isA && !personal ? undefined : { ownerScope: scope, personal };
+      const abilities = await storage.getCaAbilities(opts);
+      res.json(abilities);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch C.A. abilities" });
+    }
+  });
+
+  app.get("/api/admin/ca-abilities/:id", requireAuth, async (req, res) => {
+    try {
+      const ability = await storage.getCaAbility(req.params.id);
+      if (!ability) return res.status(404).json({ error: "Ability not found" });
+      const { enforceLibraryRead } = await import("./lib/library-acl");
+      if (!await enforceLibraryRead(req, res, ability.ownerUserId)) return;
+      res.json(ability);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch ability" });
+    }
+  });
+
+  app.post("/api/admin/ca-abilities", requireAuth, async (req, res) => {
+    try {
+      const isPersonal = req.body.personal === true;
+      const isA = await isAdminUser(req.session.userId);
+      if (!isA && !isPersonal) return res.status(403).json({ error: "Only admins can create global entries" });
+      const { personal: _p, ...abilityData } = req.body;
+      const ability = await storage.createCaAbility({ ...abilityData, ownerUserId: isPersonal ? req.session.userId! : null });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'ca-abilities' });
+      res.json(ability);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create ability" });
+    }
+  });
+
+  app.put("/api/admin/ca-abilities/:id", requireAuth, async (req, res) => {
+    try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getCaAbility(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Ability not found" });
+      if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      const ability = await storage.updateCaAbility(req.params.id, req.body);
+      if (!ability) return res.status(404).json({ error: "Ability not found" });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'ca-abilities' });
+      res.json(ability);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update ability" });
+    }
+  });
+
+  app.delete("/api/admin/ca-abilities/:id", requireAuth, async (req, res) => {
+    try {
+      const { enforceLibraryWrite } = await import("./lib/library-acl");
+      const existing = await storage.getCaAbility(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Ability not found" });
+      if (!await enforceLibraryWrite(req, res, existing.ownerUserId)) return;
+      await storage.deleteCaAbility(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'ca-abilities' });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete ability" });
+    }
+  });
+
+  // GM-only: assign a library Ability template to a character whose Ability
+  // is still blank. Everything is copied, never referenced - the name and
+  // description land on the character row, the template's roll entries are
+  // duplicated as the character's own "ability" rolls, and the template's
+  // `note` text seeds the character's own rich Ability note as starting
+  // content. Editing the template afterward never touches this character.
+  app.post("/api/characters/:characterId/assign-ca-ability", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.isGM) return res.status(403).json({ error: "Only the GM can assign an Ability" });
+      if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "Abilities are C.A. only" });
+      if (String(access.character.caAbilityName || '').trim()) {
+        return res.status(400).json({ error: "This character already has an Ability" });
+      }
+
+      const abilityId = String(req.body?.abilityId || '');
+      const template = abilityId ? await storage.getCaAbility(abilityId) : undefined;
+      if (!template) return res.status(404).json({ error: "Ability template not found" });
+      const isA = await isAdminUser(req.session.userId);
+      if (!isA && template.ownerUserId && template.ownerUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to use this ability template" });
+      }
+
+      const character = await storage.updateCharacter(req.params.characterId, {
+        caAbilityName: template.name,
+        caAbilityDescription: template.description,
+      } as any);
+
+      const templateRolls = await storage.getRollEntries('ca-ability-template', template.id);
+      for (const roll of templateRolls) {
+        const { id: _id, ownerType: _ot, ownerId: _oid, fromTemplateRollId: _ftr, isOverridden: _io, ...rest } = roll as any;
+        await storage.createRollEntry({
+          ...rest,
+          ownerType: 'ability',
+          ownerId: req.params.characterId,
+          fromTemplateRollId: null,
+          isOverridden: false,
+        });
+      }
+
+      // Seed the character's own rich Ability note with the template's
+      // write-up, the same entity-note the sheet's own Notes button opens -
+      // reuses its exact resolution (first backlink in this campaign) so a
+      // pre-existing note (e.g. from a prior, since-cleared Ability) is
+      // never silently overwritten.
+      const campaignId = access.character.campaignId!;
+      const backlinks = await storage.getBacklinks('character-ability', req.params.characterId);
+      let hasExistingNote = false;
+      for (const link of backlinks) {
+        const note = await storage.getNote(link.noteId);
+        if (note && note.campaignId === campaignId) { hasExistingNote = true; break; }
+      }
+      if (!hasExistingNote) {
+        const created = await storage.createNote({
+          userId: req.session.userId!,
+          campaignId,
+          folderId: null,
+          title: template.name || `${access.character.name}'s Ability`,
+          content: template.note || "",
+          type: "note",
+          visibility: "party",
+          visiblePlayerIds: null,
+        } as any);
+        await storage.createNoteReference({
+          noteId: created.id,
+          entityType: 'character-ability',
+          entityId: req.params.characterId,
+          label: template.name || null,
+          position: null,
+        } as any);
+        broadcastToCampaign(campaignId, { type: 'note_created', noteId: created.id, campaignId, userId: req.session.userId });
+      }
+
+      broadcastToCampaign(campaignId, { type: 'character_updated', characterId: req.params.characterId, character });
+      await broadcastRollEntriesChanged('ability', req.params.characterId);
+      res.json(character);
+    } catch (err) {
+      console.error('Failed to assign C.A. ability:', err);
+      res.status(400).json({ error: "Failed to assign ability" });
     }
   });
 

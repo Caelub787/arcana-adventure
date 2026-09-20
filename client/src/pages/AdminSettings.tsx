@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, isV3SpellConflict, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell, type SwampyWarren, type SwampyHouseCard } from '@/lib/api';
+import { api, isV3SpellConflict, type Item, type Spell, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder, type V3Spell, type SwampyWarren, type SwampyHouseCard, type CaAbility } from '@/lib/api';
 import {
   V3_ELEMENT_MAP,
   V3_ROLE_MAP,
@@ -47,7 +47,7 @@ import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair, Globe } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair, Globe, Dices } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -66,7 +66,7 @@ import { isWoundSystem } from "@shared/systemRules";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
 import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS } from "@shared/systems";
 
-type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
+type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'ca-abilities' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -287,7 +287,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
 
   // Non-admin GMs are scoped to their private library
-  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'swampy-warrens', 'swampy-deck', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
+  const nonAdminAllowedViews: AdminView[] = ['dashboard', 'swampy-warrens', 'swampy-deck', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'ca-abilities', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
   useEffect(() => {
     // A non-admin GM's own admin panel stays locked to A.A. V2/V3.
     if (forcePersonal || embedded || isAdmin) return;
@@ -1177,7 +1177,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? (systemSlug === 'aa-v3' ? 'Knowledge' : 'Custom Skills') : 
-               currentView === 'traits' ? 'Traits' : 
+               currentView === 'traits' ? 'Traits' :
+               currentView === 'ca-abilities' ? 'Abilities' :
                currentView === 'characters' ? 'Character Templates' : 
                currentView === 'token-effects' ? 'Token Effects' : 
                currentView === 'notifications' ? 'Push Notifications' :
@@ -1391,6 +1392,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               }
             }}
           />
+        )}
+
+        {currentView === 'ca-abilities' && (
+          <CaAbilitiesView personalMode={personalMode} />
         )}
 
         {currentView === 'characters' && (
@@ -3699,6 +3704,187 @@ function DashSection({
 }
 
 // ===========================================================================
+// C.A. Ability template library (admin + My Library)
+//
+// A GM assigns one of these to a character whose Ability is still blank -
+// assigning copies the name/description onto the character, copies these
+// roll entries onto the character's own "ability" rolls, and seeds the
+// character's rich Ability note with this row's `note` as starting content.
+// Everything is copied, never referenced, so editing a template afterward
+// never touches an already-assigned character. Same library rules as the
+// rest of the admin surface: an admin authors global rows, anyone authors
+// their own personal ones.
+// ===========================================================================
+
+function CaAbilitiesView({ personalMode }: { personalMode?: boolean }) {
+  const queryClient = useQueryClient();
+  const [sheetAbility, setSheetAbility] = useState<CaAbility | null>(null);
+
+  const { data: abilities = [], isLoading } = useQuery<CaAbility[]>({
+    queryKey: ['ca-abilities-library', personalMode],
+    queryFn: () => api.getCaAbilities(personalMode),
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['ca-abilities-library'] });
+
+  const create = useMutation({
+    mutationFn: () => api.createCaAbility({ name: 'New Ability', description: '', note: '', personal: !!personalMode }),
+    onSuccess: (created) => { invalidate(); setSheetAbility(created); },
+    onError: (e: any) => toast({ title: "Couldn't create ability", description: e?.message, variant: 'destructive' }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteCaAbility(id),
+    onSuccess: () => { invalidate(); setSheetAbility(null); },
+    onError: (e: any) => toast({ title: "Couldn't delete", description: e?.message, variant: 'destructive' }),
+  });
+
+  return (
+    <div className="space-y-4" data-testid="view-ca-abilities">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-stone-400">
+          Ability templates a GM can assign to a character whose Ability is still blank. Assigning copies the name, description, rolls and GM note - editing a template afterward never touches an already-assigned character.
+        </p>
+        <Button onClick={() => create.mutate()} disabled={create.isPending} data-testid="button-add-ca-ability">
+          <Plus className="h-4 w-4 mr-1" /> New Ability
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-stone-500">Loading…</div>
+      ) : abilities.length === 0 ? (
+        <div className="text-sm text-stone-500">No Abilities yet.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {abilities.map((a) => (
+            <Card key={a.id} className="bg-stone-900 border-stone-700" data-testid={`ca-ability-${a.id}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-amber-500 text-base">{a.name || 'Untitled Ability'}</CardTitle>
+                {a.description && <CardDescription className="text-stone-400 text-xs">{a.description}</CardDescription>}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setSheetAbility(a)} data-testid={`button-edit-ca-ability-${a.id}`}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    size="sm" variant="ghost"
+                    className="text-stone-500 hover:text-red-400"
+                    onClick={() => { if (confirm(`Delete "${a.name}"?`)) remove.mutate(a.id); }}
+                    data-testid={`button-delete-ca-ability-${a.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {sheetAbility && (
+        <CaAbilitySheet
+          ability={sheetAbility}
+          onUpdated={(updated) => { setSheetAbility(updated); invalidate(); }}
+          onDelete={() => remove.mutate(sheetAbility.id)}
+          onClose={() => { setSheetAbility(null); invalidate(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CaAbilitySheet({ ability, onUpdated, onDelete, onClose }: {
+  ability: CaAbility;
+  onUpdated: (updated: CaAbility) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(ability.name);
+  const [description, setDescription] = useState(ability.description || '');
+  const [note, setNote] = useState(ability.note || '');
+
+  useEffect(() => {
+    setName(ability.name);
+    setDescription(ability.description || '');
+    setNote(ability.note || '');
+  }, [ability.id]);
+
+  const save = useMutation({
+    mutationFn: (data: Partial<CaAbility>) => api.updateCaAbility(ability.id, data),
+    onSuccess: (updated) => onUpdated(updated),
+    onError: (e: any) => toast({ title: "Couldn't save", description: e?.message, variant: 'destructive' }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-[10000] bg-stone-950/95 flex items-start justify-center overflow-auto p-4" data-testid="overlay-ca-ability-sheet">
+      <div className="bg-stone-900 border border-stone-700 rounded-lg w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between p-4 border-b border-stone-700">
+          <h2 className="text-lg font-bold text-amber-500">Ability</h2>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm" variant="ghost"
+              className="text-stone-500 hover:text-red-400"
+              onClick={() => { if (confirm(`Delete "${ability.name}"?`)) onDelete(); }}
+              data-testid="button-delete-ca-ability-sheet"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onClose} data-testid="button-close-ca-ability-sheet">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="space-y-1">
+            <Label className="text-xs text-stone-400">Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => { if (name !== ability.name) save.mutate({ name }); }}
+              className="bg-stone-800 border-stone-600"
+              data-testid="input-ca-ability-name"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-stone-400">Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => { if (description !== (ability.description || '')) save.mutate({ description }); }}
+              placeholder="What this ability is, in a sentence."
+              className="bg-stone-800 border-stone-600 text-sm"
+              data-testid="input-ca-ability-description"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-stone-400">GM Note</Label>
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onBlur={() => { if (note !== (ability.note || '')) save.mutate({ note }); }}
+              rows={6}
+              placeholder="The full write-up. Copied as the starting content of the character's own Ability note when a GM assigns this template - editing it afterward never touches an already-assigned character."
+              className="bg-stone-800 border-stone-600 text-sm"
+              data-testid="input-ca-ability-note"
+            />
+          </div>
+          <div className="pt-2 border-t border-stone-700">
+            <Label className="text-xs text-stone-400 flex items-center gap-1 mb-2">
+              <Dices className="h-3 w-3" /> Rolls
+            </Label>
+            <RollEntriesEditor
+              ownerType="ca-ability-template"
+              ownerId={ability.id}
+              canEdit={true}
+              campaignSystem="ca"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
 // Swampy library: Warrens and the Deck of Houses
 //
 // Both follow the same library rules as the rest of the admin surface - an
@@ -4334,7 +4520,25 @@ function DashboardView({ onNavigate, systemSlug, isAdmin, personalMode }: { onNa
         </CardHeader>
       </Card>
 
-      <Card 
+      {systemSlug === 'ca' && (
+      <Card
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('ca-abilities')}
+        data-testid="card-ca-abilities"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
+            <Sparkles className="h-6 w-6 text-rose-500" />
+          </div>
+          <CardTitle className="text-rose-500">Abilities</CardTitle>
+          <CardDescription className="text-stone-400">
+            Author Ability templates a GM can assign to a character whose Ability is still blank
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      )}
+
+      <Card
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
         onClick={() => onNavigate('token-effects')}
         data-testid="card-token-effects"

@@ -1064,6 +1064,35 @@ export const insertCharacterTraitSchema = createInsertSchema(characterTraits).om
 export type InsertCharacterTrait = z.infer<typeof insertCharacterTraitSchema>;
 export type CharacterTrait = typeof characterTraits.$inferSelect;
 
+// C.A. only: an admin/My-Library-authored Ability template. A GM assigns one
+// to a character whose Ability is still blank (caAbilityName empty) -
+// assigning copies the name/description onto the character, copies this
+// template's roll entries (ownerType "ca-ability-template") into new rows
+// owned by the character (ownerType "ability"), and seeds the character's
+// own rich Ability note with this row's `note` text as starting content.
+// Everything is copied, never referenced, so editing this template later
+// never touches an already-assigned character.
+export const caAbilities = pgTable("ca_abilities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  note: text("note").default("").notNull(),
+  // Admin/global row when null; a personal "My Library" row when set,
+  // matching systemTraits/systemSpells library scoping.
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCaAbilitySchema = createInsertSchema(caAbilities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCaAbility = z.infer<typeof insertCaAbilitySchema>;
+export type CaAbility = typeof caAbilities.$inferSelect;
+
 // Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
 export const spells = pgTable("spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -243,6 +243,18 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_aura_angle integer`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_name text`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_ability_description text`,
+    // C.A. Ability template library (admin/My Library rows a GM assigns to a
+    // character's blank Ability) - same build-time db:push unreliability as
+    // every other C.A./Swampy table here.
+    `CREATE TABLE IF NOT EXISTS ca_abilities (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      description text NOT NULL DEFAULT '',
+      note text NOT NULL DEFAULT '',
+      owner_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
     `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS roll_entry_id varchar REFERENCES roll_entries(id) ON DELETE CASCADE`,
     // C.A. Beast Orbs (absorbed into the Ability tab) and the hotbar's Skill
     // slot type - same build-time db:push unreliability as roll_entry_id

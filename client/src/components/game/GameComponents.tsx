@@ -21114,6 +21114,33 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     },
   });
 
+  // C.A. only: GM assigns an admin/My-Library Ability template to a
+  // character whose Ability is still blank. Everything is copied server
+  // side (name, description, rolls, and the template's note seeds the
+  // character's own rich Ability note) - editing the template afterward
+  // never touches this character.
+  const [showAssignAbility, setShowAssignAbility] = useState(false);
+  const [assignAbilitySearch, setAssignAbilitySearch] = useState('');
+  const { data: assignableAbilities = [] } = useQuery<any[]>({
+    queryKey: ['ca-abilities-assign'],
+    queryFn: () => api.getCaAbilities(),
+    enabled: showAssignAbility,
+  });
+  const assignAbilityMutation = useMutation({
+    // No cache invalidation needed here: the server's character_updated and
+    // roll_entries_changed broadcasts (same as every other live sheet edit)
+    // update this character and its rolls for everyone, including the GM
+    // making the assignment.
+    mutationFn: (abilityId: string) => api.assignCaAbility(character.id, abilityId),
+    onSuccess: () => {
+      setShowAssignAbility(false);
+      toast({ title: 'Ability assigned' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err?.message || 'Failed to assign ability', variant: 'destructive' });
+    },
+  });
+
   // Save to admin library mutation (admin only)
   const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
   const saveToLibraryMutation = useMutation({
@@ -25066,6 +25093,19 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           <TabsContent value="ability" className="space-y-4 mt-0" data-testid="content-ability">
             <CaSheetFrame>
               <div className="p-4 space-y-3">
+                {isGM && !String(liveCharacter?.caAbilityName || '').trim() && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7"
+                      onClick={() => setShowAssignAbility(true)}
+                      data-testid="button-assign-ca-ability"
+                    >
+                      <Library className="h-3 w-3 mr-1" /> Assign Ability
+                    </Button>
+                  </div>
+                )}
                 <CaAbilityHeader character={liveCharacter} edit={caGmEdit} canEdit={isGM} />
 
                 <CaDivider />
@@ -25157,6 +25197,48 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               </div>
             </CaSheetFrame>
           </TabsContent>
+          )}
+
+          {isCA && (
+          <Dialog open={showAssignAbility} onOpenChange={setShowAssignAbility}>
+            <DialogContent className="max-w-md" data-testid="dialog-assign-ca-ability">
+              <DialogHeader>
+                <DialogTitle>Assign an Ability</DialogTitle>
+                <DialogDescription>
+                  Copies the name, description, rolls and GM note from a library Ability template onto this character. Editing the template afterward never touches this character.
+                </DialogDescription>
+              </DialogHeader>
+              <Input
+                placeholder="Search abilities..."
+                value={assignAbilitySearch}
+                onChange={(e) => setAssignAbilitySearch(e.target.value)}
+                className="mb-2"
+                data-testid="input-assign-ca-ability-search"
+              />
+              <div className="max-h-80 overflow-y-auto space-y-1">
+                {assignableAbilities
+                  .filter((a: any) => a.name?.toLowerCase().includes(assignAbilitySearch.trim().toLowerCase()))
+                  .map((a: any) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className="w-full text-left rounded border border-stone-700 bg-stone-900/50 hover:bg-stone-800 p-2 disabled:opacity-50"
+                      onClick={() => assignAbilityMutation.mutate(a.id)}
+                      disabled={assignAbilityMutation.isPending}
+                      data-testid={`option-assign-ca-ability-${a.id}`}
+                    >
+                      <div className="text-sm font-medium text-amber-400">{a.name || 'Untitled Ability'}</div>
+                      {a.description && <div className="text-xs text-stone-400 truncate">{a.description}</div>}
+                    </button>
+                  ))}
+                {assignableAbilities.length === 0 && (
+                  <p className="text-xs text-stone-500 text-center py-4">
+                    No Ability templates yet - author one in Admin or My Library first.
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
           )}
 
           {/* INVENTORY TAB */}
