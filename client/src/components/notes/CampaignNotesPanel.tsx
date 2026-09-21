@@ -205,6 +205,38 @@ function RootDropZone({ onDropToRoot, onDropNoteToRoot }: { onDropToRoot: (folde
   );
 }
 
+// The rename input for a single note - its own component (not just inline
+// state in the row) because each row that needs it lives inside a .map(),
+// where hooks can't be called conditionally per-iteration.
+function NoteRenameInput({
+  note,
+  onCommit,
+  onCancel,
+}: {
+  note: Note;
+  onCommit: (noteId: string, title: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(note.title);
+  const commit = () => onCommit(note.id, draft.trim() || note.title);
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      }}
+      className="flex-1 min-w-0 bg-stone-800 border border-amber-600 rounded px-1 text-stone-100 outline-none"
+      data-testid={`input-rename-note-${note.id}`}
+    />
+  );
+}
+
 interface FolderTreeItemProps {
   folder: NoteFolder;
   folders: NoteFolder[];
@@ -245,6 +277,13 @@ interface FolderTreeItemProps {
   renamingFolderId: string | null;
   onRenameCommit: (folderId: string, name: string) => void;
   onRenameCancel: () => void;
+  /** Same pattern as renamingFolderId/onRenameCommit/onRenameCancel above,
+   * for a note instead of a folder - double-clicking a note's title or
+   * picking Rename from its context menu swaps it for an editable input. */
+  renamingNoteId: string | null;
+  onRenameNoteStart: (noteId: string) => void;
+  onRenameNoteCommit: (noteId: string, title: string) => void;
+  onRenameNoteCancel: () => void;
 }
 
 function FolderTreeItem({
@@ -283,6 +322,10 @@ function FolderTreeItem({
   renamingFolderId,
   onRenameCommit,
   onRenameCancel,
+  renamingNoteId,
+  onRenameNoteStart,
+  onRenameNoteCommit,
+  onRenameNoteCancel,
 }: FolderTreeItemProps) {
   const expanded = expandedFolderIds.has(folder.id);
   const setExpanded = (isExpanded: boolean) => {
@@ -596,13 +639,19 @@ function FolderTreeItem({
               renamingFolderId={renamingFolderId}
               onRenameCommit={onRenameCommit}
               onRenameCancel={onRenameCancel}
+              renamingNoteId={renamingNoteId}
+              onRenameNoteStart={onRenameNoteStart}
+              onRenameNoteCommit={onRenameNoteCommit}
+              onRenameNoteCancel={onRenameNoteCancel}
             />
           ))}
-          {folderNotes.map((note) => (
+          {folderNotes.map((note) => {
+            const isRenamingNote = renamingNoteId === note.id;
+            return (
             <ContextMenu key={note.id}>
               <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
                 <div
-                  draggable
+                  draggable={!isRenamingNote}
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/note-id", note.id);
                     e.dataTransfer.effectAllowed = "move";
@@ -610,7 +659,7 @@ function FolderTreeItem({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onNoteSelect(note.id);
+                    if (!isRenamingNote) onNoteSelect(note.id);
                   }}
                   className={`flex items-center gap-1 py-0.5 px-1.5 rounded-md border cursor-pointer transition-all text-xs ${
                     selectedNoteId === note.id
@@ -631,11 +680,26 @@ function FolderTreeItem({
                   ) : (
                     <FileText className="h-2.5 w-2.5 flex-shrink-0" />
                   )}
-                  <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+                  {isRenamingNote ? (
+                    <NoteRenameInput note={note} onCommit={onRenameNoteCommit} onCancel={onRenameNoteCancel} />
+                  ) : (
+                    <span
+                      className="flex-1 truncate"
+                      onDoubleClick={(e) => { e.stopPropagation(); onRenameNoteStart(note.id); }}
+                    >
+                      {note.title || "Untitled"}
+                    </span>
+                  )}
                   {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent className="bg-stone-900 border-stone-700">
+                <ContextMenuItem
+                  onClick={() => onRenameNoteStart(note.id)}
+                  data-testid={`panel-folder-note-rename-${note.id}`}
+                >
+                  <Edit className="h-3 w-3 mr-2" /> Rename
+                </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => onShareNote(note.id)}
                   data-testid={`panel-folder-note-share-${note.id}`}
@@ -652,7 +716,8 @@ function FolderTreeItem({
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
-          ))}
+            );
+          })}
         </>
       )}
     </div>
@@ -723,6 +788,15 @@ export function CampaignNotesPanel({
   // the full folder dialog first - the dialog is still there for changing
   // color/campaign assignment later via the existing Rename menu item.
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  // Same idea, for a note's title - double-clicking it or picking Rename
+  // from its context menu (there was previously no way to rename a note
+  // from the sidebar at all, only by opening it and editing the title
+  // field inside its own editor, which several note types don't even show).
+  const [renamingNoteId, setRenamingNoteId] = useState<string | null>(null);
+  const renameNoteCommit = (noteId: string, title: string) => {
+    setRenamingNoteId(null);
+    updateNoteMutation.mutate({ id: noteId, data: { title } });
+  };
 
   const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
@@ -2889,16 +2963,23 @@ export function CampaignNotesPanel({
                   updateFolderMutation.mutate({ id: folderId, data: { name } });
                 }}
                 onRenameCancel={() => setRenamingFolderId(null)}
+                renamingNoteId={renamingNoteId}
+                onRenameNoteStart={(noteId) => setRenamingNoteId(noteId)}
+                onRenameNoteCommit={renameNoteCommit}
+                onRenameNoteCancel={() => setRenamingNoteId(null)}
               />
             ))
           )}
           {unfiledNotesForTree.length > 0 && (
             <div className="mt-1 pt-1 border-t border-stone-800">
-              {unfiledNotesForTree.map((note) => (
+              {unfiledNotesForTree.map((note) => {
+                const isRenamingNote = renamingNoteId === note.id;
+                return (
                 <ContextMenu key={note.id}>
                   <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
                     <div
                       onClick={() => {
+                        if (isRenamingNote) return;
                         setShowHomeView(false);
                         setSelectedNoteId(note.id);
                       }}
@@ -2920,10 +3001,25 @@ export function CampaignNotesPanel({
                       ) : (
                         <FileText className="h-2.5 w-2.5 flex-shrink-0" />
                       )}
-                      <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+                      {isRenamingNote ? (
+                        <NoteRenameInput note={note} onCommit={renameNoteCommit} onCancel={() => setRenamingNoteId(null)} />
+                      ) : (
+                        <span
+                          className="flex-1 truncate"
+                          onDoubleClick={(e) => { e.stopPropagation(); setRenamingNoteId(note.id); }}
+                        >
+                          {note.title || "Untitled"}
+                        </span>
+                      )}
                     </div>
                   </ContextMenuTrigger>
                   <ContextMenuContent className="bg-stone-900 border-stone-700">
+                    <ContextMenuItem
+                      onClick={() => setRenamingNoteId(note.id)}
+                      data-testid={`panel-sidebar-unfiled-note-rename-${note.id}`}
+                    >
+                      <Edit className="h-3 w-3 mr-2" /> Rename
+                    </ContextMenuItem>
                     <ContextMenuItem
                       onClick={() => openShareDialog(note.id)}
                       data-testid={`panel-sidebar-unfiled-note-share-${note.id}`}
@@ -2940,7 +3036,8 @@ export function CampaignNotesPanel({
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -3042,6 +3139,7 @@ export function CampaignNotesPanel({
           <div className="p-1 space-y-0.5">
             {sortedNotes.map((note) => {
               const isOwner = note.userId === user?.id;
+              const isRenamingNote = renamingNoteId === note.id;
               return (
               <ContextMenu key={note.id}>
                 <ContextMenuTrigger asChild onContextMenu={(e) => e.stopPropagation()}>
@@ -3051,7 +3149,7 @@ export function CampaignNotesPanel({
                         ? "bg-amber-900/40 border border-amber-700"
                         : "hover:bg-stone-800/50 border border-transparent"
                     }`}
-                    onClick={() => setSelectedNoteId(note.id)}
+                    onClick={() => { if (!isRenamingNote) setSelectedNoteId(note.id); }}
                     data-testid={`panel-card-note-${note.id}`}
                   >
                     <div className="flex items-start justify-between gap-1">
@@ -3065,10 +3163,17 @@ export function CampaignNotesPanel({
                         ) : (
                           <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
                         )}
-                        <span className="text-xs font-medium text-stone-200 truncate">
-                          {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
-                          {note.title}
-                        </span>
+                        {isOwner && isRenamingNote ? (
+                          <NoteRenameInput note={note} onCommit={renameNoteCommit} onCancel={() => setRenamingNoteId(null)} />
+                        ) : (
+                          <span
+                            className="text-xs font-medium text-stone-200 truncate"
+                            onDoubleClick={(e) => { if (isOwner) { e.stopPropagation(); setRenamingNoteId(note.id); } }}
+                          >
+                            {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
+                            {note.title}
+                          </span>
+                        )}
                         {!isOwner && (
                           <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-cyan-400 border-cyan-600 flex-shrink-0">
                             Shared
@@ -3102,6 +3207,10 @@ export function CampaignNotesPanel({
                 <ContextMenuContent className="bg-stone-900 border-stone-700">
                   {isOwner && (
                     <>
+                      <ContextMenuItem onClick={() => setRenamingNoteId(note.id)}>
+                        <Edit className="h-3 w-3 mr-2" />
+                        Rename
+                      </ContextMenuItem>
                       <ContextMenuItem onClick={() => handleTogglePin(note)}>
                         <Pin className="h-3 w-3 mr-2" />
                         {note.isPinned ? "Unpin" : "Pin"}

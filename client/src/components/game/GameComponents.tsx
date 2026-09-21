@@ -31450,14 +31450,34 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
   const [syncingTechniques, setSyncingTechniques] = useState(false);
   // Docked notes pane: shown as a sibling inside this same FloatingPanel
   // (not a separate floating window) so an item's notes stay visually
-  // attached to its sheet.
+  // attached to its sheet. Over-the-sheet notes (overlayNoteId) replace the
+  // sheet's own content in place instead, same pair of options the
+  // character sheet's own Notes buttons offer - the two are mutually
+  // exclusive, same as there.
   const [dockedNoteId, setDockedNoteId] = useState<string | null>(initialDockedNoteId);
+  const [overlayNoteId, setOverlayNoteId] = useState<string | null>(null);
   const [dockingNote, setDockingNote] = useState(false);
   // A sidebar note click re-targets an already-open dialog by changing this
   // prop (rather than remounting it), so pick that up too.
   useEffect(() => {
     if (initialDockedNoteId) setDockedNoteId(initialDockedNoteId);
   }, [initialDockedNoteId]);
+  const toggleItemNotes = async (mode: 'dock' | 'over') => {
+    const [current, setCurrent, setOther] = mode === 'over'
+      ? [overlayNoteId, setOverlayNoteId, setDockedNoteId]
+      : [dockedNoteId, setDockedNoteId, setOverlayNoteId];
+    if (current) { setCurrent(null); return; }
+    setOther(null);
+    setDockingNote(true);
+    try {
+      const note = await api.getOrCreateEntityNote(character.campaignId, 'item-sheet', item.id, item.name);
+      setCurrent(note.id);
+    } catch (e: any) {
+      toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setDockingNote(false);
+    }
+  };
   const handleSyncTechniques = async () => {
     if (!character?.id || !item?.id) return;
     setSyncingTechniques(true);
@@ -31743,7 +31763,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       zIndex={floatingZIndices?.[`item-detail${charPanelSuffix}`] || 10050}
       onBringToFront={() => bringToFront?.(`item-detail${charPanelSuffix}`)}
     >
-      <div className="flex h-full min-h-0">
+      <div className="relative flex h-full min-h-0">
       <div className="p-4 flex-shrink-0 overflow-y-auto" style={{ width: '792px' }}>
           <div className="flex items-center justify-end gap-1 mb-2">
             {isAAV3 && item.itemType === 'weapon' && item.templateItemId && (
@@ -31766,28 +31786,30 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               </TooltipProvider>
             )}
             {character?.campaignId && (
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={dockingNote}
-                onClick={async () => {
-                  if (dockedNoteId) { setDockedNoteId(null); return; }
-                  setDockingNote(true);
-                  try {
-                    const note = await api.getOrCreateEntityNote(character.campaignId, 'item-sheet', item.id, item.name);
-                    setDockedNoteId(note.id);
-                  } catch (e: any) {
-                    toast({ title: "Couldn't open notes", description: e?.message || "Please try again.", variant: "destructive" });
-                  } finally {
-                    setDockingNote(false);
-                  }
-                }}
-                className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${dockedNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
-                title="Notes"
-                data-testid="button-item-notes"
-              >
-                <ScrollText className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={dockingNote}
+                  onClick={() => toggleItemNotes('dock')}
+                  className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${dockedNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                  title="Notes beside the sheet"
+                  data-testid="button-item-notes"
+                >
+                  <PanelRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={dockingNote}
+                  onClick={() => toggleItemNotes('over')}
+                  className={`h-8 w-8 text-stone-400 hover:text-stone-200 ${overlayNoteId ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                  title="Notes over the sheet"
+                  data-testid="button-item-notes-over"
+                >
+                  <ScrollText className="h-4 w-4" />
+                </Button>
+              </>
             )}
             {campaignSystem === 'ca' && item.itemType === 'beast_orb' && !item.isAbsorbed && (isOwner || isGM) && (
               <Button
@@ -31854,6 +31876,36 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             contentOnly={true}
             initialNoteId={dockedNoteId}
           />
+        </div>
+      )}
+      {/* Notes over the sheet: same note, same panel, no extra width - the
+          sheet stays mounted underneath so coming back lands where it was. */}
+      {overlayNoteId && character?.campaignId && (
+        <div className="absolute inset-0 z-20 bg-stone-950 flex flex-col" data-testid="overlay-item-notes">
+          <div className="flex items-center gap-2 px-2 py-1 border-b border-stone-800 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => setOverlayNoteId(null)}
+              data-testid="button-overlay-item-notes-back"
+            >
+              <ChevronLeft className="h-3 w-3 mr-1" />
+              Item
+            </Button>
+            <span className="text-[11px] text-stone-500 truncate">{item.name}</span>
+          </div>
+          <div className="flex-1 min-h-0">
+            <CampaignNotesPanel
+              campaignId={character.campaignId}
+              onClose={() => setOverlayNoteId(null)}
+              isOpen={true}
+              isGm={isGM}
+              contentOnly={true}
+              hideCloseButton
+              initialNoteId={overlayNoteId}
+            />
+          </div>
         </div>
       )}
       </div>
