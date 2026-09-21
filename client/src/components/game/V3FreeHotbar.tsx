@@ -38,6 +38,8 @@ export interface FreeHotbarCharView {
   maxMana?: number;
   // Wound-system (C.A.) state, read through that system's own column.
   caWounds?: unknown;
+  // Wound Capacity scales with Rank, read off this pool - see caWoundCapacityMax.
+  caEnergyPool?: number | null;
   swampyWounds?: unknown;
   // Swampy: HP is shared above; Strain and Hope are its own tracks.
   swampyStrain?: number | null;
@@ -78,7 +80,7 @@ function StatBar({ value, max, color, thin, medium }: { value: number; max: numb
 // Wound Capacity left on a character, read through the active system's own
 // wounds column so C.A. and Swampy never see each other's data.
 function woundCapacityRemaining(char: FreeHotbarCharView, rules: WoundSystemRules): number {
-  return Math.max(0, rules.WOUND_MAX - rules.woundTotalCost(rules.woundsOf(char)));
+  return Math.max(0, rules.woundCapacityMax(char) - rules.woundTotalCost(rules.woundsOf(char)));
 }
 
 function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCharView; thin?: boolean; woundRules?: WoundSystemRules | null; isSwampy?: boolean }) {
@@ -98,9 +100,10 @@ function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCh
   // C.A. has no HP/mana — show Wound Capacity remaining + Energy instead.
   if (woundRules) {
     const remaining = woundCapacityRemaining(char, woundRules);
+    const woundMax = woundRules.woundCapacityMax(char);
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={woundRules.WOUND_MAX} color={vitalBarColor(remaining, woundRules.WOUND_MAX)} thin={thin} medium={thin} />
+        <StatBar value={remaining} max={woundMax} color={vitalBarColor(remaining, woundMax)} thin={thin} medium={thin} />
         <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-cyan-500" thin={thin} medium={thin} />
       </div>
     );
@@ -330,6 +333,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       mana: live.mana ?? char.mana,
       maxMana: live.maxMana ?? char.maxMana,
       caWounds: live.caWounds ?? char.caWounds,
+      caEnergyPool: live.caEnergyPool ?? char.caEnergyPool,
       swampyWounds: live.swampyWounds ?? char.swampyWounds,
       swampyStrain: live.swampyStrain ?? char.swampyStrain,
       swampyMaxStrain: live.swampyMaxStrain ?? char.swampyMaxStrain,
@@ -726,9 +730,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
                             <span>Wounds</span>
-                            <span data-testid="text-peek-wounds">{woundCapacityRemaining(c, woundRules)} / {woundRules.WOUND_MAX}</span>
+                            <span data-testid="text-peek-wounds">{woundCapacityRemaining(c, woundRules)} / {woundRules.woundCapacityMax(c)}</span>
                           </div>
-                          <StatBar value={woundCapacityRemaining(c, woundRules)} max={woundRules.WOUND_MAX} color={vitalBarColor(woundCapacityRemaining(c, woundRules), woundRules.WOUND_MAX)} />
+                          <StatBar value={woundCapacityRemaining(c, woundRules)} max={woundRules.woundCapacityMax(c)} color={vitalBarColor(woundCapacityRemaining(c, woundRules), woundRules.woundCapacityMax(c))} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

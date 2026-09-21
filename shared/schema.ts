@@ -270,6 +270,9 @@ export const characters = pgTable("characters", {
   flySpeed: integer("fly_speed").notNull().default(0),
   swimSpeed: integer("swim_speed").notNull().default(0),
   lifespan: integer("lifespan").notNull().default(100),
+  // C.A. only, shown on the Overview tab: how much this character can carry,
+  // set from their species and editable per-character afterward.
+  carryWeight: integer("carry_weight").notNull().default(50),
   featTree: text("feat_tree").default(""), // Race-specific feat tree
   // Level-up HP tracking
   bonusHpFromLevelUps: integer("bonus_hp_from_level_ups").notNull().default(0), // Extra HP gained from level-up dice rolls
@@ -348,6 +351,10 @@ export const characters = pgTable("characters", {
   // A line or two under the name, on the tab itself - what the Ability is, in
   // short. The long write-up is the ability note; this is the label on the tin.
   caAbilityDescription: text("ca_ability_description"),
+  // C.A. only: Cultivation - the Energy Type shown on the Ability tab. Null
+  // means "use the species default" (systemSpecies/campaignSpecies.energyType);
+  // once a player sets their own it overrides that default from then on.
+  caEnergyType: text("ca_energy_type"),
   // --- Swampy ("The Lanterns Beyond the Veil") ---------------------------
   // Daggerheart's resource model: HP (the shared hp/maxHp columns) sits behind
   // two damage thresholds rather than absorbing damage directly, Armour Slots
@@ -878,7 +885,9 @@ export const systemSpecies = pgTable("system_species", {
   lifespan: integer("lifespan").default(100).notNull(),
   speed: integer("speed").default(30).notNull(),
   flySpeed: integer("fly_speed").default(0).notNull(),
-  swimSpeed: integer("swim_speed").default(0).notNull(),
+  // Null means "not set" - C.A. defaults this to half of Speed at read time
+  // (see caEffectiveSwimSpeed) rather than storing a computed number.
+  swimSpeed: integer("swim_speed"),
   size: text("size").default("Medium").notNull(), // Tiny, Small, Medium, Large, Huge, Gargantuan
   naturalArmor: integer("natural_armor").default(5).notNull(),
   sizeBonus: integer("size_bonus").default(0).notNull(),
@@ -902,6 +911,9 @@ export const systemSpecies = pgTable("system_species", {
   skillBonuses: jsonb("skill_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
   defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
   defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
+  // C.A. only: the Cultivation Energy Type a character of this species starts
+  // with on their Ability tab, changeable per-character afterward.
+  energyType: text("energy_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -923,7 +935,9 @@ export const campaignSpecies = pgTable("campaign_species", {
   lifespan: integer("lifespan").default(100).notNull(),
   speed: integer("speed").default(30).notNull(),
   flySpeed: integer("fly_speed").default(0).notNull(),
-  swimSpeed: integer("swim_speed").default(0).notNull(),
+  // Null means "not set" - C.A. defaults this to half of Speed at read time
+  // (see caEffectiveSwimSpeed) rather than storing a computed number.
+  swimSpeed: integer("swim_speed"),
   size: text("size").default("Medium").notNull(),
   naturalArmor: integer("natural_armor").default(5).notNull(),
   sizeBonus: integer("size_bonus").default(0).notNull(),
@@ -944,6 +958,9 @@ export const campaignSpecies = pgTable("campaign_species", {
   attributeBonuses: jsonb("attribute_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
   skillBonuses: jsonb("skill_bonuses").$type<Record<string, number>>().default(sql`'{}'::jsonb`),
   defaultCustomSkills: jsonb("default_custom_skills").$type<any[]>().default(sql`'[]'::jsonb`),
+  // C.A. only: the Cultivation Energy Type a character of this species starts
+  // with on their Ability tab, changeable per-character afterward.
+  energyType: text("energy_type"),
   defaultTraits: jsonb("default_traits").$type<any[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

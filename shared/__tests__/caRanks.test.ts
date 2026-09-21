@@ -14,6 +14,7 @@ import {
   caItemStatEffectTotal,
   normalizeCAItemEffects,
   caItemEffectIsActive,
+  caWoundCapacityMax,
   CA_AURA_DEFAULT_COLOR,
   CA_STARTING_ENERGY,
   CA_STARTING_PHYSIQUE,
@@ -68,6 +69,14 @@ describe("the C.A. rank ladder", () => {
     expect(caRankForEnergyPool(0).nextEnergyPool).toBe(20);
     expect(caRankForEnergyPool(50).nextEnergyPool).toBe(100);
     expect(caRankForEnergyPool(500_000).nextEnergyPool).toBeNull();
+  });
+
+  // 0-based position on the flattened ladder - what Wound Capacity scales off.
+  it("indexes the ladder from 0 at Bronze 1 to 24 at Terran 5", () => {
+    expect(caRankForEnergyPool(0).index).toBe(0);
+    expect(caRankForEnergyPool(20).index).toBe(1);
+    expect(caRankForEnergyPool(100).index).toBe(5);
+    expect(caRankForEnergyPool(500_000).index).toBe(24);
   });
 
   it("makes usable energy half the pool", () => {
@@ -234,6 +243,21 @@ describe("starting values", () => {
 
   it("puts a starting character at the bottom of the ladder", () => {
     expect(caRankLabel(0)).toBe("Bronze 1");
+  });
+});
+
+// Wound Capacity is Rank, not Race: a fresh Bronze 1 character has 10, and
+// every star climbed past that adds 1, all the way to 34 at Terran 5.
+describe("Wound Capacity scales with Rank", () => {
+  it("starts a Bronze 1 character at 10", () => {
+    expect(caWoundCapacityMax({ caEnergyPool: 0 })).toBe(10);
+    expect(caWoundCapacityMax(null)).toBe(10);
+  });
+
+  it("adds 1 per star climbed", () => {
+    expect(caWoundCapacityMax({ caEnergyPool: 20 })).toBe(11); // Bronze 2
+    expect(caWoundCapacityMax({ caEnergyPool: 100 })).toBe(15); // Silver 1
+    expect(caWoundCapacityMax({ caEnergyPool: 500_000 })).toBe(34); // Terran 5
   });
 });
 

@@ -443,6 +443,23 @@ async function ensureKnowledgeSystemSchema() {
       sort_order integer NOT NULL DEFAULT 0,
       created_at timestamp NOT NULL DEFAULT now()
     )`,
+    // C.A. Species/Races: Size, Lifespan, Speed, Fly/Swim Speed and Carry
+    // Weight are Race, not Rank, so they stay on the species rows; HP/Energy/
+    // Mana are Rank instead and were never read from species for C.A. Swim
+    // Speed and Carry Weight are new to characters (species already had
+    // them), so the same every-read-breaks-every-system risk applies here.
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS carry_weight integer NOT NULL DEFAULT 50`,
+    // Cultivation - the Ability tab's Energy Type. Null defers to the
+    // species' own default (see caEffectiveEnergyType).
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS ca_energy_type text`,
+    `ALTER TABLE IF EXISTS system_species ADD COLUMN IF NOT EXISTS energy_type text`,
+    `ALTER TABLE IF EXISTS campaign_species ADD COLUMN IF NOT EXISTS energy_type text`,
+    // swim_speed already existed NOT NULL DEFAULT 0 on both species tables;
+    // C.A. now stores an explicit null there to mean "not set" (defaults to
+    // half of Speed on read - see caEffectiveSwimSpeed), so the constraint
+    // has to come off or every species save that leaves it blank 500s.
+    `ALTER TABLE IF EXISTS system_species ALTER COLUMN swim_speed DROP NOT NULL`,
+    `ALTER TABLE IF EXISTS campaign_species ALTER COLUMN swim_speed DROP NOT NULL`,
   ];
   return runSchemaGuard("knowledge", statements);
 }

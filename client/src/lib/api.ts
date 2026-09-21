@@ -406,7 +406,8 @@ export interface SystemSpecies {
   lifespan: number;
   speed: number;
   flySpeed: number;
-  swimSpeed?: number;
+  // Null/undefined means "not set" - C.A. defaults this to half of Speed.
+  swimSpeed?: number | null;
   size: string;
   naturalArmor: number;
   sizeBonus: number;
@@ -421,6 +422,8 @@ export interface SystemSpecies {
   attributeBonuses?: Record<string, number>;
   defaultCustomSkills?: any[];
   defaultTraits?: any[];
+  // C.A. only: Cultivation's default Energy Type.
+  energyType?: string | null;
   createdAt: string;
 }
 
@@ -433,7 +436,8 @@ export interface CampaignSpecies {
   lifespan: number;
   speed: number;
   flySpeed: number;
-  swimSpeed?: number;
+  // Null/undefined means "not set" - C.A. defaults this to half of Speed.
+  swimSpeed?: number | null;
   size: string;
   naturalArmor: number;
   sizeBonus: number;
@@ -448,6 +452,8 @@ export interface CampaignSpecies {
   attributeBonuses?: Record<string, number>;
   defaultCustomSkills?: any[];
   defaultTraits?: any[];
+  // C.A. only: Cultivation's default Energy Type.
+  energyType?: string | null;
   createdAt: string;
 }
 

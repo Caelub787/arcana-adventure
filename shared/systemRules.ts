@@ -64,7 +64,6 @@ export interface WoundSystemRules {
   // --- constants ----------------------------------------------------------
   ATTRIBUTES: readonly AttributeShape[];
   SKILLS: readonly SkillShape[];
-  WOUND_MAX: number;
   WOUND_SEVERITIES: readonly string[];
   WOUND_SEVERITY_LABELS: Record<string, string>;
   WOUND_SEVERITY_COST: Record<string, number>;
@@ -86,6 +85,8 @@ export interface WoundSystemRules {
   woundStatEffectTotal(wounds: unknown, target: string): number;
   woundTotalCost(wounds: unknown): number;
   woundEffectTargetLabel(target: string): string;
+  /** Max Wound Capacity for this character - scales with Rank, not flat. */
+  woundCapacityMax(character: any): number;
 
   /** Reads this system's own wounds column off a character row. */
   woundsOf(character: any): unknown;
@@ -105,7 +106,6 @@ const CA_RULES: WoundSystemRules = {
 
   ATTRIBUTES: CA.CA_ATTRIBUTES,
   SKILLS: CA.CA_SKILLS,
-  WOUND_MAX: CA.CA_WOUND_MAX,
   WOUND_SEVERITIES: CA.CA_WOUND_SEVERITIES,
   WOUND_SEVERITY_LABELS: CA.CA_WOUND_SEVERITY_LABELS,
   WOUND_SEVERITY_COST: CA.CA_WOUND_SEVERITY_COST,
@@ -126,6 +126,7 @@ const CA_RULES: WoundSystemRules = {
   woundStatEffectTotal: CA.caWoundStatEffectTotal,
   woundTotalCost: CA.caWoundTotalCost,
   woundEffectTargetLabel: CA.caWoundEffectTargetLabel,
+  woundCapacityMax: CA.caWoundCapacityMax,
 
   woundsOf: (c: any) => c?.caWounds,
   bodySexOf: (c: any) => CA.caBodySexOf(c),

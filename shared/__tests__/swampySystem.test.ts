@@ -54,7 +54,7 @@ describe("Swampy is no longer a wound system", () => {
     expect((SW as any).SWAMPY_WOUND_MAX).toBeUndefined();
     // C.A. is untouched by any of this.
     expect(CA.CA_SKILLS.length).toBe(19);
-    expect(CA.CA_WOUND_MAX).toBe(20);
+    expect(CA.caWoundCapacityMax({ caEnergyPool: 0 })).toBe(10);
   });
 });
 

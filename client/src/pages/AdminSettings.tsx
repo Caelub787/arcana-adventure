@@ -182,6 +182,8 @@ function toSpeciesDraft(s: SystemSpecies): SpeciesDraft {
     dayVisionDistance?: number;
     nightVisionDistance?: number;
     ownerUserId?: string | null;
+    swimSpeed?: number | null;
+    energyType?: string | null;
   };
   return {
     id: s.id,
@@ -192,6 +194,7 @@ function toSpeciesDraft(s: SystemSpecies): SpeciesDraft {
     lifespan: s.lifespan,
     speed: s.speed,
     flySpeed: s.flySpeed,
+    swimSpeed: extra.swimSpeed ?? null,
     size: s.size,
     naturalArmor: s.naturalArmor,
     sizeBonus: s.sizeBonus,
@@ -210,6 +213,7 @@ function toSpeciesDraft(s: SystemSpecies): SpeciesDraft {
     dayVisionDistance: extra.dayVisionDistance ?? 60,
     nightVisionDistance: extra.nightVisionDistance ?? 30,
     ownerUserId: extra.ownerUserId ?? null,
+    energyType: extra.energyType ?? "",
   };
 }
 

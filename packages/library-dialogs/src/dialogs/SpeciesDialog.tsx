@@ -14,6 +14,7 @@ import {
 } from "../ui/primitives";
 import { NumberInput } from "../components/NumberInput";
 import { HostModal, SaveCancelFooter } from "../ui/DefaultModal";
+import { isWoundSystem } from "../lib/effectTypes";
 import type { DialogProps } from "../types";
 
 const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"] as const;
@@ -32,6 +33,9 @@ export interface SpeciesDraft {
   lifespan: number;
   speed: number;
   flySpeed: number;
+  // Null means "not set" - C.A. (the only system this dialog shows the field
+  // for) defaults it to half of Speed at read time.
+  swimSpeed?: number | null;
   size: string;
   naturalArmor: number;
   sizeBonus: number;
@@ -54,6 +58,10 @@ export interface SpeciesDraft {
   nightVisionDistance: number;
 
   ownerUserId?: string | null;
+
+  // C.A. only: Cultivation's default Energy Type, shown on the Ability tab
+  // until a character picks their own.
+  energyType?: string | null;
 }
 
 interface FeatTreeListEntry { id: string; name?: string; }
@@ -66,6 +74,7 @@ const FRESH: SpeciesDraft = {
   lifespan: 100,
   speed: 30,
   flySpeed: 0,
+  swimSpeed: null,
   size: "Medium",
   naturalArmor: 5,
   sizeBonus: 0,
@@ -83,23 +92,27 @@ const FRESH: SpeciesDraft = {
   visionType: "normal",
   dayVisionDistance: 60,
   nightVisionDistance: 30,
+  energyType: "",
 };
 
 export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
-  open, onOpenChange, initialValue, onSaved, onCancel, host, mode,
+  open, onOpenChange, initialValue, onSaved, onCancel, host, mode, campaignSystem,
 }) => {
   const [draft, setDraft] = React.useState<SpeciesDraft>(FRESH);
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [featTrees, setFeatTrees] = React.useState<FeatTreeListEntry[]>([]);
   const editing = mode ? mode === "edit" : !!initialValue?.id;
+  const isCA = isWoundSystem(campaignSystem);
 
   React.useEffect(() => {
-    if (!open) return;
+    // C.A. has no feat-tree picker - progression is set up per admin system,
+    // not per species - so skip the fetch entirely.
+    if (!open || isCA) return;
     host.transport.list<FeatTreeListEntry>("feat-tree")
       .then(r => setFeatTrees(r.data ?? []))
       .catch(e => host.notify("warning", `Could not load feat trees: ${e instanceof Error ? e.message : String(e)}`));
-  }, [open, host]);
+  }, [open, host, isCA]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -128,7 +141,12 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
     }
     setSaving(true);
     try {
-      const payload: SpeciesDraft = { ...draft, featTree: draft.featTree ?? "" };
+      const payload: SpeciesDraft = {
+        ...draft,
+        featTree: draft.featTree ?? "",
+        swimSpeed: draft.swimSpeed ?? null,
+        energyType: draft.energyType?.trim() || null,
+      };
       const env = editing
         ? await host.transport.patch<SpeciesDraft>("species", draft.id!, payload)
         : await host.transport.upsert<SpeciesDraft>("species", payload);
@@ -224,6 +242,18 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
                 <Label>Fly Speed (ft)</Label>
                 <NumberInput value={draft.flySpeed} onChange={(v) => set({ flySpeed: v ?? 0 })} data-testid="input-species-fly-speed" />
               </div>
+              {isCA && (
+                <div>
+                  <Label>Swim Speed (ft)</Label>
+                  <NumberInput
+                    value={draft.swimSpeed ?? null}
+                    optional
+                    onChange={(v) => set({ swimSpeed: v ?? null })}
+                    placeholder="Half of Speed"
+                    data-testid="input-species-swim-speed"
+                  />
+                </div>
+              )}
               <div>
                 <Label>Carry Weight</Label>
                 <NumberInput value={draft.carryWeight} fallback={50} onChange={(v) => set({ carryWeight: v ?? 50 })} data-testid="input-species-carry-weight" />
@@ -231,6 +261,9 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
             </Grid3>
           </Section>
 
+          {/* HP/Energy/Mana are Rank, not Race, for C.A. - see the character
+              sheet's Rank info instead - so this whole section is skipped. */}
+          {!isCA && (
           <Section title="Pools">
             <Stack gap="sm">
               <Grid3>
@@ -277,6 +310,7 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
               </Grid3>
             </Stack>
           </Section>
+          )}
 
           <Section title="Vision">
             <Grid3>
@@ -297,6 +331,22 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
             </Grid3>
           </Section>
 
+          {isCA ? (
+            // Progression is set up per admin system, not per species, for
+            // C.A. - no feat-tree link here. Cultivation instead: the Ability
+            // tab's default Energy Type, changeable per-character afterward.
+            <Section title="Cultivation">
+              <div>
+                <Label>Energy Type</Label>
+                <Input
+                  value={draft.energyType ?? ""}
+                  onChange={e => set({ energyType: e.target.value })}
+                  placeholder="e.g. Flame, Frost, Storm"
+                  data-testid="input-species-energy-type"
+                />
+              </div>
+            </Section>
+          ) : (
           <Section title="Progression">
             <Grid2>
               <div>
@@ -319,6 +369,7 @@ export const SpeciesDialog: React.FC<DialogProps<SpeciesDraft>> = ({
               </div>
             </Grid2>
           </Section>
+          )}
         </Stack>
       )}
     </HostModal>

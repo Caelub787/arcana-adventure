@@ -439,6 +439,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     skillBonuses: Record<string, number>;
     defaultCustomSkills: { name: string; description?: string; parentAttribute: string; value: number }[];
     defaultTraits: { name: string; description?: string; parentAttribute: string; usesPerLongRest: number }[];
+    // C.A. only: the Ability tab's default Energy Type, until the player picks their own.
+    energyType: string;
   }>({
     name: '',
     description: '',
@@ -467,6 +469,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     skillBonuses: {},
     defaultCustomSkills: [],
     defaultTraits: [],
+    energyType: '',
   });
   
   const { toast } = useToast();
@@ -503,6 +506,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         skillBonuses: (initialData as any)?.skillBonuses || {},
         defaultCustomSkills: ((initialData as any)?.defaultCustomSkills || []).map((sk: any) => ({ ...sk, _key: sk._key || Math.random().toString(36).slice(2) })),
         defaultTraits: ((initialData as any)?.defaultTraits || []).map((tr: any) => ({ ...tr, _key: tr._key || Math.random().toString(36).slice(2) })),
+        energyType: (initialData as any)?.energyType || '',
       });
     }
   }, [open, initialData?.id]);
@@ -548,7 +552,11 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       lifespan: Number(formData.lifespan) || 100,
       speed: Number(formData.speed) || 30,
       flySpeed: Number(formData.flySpeed) || 0,
-      swimSpeed: Number(formData.swimSpeed) || 0,
+      // C.A.: blank stays unset so it defaults to half of Speed on read; every
+      // other system keeps its old blank-means-0 behavior.
+      swimSpeed: campaignSystem === 'ca'
+        ? (formData.swimSpeed === '' ? null : Number(formData.swimSpeed))
+        : (Number(formData.swimSpeed) || 0),
       naturalArmor: Number(formData.naturalArmor) || 5,
       startingHp: Number(formData.startingHp) || 10,
       startingMaxHp: Number(formData.startingMaxHp) || 10,
@@ -562,6 +570,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       visionType: formData.visionType || 'normal',
       dayVisionDistance: Number(formData.dayVisionDistance) || 120,
       nightVisionDistance: Number(formData.nightVisionDistance) || 60,
+      energyType: formData.energyType.trim() || null,
     } as any);
   };
 
@@ -691,12 +700,13 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
-              {campaignSystem === 'aa-v3' && (
+              {(campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
               <div>
-                <Label>Swim Speed (ft)</Label>
+                <Label>Swim Speed (ft){campaignSystem === 'ca' && ' (blank = half Speed)'}</Label>
                 <NumberInput
-                  value={formData.swimSpeed as number}
-                  onChange={(v) => setFormData({ ...formData, swimSpeed: v ?? 0 })}
+                  value={formData.swimSpeed === '' ? null : (formData.swimSpeed as number)}
+                  optional={campaignSystem === 'ca'}
+                  onChange={(v) => setFormData({ ...formData, swimSpeed: v ?? (campaignSystem === 'ca' ? '' : 0) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-swimspeed"
                 />
@@ -725,6 +735,10 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
+              {/* HP and Energy are Rank, not Race, for C.A. - not shown here;
+                  see the character sheet's Rank info instead. */}
+              {campaignSystem !== 'ca' && (
+              <>
               <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
                 <Label className="text-sm font-semibold text-red-400">HP</Label>
               </div>
@@ -797,6 +811,8 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                     className="bg-stone-800 border-stone-700"
                   />
                 </div>
+              )}
+              </>
               )}
 
               {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
@@ -880,11 +896,11 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                 />
               </div>
 
-              {campaignSystem !== 'aa-v3' && (
+              {campaignSystem !== 'aa-v3' && campaignSystem !== 'ca' && (
               <div className="col-span-2">
                 <Label>{campaignSystem === 'aa-v2' ? 'Skill Tree' : 'Feat Tree'}</Label>
-                <Select 
-                  value={formData.featTree || "_none"} 
+                <Select
+                  value={formData.featTree || "_none"}
                   onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
@@ -900,6 +916,28 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   </SelectContent>
                 </Select>
               </div>
+              )}
+
+              {/* Progression is set up per admin system, not per species -
+                  C.A. instead gets Cultivation: the Ability tab's default
+                  Energy Type, changeable per-character afterward. */}
+              {campaignSystem === 'ca' && (
+                <div className="col-span-2 space-y-4 border-t border-stone-700 pt-4">
+                  <Label className="text-sm font-semibold text-stone-300">Cultivation</Label>
+                  <div>
+                    <Label>Energy Type</Label>
+                    <Input
+                      value={formData.energyType}
+                      onChange={(e) => setFormData({ ...formData, energyType: e.target.value })}
+                      placeholder="e.g. Flame, Frost, Storm"
+                      className="bg-stone-800 border-stone-700"
+                      data-testid="input-species-energy-type"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">
+                      Shown on the Ability tab by default; a character can change theirs later.
+                    </p>
+                  </div>
+                </div>
               )}
 
               {campaignSystem === 'aa-v3' && (

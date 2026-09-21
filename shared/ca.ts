@@ -165,15 +165,56 @@ export function caWoundTotalCost(wounds: unknown): number {
   return total;
 }
 
-// Every C.A. character has the same flat Wound Capacity — a full "HP" bar
-// of 20, drained by the point cost of each active (untreated) wound.
-export const CA_WOUND_MAX = 20;
+// Wound Capacity — the full "HP" bar, drained by the point cost of each
+// active (untreated) wound. Not flat: it scales with Rank, since Rank (not
+// Race) is what determines how much punishment a character can take. A
+// fresh Bronze 1 character has 10; each star climbed past that adds 1 (see
+// caWoundCapacityMax below, which reads the rung straight off the Energy
+// Pool the same way caRankForEnergyPool does).
+export function caWoundCapacityMax(
+  character: { caEnergyPool?: number | null } | null | undefined,
+): number {
+  return 10 + caRankForEnergyPool(character?.caEnergyPool).index;
+}
 
 // Which body diagram renders behind the wound markers. Defaults to male.
 export type CABodySex = "male" | "female";
 
 export function caBodySexOf(character: { caBodySex?: string | null } | null | undefined): CABodySex {
   return character?.caBodySex === "female" ? "female" : "male";
+}
+
+// ---------------------------------------------------------------------------
+// Species — Size, Lifespan, Speed, Fly Speed, Swim Speed, and Carry Weight
+// are the only things C.A. reads from a species; HP/Energy/Mana are Rank, not
+// Race (see caWoundCapacityMax above and CA_STARTING_ENERGY below), and
+// progression is set up per admin system rather than per species.
+// ---------------------------------------------------------------------------
+
+/**
+ * Swim Speed defaults to half of Speed (rounded down) whenever a species
+ * leaves it unset - a null/undefined swimSpeed column, not an explicit 0.
+ */
+export function caEffectiveSwimSpeed(
+  species: { speed?: number | null; swimSpeed?: number | null } | null | undefined,
+): number {
+  if (species?.swimSpeed != null) return species.swimSpeed;
+  return Math.floor((species?.speed ?? 30) / 2);
+}
+
+/**
+ * Cultivation's Energy Type, shown on the Ability tab. A character's own
+ * choice (once they've made one) always wins; otherwise it falls back to
+ * their species' default, and finally to null if neither is set.
+ */
+export function caEffectiveEnergyType(
+  character: { caEnergyType?: string | null } | null | undefined,
+  species: { energyType?: string | null } | null | undefined,
+): string | null {
+  const own = character?.caEnergyType?.trim();
+  if (own) return own;
+  const speciesDefault = species?.energyType?.trim();
+  return speciesDefault || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +420,8 @@ export interface CARankPosition {
   energyPool: number;
   /** Pool needed for the next star up, or null at the top of the ladder. */
   nextEnergyPool: number | null;
+  /** 0-based position on the flattened ladder - Bronze 1 is 0, Terran 5 is 24. */
+  index: number;
 }
 
 /** Every rung, lowest first - the ladder flattened for display and lookup. */
@@ -404,6 +447,7 @@ export function caRankForEnergyPool(pool: number | null | undefined): CARankPosi
     star: here.star.star,
     energyPool: here.star.energyPool,
     nextEnergyPool: next ? next.star.energyPool : null,
+    index,
   };
 }
 

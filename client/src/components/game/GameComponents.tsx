@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -3530,7 +3530,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const woundPercent = (character && isWoundSystem(campaignSystem))
             ? (() => {
                 const wr = woundSystemRules(campaignSystem);
-                return Math.max(0, 100 - (wr.woundTotalCost(wr.woundsOf(character)) / wr.WOUND_MAX) * 100);
+                return Math.max(0, 100 - (wr.woundTotalCost(wr.woundsOf(character)) / wr.woundCapacityMax(character)) * 100);
               })()
             : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
@@ -10058,7 +10058,11 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       sizeBonus: selectedSpecies.sizeBonus || 0,
       speed: selectedSpecies.speed || 30,
       flySpeed: selectedSpecies.flySpeed || 0,
-      swimSpeed: (selectedSpecies as any).swimSpeed || 0,
+      swimSpeed: isWoundSystem(campaignSystem)
+        ? caEffectiveSwimSpeed(selectedSpecies as any)
+        : ((selectedSpecies as any).swimSpeed || 0),
+      lifespan: selectedSpecies.lifespan || 100,
+      carryWeight: selectedSpecies.carryWeight || 50,
       featTree: selectedSpecies.featTree || "",
       portrait: selectedSpecies.defaultImage || null,
       hp: (campaignSystem === 'aa-v3' ? selectedSpecies.startingMaxHp : selectedSpecies.startingHp) || 10,
@@ -10093,8 +10097,11 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       skillStealth: 0,
       skillStrength: 0,
       skillWisdom: 0,
-      // C.A. only: a real starting Physique, not the 0 that means "not set".
-      ...(isWoundSystem(campaignSystem) ? { caPhysique: CA_STARTING_PHYSIQUE } : {}),
+      // C.A. only: a real starting Physique, not the 0 that means "not set",
+      // and Cultivation's Energy Type default (the player can change it later).
+      ...(isWoundSystem(campaignSystem)
+        ? { caPhysique: CA_STARTING_PHYSIQUE, caEnergyType: (selectedSpecies as any).energyType || null }
+        : {}),
       skillCulture: 0,
       inventory: []
     });
@@ -11710,7 +11717,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     ? (isCA
       ? (() => {
           const wr = woundSystemRules(campaignSystem);
-          return { value: Math.max(0, wr.WOUND_MAX - wr.woundTotalCost(wr.woundsOf(character))), max: wr.WOUND_MAX };
+          const woundMax = wr.woundCapacityMax(character);
+          return { value: Math.max(0, woundMax - wr.woundTotalCost(wr.woundsOf(character))), max: woundMax };
         })()
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
@@ -20184,7 +20192,14 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       ...(raceData?.naturalArmor != null ? { naturalArmor: raceData.naturalArmor } : {}),
       ...(raceData?.speed != null ? { speed: raceData.speed } : {}),
       ...(raceData?.flySpeed != null ? { flySpeed: raceData.flySpeed } : {}),
-      ...((raceData as any)?.swimSpeed != null ? { swimSpeed: (raceData as any).swimSpeed } : {}),
+      ...(raceData ? { swimSpeed: caEffectiveSwimSpeed(raceData as any) } : {}),
+      ...(raceData?.lifespan != null ? { lifespan: raceData.lifespan } : {}),
+      ...((raceData as any)?.carryWeight != null ? { carryWeight: (raceData as any).carryWeight } : {}),
+      // Cultivation: only overwrite Energy Type if the character hasn't
+      // already picked their own - picking a new species shouldn't undo that.
+      ...(raceData && !(liveCharacter as any).caEnergyType?.trim()
+        ? { caEnergyType: (raceData as any).energyType || null }
+        : {}),
     } as any);
     caEdit.close();
   };
@@ -22391,6 +22406,32 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             {liveCharacter.size || 'Medium'}
                           </CaChip>
                         )}
+                        {caEdit.field === 'lifespan' ? (
+                          <CaInlineNumber edit={caEdit} field="lifespan" testId="lifespan" />
+                        ) : (
+                          <CaChip
+                            icon={<Moon className="h-4 w-4" />}
+                            label="Lifespan"
+                            editable={caEdit.canEdit}
+                            testId="text-ca-lifespan"
+                            {...caEdit.pressHandlers('lifespan', liveCharacter.lifespan ?? 100)}
+                          >
+                            {liveCharacter.lifespan ?? 100} yrs
+                          </CaChip>
+                        )}
+                        {caEdit.field === 'carryWeight' ? (
+                          <CaInlineNumber edit={caEdit} field="carryWeight" testId="carry-weight" />
+                        ) : (
+                          <CaChip
+                            icon={<Backpack className="h-4 w-4" />}
+                            label="Carry Weight"
+                            editable={caEdit.canEdit}
+                            testId="text-ca-carry-weight"
+                            {...caEdit.pressHandlers('carryWeight', (liveCharacter as any).carryWeight ?? 50)}
+                          >
+                            {(liveCharacter as any).carryWeight ?? 50}
+                          </CaChip>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -22727,8 +22768,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     value={
                       <span className="text-sm font-bold text-stone-100 tabular-nums" data-testid="text-ca-wound-count">
                         {(() => {
-                          const remaining = Math.max(0, woundRules.WOUND_MAX - woundRules.woundTotalCost(woundRules.woundsOf(liveCharacter)));
-                          return `${remaining} / ${woundRules.WOUND_MAX}`;
+                          const woundMax = woundRules.woundCapacityMax(liveCharacter);
+                          const remaining = Math.max(0, woundMax - woundRules.woundTotalCost(woundRules.woundsOf(liveCharacter)));
+                          return `${remaining} / ${woundMax}`;
                         })()}
                       </span>
                     }
@@ -25156,6 +25198,34 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                 )}
                 <CaAbilityHeader character={liveCharacter} edit={caGmEdit} canEdit={isGM} />
+
+                <CaDivider />
+
+                {/* Cultivation - Energy Type defaults to the species' own,
+                    until the character picks theirs (see caEffectiveEnergyType). */}
+                <CaSection
+                  icon={<Flame className="h-3.5 w-3.5" />}
+                  title="Cultivation"
+                  testId="ca-section-cultivation"
+                  value={
+                    caEdit.field === 'caEnergyType' ? (
+                      <CaInlineText
+                        edit={caEdit}
+                        field="caEnergyType"
+                        testId="energy-type"
+                        placeholder={(characterSpecies as any)?.energyType || 'Energy Type'}
+                      />
+                    ) : (
+                      <span
+                        className="text-sm font-bold text-stone-100 cursor-pointer select-none"
+                        data-testid="text-ca-energy-type"
+                        {...caEdit.pressHandlers('caEnergyType', (liveCharacter as any).caEnergyType || '')}
+                      >
+                        {caEffectiveEnergyType(liveCharacter as any, characterSpecies as any) || 'Unset'}
+                      </span>
+                    )
+                  }
+                />
 
                 <CaDivider />
 

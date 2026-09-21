@@ -5464,8 +5464,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               maxEnergy: character.maxEnergy,
               mana: character.mana,
               maxMana: character.maxMana,
-              // C.A. has no HP/mana — Wounds tracks major slots checked instead.
+              // C.A. has no HP/mana — Wound Capacity (scaled by Rank) tracks it instead.
               caWounds: character.caWounds,
+              caEnergyPool: character.caEnergyPool,
               canEdit,
             },
             item: null,
