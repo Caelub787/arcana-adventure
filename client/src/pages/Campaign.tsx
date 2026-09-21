@@ -7124,6 +7124,12 @@ export default function Campaign() {
   // window - keyed by characterId so multiple open sheets can each have
   // their own docked note independently.
   const [dockedCharNotes, setDockedCharNotes] = useState<Record<string, string>>({});
+  // Whether each open character sheet's FloatingPanel is currently
+  // fullscreen (always true on mobile, toggleable on desktop) - lets the
+  // sheet's fixed-pixel-width wrapper below switch to filling the panel
+  // instead of staying pinned to its normal width, which otherwise left a
+  // bare gap next to the sheet whenever the panel grew to fill the screen.
+  const [fullscreenCharSheets, setFullscreenCharSheets] = useState<Record<string, boolean>>({});
   // The same note, over the sheet instead of beside it: the panel keeps its
   // width and the sheet stays mounted underneath, so tabs and scroll position
   // survive going in and out of the note.
@@ -13541,14 +13547,21 @@ export default function Campaign() {
             panelKey={`char-${sheet.id}`}
             zIndex={floatingZIndicesRef.current[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
+            onFullscreenChange={(isFullscreen) => setFullscreenCharSheets(prev => (
+              prev[sheet.id] === isFullscreen ? prev : { ...prev, [sheet.id]: isFullscreen }
+            ))}
           >
             <div className="relative flex h-full min-h-0">
             {/* This wrapper must be a flex COLUMN: CharacterSheet's root sizes
                 itself with `flex-1 min-h-0`, which is inert under a plain block
                 parent. Without it the sheet grew to its full content height,
                 its own `flex-1 min-h-0 overflow-y-auto` tab body never
-                overflowed, and so nothing under the cursor could scroll. */}
-            <div className="flex flex-col flex-shrink-0 h-full min-h-0" style={{ width: sheetPanelWidth() }}>
+                overflowed, and so nothing under the cursor could scroll.
+                Width is the panel's normal fixed size UNLESS the panel is
+                fullscreen, in which case it fills the panel instead - the
+                panel itself already grows to fill the screen when fullscreen,
+                but a fixed pixel width here would leave that extra space bare. */}
+            <div className="flex flex-col flex-shrink-0 h-full min-h-0" style={{ width: fullscreenCharSheets[sheet.id] ? '100%' : sheetPanelWidth() }}>
             <CharacterSheet
               character={sheet}
               isGM={role === 'gm'}

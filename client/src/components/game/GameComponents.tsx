@@ -22152,23 +22152,21 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
               variant="ghost"
               size="sm"
               onClick={() => onOpenNotes(character, variant, 'dock')}
-              className="hidden sm:inline-flex h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
+              className="hidden sm:inline-flex h-6 w-6 p-0 text-stone-400 hover:text-amber-400 hover:bg-stone-800/60"
               title={`${label} beside the sheet`}
               data-testid="button-character-notes"
             >
               <PanelRight className="h-3 w-3" />
-              {label}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onOpenNotes(character, variant, 'over')}
-              className="h-6 px-2 text-[11px] text-stone-400 hover:text-amber-400 hover:bg-stone-800/60 gap-1"
+              className="h-6 w-6 p-0 text-stone-400 hover:text-amber-400 hover:bg-stone-800/60"
               title={`${label} over the sheet`}
               data-testid="button-character-notes-over"
             >
               <ScrollText className="h-3 w-3" />
-              <span className="sm:hidden">{label}</span>
             </Button>
           </div>
         );

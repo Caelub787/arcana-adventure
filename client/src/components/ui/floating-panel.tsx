@@ -226,6 +226,15 @@ interface FloatingPanelProps {
    * resizing is meant to stay available only on the notes panels.
    */
   resizable?: boolean;
+  /**
+   * Fires whenever the panel's own fullscreen state changes. Lets a caller
+   * whose children size themselves against a fixed pixel width (fitContent's
+   * "how wide do I want to be" hint, e.g. the character sheet's panel-width
+   * wrapper) switch that wrapper to fill 100% while fullscreen instead of
+   * staying pinned to its normal fixed width - otherwise the panel itself
+   * grows to the full screen but its content doesn't, leaving a bare gap.
+   */
+  onFullscreenChange?: (isFullscreen: boolean) => void;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -249,6 +258,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   lockWidthResize,
   resizable = true,
   onPositionChange,
+  onFullscreenChange,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -263,6 +273,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
         className={className}
         zIndex={zIndex}
         panelKey={panelKey}
+        onFullscreenChange={onFullscreenChange}
       >
         {children}
       </MobileFloatingPanel>
@@ -289,6 +300,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     lockWidthResize={lockWidthResize}
     resizable={resizable}
     onPositionChange={onPositionChange}
+    onFullscreenChange={onFullscreenChange}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -307,6 +319,7 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
   className,
   zIndex = 10500,
   panelKey,
+  onFullscreenChange,
 }: {
   onClose: () => void;
   title?: React.ReactNode;
@@ -315,12 +328,22 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
   className?: string;
   zIndex?: number;
   panelKey?: string;
+  onFullscreenChange?: (isFullscreen: boolean) => void;
 }) {
   const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
   const compactPanels = useCompactPanelsEnabled();
   const compactScale = useCompactPanelScale();
   React.useLayoutEffect(() => {
     setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500), true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // This panel is ALWAYS full-screen (fixed inset-0, below) - there is no
+  // toggle. A caller whose content sizes itself against a fixed pixel width
+  // (see onFullscreenChange's doc comment) needs to know that up front, not
+  // just when some fullscreen button is pressed that doesn't exist here.
+  React.useEffect(() => {
+    onFullscreenChange?.(true);
+    return () => onFullscreenChange?.(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
@@ -389,6 +412,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   lockWidthResize,
   resizable = true,
   onPositionChange,
+  onFullscreenChange,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -785,16 +809,18 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
           posRef.current.y = sp.position.y;
           sizeRef.current = { ...sp.size };
         }
+        onFullscreenChange?.(false);
         return false;
       } else {
         savedPanelStateRef.current = { position: { ...posRef.current }, size: { ...sizeRef.current } };
         posRef.current.x = 0; posRef.current.y = 0;
         sizeRef.current = { width: window.innerWidth, height: window.innerHeight };
         setIsMinimized(false);
+        onFullscreenChange?.(true);
         return true;
       }
     });
-  }, []);
+  }, [onFullscreenChange]);
 
   // A single handler on the header (rather than a second one on the title
   // span relying on stopPropagation to keep it from also reaching this one)
