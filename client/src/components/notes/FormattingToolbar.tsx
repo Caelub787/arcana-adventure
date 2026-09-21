@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff, Table, AlignLeft, AlignCenter, AlignRight, Loader2 } from "lucide-react";
+import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff, Table, AlignLeft, AlignCenter, AlignRight, Loader2, Heading1, Heading2, Heading3 } from "lucide-react";
 import { api } from "@/lib/api";
 
 export type NoteFont = "inherit" | "serif" | "sans-serif" | "monospace";
@@ -201,6 +201,44 @@ export function FormattingToolbar({
     reader.readAsDataURL(file);
   };
 
+  // Headings apply to whole lines rather than a selection, and toggle off
+  // if every affected non-blank line is already that level - so pressing
+  // the same button twice returns the text to plain, and pressing a
+  // different level swaps it rather than stacking prefixes.
+  const toggleHeading = (level: 1 | 2 | 3) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+    const nextNewline = content.indexOf("\n", end);
+    const lineEnd = nextNewline === -1 ? content.length : nextNewline;
+    const affected = content.slice(lineStart, lineEnd);
+    const lines = affected.split("\n");
+
+    const levelPrefix = "#".repeat(level) + " ";
+    const anyHeadingRegex = /^#{1,3}\s+/;
+    const thisLevelRegex = new RegExp(`^#{${level}}\\s`);
+    const nonBlankLines = lines.filter((l) => l.trim() !== "");
+    const alreadyThisLevel = nonBlankLines.length > 0 && nonBlankLines.every((l) => thisLevelRegex.test(l));
+
+    const newLines = lines.map((l) => {
+      if (l.trim() === "") return l;
+      const stripped = l.replace(anyHeadingRegex, "");
+      return alreadyThisLevel ? stripped : levelPrefix + stripped;
+    });
+    const newAffected = newLines.join("\n");
+    const newContent = content.slice(0, lineStart) + newAffected + content.slice(lineEnd);
+    onContentChange(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      const delta = newAffected.length - affected.length;
+      textarea.setSelectionRange(Math.max(lineStart, start), Math.max(lineStart, end + delta));
+    }, 0);
+  };
+
   const handleBold = () => wrapSelection("**", "**");
   const handleItalic = () => wrapSelection("*", "*");
   const handleUnderline = () => wrapSelection("__", "__");
@@ -245,6 +283,40 @@ export function FormattingToolbar({
           data-testid="button-format-underline"
         >
           <Underline className={iconSize} />
+        </Button>
+        <div className="w-px h-5 bg-stone-700 mx-1" />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={() => toggleHeading(1)}
+          title="Heading 1"
+          data-testid="button-format-h1"
+        >
+          <Heading1 className={iconSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={() => toggleHeading(2)}
+          title="Heading 2"
+          data-testid="button-format-h2"
+        >
+          <Heading2 className={iconSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={() => toggleHeading(3)}
+          title="Heading 3"
+          data-testid="button-format-h3"
+        >
+          <Heading3 className={iconSize} />
         </Button>
         {isGm && (
           <>
@@ -480,6 +552,38 @@ export function useFormattingShortcuts(
 export interface NoteImageDirective {
   width?: number;
   float?: "left" | "right";
+}
+
+// ---------------------------------------------------------------------------
+// Headings - a line starting with 1-3 "#" plus a space is a heading, same
+// syntax renderFormattedText's block-level line parser (in
+// CampaignNotesPanel's formatEntityReferences) already looks for. Exported
+// here so BookView can pull a note's heading outline (its "sub chapters")
+// without re-implementing the parse.
+// ---------------------------------------------------------------------------
+
+export interface NoteHeading {
+  level: 1 | 2 | 3;
+  text: string;
+  /** This heading's position among ALL headings in the note, in document
+   * order - matches the id formatEntityReferences assigns the rendered
+   * heading element, so a click here can scroll straight to it. */
+  index: number;
+}
+
+const HEADING_LINE_REGEX = /^(#{1,3})\s+(.+)$/;
+
+export function extractNoteHeadings(content: string): NoteHeading[] {
+  const headings: NoteHeading[] = [];
+  let index = 0;
+  for (const line of content.split("\n")) {
+    const match = line.match(HEADING_LINE_REGEX);
+    if (match) {
+      headings.push({ level: match[1].length as 1 | 2 | 3, text: match[2].trim(), index });
+      index++;
+    }
+  }
+  return headings;
 }
 
 const IMAGE_TOKEN_REGEX = /!\[[^\]]*\]\([^)]+\)(?:\{[^}]*\})?/g;

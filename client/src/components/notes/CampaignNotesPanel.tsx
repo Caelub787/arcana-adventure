@@ -2437,7 +2437,7 @@ export function CampaignNotesPanel({
     setEditingTableCell(null);
   };
 
-  const formatEntityReferences = (content: string, editable: boolean = false): React.ReactNode => {
+  const formatEntityReferences = (content: string, editable: boolean = false, idPrefix?: string): React.ReactNode => {
     const lines = content.split('\n');
     const blocks: React.ReactNode[] = [];
     let lineIndex = 0;
@@ -2448,9 +2448,38 @@ export function CampaignNotesPanel({
     const imageCtx: ImageEditContext | undefined = editable
       ? { counter: { current: 0 }, onImageEdit: updateNoteImage }
       : undefined;
+    // Same ordering extractNoteHeadings uses, so a heading's id here lines
+    // up with the index a Book's "sub chapter" outline scrolls to.
+    let headingCounter = 0;
 
     while (lineIndex < lines.length) {
       const line = lines[lineIndex];
+
+      const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const text = headingMatch[2];
+        const HeadingTag = (level === 1 ? "h1" : level === 2 ? "h2" : "h3") as "h1" | "h2" | "h3";
+        const headingClass =
+          level === 1
+            ? "text-xl font-display font-bold text-stone-100 mt-3 mb-1 pb-1 border-b"
+            : level === 2
+              ? "text-lg font-display font-bold text-stone-100 mt-2 mb-1"
+              : "text-base font-semibold text-stone-200 mt-2 mb-0.5";
+        blocks.push(
+          <HeadingTag
+            key={lineIndex}
+            id={idPrefix ? `${idPrefix}-heading-${headingCounter}` : undefined}
+            className={headingClass}
+            style={level === 1 ? { borderColor: "var(--ca-gilt-line-soft)" } : undefined}
+          >
+            {formatInlineReferences(text, `line-${lineIndex}`, imageCtx)}
+          </HeadingTag>
+        );
+        headingCounter++;
+        lineIndex++;
+        continue;
+      }
 
       if (isTableRow(line) && lineIndex + 1 < lines.length && isTableSeparatorRow(lines[lineIndex + 1])) {
         const headerCells = parseTableRow(line);
@@ -3465,7 +3494,7 @@ export function CampaignNotesPanel({
       liveSyncStored={!!(currentNote as any)?.bookLiveSync}
       onToggleLiveSync={(next) => updateNoteMutation.mutate({ id: selectedNoteId!, data: { bookLiveSync: next } as any })}
       availableNotes={allNotesForTree.map((n) => ({ id: n.id, title: n.title, type: (n as any).type }))}
-      renderContent={(text) => formatEntityReferences(text)}
+      renderContent={(text, idPrefix) => formatEntityReferences(text, false, idPrefix)}
       onRenameTitle={(title) => { setNoteTitle(title); renameNoteCommit(selectedNoteId!, title); }}
     />
   );

@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, FileText, GripVertical, Plus, Trash2, User, X, Check } from "lucide-react";
+import { extractNoteHeadings } from "@/components/notes/FormattingToolbar";
 
 export interface BookViewNoteOption {
   id: string;
@@ -44,8 +45,10 @@ export function BookView({
   onToggleLiveSync: (next: boolean) => void;
   /** Notes the viewer can already see, for the Add chapter picker. */
   availableNotes: BookViewNoteOption[];
-  /** Lets the host draw @entity references the same way it does elsewhere. */
-  renderContent?: (text: string) => React.ReactNode;
+  /** Lets the host draw @entity references the same way it does elsewhere.
+   * idPrefix namespaces any heading ids the host renders (see chapterHeadings
+   * below) since every chapter's content renders into the same page at once. */
+  renderContent?: (text: string, idPrefix?: string) => React.ReactNode;
   /** Double-clicking the book's own title (not a chapter's) calls this. */
   onRenameTitle?: (title: string) => void;
 }) {
@@ -119,6 +122,14 @@ export function BookView({
 
   const alreadyIn = useMemo(
     () => new Set(chapters.map((c) => c.sourceId).filter(Boolean) as string[]),
+    [chapters],
+  );
+
+  // A chapter's own "# Heading" lines double as sub-chapters in the
+  // Contents rail - keyed by chapter id so each chapter's outline is looked
+  // up independently.
+  const chapterHeadings = useMemo(
+    () => new Map(chapters.map((c) => [c.id, extractNoteHeadings(c.content || "")])),
     [chapters],
   );
 
@@ -248,22 +259,36 @@ export function BookView({
             <div className="w-40 shrink-0 border-r border-stone-800 overflow-y-auto p-1 space-y-0.5" data-testid="book-contents">
               <p className="text-[10px] uppercase tracking-wide text-stone-500 px-1.5 py-1">Contents</p>
               {chapters.map((c, i) => (
-                <div
-                  key={c.id}
-                  draggable={canEdit}
-                  onDragStart={() => { dragChapterId.current = c.id; }}
-                  // Only a chapter being reordered is handled here; a note or
-                  // character dragged in from outside falls through to the
-                  // book's own drop target rather than dying on a row.
-                  onDragOver={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); } }}
-                  onDrop={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); dropOnChapter(c.id); } }}
-                  onClick={() => document.getElementById(`book-chapter-${c.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  className="flex items-center gap-1 px-1.5 py-1 rounded text-xs text-stone-300 hover:bg-stone-800/60 cursor-pointer"
-                  data-testid={`book-contents-${c.id}`}
-                >
-                  {canEdit && <GripVertical className="h-3 w-3 text-stone-600 shrink-0" />}
-                  <span className="text-stone-600 text-[10px] shrink-0">{i + 1}</span>
-                  <span className="truncate flex-1">{c.title}</span>
+                <div key={c.id}>
+                  <div
+                    draggable={canEdit}
+                    onDragStart={() => { dragChapterId.current = c.id; }}
+                    // Only a chapter being reordered is handled here; a note or
+                    // character dragged in from outside falls through to the
+                    // book's own drop target rather than dying on a row.
+                    onDragOver={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); } }}
+                    onDrop={(e) => { if (canEdit && dragChapterId.current) { e.preventDefault(); e.stopPropagation(); dropOnChapter(c.id); } }}
+                    onClick={() => document.getElementById(`book-chapter-${c.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    className="flex items-center gap-1 px-1.5 py-1 rounded text-xs text-stone-300 hover:bg-stone-800/60 cursor-pointer"
+                    data-testid={`book-contents-${c.id}`}
+                  >
+                    {canEdit && <GripVertical className="h-3 w-3 text-stone-600 shrink-0" />}
+                    <span className="text-stone-600 text-[10px] shrink-0">{i + 1}</span>
+                    <span className="truncate flex-1">{c.title}</span>
+                  </div>
+                  {/* The chapter's own "# Heading" lines, as sub-chapters -
+                      each jumps straight to that heading inside the chapter. */}
+                  {(chapterHeadings.get(c.id) || []).map((h) => (
+                    <div
+                      key={h.index}
+                      onClick={() => document.getElementById(`${c.id}-heading-${h.index}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                      className="flex items-center px-1.5 py-0.5 rounded text-[11px] text-stone-500 hover:bg-stone-800/60 hover:text-stone-300 cursor-pointer truncate"
+                      style={{ paddingLeft: `${8 + h.level * 10}px` }}
+                      data-testid={`book-contents-heading-${c.id}-${h.index}`}
+                    >
+                      {h.text}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -371,7 +396,7 @@ export function BookView({
                     data-testid={`text-book-chapter-${c.id}`}
                   >
                     {c.content
-                      ? (renderContent ? renderContent(c.content) : c.content)
+                      ? (renderContent ? renderContent(c.content, c.id) : c.content)
                       : <span className="text-stone-600 italic">Nothing written here yet.</span>}
                   </div>
                 )}
