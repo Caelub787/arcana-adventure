@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -11723,7 +11723,6 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
     : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
-  const dc = character?.naturalArmor;
   // Never reveal an empty box - there's nothing to show until a roll exists.
   const visible = !!latest && (revealed || historyOpen);
   const borderColor = accentColor || '#3D77F0';
@@ -11752,7 +11751,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   );
 
   // A compact ~200x75 horizontal player card - square portrait on the left,
-  // name/DC/HP/Energy stacked to its right, a chevron to open the roll
+  // name/HP/Energy stacked to its right, a chevron to open the roll
   // history on the far right - border/glow tinted to the beacon color, with
   // a floating roll callout hanging directly below it (a small square card
   // of its own, opacity-only reveal so it never renders as a collapsed
@@ -11813,7 +11812,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
               )}
             </div>
             <CharacterAuraMark character={character} fallbackColor={accentColor} size={10} className="shrink-0" />
-            <span className="text-[11px] font-bold text-white truncate leading-tight flex-1 min-w-0">{displayName}</span>
+            <span className="text-[11px] font-bold text-white leading-tight flex-1 min-w-0">{displayName}</span>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}
@@ -11824,9 +11823,6 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
               <ChevronDown className="h-3 w-3" />
             </button>
           </div>
-          {character && typeof dc === 'number' && (
-            <div className="text-[9px] text-stone-400 font-semibold leading-none">DC {dc}</div>
-          )}
           {character && primaryBar && (
             <div className="flex items-center gap-1">
               <span className="text-[8px] font-bold text-red-400 shrink-0">HP</span>
@@ -11866,10 +11862,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
         <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
           <div className="flex items-center gap-1.5">
             <CharacterAuraMark character={character} fallbackColor={accentColor} size={12} className="shrink-0" />
-            <span className="text-sm font-bold text-white truncate leading-tight">{displayName}</span>
-            {character && typeof dc === 'number' && (
-              <span className="text-[10px] text-stone-400 font-semibold shrink-0">DC {dc}</span>
-            )}
+            <span className="text-sm font-bold text-white leading-tight">{displayName}</span>
           </div>
           {character && primaryBar && (
             <div className="flex items-center gap-1">
@@ -20193,7 +20186,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       ...(raceData?.speed != null ? { speed: raceData.speed } : {}),
       ...(raceData?.flySpeed != null ? { flySpeed: raceData.flySpeed } : {}),
       ...(raceData ? { swimSpeed: caEffectiveSwimSpeed(raceData as any) } : {}),
-      ...(raceData?.lifespan != null ? { lifespan: raceData.lifespan } : {}),
       ...((raceData as any)?.carryWeight != null ? { carryWeight: (raceData as any).carryWeight } : {}),
       // Cultivation: only overwrite Energy Type if the character hasn't
       // already picked their own - picking a new species shouldn't undo that.
@@ -22404,32 +22396,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                             {liveCharacter.size || 'Medium'}
                           </CaChip>
                         )}
-                        {caEdit.field === 'lifespan' ? (
-                          <CaInlineNumber edit={caEdit} field="lifespan" testId="lifespan" />
-                        ) : (
-                          <CaChip
-                            icon={<Moon className="h-4 w-4" />}
-                            label="Lifespan"
-                            editable={caEdit.canEdit}
-                            testId="text-ca-lifespan"
-                            {...caEdit.pressHandlers('lifespan', liveCharacter.lifespan ?? 100)}
-                          >
-                            {liveCharacter.lifespan ?? 100} yrs
-                          </CaChip>
-                        )}
-                        {caEdit.field === 'carryWeight' ? (
-                          <CaInlineNumber edit={caEdit} field="carryWeight" testId="carry-weight" />
-                        ) : (
-                          <CaChip
-                            icon={<Backpack className="h-4 w-4" />}
-                            label="Carry Weight"
-                            editable={caEdit.canEdit}
-                            testId="text-ca-carry-weight"
-                            {...caEdit.pressHandlers('carryWeight', (liveCharacter as any).carryWeight ?? 50)}
-                          >
-                            {(liveCharacter as any).carryWeight ?? 50}
-                          </CaChip>
-                        )}
+                        {/* Lifespan comes straight off the character's Rank
+                            (same ladder as the Rank badge below), never off
+                            their species - it changes as they rank up, so it
+                            is never hand-edited, only ever read. */}
+                        <CaChip
+                          icon={<Moon className="h-4 w-4" />}
+                          label="Lifespan"
+                          editable={false}
+                          testId="text-ca-lifespan"
+                        >
+                          {caRankForEnergyPool(woundRules.energyPoolOf(liveCharacter)).rank.lifespan} yrs
+                        </CaChip>
                       </div>
                     </div>
                   </div>
