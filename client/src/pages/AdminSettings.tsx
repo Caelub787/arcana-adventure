@@ -250,13 +250,18 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
     return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
   })();
   
-  // My Library opened from inside a campaign (the "My Library" panel button)
-  // carries the campaign's own system, so it opens straight to that system
-  // instead of whatever was last picked (or the hard C.A. fallback) - a GM
-  // running an A.A. V3 game and popping open their library shouldn't have to
-  // re-switch systems every time.
+  // My Library or Admin opened from inside a campaign (the "My Library"
+  // panel button, which the Admin/My Library mode switcher then preserves
+  // across a toggle) carries the campaign's own system, so both open
+  // straight to that system instead of whatever was last picked (or the
+  // hard C.A./"Arcana Adventure" fallback) - a GM running an A.A. V3 game
+  // shouldn't have to re-switch systems every time, and toggling from My
+  // Library to Admin shouldn't silently jump to a different one. Not gated
+  // on forcePersonal: /admin and /library are separate routes that fully
+  // remount AdminSettings on every switch between them (see App.tsx), so
+  // this has to be re-derived from the URL on every mount, not just the
+  // My-Library one.
   const librarySystemFromCampaign = (() => {
-    if (!forcePersonal) return null;
     const raw = new URLSearchParams(search).get('system');
     return raw && (SYSTEM_SLUGS as string[]).includes(raw) ? systemLabel(raw) : null;
   })();
