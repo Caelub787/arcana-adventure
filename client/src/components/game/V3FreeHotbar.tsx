@@ -969,28 +969,28 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                       <Eye className="h-3 w-3" /> View only
                     </span>
                   )}
-                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-700 text-amber-400 hover:bg-amber-900/30"
-                    onClick={() => onAssignCharacter(c.id)} data-testid={`button-assign-char-${c.id}`}>
-                    Assign
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-amber-700 text-amber-400 hover:bg-amber-900/30"
+                    onClick={() => onAssignCharacter(c.id)} title="Assign to slot" data-testid={`button-assign-char-${c.id}`}>
+                    <Plus className="h-3.5 w-3.5" />
                   </Button>
                   {c.canEdit !== false && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
-                      onClick={() => { setBrowsingChar({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-items-${c.id}`}>
-                      <Package className="h-3 w-3 mr-1" /> Item
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingChar({ id: c.id, name: c.name }); setSearch(''); }} title="Browse items" data-testid={`button-browse-items-${c.id}`}>
+                      <Package className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   {/* Ability rolls only need view access - a player keeps their
                       own on the bar, a GM keeps an NPC's to hand. */}
                   {showAbilities && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
-                      onClick={() => { setBrowsingAbilityOf({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-ability-${c.id}`}>
-                      <Flame className="h-3 w-3 mr-1" /> Ability
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingAbilityOf({ id: c.id, name: c.name }); setSearch(''); }} title="Browse ability" data-testid={`button-browse-ability-${c.id}`}>
+                      <Flame className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   {showAbilities && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:bg-stone-700"
-                      onClick={() => { setBrowsingSkillOf({ id: c.id, name: c.name }); setSearch(''); }} data-testid={`button-browse-skill-${c.id}`}>
-                      <Zap className="h-3 w-3 mr-1" /> Skill
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-stone-600 text-stone-300 hover:bg-stone-700"
+                      onClick={() => { setBrowsingSkillOf({ id: c.id, name: c.name }); setSearch(''); }} title="Browse skills" data-testid={`button-browse-skill-${c.id}`}>
+                      <Zap className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>

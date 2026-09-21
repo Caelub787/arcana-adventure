@@ -460,6 +460,12 @@ async function ensureKnowledgeSystemSchema() {
     // has to come off or every species save that leaves it blank 500s.
     `ALTER TABLE IF EXISTS system_species ALTER COLUMN swim_speed DROP NOT NULL`,
     `ALTER TABLE IF EXISTS campaign_species ALTER COLUMN swim_speed DROP NOT NULL`,
+    // Lets a broad visibility grant (Wiki/Party folders, or a "players" list)
+    // be view-only or edit - same build-time db:push unreliability as
+    // everything else in this list, and every notes/note_folders read
+    // selects every declared column, so a missing one here 500s all of them.
+    `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS visibility_permission text NOT NULL DEFAULT 'edit'`,
+    `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visibility_permission text NOT NULL DEFAULT 'edit'`,
   ];
   return runSchemaGuard("knowledge", statements);
 }
