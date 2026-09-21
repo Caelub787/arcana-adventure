@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -18,7 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff, Table } from "lucide-react";
+import { Bold, Italic, Underline, Type, Image, Upload, Link, EyeOff, Table, AlignLeft, AlignCenter, AlignRight, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 export type NoteFont = "inherit" | "serif" | "sans-serif" | "monospace";
 
@@ -68,6 +69,8 @@ export function FormattingToolbar({
   const [imageUrl, setImageUrl] = useState("");
   const [imageAlt, setImageAlt] = useState("");
   const [imageTab, setImageTab] = useState<"url" | "upload">("url");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const wrapSelection = (prefix: string, suffix: string) => {
@@ -166,15 +169,34 @@ export function FormattingToolbar({
       return;
     }
 
+    setUploadError(null);
+    setIsUploadingImage(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        insertImage(dataUrl, imageAlt.trim() || file.name.replace(/\.[^/.]+$/, ""));
+      if (!dataUrl) {
+        setIsUploadingImage(false);
+        return;
+      }
+      try {
+        // Persisted to a real asset, not inlined as base64 - a multi-MB data
+        // URL sitting in the note's content, re-serialized on every
+        // keystroke's autosave and every revision snapshot, is what made
+        // uploads look like they "didn't work" (the page just bogged down).
+        const { url } = await api.uploadBase64Image(dataUrl);
+        insertImage(url, imageAlt.trim() || file.name.replace(/\.[^/.]+$/, ""));
         setImageDialogOpen(false);
         setImageUrl("");
         setImageAlt("");
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setIsUploadingImage(false);
       }
+    };
+    reader.onerror = () => {
+      setIsUploadingImage(false);
+      setUploadError("Couldn't read that file");
     };
     reader.readAsDataURL(file);
   };
@@ -336,14 +358,26 @@ export function FormattingToolbar({
                   className="bg-stone-800 border-stone-700"
                 />
               </div>
-              <div 
-                className="border-2 border-dashed border-stone-600 rounded-lg p-6 text-center cursor-pointer hover:border-amber-500 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
+              <div
+                className={`border-2 border-dashed border-stone-600 rounded-lg p-6 text-center transition-colors ${isUploadingImage ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-amber-500"}`}
+                onClick={() => !isUploadingImage && fileInputRef.current?.click()}
               >
-                <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
-                <p className="text-stone-400 text-sm">Click to upload an image</p>
-                <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+                {isUploadingImage ? (
+                  <>
+                    <Loader2 className="h-8 w-8 mx-auto text-amber-500 mb-2 animate-spin" />
+                    <p className="text-stone-400 text-sm">Uploading…</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
+                    <p className="text-stone-400 text-sm">Click to upload an image</p>
+                    <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+                  </>
+                )}
               </div>
+              {uploadError && (
+                <p className="text-red-400 text-xs" data-testid="text-image-upload-error">{uploadError}</p>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -361,6 +395,7 @@ export function FormattingToolbar({
                 setImageDialogOpen(false);
                 setImageUrl("");
                 setImageAlt("");
+                setUploadError(null);
               }}
               className="border-stone-700"
             >
@@ -434,11 +469,197 @@ export function useFormattingShortcuts(
   return handleKeyDown;
 }
 
-export function renderFormattedText(text: string, keyPrefix: string = ""): React.ReactNode[] {
+// ---------------------------------------------------------------------------
+// Floating/resizable images - a note image can carry an optional directive
+// (`{w=320,float=left}`) right after its normal `![alt](url)` markdown,
+// holding a pixel width and a wrap side. Omitted entirely for an image
+// that's never been resized/repositioned, so every pre-existing note image
+// keeps rendering exactly as it did before this existed.
+// ---------------------------------------------------------------------------
+
+export interface NoteImageDirective {
+  width?: number;
+  float?: "left" | "right";
+}
+
+const IMAGE_TOKEN_REGEX = /!\[[^\]]*\]\([^)]+\)(?:\{[^}]*\})?/g;
+
+export function parseImageDirective(raw: string | undefined): NoteImageDirective {
+  const out: NoteImageDirective = {};
+  if (!raw) return out;
+  for (const part of raw.split(",")) {
+    const [k, v] = part.split("=").map((s) => s.trim());
+    if (k === "w") {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n) && n > 0) out.width = n;
+    } else if (k === "float" && (v === "left" || v === "right")) {
+      out.float = v;
+    }
+  }
+  return out;
+}
+
+export function buildImageMarkdown(alt: string, url: string, directive: NoteImageDirective): string {
+  const parts: string[] = [];
+  if (directive.width) parts.push(`w=${Math.round(directive.width)}`);
+  if (directive.float) parts.push(`float=${directive.float}`);
+  const suffix = parts.length > 0 ? `{${parts.join(",")}}` : "";
+  return `![${alt || "image"}](${url})${suffix}`;
+}
+
+/**
+ * Replaces the Nth (0-indexed) image token in `content`, in document order,
+ * with `newMarkdown`. "Document order" here means the same order
+ * `renderFormattedText` assigns images as it walks the note top to bottom -
+ * see `ImageEditContext` - so an edit made from a click in the read view
+ * always lands on the exact image that was clicked, regardless of which
+ * line, bullet, or table cell it's nested inside.
+ */
+export function replaceNthImageMarkdown(content: string, index: number, newMarkdown: string): string {
+  let i = 0;
+  return content.replace(IMAGE_TOKEN_REGEX, (m) => (i++ === index ? newMarkdown : m));
+}
+
+/**
+ * Threaded through renderFormattedText (and the formatInlineReferences/
+ * formatEntityReferences wrappers around it in the two note-reading
+ * components) so every image gets a stable position in document order
+ * without either component needing to track character offsets through
+ * their own line/bullet/table-cell text transforms.
+ */
+export interface ImageEditContext {
+  counter: { current: number };
+  onImageEdit: (index: number, newMarkdown: string) => void;
+}
+
+function NoteImage({
+  src,
+  alt,
+  width,
+  float,
+  editable,
+  onChange,
+}: {
+  src: string;
+  alt: string;
+  width?: number;
+  float?: "left" | "right";
+  editable: boolean;
+  onChange: (next: NoteImageDirective) => void;
+}) {
+  const [selected, setSelected] = useState(false);
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setSelected(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [selected]);
+
+  const effectiveWidth = liveWidth ?? width;
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = wrapRef.current?.getBoundingClientRect().width || width || 300;
+    dragRef.current = { startX: e.clientX, startWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const next = Math.max(60, Math.round(dragRef.current.startWidth + (ev.clientX - dragRef.current.startX)));
+      setLiveWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      dragRef.current = null;
+      setLiveWidth((current) => {
+        if (current != null) onChange({ width: current, float });
+        return null;
+      });
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  const isFloating = float === "left" || float === "right";
+  const style: React.CSSProperties = {
+    width: effectiveWidth ? `${effectiveWidth}px` : undefined,
+    maxWidth: "100%",
+    float: isFloating ? float : undefined,
+    display: isFloating ? undefined : "block",
+    margin:
+      float === "left" ? "0.25rem 1rem 0.5rem 0"
+      : float === "right" ? "0.25rem 0 0.5rem 1rem"
+      : "0.5rem auto",
+  };
+
+  return (
+    <span
+      ref={wrapRef}
+      className="relative inline-block align-top"
+      style={style}
+      onClick={editable ? (e) => { e.stopPropagation(); setSelected(true); } : undefined}
+    >
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        className={`w-full h-auto rounded-md border ${selected ? "border-amber-500" : "border-stone-700"}`}
+        style={!effectiveWidth ? { maxHeight: "300px", width: "auto", maxWidth: "100%" } : undefined}
+      />
+      {editable && selected && (
+        <>
+          <div className="absolute -top-8 left-0 flex items-center gap-0.5 bg-stone-900 border border-stone-700 rounded px-1 py-1 shadow-lg z-10">
+            <button
+              type="button"
+              title="Wrap left"
+              onClick={(e) => { e.stopPropagation(); onChange({ width: effectiveWidth, float: "left" }); }}
+              className={`h-6 w-6 flex items-center justify-center rounded ${float === "left" ? "bg-amber-700 text-white" : "text-stone-400 hover:bg-stone-800"}`}
+              data-testid="button-note-image-float-left"
+            >
+              <AlignLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="Center"
+              onClick={(e) => { e.stopPropagation(); onChange({ width: effectiveWidth, float: undefined }); }}
+              className={`h-6 w-6 flex items-center justify-center rounded ${!float ? "bg-amber-700 text-white" : "text-stone-400 hover:bg-stone-800"}`}
+              data-testid="button-note-image-float-center"
+            >
+              <AlignCenter className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="Wrap right"
+              onClick={(e) => { e.stopPropagation(); onChange({ width: effectiveWidth, float: "right" }); }}
+              className={`h-6 w-6 flex items-center justify-center rounded ${float === "right" ? "bg-amber-700 text-white" : "text-stone-400 hover:bg-stone-800"}`}
+              data-testid="button-note-image-float-right"
+            >
+              <AlignRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div
+            onMouseDown={startResize}
+            className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-amber-500 border border-amber-700 rounded-tl cursor-nwse-resize"
+            style={{ transform: "translate(30%, 30%)" }}
+            data-testid="note-image-resize-handle"
+          />
+        </>
+      )}
+    </span>
+  );
+}
+
+export function renderFormattedText(text: string, keyPrefix: string = "", imageCtx?: ImageEditContext): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let currentIndex = 0;
-  
-  const regex = /!\[([^\]]*)\]\(([^)]+)\)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)|(#([^#\n]+)#)/g;
+
+  const regex = /!\[([^\]]*)\]\(([^)]+?)\)(?:\{([^}]*)\})?|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)|(#([^#\n]+)#)/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
@@ -450,45 +671,51 @@ export function renderFormattedText(text: string, keyPrefix: string = ""): React
       );
     }
 
-    if (match[9] && match[10]) {
+    if (match[10] && match[11]) {
       parts.push(
         <span
           key={`${keyPrefix}-gmsecret-${match.index}`}
           className="bg-red-950/50 border border-red-900/60 rounded px-1 text-red-300"
           title="GM Secret - hidden from players"
         >
-          {match[10]}
+          {match[11]}
         </span>
       );
     } else if (match[1] !== undefined && match[2]) {
       const altText = match[1] || "image";
       const imageUrl = match[2];
+      const directive = parseImageDirective(match[3]);
+      const myIndex = imageCtx ? imageCtx.counter.current++ : -1;
       parts.push(
-        <span key={`${keyPrefix}-image-${match.index}`} className="inline-block my-2">
-          <img 
-            src={imageUrl} 
-            alt={altText}
-            className="max-w-full h-auto rounded-md border border-stone-700"
-            style={{ maxHeight: "300px" }}
-          />
-        </span>
+        <NoteImage
+          key={`${keyPrefix}-image-${match.index}`}
+          src={imageUrl}
+          alt={altText}
+          width={directive.width}
+          float={directive.float}
+          editable={!!imageCtx}
+          onChange={(next) => {
+            if (!imageCtx) return;
+            imageCtx.onImageEdit(myIndex, buildImageMarkdown(altText, imageUrl, next));
+          }}
+        />
       );
-    } else if (match[3] && match[4]) {
+    } else if (match[4] && match[5]) {
       parts.push(
         <strong key={`${keyPrefix}-bold-${match.index}`} className="font-bold">
-          {match[4]}
+          {match[5]}
         </strong>
       );
-    } else if (match[5] && match[6]) {
+    } else if (match[6] && match[7]) {
       parts.push(
         <em key={`${keyPrefix}-italic-${match.index}`} className="italic">
-          {match[6]}
+          {match[7]}
         </em>
       );
-    } else if (match[7] && match[8]) {
+    } else if (match[8] && match[9]) {
       parts.push(
         <span key={`${keyPrefix}-underline-${match.index}`} className="underline">
-          {match[8]}
+          {match[9]}
         </span>
       );
     }

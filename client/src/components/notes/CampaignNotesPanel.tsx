@@ -74,7 +74,7 @@ function sceneLinkFromNote(note: Note | undefined): SceneNoteLink | null {
   if (!data || typeof data !== "object") return null;
   return data as SceneNoteLink;
 }
-import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
+import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, replaceNthImageMarkdown, type NoteFont, type ImageEditContext } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity, NoteReference } from "@/lib/api";
 
 interface CampaignNotesPanelProps {
@@ -2102,7 +2102,7 @@ export function CampaignNotesPanel({
     }
   };
 
-  const formatInlineReferences = (content: string, keyPrefix: string): React.ReactNode[] => {
+  const formatInlineReferences = (content: string, keyPrefix: string, imageCtx?: ImageEditContext): React.ReactNode[] => {
     const combinedRegex = /\[\[([^:\]]+):([^\|]+)\|([^\]]+)\]\]|\/\/([^\/]+)\/\/|\(\/([^\/]+)\/\)/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
@@ -2111,7 +2111,7 @@ export function CampaignNotesPanel({
     while ((match = combinedRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         const plainText = content.slice(lastIndex, match.index);
-        parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
+        parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`, imageCtx));
       }
       
       if (match[1] && match[2] && match[3]) {
@@ -2161,7 +2161,7 @@ export function CampaignNotesPanel({
       parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
     }
 
-    return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix);
+    return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix, imageCtx);
   };
 
   // A markdown table is a header row immediately followed by a
@@ -2182,6 +2182,18 @@ export function CampaignNotesPanel({
     const lines = (currentNote?.content || "").split("\n");
     mutate(lines);
     updateNoteMutation.mutate({ id: selectedNoteId, data: { content: lines.join("\n") } });
+  };
+
+  // Same immediate-save pattern as updateNoteContentLines, for the read
+  // view's click-to-resize/reposition image controls (renderFormattedText's
+  // NoteImage). Operates on the raw content string directly rather than
+  // per-line, since an image's position in "document order" (see
+  // replaceNthImageMarkdown) is independent of which line, bullet, or table
+  // cell it's nested inside.
+  const updateNoteImage = (index: number, newMarkdown: string) => {
+    if (!selectedNoteId) return;
+    const newContent = replaceNthImageMarkdown(currentNote?.content || "", index, newMarkdown);
+    updateNoteMutation.mutate({ id: selectedNoteId, data: { content: newContent } });
   };
 
   const startEditingTableCell = (
@@ -2316,6 +2328,13 @@ export function CampaignNotesPanel({
     const lines = content.split('\n');
     const blocks: React.ReactNode[] = [];
     let lineIndex = 0;
+    // One counter for the whole note, shared by every line/bullet/table-cell
+    // call to formatInlineReferences below, so each image's position in
+    // "document order" (see replaceNthImageMarkdown) survives however this
+    // line got transformed (bullet prefix stripped, table cell split out).
+    const imageCtx: ImageEditContext | undefined = editable
+      ? { counter: { current: 0 }, onImageEdit: updateNoteImage }
+      : undefined;
 
     while (lineIndex < lines.length) {
       const line = lines[lineIndex];
@@ -2371,7 +2390,7 @@ export function CampaignNotesPanel({
                                 : undefined
                             }
                           >
-                            {formatInlineReferences(cell, `th-${tableStart}-${ci}`)}
+                            {formatInlineReferences(cell, `th-${tableStart}-${ci}`, imageCtx)}
                           </div>
                         )}
                         {editable && colCount > 1 && (
@@ -2435,7 +2454,7 @@ export function CampaignNotesPanel({
                                     : undefined
                                 }
                               >
-                                {formatInlineReferences(cell, `td-${tableStart}-${ri}-${ci}`)}
+                                {formatInlineReferences(cell, `td-${tableStart}-${ri}-${ci}`, imageCtx)}
                               </div>
                             )}
                           </td>
@@ -2486,7 +2505,7 @@ export function CampaignNotesPanel({
             style={{ paddingLeft: `${indentLevel * 16}px` }}
           >
             <span className="text-amber-500 mt-0.5">•</span>
-            <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+            <span>{formatInlineReferences(text, `line-${lineIndex}`, imageCtx)}</span>
           </div>
         );
         lineIndex++;
@@ -2504,7 +2523,7 @@ export function CampaignNotesPanel({
             style={{ paddingLeft: `${indentLevel * 16}px` }}
           >
             <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
-            <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+            <span>{formatInlineReferences(text, `line-${lineIndex}`, imageCtx)}</span>
           </div>
         );
         lineIndex++;
@@ -2519,7 +2538,7 @@ export function CampaignNotesPanel({
 
       blocks.push(
         <div key={lineIndex}>
-          {formatInlineReferences(line, `line-${lineIndex}`)}
+          {formatInlineReferences(line, `line-${lineIndex}`, imageCtx)}
         </div>
       );
       lineIndex++;

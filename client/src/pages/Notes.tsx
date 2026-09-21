@@ -69,7 +69,7 @@ import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/compo
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID } from "@/components/notes/NoteTabs";
-import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
+import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, replaceNthImageMarkdown, type NoteFont, type ImageEditContext } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -766,6 +766,21 @@ export default function Notes() {
         
         // Open in tabs when navigating to a note
         openNoteTab(currentNote.id, currentNote.title, currentNote.type as "markdown" | "canvas" | undefined);
+      } else {
+        // Same note as before, but the underlying data changed - a REST-only
+        // update (another tab, another campaign member's edit, a save that
+        // landed via the note_changed broadcast's refetch) that the screen
+        // never picked up because the editor reads noteTitle/noteContent,
+        // not the query result - the classic "only shows up after a
+        // refresh" bug. Skipped while the user is actively typing (don't
+        // clobber unsaved keystrokes) or while a live remote update is
+        // already being applied (avoid fighting it).
+        const el = textareaRef.current;
+        const isTyping = !!el && document.activeElement === el;
+        if (!isTyping && !isReceivingRemoteUpdateRef.current) {
+          if (currentNote.title !== noteTitle) setNoteTitle(currentNote.title);
+          if ((currentNote.content || "") !== noteContent) setNoteContent(currentNote.content || "");
+        }
       }
     }
   }, [currentNote, openNoteTab]);
@@ -1149,6 +1164,15 @@ export default function Notes() {
         variant: "destructive",
       }),
   });
+
+  // Immediate-save helper for the read view's click-to-resize/reposition
+  // image controls (renderFormattedText's NoteImage) - bypasses the
+  // debounced textarea autosave the same way table/tag edits do elsewhere.
+  const updateNoteImage = (index: number, newMarkdown: string) => {
+    if (!noteId) return;
+    const newContent = replaceNthImageMarkdown(currentNote?.content || "", index, newMarkdown);
+    updateNoteMutation.mutate({ id: noteId, data: { content: newContent } });
+  };
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
@@ -1694,7 +1718,7 @@ export default function Notes() {
     }
   };
 
-  const formatInlineReferences = (content: string, keyPrefix: string): React.ReactNode[] => {
+  const formatInlineReferences = (content: string, keyPrefix: string, imageCtx?: ImageEditContext): React.ReactNode[] => {
     // Match: 
     // 1. Entity refs: [[type:id|name]]
     // 2. Note links: //note name//
@@ -1707,7 +1731,7 @@ export default function Notes() {
     while ((match = combinedRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         const plainText = content.slice(lastIndex, match.index);
-        parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
+        parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`, imageCtx));
       }
       
       if (match[1] && match[2] && match[3]) {
@@ -1760,13 +1784,20 @@ export default function Notes() {
       parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
     }
 
-    return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix);
+    return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix, imageCtx);
   };
 
-  const formatEntityReferences = (content: string): React.ReactNode => {
+  const formatEntityReferences = (content: string, editable: boolean = false): React.ReactNode => {
     // Split content by lines to handle bullet points
     const lines = content.split('\n');
-    
+    // One counter for the whole note, shared by every line's call to
+    // formatInlineReferences below, so each image's position in "document
+    // order" (see replaceNthImageMarkdown) survives however that line got
+    // transformed (bullet prefix stripped, etc).
+    const imageCtx: ImageEditContext | undefined = editable
+      ? { counter: { current: 0 }, onImageEdit: updateNoteImage }
+      : undefined;
+
     return (
       <div className="space-y-1">
         {lines.map((line, lineIndex) => {
@@ -1776,42 +1807,42 @@ export default function Notes() {
             const [, indent, , text] = bulletMatch;
             const indentLevel = Math.floor(indent.length / 2);
             return (
-              <div 
-                key={lineIndex} 
+              <div
+                key={lineIndex}
                 className="flex items-start gap-2"
                 style={{ paddingLeft: `${indentLevel * 16}px` }}
               >
                 <span className="text-amber-500 mt-0.5">•</span>
-                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`, imageCtx)}</span>
               </div>
             );
           }
-          
+
           // Check for numbered list items: 1. 2. etc.
           const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
           if (numberedMatch) {
             const [, indent, num, text] = numberedMatch;
             const indentLevel = Math.floor(indent.length / 2);
             return (
-              <div 
-                key={lineIndex} 
+              <div
+                key={lineIndex}
                 className="flex items-start gap-2"
                 style={{ paddingLeft: `${indentLevel * 16}px` }}
               >
                 <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
-                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`, imageCtx)}</span>
               </div>
             );
           }
-          
+
           // Regular line - handle inline references
           if (line.trim() === '') {
             return <div key={lineIndex} className="h-4" />;
           }
-          
+
           return (
             <div key={lineIndex}>
-              {formatInlineReferences(line, `line-${lineIndex}`)}
+              {formatInlineReferences(line, `line-${lineIndex}`, imageCtx)}
             </div>
           );
         })}
@@ -2353,7 +2384,7 @@ export default function Notes() {
             {currentNote?.title}
           </h1>
           <div className={`flex-1 text-stone-300 leading-relaxed ${getFontClass(noteFont)}`} data-testid="text-note-read-content">
-            {formatEntityReferences(currentNote?.content || "")}
+            {formatEntityReferences(currentNote?.content || "", true)}
           </div>
         </div>
       )}

@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Type, FileText, Sparkles, Package, Shield, Zap, Users, Link2, Trash2, Plus, RotateCcw, Search, GripHorizontal, X, ArrowLeft, Settings2, Image, Video, Link, Play, ExternalLink, Upload } from "lucide-react";
+import { Type, FileText, Sparkles, Package, Shield, Zap, Users, Link2, Trash2, Plus, RotateCcw, Search, GripHorizontal, X, ArrowLeft, Settings2, Image, Video, Link, Play, ExternalLink, Upload, Loader2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -200,6 +200,8 @@ export function CanvasEditor({
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [imageTab, setImageTab] = useState<"url" | "upload">("url");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
@@ -1300,12 +1302,23 @@ export function CanvasEditor({
       return;
     }
 
+    setIsUploadingImage(true);
+    setImageUploadError(null);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
-      if (dataUrl) {
+      if (!dataUrl) {
+        setIsUploadingImage(false);
+        return;
+      }
+      try {
+        // Persisted to a real asset, not inlined as base64 - a multi-MB data
+        // URL sitting in canvasData, re-serialized on every autosave, is
+        // what made uploads look like they "didn't work" (the page just
+        // bogged down).
+        const { url } = await api.uploadBase64Image(dataUrl);
         addNode("image", {
-          mediaUrl: dataUrl,
+          mediaUrl: url,
           title: file.name.replace(/\.[^/.]+$/, ""),
           width: 200,
           height: 150,
@@ -1313,10 +1326,18 @@ export function CanvasEditor({
         setImageDialogOpen(false);
         setImageUrl("");
         setImageTab("url");
+      } catch (err) {
+        setImageUploadError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setIsUploadingImage(false);
       }
     };
+    reader.onerror = () => {
+      setIsUploadingImage(false);
+      setImageUploadError("Couldn't read that file");
+    };
     reader.readAsDataURL(file);
-    
+
     if (e.target) {
       e.target.value = "";
     }
@@ -2672,14 +2693,26 @@ export function CanvasEditor({
                 </div>
               </TabsContent>
               <TabsContent value="upload" className="space-y-4 mt-4">
-                <div 
-                  className="border-2 border-dashed border-stone-600 rounded-lg p-6 text-center cursor-pointer hover:border-amber-500 transition-colors"
-                  onClick={() => imageFileInputRef.current?.click()}
+                <div
+                  className={`border-2 border-dashed border-stone-600 rounded-lg p-6 text-center transition-colors ${isUploadingImage ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-amber-500"}`}
+                  onClick={() => !isUploadingImage && imageFileInputRef.current?.click()}
                 >
-                  <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
-                  <p className="text-stone-400 text-sm">Click to upload an image</p>
-                  <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+                  {isUploadingImage ? (
+                    <>
+                      <Loader2 className="h-8 w-8 mx-auto text-amber-500 mb-2 animate-spin" />
+                      <p className="text-stone-400 text-sm">Uploading…</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
+                      <p className="text-stone-400 text-sm">Click to upload an image</p>
+                      <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+                    </>
+                  )}
                 </div>
+                {imageUploadError && (
+                  <p className="text-red-400 text-xs" data-testid="text-canvas-image-upload-error">{imageUploadError}</p>
+                )}
                 <input
                   ref={imageFileInputRef}
                   type="file"
