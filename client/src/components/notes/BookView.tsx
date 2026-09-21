@@ -34,6 +34,7 @@ export function BookView({
   onToggleLiveSync,
   availableNotes,
   renderContent,
+  onRenameTitle,
 }: {
   noteId: string;
   campaignId: string;
@@ -45,6 +46,8 @@ export function BookView({
   availableNotes: BookViewNoteOption[];
   /** Lets the host draw @entity references the same way it does elsewhere. */
   renderContent?: (text: string) => React.ReactNode;
+  /** Double-clicking the book's own title (not a chapter's) calls this. */
+  onRenameTitle?: (title: string) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -54,6 +57,13 @@ export function BookView({
   const [draft, setDraft] = useState("");
   const [titleDraftId, setTitleDraftId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const [bookTitleEditing, setBookTitleEditing] = useState(false);
+  const [bookTitleDraft, setBookTitleDraft] = useState(title);
+  const commitBookTitle = () => {
+    setBookTitleEditing(false);
+    const trimmed = bookTitleDraft.trim();
+    if (trimmed && trimmed !== title) onRenameTitle?.(trimmed);
+  };
   const [dropActive, setDropActive] = useState(false);
   const dragChapterId = useRef<string | null>(null);
 
@@ -183,7 +193,29 @@ export function BookView({
     >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-700 shrink-0">
         <BookOpen className="h-4 w-4 shrink-0" style={{ color: "var(--ca-gilt)" }} />
-        <span className="text-sm font-display font-bold text-stone-100 truncate flex-1">{title}</span>
+        {bookTitleEditing ? (
+          <input
+            autoFocus
+            value={bookTitleDraft}
+            onChange={(e) => setBookTitleDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={commitBookTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitBookTitle(); }
+              else if (e.key === "Escape") { e.preventDefault(); setBookTitleEditing(false); }
+            }}
+            className="text-sm font-display font-bold bg-stone-800 border border-amber-600 rounded px-1 text-stone-100 outline-none flex-1 min-w-0"
+            data-testid="input-book-title"
+          />
+        ) : (
+          <span
+            className="text-sm font-display font-bold text-stone-100 truncate flex-1"
+            onDoubleClick={() => { if (canEdit) { setBookTitleDraft(title); setBookTitleEditing(true); } }}
+          >
+            {title}
+          </span>
+        )}
         {canEdit && (
           <>
             <label className="flex items-center gap-1.5 text-[11px] text-stone-400 shrink-0" title="Chapters read and write their source notes directly. Off, each chapter keeps the copy it was made with.">

@@ -540,7 +540,7 @@ function FolderTreeItem({
         )}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="bg-stone-900 border-stone-700">
+        <ContextMenuContent className="bg-stone-900 border-stone-700" onCloseAutoFocus={(e) => e.preventDefault()}>
           <ContextMenuItem
             onClick={() => onContextMenu(folder)}
             data-testid={`context-menu-rename-${folder.id}`}
@@ -693,7 +693,7 @@ function FolderTreeItem({
                   {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
                 </div>
               </ContextMenuTrigger>
-              <ContextMenuContent className="bg-stone-900 border-stone-700">
+              <ContextMenuContent className="bg-stone-900 border-stone-700" onCloseAutoFocus={(e) => e.preventDefault()}>
                 <ContextMenuItem
                   onClick={() => onRenameNoteStart(note.id)}
                   data-testid={`panel-folder-note-rename-${note.id}`}
@@ -876,6 +876,11 @@ export function CampaignNotesPanel({
   // The editor's outer element, so a click landing anywhere else can drop
   // back to the rendered view.
   const noteEditorRef = useRef<HTMLDivElement>(null);
+  // Double-clicking the read view's title focuses this once edit mode opens,
+  // so the gesture actually lands you in the title rather than just
+  // switching to edit mode the same way clicking the body does.
+  const noteTitleInputRef = useRef<HTMLInputElement>(null);
+  const focusTitleOnRenderRef = useRef(false);
   // Set when entering edit mode by clicking the note body, so the caret lands
   // in the textarea instead of the player having to click a second time.
   const focusEditorOnRenderRef = useRef(false);
@@ -1742,9 +1747,10 @@ export function CampaignNotesPanel({
   // Clicking into the note body starts editing; clicking anywhere outside the
   // editor ends it. Canvas and Sheet notes are always in their own editor
   // and opt out.
-  const beginInlineEdit = () => {
+  const beginInlineEdit = (focusTitle = false) => {
     if (currentNote?.type === "canvas" || currentNote?.type === "sheet") return;
-    focusEditorOnRenderRef.current = true;
+    if (focusTitle) focusTitleOnRenderRef.current = true;
+    else focusEditorOnRenderRef.current = true;
     setNoteMode("edit");
   };
 
@@ -1758,6 +1764,17 @@ export function CampaignNotesPanel({
     // add to is the common case.
     const end = el.value.length;
     el.setSelectionRange(end, end);
+  }, [noteMode, selectedNoteId]);
+
+  // Double-clicking the read view's title (see renderNoteReadView) lands here
+  // instead of the body's textarea - same edit mode, different starting focus.
+  useEffect(() => {
+    if (noteMode !== "edit" || !focusTitleOnRenderRef.current) return;
+    focusTitleOnRenderRef.current = false;
+    const el = noteTitleInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
   }, [noteMode, selectedNoteId]);
 
   useEffect(() => {
@@ -3013,7 +3030,7 @@ export function CampaignNotesPanel({
                       )}
                     </div>
                   </ContextMenuTrigger>
-                  <ContextMenuContent className="bg-stone-900 border-stone-700">
+                  <ContextMenuContent className="bg-stone-900 border-stone-700" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <ContextMenuItem
                       onClick={() => setRenamingNoteId(note.id)}
                       data-testid={`panel-sidebar-unfiled-note-rename-${note.id}`}
@@ -3050,7 +3067,7 @@ export function CampaignNotesPanel({
         <div className="min-h-[100px]" data-testid="panel-sidebar-blank-context-target" />
       </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="bg-stone-900 border-stone-700">
+      <ContextMenuContent className="bg-stone-900 border-stone-700" onCloseAutoFocus={(e) => e.preventDefault()}>
         {rootCreateActions.map((a, i) => (
           "separator" in a ? (
             <ContextMenuSeparator key={`sep-${i}`} className="bg-stone-700" />
@@ -3139,6 +3156,7 @@ export function CampaignNotesPanel({
           <div className="p-1 space-y-0.5">
             {sortedNotes.map((note) => {
               const isOwner = note.userId === user?.id;
+              const canManage = isOwner || isGm;
               const isRenamingNote = renamingNoteId === note.id;
               return (
               <ContextMenu key={note.id}>
@@ -3163,12 +3181,12 @@ export function CampaignNotesPanel({
                         ) : (
                           <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
                         )}
-                        {isOwner && isRenamingNote ? (
+                        {canManage && isRenamingNote ? (
                           <NoteRenameInput note={note} onCommit={renameNoteCommit} onCancel={() => setRenamingNoteId(null)} />
                         ) : (
                           <span
                             className="text-xs font-medium text-stone-200 truncate"
-                            onDoubleClick={(e) => { if (isOwner) { e.stopPropagation(); setRenamingNoteId(note.id); } }}
+                            onDoubleClick={(e) => { if (canManage) { e.stopPropagation(); setRenamingNoteId(note.id); } }}
                           >
                             {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
                             {note.title}
@@ -3180,7 +3198,7 @@ export function CampaignNotesPanel({
                           </Badge>
                         )}
                       </div>
-                      {isMobile && isOwner && (
+                      {isMobile && canManage && (
                         <div className="flex items-center gap-0.5">
                           <button
                             onClick={(e) => { e.stopPropagation(); openShareDialog(note.id); }}
@@ -3204,8 +3222,8 @@ export function CampaignNotesPanel({
                     </p>
                   </div>
                 </ContextMenuTrigger>
-                <ContextMenuContent className="bg-stone-900 border-stone-700">
-                  {isOwner && (
+                <ContextMenuContent className="bg-stone-900 border-stone-700" onCloseAutoFocus={(e) => e.preventDefault()}>
+                  {canManage && (
                     <>
                       <ContextMenuItem onClick={() => setRenamingNoteId(note.id)}>
                         <Edit className="h-3 w-3 mr-2" />
@@ -3233,7 +3251,7 @@ export function CampaignNotesPanel({
                       </ContextMenuItem>
                     </>
                   )}
-                  {!isOwner && (
+                  {!canManage && (
                     <ContextMenuItem disabled className="text-stone-500 text-xs">
                       <Eye className="h-3 w-3 mr-2" />
                       Shared with you
@@ -3355,14 +3373,22 @@ export function CampaignNotesPanel({
           <div
             role="textbox"
             tabIndex={0}
-            onClick={beginInlineEdit}
-            onFocus={beginInlineEdit}
+            onClick={() => beginInlineEdit()}
+            onFocus={() => beginInlineEdit()}
             className="rounded-lg shadow-[0_0_24px_rgba(0,0,0,0.35)] p-4 min-h-full cursor-text outline-none bg-stone-900/40"
             style={{ border: '1px solid var(--ca-gilt-line-soft)' }}
             data-testid="panel-note-read-surface"
           >
             <div className="flex items-start justify-between gap-2">
-              <h1 className="text-2xl font-bold text-stone-100 mb-1 font-display min-w-0 truncate" data-testid="panel-text-note-read-title">
+              <h1
+                className="text-2xl font-bold text-stone-100 mb-1 font-display min-w-0 truncate"
+                data-testid="panel-text-note-read-title"
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  beginInlineEdit(true);
+                }}
+              >
                 {noteTitle || currentNote?.title}
               </h1>
               <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -3435,11 +3461,12 @@ export function CampaignNotesPanel({
     <BookView
       noteId={selectedNoteId!}
       campaignId={campaignId}
-      title={currentNote?.title || "Untitled Book"}
+      title={noteTitle || currentNote?.title || "Untitled Book"}
       liveSyncStored={!!(currentNote as any)?.bookLiveSync}
       onToggleLiveSync={(next) => updateNoteMutation.mutate({ id: selectedNoteId!, data: { bookLiveSync: next } as any })}
       availableNotes={allNotesForTree.map((n) => ({ id: n.id, title: n.title, type: (n as any).type }))}
       renderContent={(text) => formatEntityReferences(text)}
+      onRenameTitle={(title) => { setNoteTitle(title); renameNoteCommit(selectedNoteId!, title); }}
     />
   );
 
@@ -3622,6 +3649,7 @@ export function CampaignNotesPanel({
         ) : (
           <div className="flex-1 flex flex-col p-2 overflow-hidden min-h-0 min-w-0">
             <Input
+              ref={noteTitleInputRef}
               value={noteTitle}
               onChange={(e) => setNoteTitle(e.target.value)}
               placeholder="Note title"

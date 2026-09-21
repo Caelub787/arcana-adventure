@@ -18306,7 +18306,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Folder not found" });
       }
       if (folder.userId !== req.session.userId) {
-        return res.status(403).json({ error: "Not authorized to update this folder" });
+        const role = await getKnowledgeRole(req.session.userId!, folder.campaignId);
+        if (!role.isGm) {
+          return res.status(403).json({ error: "Not authorized to update this folder" });
+        }
       }
       const updated = await storage.updateNoteFolder(req.params.id, req.body);
       if (updated?.campaignId) {
@@ -18338,7 +18341,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Folder not found" });
       }
       if (folder.userId !== req.session.userId) {
-        return res.status(403).json({ error: "Not authorized to delete this folder" });
+        const role = await getKnowledgeRole(req.session.userId!, folder.campaignId);
+        if (!role.isGm) {
+          return res.status(403).json({ error: "Not authorized to delete this folder" });
+        }
       }
       await storage.deleteNoteFolder(req.params.id);
       if (folder.campaignId) {
@@ -18360,14 +18366,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "folderOrders array is required" });
       }
       
-      // Verify all folders belong to the user
+      // Verify all folders belong to the user, or the user is the campaign's GM
       for (const item of folderOrders) {
         const folder = await storage.getNoteFolder(item.id);
         if (!folder) {
           return res.status(404).json({ error: `Folder ${item.id} not found` });
         }
         if (folder.userId !== req.session.userId) {
-          return res.status(403).json({ error: "Not authorized to reorder these folders" });
+          const role = await getKnowledgeRole(req.session.userId!, folder.campaignId);
+          if (!role.isGm) {
+            return res.status(403).json({ error: "Not authorized to reorder these folders" });
+          }
         }
       }
       
@@ -19312,7 +19321,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(cleared ? { ...cleared, content: redactGmSecrets(cleared.content, role.isGm) } : cleared);
       }
       if (note.userId !== req.session.userId) {
-        return res.status(403).json({ error: "Only the owner can delete this note" });
+        const role = await getKnowledgeRole(req.session.userId!, note.campaignId);
+        if (!role.isGm) {
+          return res.status(403).json({ error: "Only the owner can delete this note" });
+        }
       }
 
       // Store campaignId and shares before deletion for broadcast
