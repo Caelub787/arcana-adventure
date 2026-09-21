@@ -741,7 +741,7 @@ export default function Notes() {
     if (currentNote) {
       // Only reset mode when loading a NEW note, not when the same note updates
       const isNewNote = lastLoadedNoteIdRef.current !== currentNote.id;
-      
+
       if (isNewNote) {
         const prevNoteId = lastLoadedNoteIdRef.current;
         if (prevNoteId && noteTitle) {
@@ -750,8 +750,16 @@ export default function Notes() {
             data: { title: noteTitle, content: noteContent },
           });
         }
-        setNoteTitle(currentNote.title);
-        setNoteContent(currentNote.content || "");
+        // Guard against the same race the "same note" branch below guards
+        // against: if the cache-seed above didn't cover this load (e.g. an
+        // existing note opened straight from a stale link) and the user is
+        // already typing by the time this fires, don't stomp their keystrokes.
+        const el = textareaRef.current;
+        const isTyping = !!el && document.activeElement === el;
+        if (!isTyping) {
+          setNoteTitle(currentNote.title);
+          setNoteContent(currentNote.content || "");
+        }
         lastLoadedNoteIdRef.current = currentNote.id;
         contentHistoryRef.current = [currentNote.content || ""];
         contentHistoryIndexRef.current = 0;
@@ -1135,6 +1143,13 @@ export default function Notes() {
   const createNoteMutation = useMutation({
     mutationFn: (data: Partial<Note>) => api.createNote(data),
     onSuccess: (newNote) => {
+      // Seed the cache before navigating: without this, the query for
+      // /notes/:id starts empty and has to round-trip to the server before
+      // `currentNote` is defined, and if the user starts typing into that
+      // gap the load-effect's blank defaults land on top of it once the
+      // fetch resolves - "the first few letters I type get removed."
+      // Seeding makes `currentNote` available on the very first render.
+      queryClient.setQueryData(["/api/notes", newNote.id], newNote);
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
@@ -1170,7 +1185,12 @@ export default function Notes() {
   // debounced textarea autosave the same way table/tag edits do elsewhere.
   const updateNoteImage = (index: number, newMarkdown: string) => {
     if (!noteId) return;
-    const newContent = replaceNthImageMarkdown(currentNote?.content || "", index, newMarkdown);
+    // Base the patch on `noteContent`, not `currentNote.content` - the query
+    // cache can lag behind the live-typed/synced value, and patching from a
+    // stale base would silently revert whatever's changed since it was
+    // last populated.
+    const newContent = replaceNthImageMarkdown(noteContent || "", index, newMarkdown);
+    setNoteContent(newContent);
     updateNoteMutation.mutate({ id: noteId, data: { content: newContent } });
   };
 
@@ -2381,10 +2401,10 @@ export default function Notes() {
       ) : (
         <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
           <h1 className="text-3xl font-display font-bold text-stone-100 mb-6" data-testid="text-note-read-title">
-            {currentNote?.title}
+            {noteTitle || currentNote?.title}
           </h1>
           <div className={`flex-1 text-stone-300 leading-relaxed ${getFontClass(noteFont)}`} data-testid="text-note-read-content">
-            {formatEntityReferences(currentNote?.content || "", true)}
+            {formatEntityReferences(noteContent || currentNote?.content || "", true)}
           </div>
         </div>
       )}

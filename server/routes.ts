@@ -3559,14 +3559,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // private folder nested under Players. Kept idempotent-ish by only being
   // called from campaign creation / member join, which each only fire once
   // per campaign/member.
-  const CAMPAIGN_KNOWLEDGE_DEFAULTS: Array<{ kind: string; name: string; visibility: string; sortOrder: number }> = [
-    // Shared with everyone in the campaign.
-    { kind: "wiki", name: "Wiki", visibility: "party", sortOrder: 0 },
-    { kind: "party", name: "Party", visibility: "party", sortOrder: 1 },
+  // Everything outside Wiki/Party/Players is a GM note by default already -
+  // the 'gm' visibility every folder/note starts with (see schema comments)
+  // covers that with no folder of its own needed, so there is no "GM Notes"
+  // default folder here. GMs can still share anything further from wherever
+  // they keep it, same as always.
+  const CAMPAIGN_KNOWLEDGE_DEFAULTS: Array<{ kind: string; name: string; visibility: string; visibilityPermission: string; sortOrder: number }> = [
+    // Shared with everyone in the campaign. Wiki is look-don't-touch; Party
+    // is a shared scratchpad every member can write to.
+    { kind: "wiki", name: "Wiki", visibility: "party", visibilityPermission: "view", sortOrder: 0 },
+    { kind: "party", name: "Party", visibility: "party", visibilityPermission: "edit", sortOrder: 1 },
     // The container the per-player folders hang under. GM-visible; each
     // player sees only their own folder inside it.
-    { kind: "players", name: "Players", visibility: "gm", sortOrder: 2 },
-    { kind: "gm-notes", name: "GM Notes", visibility: "gm", sortOrder: 3 },
+    { kind: "players", name: "Players", visibility: "gm", visibilityPermission: "edit", sortOrder: 2 },
   ];
 
   async function provisionCampaignKnowledgeDefaults(campaignId: string, gmUserId: string) {
@@ -3576,7 +3581,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (haveKind.has(def.kind)) continue;
       await storage.createNoteFolder({
         userId: gmUserId, campaignId, parentId: null, name: def.name,
-        kind: def.kind, visibility: def.visibility, sortOrder: def.sortOrder,
+        kind: def.kind, visibility: def.visibility, visibilityPermission: def.visibilityPermission, sortOrder: def.sortOrder,
       } as any);
     }
   }
@@ -3610,6 +3615,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // A note landing in Wiki, Party, or a specific player's folder - whether
+  // dragged there or created there directly - is shared the same way the
+  // folder itself is: Wiki view-only for the whole party, Party edit-for-
+  // everyone, a player folder view-only for just that one player. Returns
+  // {} for any other folder (including no folder at all), leaving whatever
+  // sharing the note already has untouched.
+  async function folderAutoShareFields(folderId: string): Promise<Record<string, unknown>> {
+    const folder = await storage.getNoteFolder(folderId);
+    if (!folder) return {};
+    if (folder.kind === 'wiki') {
+      return { visibility: 'party', visiblePlayerIds: null, visibilityPermission: 'view' };
+    }
+    if (folder.kind === 'party') {
+      return { visibility: 'party', visiblePlayerIds: null, visibilityPermission: 'edit' };
+    }
+    if (folder.kind === 'player') {
+      return { visibility: 'players', visiblePlayerIds: folder.visiblePlayerIds ?? [], visibilityPermission: 'view' };
+    }
+    return {};
+  }
+
   async function provisionPlayerKnowledgeFolder(campaignId: string, memberUserId: string, username: string) {
     const folders = await storage.getCampaignNoteFolders(campaignId);
     const playersContainer = folders.find((f: any) => f.kind === "players" && !f.parentId);
@@ -3617,9 +3643,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // retried request) shouldn't get a duplicate.
     const alreadyHasFolder = folders.some((f: any) => f.kind === "player" && f.userId === memberUserId);
     if (alreadyHasFolder) return;
-    await storage.createNoteFolder({
+    const folder = await storage.createNoteFolder({
       userId: memberUserId, campaignId, parentId: playersContainer?.id || null, name: username,
-      kind: "player", visibility: "players", visiblePlayerIds: [memberUserId], sortOrder: 0,
+      kind: "player", visibility: "players", visiblePlayerIds: [memberUserId], visibilityPermission: "edit", sortOrder: 0,
+    } as any);
+    // A folder with nothing in it reads as broken, not "yours to use" - give
+    // the player a first note to open, already theirs to edit.
+    await storage.createNote({
+      userId: memberUserId, campaignId, folderId: folder.id, title: "My Notes", content: "",
+      type: "note", visibility: "players", visiblePlayerIds: [memberUserId], visibilityPermission: "edit",
     } as any);
   }
 
@@ -3888,6 +3920,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const joiningUser = await storage.getUser(req.session.userId!);
       if (joiningUser) {
+        // Make sure the Players container (and the rest of the default
+        // folders) exists first - a campaign created before this system
+        // existed, or whose GM has never opened Notes, would otherwise
+        // leave this join with nothing to nest the new player folder under.
+        await ensureCampaignKnowledgeFolders(campaign.id);
         await provisionPlayerKnowledgeFolder(campaign.id, req.session.userId!, joiningUser.username);
       }
 
@@ -18006,10 +18043,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const visibilityGrants = knowledgeVisibilityGrantsAccess(
       note.visibility, note.visiblePlayerIds, userId, role,
     );
+    const visibilityIsEdit = note.visibilityPermission !== 'view'; // default 'edit'
     const canEdit =
       (access.canAccess && (access.permission === 'owner' || access.permission === 'edit'))
       || role.isGm
-      || (role.isMember && (
+      || (role.isMember && visibilityIsEdit && (
         note.visibility === 'party'
         || (note.visibility === 'players' && note.visiblePlayerIds?.includes(userId))
       ));
@@ -18445,8 +18483,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ error: "Only the GM can create scene notes" });
         }
       }
+      const payload = { ...req.body };
+      if (payload.folderId) {
+        Object.assign(payload, await folderAutoShareFields(payload.folderId));
+      }
       const note = await storage.createNote({
-        ...req.body,
+        ...payload,
         userId: req.session.userId!,
       });
       
@@ -18626,7 +18668,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const access = await storage.canAccessNote(userId, req.params.id);
       const role = await getKnowledgeRole(userId, note.campaignId);
-      const canEditByVisibility = role.isGm || (role.isMember && (
+      const visibilityIsEdit = (note as any).visibilityPermission !== 'view';
+      const canEditByVisibility = role.isGm || (role.isMember && visibilityIsEdit && (
         (note as any).visibility === 'party' ||
         ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(userId))
       ));
@@ -19090,9 +19133,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         const access = await storage.canAccessNote(req.session.userId!, req.params.id);
         // GMs can edit anything in their campaign; party-visibility notes are
-        // collaboratively editable by every member (spec 4.2); players-scoped
-        // notes are editable by whichever players they're shared with.
-        const canEditByVisibility = role.isGm || (role.isMember && (
+        // collaboratively editable by every member when visibilityPermission
+        // is 'edit' (Party folder default) but not 'view' (Wiki folder
+        // default); players-scoped notes are editable by whichever players
+        // they're shared with, same 'view'/'edit' gate.
+        const visibilityIsEdit = (note as any).visibilityPermission !== 'view';
+        const canEditByVisibility = role.isGm || (role.isMember && visibilityIsEdit && (
           (note as any).visibility === 'party' ||
           ((note as any).visibility === 'players' && (note as any).visiblePlayerIds?.includes(req.session.userId!))
         ));
@@ -19107,6 +19153,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patch = { ...req.body };
       if (typeof patch.content === 'string') {
         patch.content = mergeGmSecretsOnWrite(note.content || '', patch.content, role.isGm);
+      }
+      // This only fires going IN to Wiki/Party/a player folder; moving a
+      // note back out leaves whatever sharing it already has.
+      if (patch.folderId !== undefined && patch.folderId !== note.folderId && patch.folderId) {
+        Object.assign(patch, await folderAutoShareFields(patch.folderId));
       }
       const updated = await storage.updateNote(req.params.id, patch);
       if (updated?.campaignId) {

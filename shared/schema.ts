@@ -1483,6 +1483,12 @@ export const noteFolders = pgTable("note_folders", {
   // 'players' = only the ids listed in visiblePlayerIds (plus GMs).
   visibility: text("visibility").default("gm").notNull(),
   visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
+  // Whether the visibility grant above is 'view' or 'edit' for whoever it
+  // covers - lets Wiki (view-only) and Party (edit) both use the same
+  // visibility='party' mechanism while landing at different access levels.
+  // Defaults to 'edit' to match every pre-existing 'party'/'players' row's
+  // actual behavior before this column existed.
+  visibilityPermission: text("visibility_permission").default("edit").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1516,6 +1522,8 @@ export const notes = pgTable("notes", {
   // matching the "all notes hidden by default" campaign knowledge rule.
   visibility: text("visibility").default("gm").notNull(),
   visiblePlayerIds: jsonb("visible_player_ids").$type<string[]>(),
+  // See noteFolders.visibilityPermission - same meaning, same default.
+  visibilityPermission: text("visibility_permission").default("edit").notNull(),
   // Free-form wiki-style tags, campaign-scoped (not shared across campaigns).
   tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   // Books only (type = "book"): whether each chapter reads and writes its

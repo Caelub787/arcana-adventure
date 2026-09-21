@@ -85,8 +85,10 @@ interface CampaignNotesPanelProps {
   onViewCharacter?: (character: any) => void;
   initialNoteId?: string | null;
   hideCloseButton?: boolean;
-  // GMs get a visibility control on each note (GM Only / Party / Specific
-  // Players) - players never see it, since they can't change visibility.
+  // GMs get GM-only affordances (connect-to-sheet, import, history, ...) -
+  // players never see them. Note/folder sharing itself is handled by the
+  // Share dialog's per-member panel, plus the automatic Wiki/Party/player-
+  // folder visibility rules applied server-side on move.
   isGm?: boolean;
   // Sidebar mode: the campaign side panel's "Notes" tab is navigation only
   // (folder tree + search), like Obsidian's sidebar - it never shows note
@@ -738,9 +740,6 @@ export function CampaignNotesPanel({
   // which is the point: handing someone a section rather than a note at a
   // time. Exactly one of these is ever set.
   const [shareFolderId, setShareFolderId] = useState<string | null>(null);
-  const [shareSearchUsername, setShareSearchUsername] = useState("");
-  const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
-  const [shareTab, setShareTab] = useState<"friends" | "players">("friends");
 
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -925,8 +924,17 @@ export function CampaignNotesPanel({
             });
           }
         }
-        setNoteTitle(currentNote.title);
-        setNoteContent(currentNote.content || "");
+        // Guard against the same race the "same note" branch below guards
+        // against: if the cache-seed on note creation didn't cover this load
+        // (e.g. an existing note opened before its cache entry exists) and
+        // the user is already typing by the time this fires, don't stomp
+        // their keystrokes with the (still loading/blank) server value.
+        const loadEl = textareaRef.current;
+        const isTypingOnLoad = !!loadEl && document.activeElement === loadEl;
+        if (!isTypingOnLoad) {
+          setNoteTitle(currentNote.title);
+          setNoteContent(currentNote.content || "");
+        }
         gmSecretToastShownRef.current = false;
         liveSyncActiveRef.current = false;
         lastLoadedNoteIdRef.current = currentNote.id;
@@ -1523,6 +1531,12 @@ export function CampaignNotesPanel({
       // happened - which is what "I had to refresh to see my new note" is.
       queryClient.setQueryData<Note[]>(["/api/notes/all", campaignId], (prev) =>
         prev && !prev.some((n) => n.id === newNote.id) ? [newNote, ...prev] : prev);
+      // Also seed the single-note cache before selecting it: without this,
+      // `currentNote` starts undefined and has to round-trip to the server,
+      // and typing into that gap gets wiped once the fetch resolves and the
+      // load-effect resets to the (blank) server value - "the first few
+      // letters I type get removed."
+      queryClient.setQueryData(["/api/notes", newNote.id], newNote);
       queryClient.refetchQueries({ queryKey: ["/api/notes"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
@@ -1603,8 +1617,7 @@ export function CampaignNotesPanel({
       : api.shareNote(noteId, friendId, permission)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      setShareSearchUsername("");
-      toast({ title: shareFolderId ? "Folder shared" : "Note shared" });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", shareFolderId ? `folder:${shareFolderId}` : shareNoteId, "shares"] });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1615,11 +1628,42 @@ export function CampaignNotesPanel({
       (shareFolderId ? api.deleteFolderShare(shareFolderId, shareId) : api.deleteNoteShare(noteId, shareId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      toast({ title: "Share removed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", shareFolderId ? `folder:${shareFolderId}` : shareNoteId, "shares"] });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const updateShareMutation = useMutation({
+    mutationFn: ({ shareId, permission }: { shareId: string; permission: "view" | "edit" }) =>
+      (shareFolderId ? api.updateFolderShare(shareFolderId, shareId, permission) : api.updateNoteShare(shareNoteId ?? "", shareId, permission)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes", shareFolderId ? `folder:${shareFolderId}` : shareNoteId, "shares"] });
+    },
+    onError: (err: any) =>
+      toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // Single entry point for the share panel: given a campaign member and the
+  // access level chosen for them (none/view/edit), reconciles it against
+  // whatever noteShares row (if any) already exists - create, update, or
+  // remove, whichever the change actually calls for. This is what backs both
+  // an individual row's select and the "set everyone" bulk buttons, so the
+  // two can never drift into different logic for the same operation.
+  const setMemberSharePermission = (memberUserId: string, level: "none" | "view" | "edit") => {
+    if (!shareNoteId && !shareFolderId) return;
+    const existing = noteShares.find((s) => s.sharedWithId === memberUserId);
+    if (level === "none") {
+      if (existing) deleteShareMutation.mutate({ noteId: shareNoteId ?? "", shareId: existing.id });
+      return;
+    }
+    if (existing) {
+      if (existing.permission !== level) updateShareMutation.mutate({ shareId: existing.id, permission: level });
+      return;
+    }
+    shareNoteMutation.mutate({ noteId: shareNoteId ?? "", friendId: memberUserId, permission: level });
+  };
 
   // Clicking into the note body starts editing; clicking anywhere outside the
   // editor ends it. Canvas and Sheet notes are always in their own editor
@@ -1822,35 +1866,6 @@ export function CampaignNotesPanel({
     setShareNoteId(null);
     setShareFolderId(folderId);
     setShareDialogOpen(true);
-  };
-
-  const handleAddShare = () => {
-    if ((!shareNoteId && !shareFolderId) || !shareSearchUsername.trim()) return;
-    const friend = friends.find(
-      (f) => f.username.toLowerCase() === shareSearchUsername.toLowerCase()
-    );
-    if (!friend) {
-      toast({
-        title: "Friend not found",
-        description: "Enter a valid friend's username",
-        variant: "destructive",
-      });
-      return;
-    }
-    shareNoteMutation.mutate({
-      noteId: shareNoteId ?? "",
-      friendId: friend.id,
-      permission: sharePermission,
-    });
-  };
-
-  const handleShareWithMember = (member: { id: string; userId: string; username: string }) => {
-    if (!shareNoteId && !shareFolderId) return;
-    shareNoteMutation.mutate({
-      noteId: shareNoteId ?? "",
-      friendId: member.userId,
-      permission: sharePermission,
-    });
   };
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2179,9 +2194,15 @@ export function CampaignNotesPanel({
   // raw-textarea's debounced save.
   const updateNoteContentLines = (mutate: (lines: string[]) => void) => {
     if (!selectedNoteId) return;
-    const lines = (currentNote?.content || "").split("\n");
+    // Base the patch on `noteContent`, not `currentNote.content` - the query
+    // cache lags behind while live-sync is active (see the load effect above),
+    // and patching from a stale base would silently revert whatever's been
+    // typed or received since the cache was last populated.
+    const lines = (noteContent || "").split("\n");
     mutate(lines);
-    updateNoteMutation.mutate({ id: selectedNoteId, data: { content: lines.join("\n") } });
+    const nextContent = lines.join("\n");
+    setNoteContent(nextContent);
+    updateNoteMutation.mutate({ id: selectedNoteId, data: { content: nextContent } });
   };
 
   // Same immediate-save pattern as updateNoteContentLines, for the read
@@ -2192,7 +2213,8 @@ export function CampaignNotesPanel({
   // cell it's nested inside.
   const updateNoteImage = (index: number, newMarkdown: string) => {
     if (!selectedNoteId) return;
-    const newContent = replaceNthImageMarkdown(currentNote?.content || "", index, newMarkdown);
+    const newContent = replaceNthImageMarkdown(noteContent || "", index, newMarkdown);
+    setNoteContent(newContent);
     updateNoteMutation.mutate({ id: selectedNoteId, data: { content: newContent } });
   };
 
@@ -3232,7 +3254,7 @@ export function CampaignNotesPanel({
           >
             <div className="flex items-start justify-between gap-2">
               <h1 className="text-2xl font-bold text-stone-100 mb-1 font-display min-w-0 truncate" data-testid="panel-text-note-read-title">
-                {currentNote?.title}
+                {noteTitle || currentNote?.title}
               </h1>
               <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                 {remotePresence.length > 0 && (
@@ -3292,7 +3314,7 @@ export function CampaignNotesPanel({
             </div>
             <div onClick={(e) => e.stopPropagation()}>{renderTagRow()}</div>
             <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed mt-2 ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
-              {formatEntityReferences(currentNote?.content || "", true)}
+              {formatEntityReferences(noteContent || currentNote?.content || "", true)}
             </div>
           </div>
         </div>
@@ -3391,27 +3413,6 @@ export function CampaignNotesPanel({
                 )}
               </div>
             )}
-            {isGm && currentNote && (
-              <Select
-                value={(currentNote as any).visibility || "gm"}
-                onValueChange={(value) => {
-                  if (!selectedNoteId) return;
-                  updateNoteMutation.mutate({
-                    id: selectedNoteId,
-                    data: { visibility: value, ...(value !== "players" ? { visiblePlayerIds: null } : {}) },
-                  });
-                }}
-              >
-                <SelectTrigger className="h-6 text-xs w-[110px] border-stone-700 bg-stone-800/60" data-testid="select-note-visibility">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-stone-900 border-stone-700 text-xs">
-                  <SelectItem value="gm">GM Only</SelectItem>
-                  <SelectItem value="party">Party</SelectItem>
-                  <SelectItem value="players">Specific Players</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
             {/* On a sheet note "GM Only" can't lock out whoever controls the
                 character - say so here rather than letting a GM believe they
                 hid something. Wrapping the line in # marks makes it a real
@@ -3505,33 +3506,6 @@ export function CampaignNotesPanel({
             </Button>
           </div>
         </div>
-        {isGm && currentNote && (currentNote as any).visibility === "players" && (
-          <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-stone-800 bg-stone-900/50">
-            <span className="text-[10px] text-stone-500 mr-1">Visible to:</span>
-            {campaignMembers.length === 0 && (
-              <span className="text-[10px] text-stone-600">No other players yet</span>
-            )}
-            {campaignMembers.map((m) => {
-              const currentIds: string[] = (currentNote as any).visiblePlayerIds || [];
-              const active = currentIds.includes(m.userId);
-              return (
-                <button
-                  key={m.userId}
-                  type="button"
-                  onClick={() => {
-                    if (!selectedNoteId) return;
-                    const nextIds = active ? currentIds.filter((id) => id !== m.userId) : [...currentIds, m.userId];
-                    updateNoteMutation.mutate({ id: selectedNoteId, data: { visiblePlayerIds: nextIds } });
-                  }}
-                  className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${active ? "bg-amber-900/30 border-amber-600/60 text-amber-300" : "bg-stone-800 border-stone-700 text-stone-400 hover:text-stone-200"}`}
-                  data-testid={`button-note-visible-to-${m.userId}`}
-                >
-                  {m.username}
-                </button>
-              );
-            })}
-          </div>
-        )}
         {noteLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <LoadingLogo className="h-5 w-5 text-stone-500" />
@@ -4242,166 +4216,82 @@ export function CampaignNotesPanel({
               Everything in this folder goes with it, subfolders included.
             </p>
           )}
-          <Tabs value={shareTab} onValueChange={(v) => setShareTab(v as "friends" | "players")}>
-            <TabsList className="w-full bg-stone-900">
-              <TabsTrigger value="friends" className="flex-1 text-xs">Friends</TabsTrigger>
-              <TabsTrigger value="players" className="flex-1 text-xs">Campaign Members</TabsTrigger>
-            </TabsList>
-            <TabsContent value="friends" className="space-y-3 py-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Add Friend</Label>
-                <div className="flex gap-1">
-                  <Input
-                    placeholder="Friend's username"
-                    value={shareSearchUsername}
-                    onChange={(e) => setShareSearchUsername(e.target.value)}
-                    className="h-8 text-xs bg-stone-900 border-stone-700 flex-1"
-                    data-testid="panel-input-share-username"
-                  />
-                  <Select
-                    value={sharePermission}
-                    onValueChange={(v) => setSharePermission(v as "view" | "edit")}
-                  >
-                    <SelectTrigger className="w-20 h-8 text-xs bg-stone-900 border-stone-700">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-stone-900 border-stone-700">
-                      <SelectItem value="view">
-                        <div className="flex items-center gap-1">
-                          <Eye className="h-3 w-3" /> View
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="edit">
-                        <div className="flex items-center gap-1">
-                          <Edit className="h-3 w-3" /> Edit
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    className="h-8 w-8 p-0 bg-amber-700 hover:bg-amber-600"
-                    onClick={handleAddShare}
-                    disabled={shareNoteMutation.isPending}
-                  >
-                    {shareNoteMutation.isPending ? (
-                      <LoadingLogo className="h-3 w-3" />
-                    ) : (
-                      <Plus className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent value="players" className="space-y-3 py-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Share with Campaign Members</Label>
-                <Select
-                  value={sharePermission}
-                  onValueChange={(v) => setSharePermission(v as "view" | "edit")}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-stone-900 border-stone-700 mb-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-900 border-stone-700">
-                    <SelectItem value="view">
-                      <div className="flex items-center gap-1">
-                        <Eye className="h-3 w-3" /> View Only
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="edit">
-                      <div className="flex items-center gap-1">
-                        <Edit className="h-3 w-3" /> Can Edit
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                {(() => {
-                  const sharedUserIds = new Set(noteShares.map(s => s.sharedWithId));
-                  const unsharedMembers = campaignMembers.filter(m => !sharedUserIds.has(m.userId));
-                  if (unsharedMembers.length === 0) {
-                    return <p className="text-xs text-stone-500">
-                      {campaignMembers.length === 0 
-                        ? "No other members in this campaign" 
-                        : "Already shared with all campaign members"}
-                    </p>;
-                  }
-                  return (
+          {(() => {
+            const shareOwnerId = shareFolderId
+              ? folders.find((f) => f.id === shareFolderId)?.userId
+              : allNotesForTree.find((n) => n.id === shareNoteId)?.userId;
+            const canManageShares = !!shareOwnerId && shareOwnerId === user?.id;
+            const permissionFor = (memberUserId: string): "none" | "view" | "edit" =>
+              (noteShares.find((s) => s.sharedWithId === memberUserId)?.permission as "view" | "edit" | undefined) ?? "none";
+            if (!canManageShares) {
+              return (
+                <p className="text-xs text-stone-500 py-2">
+                  Only the {shareFolderId ? "folder's" : "note's"} owner can manage sharing.
+                </p>
+              );
+            }
+            return (
+              <div className="space-y-3 py-2">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Campaign Members</Label>
+                    <span className="text-[10px] text-stone-500">Set everyone:</span>
+                  </div>
+                  <div className="flex justify-end gap-1 -mt-1">
+                    {(["none", "view", "edit"] as const).map((level) => (
+                      <Button
+                        key={level}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[10px] border-stone-700 bg-stone-900 hover:bg-stone-800"
+                        onClick={() => campaignMembers.forEach((m) => setMemberSharePermission(m.userId, level))}
+                        data-testid={`button-share-set-all-${level}`}
+                      >
+                        {level === "none" ? "None" : level === "view" ? "View" : "Edit"}
+                      </Button>
+                    ))}
+                  </div>
+                  {campaignMembers.length === 0 ? (
+                    <p className="text-xs text-stone-500">No other members in this campaign</p>
+                  ) : (
                     <div className="space-y-1">
-                      {unsharedMembers.map((member) => (
+                      {campaignMembers.map((member) => (
                         <div
-                          key={member.id}
+                          key={member.userId}
                           className="flex items-center justify-between py-1.5 px-2 bg-stone-900/50 rounded text-xs"
+                          data-testid={`row-share-member-${member.userId}`}
                         >
                           <span className="text-stone-300">{member.username}</span>
-                          <Button
-                            size="sm"
-                            className="h-6 text-xs bg-amber-700 hover:bg-amber-600"
-                            onClick={() => handleShareWithMember(member)}
-                            disabled={shareNoteMutation.isPending}
+                          <Select
+                            value={permissionFor(member.userId)}
+                            onValueChange={(v) => setMemberSharePermission(member.userId, v as "none" | "view" | "edit")}
                           >
-                            <Share2 className="h-3 w-3 mr-1" /> Share
-                          </Button>
+                            <SelectTrigger className="w-24 h-7 text-xs bg-stone-900 border-stone-700" data-testid={`select-share-permission-${member.userId}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-stone-900 border-stone-700">
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="view">
+                                <div className="flex items-center gap-1">
+                                  <Eye className="h-3 w-3" /> View
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="edit">
+                                <div className="flex items-center gap-1">
+                                  <Edit className="h-3 w-3" /> Edit
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       ))}
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
               </div>
-            </TabsContent>
-          </Tabs>
-          <Separator className="bg-stone-800" />
-          <div className="space-y-1">
-            <Label className="text-xs">Current Shares</Label>
-            {noteShares.length === 0 ? (
-              <p className="text-xs text-stone-500">Not shared with anyone</p>
-            ) : (
-              <div className="space-y-1">
-                {noteShares.map((share) => {
-                  const friendProfile = friends.find((f) => f.id === share.sharedWithId);
-                  const memberProfile = campaignMembers.find((m) => m.userId === share.sharedWithId);
-                  return (
-                    <div
-                      key={share.id}
-                      className="flex items-center justify-between py-1.5 px-2 bg-stone-900/50 rounded text-xs"
-                    >
-                      <span className="text-stone-300">
-                        {friendProfile?.username || memberProfile?.username || share.sharedWithId}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <Badge
-                          className={`text-xs px-1 py-0 ${
-                            share.permission === "edit" ? "bg-amber-700" : "bg-stone-700"
-                          }`}
-                        >
-                          {share.permission === "edit" ? (
-                            <Edit className="h-2.5 w-2.5 mr-0.5" />
-                          ) : (
-                            <Eye className="h-2.5 w-2.5 mr-0.5" />
-                          )}
-                          {share.permission}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            (shareNoteId || shareFolderId) &&
-                            deleteShareMutation.mutate({
-                              noteId: shareNoteId ?? "",
-                              shareId: share.id,
-                            })
-                          }
-                          className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            );
+          })()}
           <DialogFooter>
             <Button variant="secondary" size="sm" onClick={() => setShareDialogOpen(false)}>
               Done
