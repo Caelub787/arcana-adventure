@@ -209,6 +209,13 @@ export const campaignMembers = pgTable("campaign_members", {
   beaconColor: text("beacon_color"), // RGB hex color for player's beacon clicks (e.g., "#FF5500")
   pinned: boolean("pinned").default(false).notNull(), // Shown in the top-of-screen party tracker bar (GM-controlled)
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  // Guided tutorial. Set the moment the intro prompt is skipped OR the tour
+  // is finished - either way the prompt stops auto-showing for this
+  // campaign. tutorialCompletedSections tracks which named sections (see
+  // client/src/components/tutorial/tutorialSteps.ts) have been fully played
+  // through at least once, purely so Settings can show per-section progress.
+  tutorialDismissedAt: timestamp("tutorial_dismissed_at"),
+  tutorialCompletedSections: text("tutorial_completed_sections").array(),
 });
 
 export const insertCampaignMemberSchema = createInsertSchema(campaignMembers).omit({

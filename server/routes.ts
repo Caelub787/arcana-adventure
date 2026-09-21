@@ -7309,6 +7309,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Guided tutorial state, self-service only - a member can only ever set
+  // their own progress, GM included, since it's purely "have I seen this."
+  app.patch("/api/campaigns/:campaignId/tutorial", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const userId = req.session.userId!;
+      const { dismissed, completedSections } = req.body as { dismissed?: boolean; completedSections?: string[] };
+
+      if (dismissed !== undefined && typeof dismissed !== "boolean") {
+        return res.status(400).json({ error: "dismissed must be a boolean" });
+      }
+      if (completedSections !== undefined && (!Array.isArray(completedSections) || completedSections.some((s) => typeof s !== "string"))) {
+        return res.status(400).json({ error: "completedSections must be an array of strings" });
+      }
+
+      const membership = await storage.getCampaignMembership(userId, campaignId);
+      const campaign = await storage.getCampaign(campaignId);
+      if (!membership && campaign?.gmUserId !== userId) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+
+      const updated = await storage.updateMemberTutorialState(campaignId, userId, { dismissed, completedSections });
+      res.json(updated);
+    } catch (err) {
+      console.error('Error updating tutorial state:', err);
+      res.status(500).json({ error: "Failed to update tutorial state" });
+    }
+  });
+
   // Kick a player (GM/Assistant GM - but cannot kick owner)
   app.post("/api/campaigns/:campaignId/kick/:userId", requireAuth, async (req, res) => {
     try {

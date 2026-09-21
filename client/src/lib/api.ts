@@ -1261,6 +1261,13 @@ class ApiClient {
       body: JSON.stringify({ beaconColor }),
     });
   }
+
+  async updateTutorialState(campaignId: string, patch: { dismissed?: boolean; completedSections?: string[] }): Promise<CampaignMember> {
+    return this.request(`/campaigns/${campaignId}/tutorial`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
   
   // Chat
   async getChatMessages(campaignId: string): Promise<ChatMessage[]> {

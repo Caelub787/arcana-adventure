@@ -44,6 +44,10 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { NotesWorkspace } from "@/components/notes/NotesWorkspace";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
+import { TutorialRunner } from "@/components/tutorial/TutorialOverlay";
+import { TutorialPrompt } from "@/components/tutorial/TutorialPrompt";
+import { buildTutorialSections, type TutorialContext } from "@/components/tutorial/tutorialSteps";
+import type { TutorialSection } from "@/components/tutorial/tutorialTypes";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
 import { getCharacterSheetPosition, setCharacterSheetPosition } from "@/lib/characterSheetPosition";
@@ -7944,6 +7948,86 @@ export default function Campaign() {
   // Current user's membership (for beacon color)
   const myMembership = (members as any[] | undefined)?.find((m: any) => m.userId === user?.id);
 
+  // Guided tutorial. The prompt shows once per (user, campaign) - decided the
+  // first time myMembership loads, then never re-checked this session, so a
+  // later refetch of `members` can't flip it back on. Actually running a
+  // tutorial (full tour or a single-section replay from Settings) is
+  // `tutorialRun`; `null` means nothing is showing.
+  const tutorialPromptDecidedRef = useRef(false);
+  const [tutorialPromptVisible, setTutorialPromptVisible] = useState(false);
+  const [tutorialRun, setTutorialRun] = useState<{ sections: TutorialSection[]; isFullTour: boolean } | null>(null);
+  const tutorialRunCompletedSectionsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (tutorialPromptDecidedRef.current) return;
+    if (!myMembership || isNew || spectatorMode) return;
+    tutorialPromptDecidedRef.current = true;
+    if (!myMembership.tutorialDismissedAt) setTutorialPromptVisible(true);
+  }, [myMembership, isNew, spectatorMode]);
+
+  const tutorialMutation = useMutation({
+    mutationFn: (patch: { dismissed?: boolean; completedSections?: string[] }) =>
+      api.updateTutorialState(effectiveCampaignId!, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/members`] }),
+  });
+
+  // The player's own character if they have one, otherwise whichever
+  // character is available - a GM with no PC of their own still gets a real
+  // character sheet to demo the CA walkthrough on rather than skipping it.
+  const tutorialDemoCharacter = useMemo(() => {
+    const list = (characters as any[] | undefined) || [];
+    return list.find((c: any) => c.userId === user?.id) || list[0] || null;
+  }, [characters, user?.id]);
+
+  const openNotesForTutorial = () => {
+    if (isMobile) setMobileNotesNav({ noteId: null });
+    else setActiveSidePanel('notes');
+  };
+
+  const buildTutorialContext = (): TutorialContext => ({
+    isMobile,
+    isCA,
+    isGm: role === 'gm',
+    hasDemoCharacter: !!tutorialDemoCharacter,
+    openDemoCharacterSheet: (tab?: string) => {
+      if (tutorialDemoCharacter) openCharacterSheet(tutorialDemoCharacter, tab || 'overview');
+    },
+    openNotes: openNotesForTutorial,
+  });
+
+  const startFullTutorial = () => {
+    tutorialRunCompletedSectionsRef.current = new Set(myMembership?.tutorialCompletedSections || []);
+    setTutorialPromptVisible(false);
+    setTutorialRun({ sections: buildTutorialSections(buildTutorialContext()), isFullTour: true });
+  };
+
+  const dismissTutorialPrompt = () => {
+    setTutorialPromptVisible(false);
+    tutorialMutation.mutate({ dismissed: true });
+  };
+
+  // Exposed to Settings (CampaignMenu) so it can offer both "restart the
+  // whole thing" (sectionId omitted) and "replay just this section".
+  const replayTutorial = (sectionId?: string) => {
+    const allSections = buildTutorialSections(buildTutorialContext());
+    const sections = sectionId ? allSections.filter((s) => s.id === sectionId) : allSections;
+    if (!sections.length) return;
+    tutorialRunCompletedSectionsRef.current = new Set(myMembership?.tutorialCompletedSections || []);
+    setTutorialRun({ sections, isFullTour: !sectionId });
+  };
+
+  const handleTutorialSectionComplete = (sectionId: string) => {
+    if (tutorialRunCompletedSectionsRef.current.has(sectionId)) return;
+    tutorialRunCompletedSectionsRef.current.add(sectionId);
+    tutorialMutation.mutate({ completedSections: Array.from(tutorialRunCompletedSectionsRef.current) });
+  };
+
+  const endTutorialRun = () => {
+    const wasFullTour = tutorialRun?.isFullTour;
+    setTutorialRun(null);
+    if (wasFullTour) tutorialMutation.mutate({ dismissed: true });
+  };
+
   // Who's currently shown live in the pinned-player bar, so the corner
   // roll-notification toasts can skip anyone already covered there.
   const pinnedUsernames = useMemo(() => new Set(
@@ -13979,6 +14063,9 @@ export default function Campaign() {
                       }
                     }}
                     inline={true}
+                    onReplayTutorial={replayTutorial}
+                    tutorialCompletedSections={myMembership?.tutorialCompletedSections || []}
+                    tutorialHasCASection={isCA}
                   />
                 </div>
               )}
@@ -15011,6 +15098,18 @@ export default function Campaign() {
           </TopLayerOverlay>
         );
       })()}
+
+      {tutorialPromptVisible && (
+        <TutorialPrompt onStart={startFullTutorial} onSkip={dismissTutorialPrompt} onClose={dismissTutorialPrompt} />
+      )}
+      {tutorialRun && (
+        <TutorialRunner
+          sections={tutorialRun.sections}
+          onFinish={endTutorialRun}
+          onSkip={endTutorialRun}
+          onSectionComplete={handleTutorialSectionComplete}
+        />
+      )}
     </div>
   );
 }

@@ -264,6 +264,9 @@ async function ensureKnowledgeSystemSchema() {
     // assignment, not just the C.A.-specific ones.
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS is_absorbed boolean NOT NULL DEFAULT false`,
     `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS skill_key text`,
+    // Guided tutorial dismissal/progress, per (campaign, user).
+    `ALTER TABLE IF EXISTS campaign_members ADD COLUMN IF NOT EXISTS tutorial_dismissed_at timestamp`,
+    `ALTER TABLE IF EXISTS campaign_members ADD COLUMN IF NOT EXISTS tutorial_completed_sections text[]`,
     // Books: a note that is an ordered list of other notes and characters.
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS book_live_sync boolean NOT NULL DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS book_chapters (

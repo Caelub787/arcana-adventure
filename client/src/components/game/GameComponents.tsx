@@ -40,10 +40,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
+import { TUTORIAL_SECTION_META } from "@/components/tutorial/tutorialSteps";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -11341,6 +11342,12 @@ interface CampaignMenuProps {
   onDefaultPanelChange?: (panel: string) => void;
   inline?: boolean;
   charactersOnly?: boolean;
+  /** Starts (or replays) the guided tutorial - omit sectionId to run the whole thing. */
+  onReplayTutorial?: (sectionId?: string) => void;
+  /** Section ids already completed at least once, for the per-section checklist. */
+  tutorialCompletedSections?: string[];
+  /** Whether this campaign's tutorial includes the CA character-sheet section, so its row can be listed. */
+  tutorialHasCASection?: boolean;
 }
 
 export type PinnedRollFeedEntry = {
@@ -12041,7 +12048,7 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
   );
 }
 
-const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
+const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false, onReplayTutorial, tutorialCompletedSections = [], tutorialHasCASection = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const setChatOpen = onChatOpenChange || (() => {});
@@ -13465,6 +13472,48 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
               </div>
             )}
           </div>}
+          {!charactersOnly && onReplayTutorial && (
+            <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-3" data-testid="section-tutorial-settings">
+              <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
+                <GraduationCap className="h-3 w-3 text-blue-400" /> Guided Tutorial
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full border-stone-600 hover:border-amber-500"
+                onClick={() => onReplayTutorial()}
+                data-testid="button-restart-tutorial"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-2" /> Restart Full Tutorial
+              </Button>
+              <div className="space-y-1.5 pt-1">
+                {TUTORIAL_SECTION_META.filter((s) => !s.caOnly || tutorialHasCASection).map((section) => {
+                  const done = tutorialCompletedSections.includes(section.id);
+                  return (
+                    <div
+                      key={section.id}
+                      className="flex items-center justify-between gap-2 text-sm"
+                      data-testid={`row-tutorial-section-${section.id}`}
+                    >
+                      <span className="flex items-center gap-1.5 text-stone-300">
+                        {done && <Check className="h-3 w-3 text-green-500 shrink-0" />}
+                        {section.label}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2 text-stone-400 hover:text-stone-200"
+                        onClick={() => onReplayTutorial(section.id)}
+                        data-testid={`button-replay-tutorial-section-${section.id}`}
+                      >
+                        Replay
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {charactersOnly ? (
             <>
             <CharacterManagementContent

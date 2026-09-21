@@ -182,6 +182,7 @@ export interface IStorage {
   setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined>;
   setMemberPinned(campaignId: string, memberId: string, pinned: boolean): Promise<CampaignMember | undefined>;
   updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined>;
+  updateMemberTutorialState(campaignId: string, userId: string, patch: { dismissed?: boolean; completedSections?: string[] }): Promise<CampaignMember | undefined>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -1534,6 +1535,33 @@ export class DatabaseStorage implements IStorage {
   async updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined> {
     const [member] = await db.update(campaignMembers)
       .set({ beaconColor })
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .returning();
+    return member;
+  }
+
+  // Guided tutorial. `dismissed: true` on skip or finish (stops the intro
+  // prompt from auto-showing again); `dismissed: false` is "Restart tutorial"
+  // from Settings. `completedSections` is set independently so Settings can
+  // show per-section progress and let a player replay just one section
+  // without that also re-dismissing (or re-enabling) the whole tour.
+  async updateMemberTutorialState(
+    campaignId: string,
+    userId: string,
+    patch: { dismissed?: boolean; completedSections?: string[] },
+  ): Promise<CampaignMember | undefined> {
+    const set: Partial<typeof campaignMembers.$inferInsert> = {};
+    if (patch.dismissed !== undefined) {
+      set.tutorialDismissedAt = patch.dismissed ? new Date() : null;
+    }
+    if (patch.completedSections !== undefined) {
+      set.tutorialCompletedSections = patch.completedSections;
+    }
+    const [member] = await db.update(campaignMembers)
+      .set(set)
       .where(and(
         eq(campaignMembers.campaignId, campaignId),
         eq(campaignMembers.userId, userId)
