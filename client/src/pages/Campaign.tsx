@@ -12959,7 +12959,16 @@ export default function Campaign() {
           zIndex={floatingZIndicesRef.current[`notes-${noteId}`] || (10500 + index)}
           onBringToFront={() => bringToFront(`notes-${noteId}`)}
           defaultPosition={{ x: 120 + (index * 30), y: 40 + (index * 30) }}
-          defaultSize={{ width: sheetPanelWidth(), height: Math.min(window.innerHeight - 70, sheetPanelHeight()) }}
+          // A character sheet's own default height is small (480/491px) too -
+          // what actually makes it look big on screen is `fitContent`
+          // (FloatingPanel prop, see its own usage below) growing the panel to
+          // match its real rendered content, up to window.innerHeight - 24.
+          // Notes can't use fitContent themselves (a note's content length is
+          // unbounded, unlike a sheet's fairly fixed per-tab field set - it'd
+          // balloon for a long note and shrink to nothing for a short one), so
+          // this targets that same ceiling directly instead, since that's
+          // what a real, content-filled sheet almost always locks at anyway.
+          defaultSize={{ width: sheetPanelWidth(), height: window.innerHeight - 24 }}
         />
       ))}
 
