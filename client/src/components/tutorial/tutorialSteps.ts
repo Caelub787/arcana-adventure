@@ -18,6 +18,8 @@ export interface TutorialContext {
   openDemoCharacterSheet: (tab?: string) => void | Promise<void>;
   /** Opens notes the way this device actually opens them - the side panel on desktop, the full-screen mobile nav on mobile. */
   openNotes: () => void;
+  /** Opens (never toggles closed) the given side panel tab - unlike the real button, which minimizes an already-open panel back closed. */
+  openSidePanelTab: (tab: 'chat' | 'characters' | 'initiative' | 'notes' | 'scene' | 'settings') => void;
   /** Force-reveals the Camera Controls hold-menu's hidden Reset/Lock buttons, so a step can highlight one without faking a real pointer hold. */
   openCameraOptions: () => void;
   /** Force-reveals the Token Options hold-menu's hidden Names/Bars buttons. */
@@ -220,7 +222,13 @@ function buildPlayerTrackerSection(ctx: TutorialContext): TutorialSection {
         sectionId: "player-tracker",
         title: "Live Rolls",
         body: "Every roll shows up here the instant it happens, with a brief tumble before it settles - here's what that looks like.",
-        targetTestId: ctx.pinnedSelfChipTestId,
+        // The tray itself (`pinned-roll-<chip testid>`, GameComponents.tsx),
+        // not the card (ctx.pinnedSelfChipTestId) - it renders outside the
+        // card's own rect (below it in the OGPT layout, beside it in
+        // vertical-left), so highlighting the card left the tumbling roll
+        // sitting under the dim scrim, invisible, with the spotlight ring
+        // circling the wrong thing entirely.
+        targetTestId: `pinned-roll-${ctx.pinnedSelfChipTestId}`,
         placement: "right",
         onEnter: () => ctx.showFakeRollNotification(),
         optional: true,
@@ -244,6 +252,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
       body: "Campaign chat, dice rolls, and the adventure log all live here.",
       targetTestId: "button-panel-chat",
       placement: "left",
+      onEnter: () => ctx.openSidePanelTab("chat"),
     },
     {
       id: "panel-characters",
@@ -252,6 +261,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
       body: "See everyone in the campaign and open any character sheet from here.",
       targetTestId: "button-panel-characters",
       placement: "left",
+      onEnter: () => ctx.openSidePanelTab("characters"),
     },
     {
       id: "panel-initiative",
@@ -261,6 +271,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
       targetTestId: "button-panel-initiative",
       placement: "left",
       optional: true,
+      onEnter: () => ctx.openSidePanelTab("initiative"),
     },
     {
       id: "panel-notes",
@@ -269,6 +280,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
       body: "Your campaign's shared notes and wiki - covered in its own section shortly.",
       targetTestId: "button-panel-notes",
       placement: "left",
+      onEnter: () => ctx.openSidePanelTab("notes"),
     },
   ];
   if (ctx.isGm) {
@@ -280,6 +292,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
       targetTestId: "button-panel-scene",
       placement: "left",
       optional: true,
+      onEnter: () => ctx.openSidePanelTab("scene"),
     });
   }
   steps.push({
@@ -289,6 +302,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
     body: "Campaign settings, invite codes, and member management - also where you can restart this tutorial later.",
     targetTestId: "button-panel-settings",
     placement: "left",
+    onEnter: () => ctx.openSidePanelTab("settings"),
   });
   return { id: "side-panel", label: "Side Panel", steps };
 }

@@ -6625,6 +6625,7 @@ function FloatingNotesEditor({
   onBringToFront,
   panelKey,
   isGm = false,
+  defaultPosition,
 }: {
   campaignId: string;
   initialNoteId: string | null;
@@ -6635,6 +6636,7 @@ function FloatingNotesEditor({
   onBringToFront?: () => void;
   panelKey?: string;
   isGm?: boolean;
+  defaultPosition?: { x: number; y: number };
 }) {
   // The panel's own chrome shows the open note's name directly (falling
   // back to a plain "Notes" while nothing's open yet) instead of a fixed
@@ -6650,11 +6652,12 @@ function FloatingNotesEditor({
       zIndex={zIndex}
       onBringToFront={onBringToFront}
       panelKey={panelKey}
-      // Same default a character sheet opens at - notes and sheets are the
-      // two things this panel-switcher row pops out, and a note popping
-      // open at a visibly different size read as an inconsistency.
-      defaultSize={{ width: 652, height: 480 }}
-      minWidth={400}
+      defaultPosition={defaultPosition}
+      // Tall rectangle by default - notes tend to be read/written top-to-bottom,
+      // so a portrait shape fits more of a page without scrolling than the wide
+      // character-sheet-matched size this used to share.
+      defaultSize={{ width: 460, height: 700 }}
+      minWidth={360}
       minHeight={300}
     >
       <div className="h-full overflow-hidden" data-testid="floating-notes-editor">
@@ -7116,9 +7119,17 @@ export default function Campaign() {
   const [v3SpellManagerOpen, setV3SpellManagerOpen] = useState(false);
   const [v3PendingCount, setV3PendingCount] = useState(0);
 
-  // Floating notes panel state
-  const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
-  const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
+  // Floating notes panels - each open note gets its own independent
+  // floating window (like character sheets do via openCharacterSheets)
+  // rather than one shared slot that the next note opened replaces.
+  const [floatingNoteIds, setFloatingNoteIds] = useState<string[]>([]);
+  const openFloatingNote = (noteId: string) => {
+    setFloatingNoteIds(prev => (prev.includes(noteId) ? prev : [...prev, noteId]));
+    bringToFront(`notes-${noteId}`);
+  };
+  const closeFloatingNote = (noteId: string) => {
+    setFloatingNoteIds(prev => prev.filter(id => id !== noteId));
+  };
   // Timelines has no tab bar to live in now that the sidebar is nav-only -
   // opened from its right-click menu item into its own floating panel.
   const [timelinesFloatingOpen, setTimelinesFloatingOpen] = useState(false);
@@ -7231,20 +7242,19 @@ export default function Campaign() {
   };
   const handleOpenItemNotes = async (item: any) => {
     if (!effectiveCampaignId || !item?.id) return;
-    // The sheet's Notes button is a toggle, the way the character one is:
-    // pressing it again puts the notes away. The panel itself has no close
-    // button any more, so this is how they get shut.
-    if (!isMobile && floatingNotesOpen) {
-      setFloatingNotesOpen(false);
-      return;
-    }
     try {
       const noteId = await entityNoteId('item-sheet', item.id, item.name);
       if (isMobile) {
         setMobileNotesFor({ noteId });
+        return;
+      }
+      // The sheet's Notes button is a toggle, the way the character one is:
+      // pressing it again puts THIS item's notes away - it no longer touches
+      // any other floating note window that happens to be open.
+      if (floatingNoteIds.includes(noteId)) {
+        closeFloatingNote(noteId);
       } else {
-        setFloatingNotesInitialNoteId(noteId);
-        setFloatingNotesOpen(true);
+        openFloatingNote(noteId);
       }
     } catch (e: any) {
       console.error('Failed to open item notes:', e);
@@ -8031,10 +8041,21 @@ export default function Campaign() {
     }).catch(() => {});
   };
 
-  const openNotesForTutorial = () => {
-    if (isMobile) setMobileNotesNav({ noteId: null });
-    else setActiveSidePanel('notes');
+  // Opens the given side panel tab for a tutorial step - always OPENS it,
+  // never toggles it closed, unlike the real buttons (which are a
+  // open/minimize toggle that would fight a step trying to demonstrate the
+  // panel). Notes gets the mobile-specific full-screen nav instead, same as
+  // the real Notes button does.
+  const openSidePanelTabForTutorial = (tab: 'chat' | 'characters' | 'initiative' | 'notes' | 'scene' | 'settings') => {
+    if (isMobile && tab === 'notes') {
+      setMobileNotesNav({ noteId: null });
+      return;
+    }
+    setActiveSidePanel(tab);
+    setSidePanelMinimized(false);
   };
+
+  const openNotesForTutorial = () => openSidePanelTabForTutorial('notes');
 
   // Player Tracker demo. Pinning is otherwise a deliberate GM/self choice -
   // the tutorial borrows it for one step, and only if the viewer isn't
@@ -8115,6 +8136,7 @@ export default function Campaign() {
       openCharacterSheet(char, tab || 'overview');
     },
     openNotes: openNotesForTutorial,
+    openSidePanelTab: openSidePanelTabForTutorial,
     openCameraOptions: () => setTutorialForcedHoldMenu('camera'),
     openTokenOptions: () => setTutorialForcedHoldMenu('tokenOptions'),
     closeHoldMenus: () => setTutorialForcedHoldMenu(null),
@@ -11274,10 +11296,6 @@ export default function Campaign() {
                       setMobileNotesNav(prev => prev ? null : { noteId: null });
                       return;
                     }
-                    if (floatingNotesOpen) {
-                      bringToFront('notes');
-                      return;
-                    }
                     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
                     } else {
@@ -11285,7 +11303,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNoteIds.length > 0 || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -12911,17 +12929,15 @@ export default function Campaign() {
         </FloatingPanel>
       )}
 
-      {/* Floating Notes Editor */}
-      {!spectatorMode && floatingNotesOpen && effectiveCampaignId && (
+      {/* Floating Notes Editors - one independent window per open note, not
+          one shared slot the next note opened would replace. */}
+      {!spectatorMode && effectiveCampaignId && floatingNoteIds.map((noteId, index) => (
         <FloatingNotesEditor
+          key={noteId}
           campaignId={effectiveCampaignId}
-          initialNoteId={floatingNotesInitialNoteId}
+          initialNoteId={noteId}
           isGm={role === 'gm'}
-          onClose={() => {
-            setFloatingNotesOpen(false);
-            setActiveSidePanel('notes');
-            setSidePanelMinimized(false);
-          }}
+          onClose={() => closeFloatingNote(noteId)}
           campaignMembers={(members as any[] || [])
             .filter((m: any) => m.userId !== user?.id)
             .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
@@ -12931,11 +12947,12 @@ export default function Campaign() {
               openCharacterSheet(character);
             }
           }}
-          panelKey="notes"
-          zIndex={floatingZIndicesRef.current['notes'] || 10500}
-          onBringToFront={() => bringToFront('notes')}
+          panelKey={`notes-${noteId}`}
+          zIndex={floatingZIndicesRef.current[`notes-${noteId}`] || (10500 + index)}
+          onBringToFront={() => bringToFront(`notes-${noteId}`)}
+          defaultPosition={{ x: 120 + (index * 30), y: 40 + (index * 30) }}
         />
-      )}
+      ))}
 
       {/* Floating Timelines - the sidebar's right-click menu opens this
           directly since navOnly has no tab bar to host it inline anymore. */}
@@ -13000,9 +13017,7 @@ export default function Campaign() {
           campaignSystem={(campaign as any)?.system}
           onSelectNote={(noteId, _title, _type) => {
             if (isAAV2) {
-              setFloatingNotesInitialNoteId(noteId);
-              setFloatingNotesOpen(true);
-              bringToFront('notes');
+              openFloatingNote(noteId);
             } else {
               // Reset first to force prop change even if same noteId is reselected
               sidePanelNoteOpenCounterRef.current += 1;
@@ -14204,9 +14219,7 @@ export default function Campaign() {
                     hideCloseButton={true}
                     navOnly={true}
                     onOpenFloatingNote={(noteId) => {
-                      setFloatingNotesInitialNoteId(noteId);
-                      setFloatingNotesOpen(true);
-                      bringToFront('notes');
+                      openFloatingNote(noteId);
                     }}
                     onOpenEntityNote={handleOpenEntityNoteFromSidebar}
                     onOpenTimelines={() => {
