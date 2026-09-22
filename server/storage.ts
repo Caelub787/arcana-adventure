@@ -1342,6 +1342,13 @@ export class DatabaseStorage implements IStorage {
       beaconColor: row.campaign_members.beaconColor,
       trustedPlayer: row.campaign_members.trustedPlayer,
       pinned: row.campaign_members.pinned,
+      // Without these, a member's tutorial dismissal/progress persists fine
+      // server-side but the client never sees it - myMembership.tutorialDismissedAt
+      // reads undefined forever, so the tutorial prompt (and full tour) re-shows
+      // on every single visit no matter how many times it's dismissed/skipped/finished.
+      tutorialDismissedAt: row.campaign_members.tutorialDismissedAt,
+      tutorialCompletedSections: row.campaign_members.tutorialCompletedSections,
+      tutorialWorkspaceDismissedAt: row.campaign_members.tutorialWorkspaceDismissedAt,
       username: row.users.username,
       avatarUrl: row.users.avatarUrl
     }));
@@ -1586,7 +1593,21 @@ export class DatabaseStorage implements IStorage {
         eq(campaignMembers.userId, userId)
       ))
       .returning();
-    return member;
+    if (member) return member;
+    // The GM who created the campaign often has no campaignMembers row at
+    // all (same gap setAssignedCharacter/toggleFavorite above work around) -
+    // the UPDATE above then silently affects zero rows, so the dismissal or
+    // completed-section never actually persists and the tutorial re-shows
+    // on every subsequent load. Create the row lazily instead of failing.
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) return undefined;
+    const [created] = await db.insert(campaignMembers).values({
+      campaignId,
+      userId,
+      role: campaign.gmUserId === userId ? 'gm' : 'player',
+      ...set,
+    }).returning();
+    return created;
   }
 
   // Character operations

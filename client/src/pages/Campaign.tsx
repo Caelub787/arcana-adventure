@@ -6626,6 +6626,7 @@ function FloatingNotesEditor({
   panelKey,
   isGm = false,
   defaultPosition,
+  defaultSize = { width: 652, height: 480 },
 }: {
   campaignId: string;
   initialNoteId: string | null;
@@ -6637,6 +6638,7 @@ function FloatingNotesEditor({
   panelKey?: string;
   isGm?: boolean;
   defaultPosition?: { x: number; y: number };
+  defaultSize?: { width: number; height: number };
 }) {
   // The panel's own chrome shows the open note's name directly (falling
   // back to a plain "Notes" while nothing's open yet) instead of a fixed
@@ -6653,10 +6655,10 @@ function FloatingNotesEditor({
       onBringToFront={onBringToFront}
       panelKey={panelKey}
       defaultPosition={defaultPosition}
-      // Tall rectangle by default - notes tend to be read/written top-to-bottom,
-      // so a portrait shape fits more of a page without scrolling than the wide
-      // character-sheet-matched size this used to share.
-      defaultSize={{ width: 460, height: 700 }}
+      // Matches the character sheet's own opening size (the caller passes
+      // sheetPanelWidth()/sheetPanelHeight(), which is per-system - CA's
+      // sheet is a different shape than everyone else's).
+      defaultSize={defaultSize}
       minWidth={360}
       minHeight={300}
     >
@@ -7991,6 +7993,12 @@ export default function Campaign() {
     mutationFn: (patch: { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean }) =>
       api.updateTutorialState(effectiveCampaignId!, patch),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/members`] }),
+    // Was silent before - a failed save here (e.g. this member's row didn't
+    // exist yet server-side) meant "dismissed"/"completed" never actually
+    // persisted, with nothing telling the user why the tutorial kept coming
+    // back on every fresh visit.
+    onError: (err: any) =>
+      toast({ title: "Error", description: err?.message || "Failed to save tutorial progress", variant: "destructive" }),
   });
 
   // The player's own character, if they have one. Many players (and most
@@ -12951,6 +12959,7 @@ export default function Campaign() {
           zIndex={floatingZIndicesRef.current[`notes-${noteId}`] || (10500 + index)}
           onBringToFront={() => bringToFront(`notes-${noteId}`)}
           defaultPosition={{ x: 120 + (index * 30), y: 40 + (index * 30) }}
+          defaultSize={{ width: sheetPanelWidth(), height: Math.min(window.innerHeight - 70, sheetPanelHeight()) }}
         />
       ))}
 
