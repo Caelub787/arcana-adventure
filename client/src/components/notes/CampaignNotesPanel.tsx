@@ -659,6 +659,12 @@ function FolderTreeItem({
                   draggable={!isRenamingNote}
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/note-id", note.id);
+                    // So a drop target (a plain note's editor, a canvas) can
+                    // label what it just added without needing its own
+                    // lookup - the note list a drop target has loaded may not
+                    // include this note yet (or at all, e.g. a canvas's own
+                    // note query only runs while its picker is open).
+                    e.dataTransfer.setData("application/note-title", note.title || "Note");
                     e.dataTransfer.effectAllowed = "move";
                     e.stopPropagation();
                   }}
@@ -2322,6 +2328,30 @@ export function CampaignNotesPanel({
     updateNoteMutation.mutate({ id: selectedNoteId, data: { content: newContent } });
   };
 
+  // Drop target for a note dragged out of the sidebar tree (drag source is
+  // that row's onDragStart above) onto whichever plain note is currently
+  // open - "adds" it the same way Book's own drop handling adds a chapter,
+  // by appending an [[note:id|title]] reference (the same markup the
+  // reference picker inserts) to the end of the content.
+  // Book has its own drop handling (adds a chapter) and Canvas has its own
+  // (drops a note node at the cursor) - this is only for a plain note's text.
+  const noteRefDropEligible = !!selectedNoteId && currentNote?.type !== "book" && currentNote?.type !== "canvas" && currentNote?.type !== "sheet";
+  const canDropNoteReference = (e: React.DragEvent) =>
+    noteRefDropEligible && e.dataTransfer.types.includes("application/note-id");
+  const handleNoteReferenceDrop = (e: React.DragEvent) => {
+    if (!noteRefDropEligible || !selectedNoteId) return;
+    const droppedId = e.dataTransfer.getData("application/note-id");
+    if (!droppedId || droppedId === selectedNoteId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const title = e.dataTransfer.getData("application/note-title") || "Note";
+    const referenceText = `[[note:${droppedId}|${title}]]`;
+    const base = noteContent || currentNote?.content || "";
+    const nextContent = base ? `${base}\n\n${referenceText}` : referenceText;
+    setNoteContent(nextContent);
+    updateNoteMutation.mutate({ id: selectedNoteId, data: { content: nextContent } });
+  };
+
   const startEditingTableCell = (
     tableStart: number,
     rowKind: "header" | number,
@@ -3938,7 +3968,11 @@ export function CampaignNotesPanel({
           </div>
         ) : contentOnly ? (
           <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
-            <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
+            <div
+              className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col"
+              onDragOver={(e) => { if (canDropNoteReference(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+              onDrop={handleNoteReferenceDrop}
+            >
               {noteLoading ? (
                 <div className="flex-1 flex items-center justify-center">
                   <LoadingLogo className="h-5 w-5 text-stone-500" />
@@ -3989,7 +4023,11 @@ export function CampaignNotesPanel({
               </>
             )}
             <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
-              <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
+              <div
+                className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col"
+                onDragOver={(e) => { if (canDropNoteReference(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+                onDrop={handleNoteReferenceDrop}
+              >
                 {selectedNoteId ? (
                   currentNote?.type === "book" ? renderBookView() : currentNote?.type === "canvas" || currentNote?.type === "sheet" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
                 ) : showHomeView ? (

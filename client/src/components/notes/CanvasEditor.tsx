@@ -357,6 +357,19 @@ export function CanvasEditor({
     return newNode;
   }, [canvasData, onChange, readOnly]);
 
+  // A note dragged out of the sidebar tree (CampaignNotesPanel's own
+  // onDragStart) and dropped onto the canvas becomes a "note" node at the
+  // drop point, the same shape the note-search picker's Add button creates.
+  const handleSidebarNoteDrop = useCallback((e: React.DragEvent) => {
+    if (readOnly || hideNoteNodes) return;
+    const noteId = e.dataTransfer.getData("application/note-id");
+    if (!noteId) return;
+    e.preventDefault();
+    const noteTitle = e.dataTransfer.getData("application/note-title") || "Note";
+    const world = screenToWorld(e.clientX, e.clientY);
+    addNodeAtPosition("note", world.x, world.y, { noteId, noteTitle });
+  }, [readOnly, hideNoteNodes, screenToWorld, addNodeAtPosition]);
+
   const deleteNode = useCallback((nodeId: string) => {
     if (readOnly) return;
     const newNodes = canvasData.nodes.filter((n) => n.id !== nodeId);
@@ -2056,6 +2069,13 @@ export function CanvasEditor({
               onPointerUp={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerUp}
               onPointerCancel={handleCanvasPointerUp}
+              onDragOver={(e) => {
+                if (!readOnly && !hideNoteNodes && e.dataTransfer.types.includes("application/note-id")) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                }
+              }}
+              onDrop={handleSidebarNoteDrop}
               data-testid="canvas-container"
             >
               <svg
