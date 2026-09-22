@@ -621,15 +621,17 @@ interface HoldMenuOption {
 // back to the plain default button — nothing about the default itself ever
 // changes. Holding never fires the default; only a release before the hold
 // threshold does.
-function HoldMenuButton({ options, testId, holdMs = 250 }: {
+function HoldMenuButton({ options, testId, holdMs = 250, forceOpen = false }: {
   options: HoldMenuOption[];
   testId: string;
   holdMs?: number;
+  forceOpen?: boolean;
 }) {
   const [holdOpen, setHoldOpen] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const defaultOption = options[0];
+  const effectiveOpen = holdOpen || forceOpen;
 
   useEffect(() => {
     if (!holdOpen) return;
@@ -680,14 +682,14 @@ function HoldMenuButton({ options, testId, holdMs = 250 }: {
           w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
           transition-all duration-200 shadow-lg backdrop-blur-sm
           ${defaultOption.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
-          ${defaultOption.disabled ? 'opacity-50 cursor-not-allowed' : (holdOpen ? 'ring-2 ring-white/20' : 'hover:scale-105')}
+          ${defaultOption.disabled ? 'opacity-50 cursor-not-allowed' : (effectiveOpen ? 'ring-2 ring-white/20' : 'hover:scale-105')}
         `}
         aria-label={defaultOption.label}
         data-testid={testId}
       >
         {defaultOption.icon}
       </button>
-      {holdOpen && (
+      {effectiveOpen && (
         <div className="absolute left-full top-0 ml-2 flex flex-col gap-2 z-10">
           {options.slice(1).map((opt) => (
             <TooltipProvider key={opt.key}>
@@ -831,6 +833,9 @@ interface BattleMapProps {
   // below the WHOLE left toolbar (Select/Ruler + this column) doesn't have
   // to guess a worst-case button count.
   onLeftToolbarBottomChange?: (bottom: number) => void;
+  // Lets the guided tutorial force-reveal a HoldMenuButton's hidden
+  // sub-options for highlighting, without faking a real pointer hold.
+  tutorialForceOpenHoldMenu?: 'camera' | 'tokenOptions' | null;
 }
 
 // Roll Item-Cost helpers. A roll can require the player to have specific
@@ -1271,7 +1276,7 @@ function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: Rule
   );
 }
 
-export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange, tutorialForceOpenHoldMenu = null }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
 
@@ -3036,10 +3041,12 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             <HoldMenuButton
               testId="button-camera-controls"
               options={cameraOptions}
+              forceOpen={tutorialForceOpenHoldMenu === 'camera'}
             />
             <HoldMenuButton
               testId="button-token-options"
               options={tokenOptions}
+              forceOpen={tutorialForceOpenHoldMenu === 'tokenOptions'}
             />
             {isGM && (
               <ToolbarIconButton

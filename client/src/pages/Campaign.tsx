@@ -7988,6 +7988,13 @@ export default function Campaign() {
   // happens to only live as long as the tutorial needs it.
   const tutorialTempCharacterRef = useRef<any>(null);
 
+  // Lets the Side Toolbar section force-reveal a HoldMenuButton's hidden
+  // sub-options (Camera Controls' Reset/Lock, Token Options' Names/Bars) so
+  // those steps have something real to highlight, without faking a pointer
+  // hold. Every step in that section resets this explicitly on its own
+  // onEnter - there's no onExit hook, so nothing else clears it between steps.
+  const [tutorialForcedHoldMenu, setTutorialForcedHoldMenu] = useState<'camera' | 'tokenOptions' | null>(null);
+
   const ensureTutorialDemoCharacter = async (): Promise<any> => {
     if (tutorialDemoCharacter) return tutorialDemoCharacter;
     if (tutorialTempCharacterRef.current) return tutorialTempCharacterRef.current;
@@ -8027,6 +8034,9 @@ export default function Campaign() {
       openCharacterSheet(char, tab || 'overview');
     },
     openNotes: openNotesForTutorial,
+    openCameraOptions: () => setTutorialForcedHoldMenu('camera'),
+    openTokenOptions: () => setTutorialForcedHoldMenu('tokenOptions'),
+    closeHoldMenus: () => setTutorialForcedHoldMenu(null),
   });
 
   const startFullTutorial = () => {
@@ -8064,6 +8074,7 @@ export default function Campaign() {
     // Covers Skip/X mid-section too, when onSectionComplete never fired for
     // whatever section was showing at the time.
     cleanupTutorialTempCharacter();
+    setTutorialForcedHoldMenu(null);
     const wasFullTour = tutorialRun?.isFullTour;
     setTutorialRun(null);
     if (wasFullTour) tutorialMutation.mutate({ dismissed: true });
@@ -13367,6 +13378,7 @@ export default function Campaign() {
              campaignSystem={(campaign as any)?.system}
              selectionToolsTop={selectionToolsTop}
              onLeftToolbarBottomChange={setLeftToolbarBottom}
+             tutorialForceOpenHoldMenu={tutorialForcedHoldMenu}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

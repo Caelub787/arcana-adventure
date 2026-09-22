@@ -18,6 +18,12 @@ export interface TutorialContext {
   openDemoCharacterSheet: (tab?: string) => void | Promise<void>;
   /** Opens notes the way this device actually opens them - the side panel on desktop, the full-screen mobile nav on mobile. */
   openNotes: () => void;
+  /** Force-reveals the Camera Controls hold-menu's hidden Reset/Lock buttons, so a step can highlight one without faking a real pointer hold. */
+  openCameraOptions: () => void;
+  /** Force-reveals the Token Options hold-menu's hidden Names/Bars buttons. */
+  openTokenOptions: () => void;
+  /** Closes whichever hold-menu the two methods above forced open. There's no onExit hook on a step, so every Side Toolbar step calls this or one of the two above to leave the toolbar in the right state for the next step. */
+  closeHoldMenus: () => void;
 }
 
 /**
@@ -65,57 +71,125 @@ function buildGettingAroundSection(ctx: TutorialContext): TutorialSection {
   };
 }
 
-function buildSideToolbarSection(): TutorialSection {
-  return {
-    id: "side-toolbar",
-    label: "Side Toolbar",
-    steps: [
+function buildSideToolbarSection(ctx: TutorialContext): TutorialSection {
+  const steps: TutorialSection["steps"] = [
+    {
+      id: "toolbar-select",
+      sectionId: "side-toolbar",
+      title: "Selection Tool",
+      body: "The default pointer - click and drag tokens, select multiple with a box.",
+      targetTestId: "selection-mode-select",
+      placement: "right",
+      onEnter: ctx.closeHoldMenus,
+    },
+    {
+      id: "toolbar-ruler",
+      sectionId: "side-toolbar",
+      title: "Ruler",
+      body: "Measure distance on the map, or check a spell's range and area.",
+      targetTestId: "selection-mode-ruler",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.closeHoldMenus,
+    },
+    {
+      id: "toolbar-camera",
+      sectionId: "side-toolbar",
+      title: "Camera Controls",
+      body: "Click to center the camera on your token. Press and hold for more options.",
+      targetTestId: "button-camera-controls",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.closeHoldMenus,
+    },
+    {
+      id: "toolbar-camera-reset",
+      sectionId: "side-toolbar",
+      title: "Reset Camera",
+      body: "Snaps the camera back to its starting position and zoom.",
+      targetTestId: "button-camera-controls-option-reset",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.openCameraOptions,
+    },
+    {
+      id: "toolbar-camera-lock",
+      sectionId: "side-toolbar",
+      title: "Lock Camera",
+      body: "Locks the camera in place so it can't be accidentally dragged or zoomed - handy for spectating or streaming.",
+      targetTestId: "button-camera-controls-option-lock",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.openCameraOptions,
+    },
+    {
+      id: "toolbar-token-options",
+      sectionId: "side-toolbar",
+      title: "Token Options",
+      body: "Click to change how your token moves. Press and hold for more options.",
+      targetTestId: "button-token-options",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.closeHoldMenus,
+    },
+    {
+      id: "toolbar-token-names",
+      sectionId: "side-toolbar",
+      title: "Hide Token Names",
+      body: "Toggles whether your token's name label shows on the map.",
+      targetTestId: "button-token-options-option-names",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.openTokenOptions,
+    },
+    {
+      id: "toolbar-token-bars",
+      sectionId: "side-toolbar",
+      title: "Hide Resource Bars",
+      body: "Toggles whether your token shows its resource bars on the map.",
+      // Only rendered for systems with a wound/resource bar (C.A. included) -
+      // optional so the tour skips it cleanly everywhere else.
+      targetTestId: "button-token-options-option-bars",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.openTokenOptions,
+    },
+    {
+      id: "toolbar-notes",
+      sectionId: "side-toolbar",
+      title: "Quick Notes",
+      body: "Open notes directly from the map without leaving what you're doing.",
+      targetTestId: "button-notes-battlemap",
+      placement: "right",
+      optional: true,
+      onEnter: ctx.closeHoldMenus,
+    },
+  ];
+  if (ctx.isGm) {
+    steps.push(
       {
-        id: "toolbar-select",
+        id: "toolbar-player-viewports",
         sectionId: "side-toolbar",
-        title: "Selection Tool",
-        body: "The default pointer - click and drag tokens, select multiple with a box.",
-        targetTestId: "selection-mode-select",
-        placement: "right",
-      },
-      {
-        id: "toolbar-ruler",
-        sectionId: "side-toolbar",
-        title: "Ruler",
-        body: "Measure distance on the map, or check a spell's range and area.",
-        targetTestId: "selection-mode-ruler",
+        title: "Player Screens",
+        body: "GM-only: see exactly what each player is currently looking at on the map.",
+        targetTestId: "button-toggle-player-viewports",
         placement: "right",
         optional: true,
+        onEnter: ctx.closeHoldMenus,
       },
       {
-        id: "toolbar-camera",
+        id: "toolbar-clear-placed-items",
         sectionId: "side-toolbar",
-        title: "Camera Controls",
-        body: "Press and hold for options to center on your token, reset, or lock the camera in place.",
-        targetTestId: "button-camera-controls",
+        title: "Clear Placed Items",
+        body: "GM-only: clears every thrown or dropped item from the battlefield at once. Only shows up once something's actually been placed.",
+        targetTestId: "button-clear-placed-items",
         placement: "right",
         optional: true,
+        onEnter: ctx.closeHoldMenus,
       },
-      {
-        id: "toolbar-token-options",
-        sectionId: "side-toolbar",
-        title: "Token Options",
-        body: "Press and hold to change how your token moves, or hide names and resource bars.",
-        targetTestId: "button-token-options",
-        placement: "right",
-        optional: true,
-      },
-      {
-        id: "toolbar-notes",
-        sectionId: "side-toolbar",
-        title: "Quick Notes",
-        body: "Open notes directly from the map without leaving what you're doing.",
-        targetTestId: "button-notes-battlemap",
-        placement: "right",
-        optional: true,
-      },
-    ],
-  };
+    );
+  }
+  return { id: "side-toolbar", label: "Side Toolbar", steps };
 }
 
 // None of these steps drive a panel open: on mobile, every side panel
@@ -343,7 +417,7 @@ function buildMyLibrarySection(): TutorialSection {
 export function buildTutorialSections(ctx: TutorialContext): TutorialSection[] {
   return [
     buildGettingAroundSection(ctx),
-    buildSideToolbarSection(),
+    buildSideToolbarSection(ctx),
     buildSidePanelSection(ctx),
     buildCASheetSection(ctx),
     buildWorkspaceNotesSection(ctx),
