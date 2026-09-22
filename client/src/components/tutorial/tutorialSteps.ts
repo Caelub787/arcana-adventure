@@ -24,6 +24,14 @@ export interface TutorialContext {
   openTokenOptions: () => void;
   /** Closes whichever hold-menu the two methods above forced open. There's no onExit hook on a step, so every Side Toolbar step calls this or one of the two above to leave the toolbar in the right state for the next step. */
   closeHoldMenus: () => void;
+  /** The data-testid of the viewer's own pinned tracker chip, once demoPlayerTracker has pinned it (or it was already pinned). Fixed per-user, so it's safe to use as a step's targetTestId directly. */
+  pinnedSelfChipTestId: string;
+  /** Pins the viewer to the shared player tracker for the demo, if they aren't shown there already - resolves once the pin is reflected locally, so the very next step can rely on the chip actually being on screen. */
+  demoPlayerTracker: () => Promise<void>;
+  /** Injects one fake roll onto the viewer's own tracker chip, purely client-side - triggers the same tumble-and-reveal animation a real roll does. */
+  showFakeRollNotification: () => void;
+  /** Unpins the viewer again if demoPlayerTracker was the one who pinned them, and clears the fake roll. Safe to call unconditionally. */
+  endPlayerTrackerDemo: () => void;
 }
 
 /**
@@ -37,10 +45,11 @@ export interface TutorialContext {
 export const TUTORIAL_SECTION_META: { id: string; label: string; caOnly?: boolean }[] = [
   { id: "getting-around", label: "Getting Around" },
   { id: "side-toolbar", label: "Side Toolbar" },
+  { id: "player-tracker", label: "Player Tracker" },
   { id: "side-panel", label: "Side Panel" },
-  { id: "ca-character-sheet", label: "Character Sheet", caOnly: true },
   { id: "workspace-notes", label: "Workspace & Notes" },
   { id: "my-library", label: "My Library" },
+  { id: "ca-character-sheet", label: "Character Sheet", caOnly: true },
 ];
 
 function buildGettingAroundSection(ctx: TutorialContext): TutorialSection {
@@ -192,6 +201,34 @@ function buildSideToolbarSection(ctx: TutorialContext): TutorialSection {
   return { id: "side-toolbar", label: "Side Toolbar", steps };
 }
 
+function buildPlayerTrackerSection(ctx: TutorialContext): TutorialSection {
+  return {
+    id: "player-tracker",
+    label: "Player Tracker",
+    steps: [
+      {
+        id: "tracker-intro",
+        sectionId: "player-tracker",
+        title: "Player Tracker",
+        body: "Pinned players (and any NPCs your GM pins) show up here, with a live wound/energy readout right on their card. You're pinned here just for this demo - unpinned again once it's done, unless you were already showing.",
+        targetTestId: ctx.pinnedSelfChipTestId,
+        placement: "right",
+        onEnter: () => ctx.demoPlayerTracker(),
+      },
+      {
+        id: "tracker-roll",
+        sectionId: "player-tracker",
+        title: "Live Rolls",
+        body: "Every roll shows up here the instant it happens, with a brief tumble before it settles - here's what that looks like.",
+        targetTestId: ctx.pinnedSelfChipTestId,
+        placement: "right",
+        onEnter: () => ctx.showFakeRollNotification(),
+        optional: true,
+      },
+    ],
+  };
+}
+
 // None of these steps drive a panel open: on mobile, every side panel
 // (including notes) takes over the FULL screen, which would cover the very
 // button this section is pointing at. These steps stay purely descriptive of
@@ -274,20 +311,11 @@ function buildCASheetSection(ctx: TutorialContext): TutorialSection | null {
       onEnter: onOverview,
     },
     {
-      id: "ca-identity",
-      sectionId: "ca-character-sheet",
-      title: "Portrait & Identity",
-      body: "Double-click (or long-press) the portrait to change it. Every chip beside it - name, race, DC, speeds, size, lifespan - edits the same way.",
-      targetTestId: "container-ca-portrait",
-      onEnter: onOverview,
-      optional: true,
-    },
-    {
       id: "ca-bio",
       sectionId: "ca-character-sheet",
       title: "Bio",
-      body: "Age, birthday, languages, and your aura color - pure flavor, editable the same way as everything else.",
-      targetTestId: "text-ca-age",
+      body: "Double-click (or long-press) the portrait to change it - and everything around it edits the same way: name, race, DC, speed, fly speed, swim speed, size, lifespan, age, birthday, languages, and your aura color.",
+      targetTestId: "container-ca-portrait",
       onEnter: onOverview,
       optional: true,
     },
@@ -357,7 +385,7 @@ function buildCASheetSection(ctx: TutorialContext): TutorialSection | null {
       id: "ca-attribute",
       sectionId: "ca-character-sheet",
       title: "Attributes",
-      body: "Each attribute's value sets the die every skill under it rolls - higher attributes roll bigger dice.",
+      body: "All six attributes - Might, Finesse, Constitution, Will, Anemos, and Intelligence - work the same way: its value sets the die every skill under it rolls, so higher attributes roll bigger dice. This is Might; scroll up to see the rest.",
       targetTestId: "card-ca-attr-might",
       onEnter: onSkills,
       optional: true,
@@ -366,7 +394,7 @@ function buildCASheetSection(ctx: TutorialContext): TutorialSection | null {
       id: "ca-skill-row",
       sectionId: "ca-character-sheet",
       title: "Skills",
-      body: "Tap a skill to roll it. Double-click (or press and hold) its value to edit the base number directly.",
+      body: "Every skill under every attribute works the same way: tap to roll it, double-click (or press and hold) its value to edit the base number directly. This is Athletics, under Might - scroll down to see the rest.",
       targetTestId: "row-ca-skill-athletics",
       onEnter: onSkills,
       optional: true,
@@ -445,15 +473,6 @@ function buildCASheetSection(ctx: TutorialContext): TutorialSection | null {
       targetTestId: "tab-traits",
       onEnter: onTraits,
     },
-    ...(ctx.isGm ? [{
-      id: "ca-add-trait",
-      sectionId: "ca-character-sheet",
-      title: "Add a Trait",
-      body: "GM-only: create a new descriptive trait for this character, with its own roll builder if it needs one.",
-      targetTestId: "button-add-ca-trait",
-      onEnter: onTraits,
-      optional: true,
-    }] : []),
   );
   return { id: "ca-character-sheet", label: "Character Sheet", steps };
 }
@@ -510,24 +529,37 @@ function buildMyLibrarySection(): TutorialSection {
         placement: "left",
         optional: true,
       },
-      {
-        id: "wrap-up",
-        sectionId: "my-library",
-        title: "You're all set",
-        body: "That's the tour. You can replay all of this, or just one section of it, anytime from Settings.",
-      },
     ],
   };
 }
 
 /** Builds every section relevant to this campaign/role/device, in tour order, filtering out any that don't apply (e.g. the CA section for a non-CA campaign). */
 export function buildTutorialSections(ctx: TutorialContext): TutorialSection[] {
-  return [
+  const sections = [
     buildGettingAroundSection(ctx),
     buildSideToolbarSection(ctx),
+    buildPlayerTrackerSection(ctx),
     buildSidePanelSection(ctx),
-    buildCASheetSection(ctx),
     buildWorkspaceNotesSection(ctx),
     buildMyLibrarySection(),
+    // Character Sheet runs last - it's the deepest, most-detailed section,
+    // and ending the whole tour by handing the player back to their own
+    // sheet reads better than cutting away to My Library right after it.
+    buildCASheetSection(ctx),
   ].filter((s): s is TutorialSection => s !== null);
+
+  // The closing step belongs on whichever section actually ends up last -
+  // Character Sheet for a CA campaign, My Library otherwise - not hardcoded
+  // onto one of them, now that which section is last depends on isCA.
+  const lastSection = sections[sections.length - 1];
+  if (lastSection) {
+    lastSection.steps.push({
+      id: "wrap-up",
+      sectionId: lastSection.id,
+      title: "You're all set",
+      body: "That's the tour. You can replay all of this, or just one section of it, anytime from Settings.",
+    });
+  }
+
+  return sections;
 }

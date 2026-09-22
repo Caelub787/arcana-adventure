@@ -120,6 +120,11 @@ interface CampaignNotesPanelProps {
   // which already has a draggable header showing the same title) sets this
   // to skip the second copy entirely rather than stack two title rows.
   hideNoteHeader?: boolean;
+  // The mirror image of hideNoteHeader: a caller whose own chrome can show
+  // the title itself (e.g. a FloatingPanel's title bar) reads it from here
+  // instead of rendering this panel's copy - fires on every change, null
+  // when nothing's open (browsing the list, Graph/Timelines, etc).
+  onNoteTitleChange?: (title: string | null) => void;
 }
 
 const FOLDER_COLORS = [
@@ -739,6 +744,7 @@ export function CampaignNotesPanel({
   onOpenTimelines,
   contentOnly = false,
   hideNoteHeader = false,
+  onNoteTitleChange,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -975,6 +981,13 @@ export function CampaignNotesPanel({
     queryFn: () => api.getNote(selectedNoteId!),
     enabled: !!selectedNoteId && !!user,
   });
+
+  // Mirrors exactly what the (possibly hidden) note-header row above would
+  // have shown, so a caller using onNoteTitleChange instead of that row
+  // never shows anything different from it.
+  useEffect(() => {
+    onNoteTitleChange?.(selectedNoteId ? (currentNote?.title || "Note") : null);
+  }, [selectedNoteId, currentNote?.title, onNoteTitleChange]);
 
   const { data: noteShares = [] } = useQuery<NoteShare[]>({
     queryKey: ["/api/notes", shareFolderId ? `folder:${shareFolderId}` : shareNoteId, "shares"],
@@ -2455,7 +2468,10 @@ export function CampaignNotesPanel({
     while (lineIndex < lines.length) {
       const line = lines[lineIndex];
 
-      const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+      // [^|\n]+ (not .+) so a table row - which always has at least one more
+      // "|" after its leading cell divider - never gets misread as a
+      // heading; a real heading's text has no reason to contain a "|".
+      const headingMatch = line.match(/^(\|{1,3})\s+([^|\n]+)$/);
       if (headingMatch) {
         const level = headingMatch[1].length;
         const text = headingMatch[2];
@@ -3490,12 +3506,10 @@ export function CampaignNotesPanel({
     <BookView
       noteId={selectedNoteId!}
       campaignId={campaignId}
-      title={noteTitle || currentNote?.title || "Untitled Book"}
       liveSyncStored={!!(currentNote as any)?.bookLiveSync}
       onToggleLiveSync={(next) => updateNoteMutation.mutate({ id: selectedNoteId!, data: { bookLiveSync: next } as any })}
       availableNotes={allNotesForTree.map((n) => ({ id: n.id, title: n.title, type: (n as any).type }))}
       renderContent={(text, idPrefix) => formatEntityReferences(text, false, idPrefix)}
-      onRenameTitle={(title) => { setNoteTitle(title); renameNoteCommit(selectedNoteId!, title); }}
     />
   );
 

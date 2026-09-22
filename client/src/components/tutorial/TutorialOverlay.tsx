@@ -368,7 +368,17 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
     [sectionByStepIndex, lastIndexOfSection, onSectionComplete],
   );
 
+  // Which way the user was actually navigating, so a step that turns out to
+  // have a missing optional target (common right after Back, into a GM-only
+  // or conditional step that isn't there for this user) skips further in
+  // THAT direction - not always forward. Skipping forward unconditionally
+  // was the Back-button bug: pressing Back off a step, into a
+  // missing-target step, would silently auto-advance right back to the
+  // step the user was trying to leave, making Back look broken.
+  const directionRef = useRef<1 | -1>(1);
+
   const advance = useCallback(() => {
+    directionRef.current = 1;
     finishCurrentSectionIfLast(index);
     if (index + 1 >= steps.length) {
       onFinish();
@@ -377,7 +387,18 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
     }
   }, [index, finishCurrentSectionIfLast, steps.length, onFinish]);
 
-  const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  const back = useCallback(() => {
+    directionRef.current = -1;
+    setIndex((i) => Math.max(0, i - 1));
+  }, []);
+
+  const skipMissingTarget = useCallback(() => {
+    if (directionRef.current === -1) {
+      setIndex((i) => Math.max(0, i - 1));
+    } else {
+      advance();
+    }
+  }, [advance]);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,7 +424,7 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
           // ignore - fall through to setReady, useTargetRect will sort it out
         }
         if (selector && !document.querySelector(selector)) {
-          advance();
+          skipMissingTarget();
           return;
         }
       }
@@ -413,9 +434,9 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
       cancelled = true;
     };
     // Deliberately just step?.id: onEnter/optional/targetTestId are all
-    // properties of that same step object, and advance is stable enough
-    // within one step (it only changes with `index`, which changing IS a
-    // step change).
+    // properties of that same step object, and skipMissingTarget is stable
+    // enough within one step (it only changes with `index`, which changing
+    // IS a step change).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step?.id]);
 
@@ -438,7 +459,7 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
       onClose={onSkip}
       canGoBack={index > 0}
       isLastStep={index === steps.length - 1}
-      onTargetMissing={advance}
+      onTargetMissing={skipMissingTarget}
     />
   );
 }

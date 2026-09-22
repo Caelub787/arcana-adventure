@@ -3606,7 +3606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // The GM's own notes are the GM Notes folder; they don't also need a
         // player folder among the players they can already all see.
         if (m.role === 'gm' || m.userId === campaign.gmUserId) continue;
-        await provisionPlayerKnowledgeFolder(campaignId, m.userId, m.username);
+        await provisionPlayerKnowledgeFolder(campaignId, m.userId, m.username, campaign.gmUserId);
       }
     } catch (e) {
       // A campaign is perfectly usable without these; never fail a read over
@@ -3637,13 +3637,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return {};
   }
 
-  async function provisionPlayerKnowledgeFolder(campaignId: string, memberUserId: string, username: string) {
+  async function provisionPlayerKnowledgeFolder(campaignId: string, memberUserId: string, username: string, gmUserId: string) {
     const folders = await storage.getCampaignNoteFolders(campaignId);
     const playersContainer = folders.find((f: any) => f.kind === "players" && !f.parentId);
     // A player who already has a folder here (rejoining after a leave, or a
     // retried request) shouldn't get a duplicate.
     const alreadyHasFolder = folders.some((f: any) => f.kind === "player" && f.userId === memberUserId);
     if (alreadyHasFolder) return;
+    // The folder itself stays owned by the player - that ownership is what
+    // reveals its ancestor chain (the GM-only "Players" container) back to
+    // them in GET /api/notes/folders, or their own folder would be
+    // unreachable in their own tree. The starter NOTE inside it is a
+    // different story: every note in a campaign is conceptually the GM's to
+    // view, edit, and share, so it's created under the GM's own ownership
+    // from the start rather than the player's - the player still gets full
+    // edit access to it the same way they do any other 'players'-visibility
+    // note, entirely independent of who the row's owner is.
     const folder = await storage.createNoteFolder({
       userId: memberUserId, campaignId, parentId: playersContainer?.id || null, name: username,
       kind: "player", visibility: "players", visiblePlayerIds: [memberUserId], visibilityPermission: "edit", sortOrder: 0,
@@ -3651,7 +3660,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // A folder with nothing in it reads as broken, not "yours to use" - give
     // the player a first note to open, already theirs to edit.
     await storage.createNote({
-      userId: memberUserId, campaignId, folderId: folder.id, title: "My Notes", content: "",
+      userId: gmUserId, campaignId, folderId: folder.id, title: "My Notes", content: "",
       type: "note", visibility: "players", visiblePlayerIds: [memberUserId], visibilityPermission: "edit",
     } as any);
   }
@@ -3926,7 +3935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // existed, or whose GM has never opened Notes, would otherwise
         // leave this join with nothing to nest the new player folder under.
         await ensureCampaignKnowledgeFolders(campaign.id);
-        await provisionPlayerKnowledgeFolder(campaign.id, req.session.userId!, joiningUser.username);
+        await provisionPlayerKnowledgeFolder(campaign.id, req.session.userId!, joiningUser.username, campaign.gmUserId);
       }
 
       // Broadcast member joined to all campaign members
@@ -7252,14 +7261,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "'pinned' must be a boolean" });
       }
       const userId = req.session.userId!;
-      const isOwner = await storage.isOwner(userId, campaignId);
-      if (!isOwner) {
-        return res.status(403).json({ error: "Only the campaign owner can pin players" });
-      }
       const members = await storage.getCampaignMembers(campaignId);
       const targetMember = members.find(m => m.id === memberId);
       if (!targetMember) {
         return res.status(404).json({ error: "Member not found" });
+      }
+      const isOwner = await storage.isOwner(userId, campaignId);
+      // The owner can pin/unpin anyone; anyone else can only toggle their
+      // own visibility in the shared tracker, not another member's.
+      if (!isOwner && targetMember.userId !== userId) {
+        return res.status(403).json({ error: "Only the campaign owner can pin other players" });
       }
       const updatedMember = await storage.setMemberPinned(campaignId, memberId, pinned);
       const updatedMembers = await storage.getCampaignMembers(campaignId);

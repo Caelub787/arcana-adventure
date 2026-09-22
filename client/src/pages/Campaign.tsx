@@ -6636,15 +6636,24 @@ function FloatingNotesEditor({
   panelKey?: string;
   isGm?: boolean;
 }) {
+  // The panel's own chrome shows the open note's name directly (falling
+  // back to a plain "Notes" while nothing's open yet) instead of a fixed
+  // "Notes" label sitting above the panel's own note-header row repeating
+  // the same title a second time - CampaignNotesPanel's copy is hidden
+  // below (hideNoteHeader) now that this one covers it.
+  const [openTitle, setOpenTitle] = useState<string | null>(null);
   return (
     <FloatingPanel
       open={true}
       onClose={onClose}
-      title={<span className="text-amber-500">Notes</span>}
+      title={<span className="text-amber-500">{openTitle || "Notes"}</span>}
       zIndex={zIndex}
       onBringToFront={onBringToFront}
       panelKey={panelKey}
-      defaultSize={{ width: 700, height: 500 }}
+      // Same default a character sheet opens at - notes and sheets are the
+      // two things this panel-switcher row pops out, and a note popping
+      // open at a visibly different size read as an inconsistency.
+      defaultSize={{ width: 652, height: 480 }}
       minWidth={400}
       minHeight={300}
     >
@@ -6659,6 +6668,8 @@ function FloatingNotesEditor({
           initialNoteId={initialNoteId}
           hideCloseButton={true}
           contentOnly={true}
+          hideNoteHeader={true}
+          onNoteTitleChange={setOpenTitle}
         />
       </div>
     </FloatingPanel>
@@ -8025,6 +8036,65 @@ export default function Campaign() {
     else setActiveSidePanel('notes');
   };
 
+  // Player Tracker demo. Pinning is otherwise a deliberate GM/self choice -
+  // the tutorial borrows it for one step, and only if the viewer isn't
+  // already shown there, so it never un-pins someone who genuinely wants to
+  // be visible. tutorialTempPinRef tracks whether THIS run was the one that
+  // pinned them, same pattern as the temp demo character above.
+  const tutorialTempPinRef = useRef(false);
+  const tutorialFakeRollIdRef = useRef<string | null>(null);
+
+  const demoPlayerTracker = async () => {
+    if (!myMembership || !effectiveCampaignId || myMembership.pinned) return;
+    tutorialTempPinRef.current = true;
+    // Set optimistically so the chip is already on screen by the time the
+    // engine's post-onEnter settle window checks for it - an invalidate+
+    // refetch round trip wouldn't reliably land inside that window.
+    queryClient.setQueryData([`/api/campaigns/${effectiveCampaignId}/members`], (old: any[] | undefined) =>
+      (old || []).map((m: any) => (m.id === myMembership.id ? { ...m, pinned: true } : m))
+    );
+    try {
+      await api.setMemberPinned(effectiveCampaignId, myMembership.id, true);
+    } catch {
+      // Leave the optimistic pin up for the demo regardless - cleanup below
+      // still tries to unpin, and a real desync self-heals on the next
+      // members refetch.
+    }
+  };
+
+  const showFakeRollNotification = () => {
+    if (!myMembership || !user) return;
+    const id = `tutorial-demo-roll-${Date.now()}`;
+    tutorialFakeRollIdRef.current = id;
+    const assignedChar = (characters as any[] | undefined)?.find((c: any) => c.id === myMembership.assignedCharacterId);
+    setRollFeed(prev => [{
+      id,
+      userId: user.id,
+      username: myMembership.username || (user as any).username,
+      characterName: assignedChar?.name,
+      text: "Demo Roll: 1d20",
+      total: 1 + Math.floor(Math.random() * 20),
+      ts: Date.now(),
+      dieType: "d20",
+      historical: false,
+    }, ...prev]);
+  };
+
+  const endPlayerTrackerDemo = () => {
+    const fakeRollId = tutorialFakeRollIdRef.current;
+    if (fakeRollId) {
+      tutorialFakeRollIdRef.current = null;
+      setRollFeed(prev => prev.filter(r => r.id !== fakeRollId));
+    }
+    if (!tutorialTempPinRef.current) return;
+    tutorialTempPinRef.current = false;
+    if (!effectiveCampaignId || !myMembership) return;
+    queryClient.setQueryData([`/api/campaigns/${effectiveCampaignId}/members`], (old: any[] | undefined) =>
+      (old || []).map((m: any) => (m.id === myMembership.id ? { ...m, pinned: false } : m))
+    );
+    api.setMemberPinned(effectiveCampaignId, myMembership.id, false).catch(() => {});
+  };
+
   // Whatever full-screen surface launched this run - most often Settings,
   // reached through the side panel (which is full-screen on mobile) - has
   // to get out of the way first, or the tutorial's own overlay renders
@@ -8048,6 +8118,10 @@ export default function Campaign() {
     openCameraOptions: () => setTutorialForcedHoldMenu('camera'),
     openTokenOptions: () => setTutorialForcedHoldMenu('tokenOptions'),
     closeHoldMenus: () => setTutorialForcedHoldMenu(null),
+    pinnedSelfChipTestId: user?.id ? `pinned-chip-${user.id}` : '',
+    demoPlayerTracker,
+    showFakeRollNotification,
+    endPlayerTrackerDemo,
   });
 
   const startFullTutorial = () => {
@@ -8085,6 +8159,8 @@ export default function Campaign() {
     // the moment it's done with, whether or not the tour continues on to
     // Notes/My Library afterward.
     if (sectionId === 'ca-character-sheet') cleanupTutorialTempCharacter();
+    // Same idea for the temporary tracker pin and its fake roll.
+    if (sectionId === 'player-tracker') endPlayerTrackerDemo();
     if (tutorialRunCompletedSectionsRef.current.has(sectionId)) return;
     tutorialRunCompletedSectionsRef.current.add(sectionId);
     tutorialMutation.mutate({ completedSections: Array.from(tutorialRunCompletedSectionsRef.current) });
@@ -8094,6 +8170,7 @@ export default function Campaign() {
     // Covers Skip/X mid-section too, when onSectionComplete never fired for
     // whatever section was showing at the time.
     cleanupTutorialTempCharacter();
+    endPlayerTrackerDemo();
     setTutorialForcedHoldMenu(null);
     const wasFullTour = tutorialRun?.isFullTour;
     setTutorialRun(null);
@@ -10248,7 +10325,7 @@ export default function Campaign() {
           data.type === 'notes_changed' ||
           data.type === 'note_folder_changed'
         ) {
-          if (!data.campaignId || data.campaignId === effectiveCampaignId) {
+          if (!data.campaignId || data.campaignId === effectiveCampaignIdRef.current) {
             invalidateNoteQueriesRef.current();
           }
         }

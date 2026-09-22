@@ -88,7 +88,12 @@ export function FormattingToolbar({
       onContentChange(newContent);
       
       setTimeout(() => {
-        textarea.focus();
+        // preventScroll: re-focusing a textarea that's below the fold
+        // otherwise makes the browser jump-scroll the whole page (or the
+        // nearest scrollable ancestor) to bring it fully into view, snapping
+        // straight to the bottom of a long note instead of leaving the
+        // reader where they were.
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(
           start + prefix.length,
           end + prefix.length
@@ -102,7 +107,12 @@ export function FormattingToolbar({
       onContentChange(newContent);
       
       setTimeout(() => {
-        textarea.focus();
+        // preventScroll: re-focusing a textarea that's below the fold
+        // otherwise makes the browser jump-scroll the whole page (or the
+        // nearest scrollable ancestor) to bring it fully into view, snapping
+        // straight to the bottom of a long note instead of leaving the
+        // reader where they were.
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(
           start + prefix.length,
           start + prefix.length + placeholder.length
@@ -123,7 +133,7 @@ export function FormattingToolbar({
     onContentChange(newContent);
 
     setTimeout(() => {
-      textarea.focus();
+      textarea.focus({ preventScroll: true });
       textarea.setSelectionRange(
         start + imageMarkdown.length,
         start + imageMarkdown.length
@@ -146,7 +156,7 @@ export function FormattingToolbar({
     onContentChange(newContent);
 
     setTimeout(() => {
-      textarea.focus();
+      textarea.focus({ preventScroll: true });
       const cursorPos = start + insertion.length;
       textarea.setSelectionRange(cursorPos, cursorPos);
     }, 0);
@@ -217,9 +227,9 @@ export function FormattingToolbar({
     const affected = content.slice(lineStart, lineEnd);
     const lines = affected.split("\n");
 
-    const levelPrefix = "#".repeat(level) + " ";
-    const anyHeadingRegex = /^#{1,3}\s+/;
-    const thisLevelRegex = new RegExp(`^#{${level}}\\s`);
+    const levelPrefix = "|".repeat(level) + " ";
+    const anyHeadingRegex = /^\|{1,3}\s+/;
+    const thisLevelRegex = new RegExp(`^\\|{${level}}\\s`);
     const nonBlankLines = lines.filter((l) => l.trim() !== "");
     const alreadyThisLevel = nonBlankLines.length > 0 && nonBlankLines.every((l) => thisLevelRegex.test(l));
 
@@ -233,7 +243,7 @@ export function FormattingToolbar({
     onContentChange(newContent);
 
     setTimeout(() => {
-      textarea.focus();
+      textarea.focus({ preventScroll: true });
       const delta = newAffected.length - affected.length;
       textarea.setSelectionRange(Math.max(lineStart, start), Math.max(lineStart, end + delta));
     }, 0);
@@ -291,7 +301,7 @@ export function FormattingToolbar({
           size="icon"
           className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
           onClick={() => toggleHeading(1)}
-          title="Heading 1"
+          title="Heading 1 (|)"
           data-testid="button-format-h1"
         >
           <Heading1 className={iconSize} />
@@ -302,7 +312,7 @@ export function FormattingToolbar({
           size="icon"
           className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
           onClick={() => toggleHeading(2)}
-          title="Heading 2"
+          title="Heading 2 (||)"
           data-testid="button-format-h2"
         >
           <Heading2 className={iconSize} />
@@ -313,7 +323,7 @@ export function FormattingToolbar({
           size="icon"
           className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
           onClick={() => toggleHeading(3)}
-          title="Heading 3"
+          title="Heading 3 (|||)"
           data-testid="button-format-h3"
         >
           <Heading3 className={iconSize} />
@@ -510,7 +520,12 @@ export function useFormattingShortcuts(
       onContentChange(newContent);
       
       setTimeout(() => {
-        textarea.focus();
+        // preventScroll: re-focusing a textarea that's below the fold
+        // otherwise makes the browser jump-scroll the whole page (or the
+        // nearest scrollable ancestor) to bring it fully into view, snapping
+        // straight to the bottom of a long note instead of leaving the
+        // reader where they were.
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(
           start + prefix.length,
           end + prefix.length
@@ -571,7 +586,9 @@ export interface NoteHeading {
   index: number;
 }
 
-const HEADING_LINE_REGEX = /^(#{1,3})\s+(.+)$/;
+// [^|\n]+ (not .+), matching formatEntityReferences' block parser - keeps a
+// table row's leading "| cell |" from being misread as a heading.
+const HEADING_LINE_REGEX = /^(\|{1,3})\s+([^|\n]+)$/;
 
 export function extractNoteHeadings(content: string): NoteHeading[] {
   const headings: NoteHeading[] = [];

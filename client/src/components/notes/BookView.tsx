@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, FileText, GripVertical, Plus, Trash2, User, X, Check } from "lucide-react";
+import { BookOpen, FileText, GripVertical, Plus, Trash2, User, X, Check, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { extractNoteHeadings } from "@/components/notes/FormattingToolbar";
 
 export interface BookViewNoteOption {
@@ -30,16 +30,13 @@ export interface BookViewNoteOption {
 export function BookView({
   noteId,
   campaignId,
-  title,
   liveSyncStored,
   onToggleLiveSync,
   availableNotes,
   renderContent,
-  onRenameTitle,
 }: {
   noteId: string;
   campaignId: string;
-  title: string;
   /** The book note's own bookLiveSync, so the switch tracks the note record. */
   liveSyncStored: boolean;
   onToggleLiveSync: (next: boolean) => void;
@@ -49,8 +46,6 @@ export function BookView({
    * idPrefix namespaces any heading ids the host renders (see chapterHeadings
    * below) since every chapter's content renders into the same page at once. */
   renderContent?: (text: string, idPrefix?: string) => React.ReactNode;
-  /** Double-clicking the book's own title (not a chapter's) calls this. */
-  onRenameTitle?: (title: string) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -60,13 +55,10 @@ export function BookView({
   const [draft, setDraft] = useState("");
   const [titleDraftId, setTitleDraftId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
-  const [bookTitleEditing, setBookTitleEditing] = useState(false);
-  const [bookTitleDraft, setBookTitleDraft] = useState(title);
-  const commitBookTitle = () => {
-    setBookTitleEditing(false);
-    const trimmed = bookTitleDraft.trim();
-    if (trimmed && trimmed !== title) onRenameTitle?.(trimmed);
-  };
+  // Collapsed by default only once there's something worth hiding it for -
+  // on a narrow (mobile) screen the rail can otherwise take up most of the
+  // width, crowding out the actual chapter text.
+  const [contentsCollapsed, setContentsCollapsed] = useState(() => window.innerWidth < 640);
   const [dropActive, setDropActive] = useState(false);
   const dragChapterId = useRef<string | null>(null);
 
@@ -204,29 +196,21 @@ export function BookView({
     >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-700 shrink-0">
         <BookOpen className="h-4 w-4 shrink-0" style={{ color: "var(--ca-gilt)" }} />
-        {bookTitleEditing ? (
-          <input
-            autoFocus
-            value={bookTitleDraft}
-            onChange={(e) => setBookTitleDraft(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onFocus={(e) => e.currentTarget.select()}
-            onBlur={commitBookTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); commitBookTitle(); }
-              else if (e.key === "Escape") { e.preventDefault(); setBookTitleEditing(false); }
-            }}
-            className="text-sm font-display font-bold bg-stone-800 border border-amber-600 rounded px-1 text-stone-100 outline-none flex-1 min-w-0"
-            data-testid="input-book-title"
-          />
-        ) : (
-          <span
-            className="text-sm font-display font-bold text-stone-100 truncate flex-1"
-            onDoubleClick={() => { if (canEdit) { setBookTitleDraft(title); setBookTitleEditing(true); } }}
+        {/* No title here - the note's own title bar (above this view) already
+            shows it once; repeating it here just duplicated it. */}
+        {chapters.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0 shrink-0"
+            onClick={() => setContentsCollapsed((v) => !v)}
+            title={contentsCollapsed ? "Show contents" : "Hide contents"}
+            data-testid="button-book-toggle-contents"
           >
-            {title}
-          </span>
+            {contentsCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+          </Button>
         )}
+        <div className="flex-1 min-w-0" />
         {canEdit && (
           <>
             <label className="flex items-center gap-1.5 text-[11px] text-stone-400 shrink-0" title="Chapters read and write their source notes directly. Off, each chapter keeps the copy it was made with.">
@@ -255,7 +239,7 @@ export function BookView({
       ) : (
         <div className="flex-1 min-h-0 flex overflow-hidden">
           {/* Contents rail. Drag a row onto another to reorder. */}
-          {chapters.length > 0 && (
+          {chapters.length > 0 && !contentsCollapsed && (
             <div className="w-40 shrink-0 border-r border-stone-800 overflow-y-auto p-1 space-y-0.5" data-testid="book-contents">
               <p className="text-[10px] uppercase tracking-wide text-stone-500 px-1.5 py-1">Contents</p>
               {chapters.map((c, i) => (
