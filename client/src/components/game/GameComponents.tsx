@@ -10486,6 +10486,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
   const [inactiveCollapsed, setInactiveCollapsed] = useState(true);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const speciesMap = useMemo(() => {
     const map = new Map();
@@ -10650,10 +10651,10 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const hasCurrentTurnEntry = inCombat && sortedEntries.some(e => e.characterId === currentTurnCharacterId);
 
   const notInInitiativeSection = charactersNeedingRoll.length > 0 ? (
-    <div className="relative pt-2">
+    <div className="pt-1">
       <button
         onClick={() => setInactiveCollapsed(!inactiveCollapsed)}
-        className="flex items-center justify-between w-full text-left hover:bg-stone-800/50 rounded p-1 -m-1"
+        className="flex items-center justify-between w-full text-left hover:bg-stone-800/50 rounded-lg p-1.5 -m-1.5"
         data-testid="button-toggle-inactive-characters"
       >
         <h4 className="text-sm font-semibold text-stone-400">
@@ -10665,51 +10666,64 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
           <ChevronDown className="w-4 h-4 text-stone-400" />
         )}
       </button>
+      {/* A normal block, not an absolutely-positioned dropdown - the old
+          version floated over whatever came after it (the GM action
+          buttons), clipping or overlapping them on narrow screens instead
+          of just pushing them down like every other collapsible section
+          in this app. */}
       {!inactiveCollapsed && (
-        <div className="absolute left-0 right-0 top-full z-20 bg-stone-900 border border-stone-700 rounded-lg p-2 shadow-lg max-h-[200px] overflow-y-auto">
-          <div className="space-y-2">
-            {charactersNeedingRoll.map((char: any) => (
-              <div 
-                key={char.id}
-                className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
+        <div className="mt-1.5 space-y-1.5 bg-stone-900/60 border border-stone-800 rounded-lg p-2 max-h-[200px] overflow-y-auto">
+          {charactersNeedingRoll.map((char: any) => (
+            <div
+              key={char.id}
+              className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
+            >
+              {(char.portrait || speciesMap.get(char.race)?.defaultImage) ? (
+                <img
+                  src={char.portrait || speciesMap.get(char.race)?.defaultImage}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                  <User className="w-4 h-4 text-stone-400" />
+                </div>
+              )}
+              <span className="flex-1 text-stone-200 truncate">{char.name}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
+                onClick={() => {
+                  gameWs.sendInitiativeRoll(sceneId!, char.id);
+                }}
+                data-testid={`button-roll-initiative-${char.id}`}
               >
-                {(char.portrait || speciesMap.get(char.race)?.defaultImage) ? (
-                  <img 
-                    src={char.portrait || speciesMap.get(char.race)?.defaultImage} 
-                    alt="" 
-                    className="w-8 h-8 rounded-full object-cover border border-stone-600"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
-                    <User className="w-4 h-4 text-stone-400" />
-                  </div>
-                )}
-                <span className="flex-1 text-stone-200 truncate">{char.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
-                  onClick={() => {
-                    gameWs.sendInitiativeRoll(sceneId!, char.id);
-                  }}
-                  data-testid={`button-roll-initiative-${char.id}`}
-                >
-                  <Dice5 className="w-3 h-3 mr-1" />
-                  Roll
-                </Button>
-              </div>
-            ))}
-          </div>
+                <Dice5 className="w-3 h-3 mr-1" />
+                Roll
+              </Button>
+            </div>
+          ))}
         </div>
       )}
     </div>
   ) : null;
 
+  const currentTurnIndex = sortedEntries.findIndex(e => e.characterId === currentTurnCharacterId);
+
   const initiativeContent = (
         <div className={`${inline ? 'flex flex-col h-full' : 'space-y-4'}`}>
           {inCombat && (
-            <div className={`bg-red-900/50 border border-red-700 rounded-lg p-3 text-center ${inline ? 'shrink-0 mb-4' : ''}`}>
-              <span className="text-red-300 font-semibold">Combat Active</span>
+            <div className={`flex items-center justify-between gap-2 bg-red-900/50 border border-red-700 rounded-lg px-3 py-2 ${inline ? 'shrink-0 mb-4' : ''}`}>
+              <span className="flex items-center gap-1.5 text-red-300 font-semibold shrink-0">
+                <Swords className="w-4 h-4" />
+                Combat Active
+              </span>
+              {hasCurrentTurnEntry && (
+                <span className="text-sm text-amber-300 font-medium truncate">
+                  Turn {currentTurnIndex + 1} of {sortedEntries.length} · {getCharacterName(currentTurnCharacterId!)}
+                </span>
+              )}
             </div>
           )}
 
@@ -10731,43 +10745,53 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                   <React.Fragment key={entry.id}>
                   <div
                     className={`
-                      flex items-center gap-3 p-2 rounded-lg border transition-all
-                      ${isCurrentTurn 
-                        ? 'bg-amber-900/50 border-amber-600' 
-                        : 'bg-stone-800 border-stone-700'
+                      flex items-center gap-3 p-2 rounded-lg border border-l-4 transition-all
+                      ${isCurrentTurn
+                        ? 'bg-amber-900/40 border-amber-600 border-l-amber-400'
+                        : 'bg-stone-800 border-stone-700 border-l-transparent'
                       }
                       ${entry.isHidden && isGM ? 'opacity-60' : ''}
                     `}
                     data-testid={`initiative-entry-${entry.characterId}`}
                   >
-                    {/* Turn Indicator */}
-                    <div className="w-6 h-6 rounded-full bg-stone-700 flex items-center justify-center text-xs font-bold">
+                    {/* Turn Indicator - filled solid on the active turn so it
+                        reads at a glance, not just from the row's tint. */}
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isCurrentTurn ? 'bg-amber-500 text-stone-900' : 'bg-stone-700 text-stone-300'}`}>
                       {index + 1}
                     </div>
-                    
+
                     {/* Portrait */}
                     {portrait ? (
-                      <img 
-                        src={portrait} 
-                        alt="" 
-                        className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                      <img
+                        src={portrait}
+                        alt=""
+                        className="w-8 h-8 rounded-full object-cover border border-stone-600 shrink-0"
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center shrink-0">
                         <User className="w-4 h-4 text-stone-400" />
                       </div>
                     )}
-                    
+
                     {/* Character Name */}
                     <div className="flex-1 min-w-0">
-                      <span className={`truncate block ${isCurrentTurn ? 'text-amber-300 font-semibold' : 'text-stone-200'}`}>
-                        {getCharacterName(entry.characterId)}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`truncate ${isCurrentTurn ? 'text-amber-300 font-semibold' : 'text-stone-200'}`}>
+                          {getCharacterName(entry.characterId)}
+                        </span>
+                        {isCurrentTurn && (
+                          <Badge className="bg-amber-600 hover:bg-amber-600 text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
+                            Current
+                          </Badge>
+                        )}
+                      </div>
                       {entry.isHidden && isGM && (
-                        <span className="text-xs text-stone-500">(Hidden)</span>
+                        <span className="flex items-center gap-1 text-[10px] text-stone-500 mt-0.5">
+                          <EyeOff className="w-3 h-3" /> Hidden from players
+                        </span>
                       )}
                     </div>
-                    
+
                     {/* Initiative Value */}
                     {editingId === entry.id ? (
                       <div className="flex items-center gap-1">
@@ -10786,19 +10810,27 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                         </Button>
                       </div>
                     ) : (
-                      <span 
-                        className={`text-lg font-bold ${isCurrentTurn ? 'text-amber-400' : 'text-amber-500'} ${isGM ? 'cursor-pointer hover:text-amber-300' : ''}`}
-                        onClick={() => {
-                          if (isGM) {
-                            setEditingId(entry.id);
-                            setEditValue(entry.value);
-                          }
-                        }}
-                      >
-                        {entry.value}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={`text-lg font-bold ${isCurrentTurn ? 'text-amber-400' : 'text-amber-500'}`}>
+                          {entry.value}
+                        </span>
+                        {isGM && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(entry.id);
+                              setEditValue(entry.value);
+                            }}
+                            className="text-stone-500 hover:text-amber-400 p-0.5"
+                            title="Edit initiative value"
+                            data-testid={`button-edit-initiative-${entry.id}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     )}
-                    
+
                     {/* GM Controls */}
                     {isGM && !editingId && (
                       <div className="flex items-center gap-1">
@@ -10831,20 +10863,24 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
           {/* Not in Initiative - always show below all initiative entries */}
           {notInInitiativeSection}
           
-          {/* GM Actions */}
+          {/* GM Actions - the primary flow (Start/Next/End) reads as one
+              row now, with the destructive Clear action demoted to a small
+              icon button behind a confirmation instead of a second
+              full-width button underneath it that looked just as important
+              as everything else. */}
           {isGM && sortedEntries.length > 0 && (
-            <div className={`flex flex-col gap-2 pt-4 border-t border-stone-700 ${inline ? 'shrink-0 mt-4' : ''}`}>
+            <div className={`flex items-center gap-2 pt-4 border-t border-stone-700 ${inline ? 'shrink-0 mt-4' : ''}`}>
               {!inCombat ? (
                 <Button
                   onClick={handleStartCombat}
-                  className="w-full bg-red-700 hover:bg-red-600 text-white"
+                  className="flex-1 bg-red-700 hover:bg-red-600 text-white"
                   data-testid="button-start-combat"
                 >
                   <Swords className="w-4 h-4 mr-2" />
                   Start Combat
                 </Button>
               ) : (
-                <div className="flex gap-2">
+                <>
                   <Button
                     onClick={handleNextTurn}
                     className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
@@ -10861,18 +10897,41 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                   >
                     End
                   </Button>
-                </div>
+                </>
               )}
               <Button
-                onClick={() => clearMutation.mutate()}
-                variant="outline"
-                className="w-full border-stone-600 hover:bg-stone-800 text-stone-400"
+                onClick={() => setConfirmClearOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-stone-500 hover:text-red-400 hover:bg-red-900/30"
+                title="Clear all initiative"
                 data-testid="button-clear-initiative"
               >
-                Clear All Initiative
+                <Trash2 className="w-4 h-4" />
               </Button>
             </div>
           )}
+
+          <AlertDialog open={confirmClearOpen} onOpenChange={setConfirmClearOpen}>
+            <AlertDialogContent className="bg-stone-900 border-stone-700">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-red-400">Clear All Initiative</AlertDialogTitle>
+                <AlertDialogDescription className="text-stone-300">
+                  Removes every rolled initiative entry and ends combat. This can't be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => clearMutation.mutate()}
+                  className="bg-red-700 hover:bg-red-600 text-white"
+                  data-testid="button-confirm-clear-initiative"
+                >
+                  Clear All
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
   );
 
