@@ -94,6 +94,8 @@ export interface User {
   name: string;
   theme?: string | null;
   isAdmin?: boolean;
+  /** System slugs (e.g. "ca", "aa-v3") this user has already seen the My Library guided tutorial for. */
+  libraryTutorialSeenSystems?: string[];
 }
 
 export interface AdminUser {
@@ -1262,10 +1264,17 @@ class ApiClient {
     });
   }
 
-  async updateTutorialState(campaignId: string, patch: { dismissed?: boolean; completedSections?: string[] }): Promise<CampaignMember> {
+  async updateTutorialState(campaignId: string, patch: { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean }): Promise<CampaignMember> {
     return this.request(`/campaigns/${campaignId}/tutorial`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
+    });
+  }
+
+  async updateLibraryTutorialSeen(system: string, seen: boolean): Promise<{ libraryTutorialSeenSystems: string[] }> {
+    return this.request(`/me/library-tutorial`, {
+      method: 'PATCH',
+      body: JSON.stringify({ system, seen }),
     });
   }
   

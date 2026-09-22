@@ -290,7 +290,7 @@ export function NotesWorkspace({
       </div>
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div style={{ width: RAIL_WIDTH }} className="shrink-0 h-full overflow-hidden border-r border-stone-800">
+        <div style={{ width: RAIL_WIDTH }} className="shrink-0 h-full overflow-hidden border-r border-stone-800" data-testid="notes-workspace-rail">
           <CampaignNotesPanel
             campaignId={campaignId}
             onClose={onClose}
@@ -308,7 +308,7 @@ export function NotesWorkspace({
 
         <div ref={areaRef} className="relative flex-1 min-w-0 h-full overflow-hidden bg-stone-950">
           {windows.length === 0 && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-stone-600 pointer-events-none">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-stone-600 pointer-events-none" data-testid="notes-workspace-empty-hint">
               <Plus className="h-8 w-8" />
               <p className="text-sm">Open a note from the tree to start.</p>
               <p className="text-xs">Open as many as you like, then Split or Tile them.</p>

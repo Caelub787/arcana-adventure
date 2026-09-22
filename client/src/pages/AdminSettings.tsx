@@ -26,6 +26,9 @@ import {
 import { V3_SKILLS } from '@shared/v3';
 import { getEffectTypes, getEffectTypeLabel } from '@/lib/effectTypes';
 import { useAuth } from '@/lib/AuthContext';
+import { TutorialPrompt } from '@/components/tutorial/TutorialPrompt';
+import { TutorialRunner } from '@/components/tutorial/TutorialOverlay';
+import { buildLibraryTutorialSections } from '@/components/tutorial/libraryTutorialSteps';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -230,7 +233,7 @@ interface AdminSettingsProps {
 
 export default function AdminSettings({ embedded = false, forcePersonal = false, embeddedSystem }: AdminSettingsProps = {}) {
   const [, setLocation] = useLocation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, refetchUser } = useAuth();
   const queryClient = useQueryClient();
   const search = useSearch();
   // "My Library" personal mode: scopes every list/create to the current user
@@ -294,6 +297,46 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // routing decision below.
   const useLibraryItemDialog = isPersonalLibSystem || isWoundSystem(systemSlug) || systemSlug === 'swampy';
   const { host: libraryDialogsHost, imageBrowserNode: libraryDialogsImageBrowser } = useLibraryDialogsHost(systemSlug, selectedSystem, personalMode);
+
+  // My Library's guided tutorial. Account-wide and keyed by system slug
+  // (see users.libraryTutorialSeenSystems) rather than per campaign, since
+  // this page isn't scoped to one. A campaign's Settings can force it back
+  // open here via `?tutorial=replay`, which always shows it immediately -
+  // no prompt - the same way every other "Replay" button in this app works.
+  const libraryTutorialReplayRequested = new URLSearchParams(search).get('tutorial') === 'replay';
+  const libraryTutorialDecidedRef = useRef(false);
+  const [libraryTutorialPromptVisible, setLibraryTutorialPromptVisible] = useState(false);
+  const [libraryTutorialRun, setLibraryTutorialRun] = useState<ReturnType<typeof buildLibraryTutorialSections> | null>(null);
+
+  const libraryTutorialMutation = useMutation({
+    mutationFn: (seen: boolean) => api.updateLibraryTutorialSeen(systemSlug, seen),
+    onSuccess: () => refetchUser(),
+  });
+
+  useEffect(() => {
+    if (embedded || libraryTutorialDecidedRef.current || currentView !== 'dashboard') return;
+    libraryTutorialDecidedRef.current = true;
+    if (libraryTutorialReplayRequested) {
+      setLibraryTutorialRun(buildLibraryTutorialSections(systemSlug));
+    } else if (!user?.libraryTutorialSeenSystems?.includes(systemSlug)) {
+      setLibraryTutorialPromptVisible(true);
+    }
+  }, [embedded, currentView, systemSlug, user, libraryTutorialReplayRequested]);
+
+  const startLibraryTutorial = () => {
+    setLibraryTutorialPromptVisible(false);
+    setLibraryTutorialRun(buildLibraryTutorialSections(systemSlug));
+  };
+
+  const dismissLibraryTutorialPrompt = () => {
+    setLibraryTutorialPromptVisible(false);
+    libraryTutorialMutation.mutate(true);
+  };
+
+  const endLibraryTutorialRun = () => {
+    setLibraryTutorialRun(null);
+    libraryTutorialMutation.mutate(true);
+  };
 
   // Non-admin GMs are scoped to their private library
   const nonAdminAllowedViews: AdminView[] = ['dashboard', 'swampy-warrens', 'swampy-deck', 'items', 'item-templates', 'crafter-recipe-templates', 'species', 'spells', 'feat-trees', 'classes', 'characters', 'skills', 'traits', 'ca-abilities', 'token-effects', 'techniques', 'technique-groups', 'action-tokens', 'advanced-item-types', 'ammunition-types', 'v3-spells', 'element-requirements', 'archived-items', 'archived-spells'];
@@ -1707,6 +1750,24 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           </div>
         )}
       </div>
+      {libraryTutorialPromptVisible && (
+        <TutorialPrompt
+          onStart={startLibraryTutorial}
+          onSkip={dismissLibraryTutorialPrompt}
+          onClose={dismissLibraryTutorialPrompt}
+          title="New to My Library?"
+          body="Want a quick tour of what's here?"
+          testId="tutorial-prompt-library"
+        />
+      )}
+      {libraryTutorialRun && (
+        <TutorialRunner
+          sections={libraryTutorialRun}
+          onFinish={endLibraryTutorialRun}
+          onSkip={endLibraryTutorialRun}
+          onSectionComplete={() => {}}
+        />
+      )}
     </div>
   );
 }

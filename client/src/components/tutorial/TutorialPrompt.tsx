@@ -10,9 +10,20 @@ interface TutorialPromptProps {
   onStart: () => void;
   onSkip: () => void;
   onClose: () => void;
+  title?: string;
+  body?: string;
+  /** Distinguishes which tutorial's prompt this is for automated testing/debugging - defaults to the main campaign tour's. */
+  testId?: string;
 }
 
-export function TutorialPrompt({ onStart, onSkip, onClose }: TutorialPromptProps) {
+export function TutorialPrompt({
+  onStart,
+  onSkip,
+  onClose,
+  title = "New here?",
+  body = "Want a quick tour of the campaign screen - navigation, your character sheet, and notes?",
+  testId = "tutorial-prompt",
+}: TutorialPromptProps) {
   const z = useTopLayerZIndex();
   return (
     <div
@@ -23,29 +34,29 @@ export function TutorialPrompt({ onStart, onSkip, onClose }: TutorialPromptProps
         borderColor: "var(--button-outline)",
         color: "hsl(var(--popover-foreground))",
       }}
-      data-testid="tutorial-prompt"
+      data-testid={testId}
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <h3 className="text-sm font-bold">New here?</h3>
+        <h3 className="text-sm font-bold">{title}</h3>
         <button
           type="button"
           onClick={onClose}
           className="shrink-0 rounded p-0.5 hover:opacity-70"
           style={{ color: "hsl(var(--muted-foreground))" }}
           title="Close"
-          data-testid="button-tutorial-prompt-close"
+          data-testid={`button-${testId}-close`}
         >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <p className="text-xs leading-relaxed mb-3" style={{ color: "hsl(var(--popover-foreground) / 0.85)" }}>
-        Want a quick tour of the campaign screen - navigation, your character sheet, and notes?
+        {body}
       </p>
       <div className="flex items-center justify-end gap-2">
-        <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={onSkip} data-testid="button-tutorial-prompt-skip">
+        <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={onSkip} data-testid={`button-${testId}-skip`}>
           Skip
         </Button>
-        <Button size="sm" className="h-7 text-xs px-3" onClick={onStart} data-testid="button-tutorial-prompt-continue">
+        <Button size="sm" className="h-7 text-xs px-3" onClick={onStart} data-testid={`button-${testId}-continue`}>
           Continue
         </Button>
       </div>

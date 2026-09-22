@@ -34,6 +34,11 @@ export const users = pgTable("users", {
   googleTokenExpiry: timestamp("google_token_expiry"),
   googleEmail: text("google_email"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // System slugs (e.g. "ca", "aa-v3") this user has already seen the My
+  // Library guided tutorial for - My Library is account-wide, not scoped to
+  // one campaign, so unlike the campaign tour this can't live on
+  // campaignMembers.
+  libraryTutorialSeenSystems: text("library_tutorial_seen_systems").array(),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -216,6 +221,10 @@ export const campaignMembers = pgTable("campaign_members", {
   // through at least once, purely so Settings can show per-section progress.
   tutorialDismissedAt: timestamp("tutorial_dismissed_at"),
   tutorialCompletedSections: text("tutorial_completed_sections").array(),
+  // Same idea as tutorialDismissedAt, but for the separate Notes Workspace
+  // mini-tutorial, which auto-shows the first time this member opens the
+  // workspace rather than the campaign screen itself.
+  tutorialWorkspaceDismissedAt: timestamp("tutorial_workspace_dismissed_at"),
 });
 
 export const insertCampaignMemberSchema = createInsertSchema(campaignMembers).omit({

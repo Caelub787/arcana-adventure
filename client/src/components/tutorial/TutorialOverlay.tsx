@@ -22,6 +22,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TopLayerOverlay, useTopLayerZRef } from "@/components/ui/floating-panel";
+import { LoadingLogo } from "@/components/LoadingLogo";
 import type { TutorialSection, TutorialStep } from "./tutorialTypes";
 
 const SPOTLIGHT_PADDING = 6;
@@ -38,7 +39,7 @@ const EMPTY_RECT = new DOMRect(-9999, -9999, 0, 0);
  * onEnter (and the settle wait after it - see TutorialRunner) have already
  * run, so this timeout is purely "this element genuinely doesn't exist for
  * this user/device/role," not "it hasn't opened yet." */
-function useTargetRect(testId: string | undefined, timeoutMs = 1500) {
+function useTargetRect(testId: string | undefined, timeoutMs = 600) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [notFound, setNotFound] = useState(false);
   const rectRef = useRef<DOMRect | null>(null);
@@ -246,7 +247,7 @@ function TutorialOverlay({
         <div className="fixed inset-0 bg-black/70" />
       )}
 
-      {hasTarget ? (
+      {hasTarget && rect ? (
         <PopoverPrimitive.Root open>
           <PopoverPrimitive.Anchor virtualRef={anchorRef} />
           <PopoverPrimitive.Portal>
@@ -266,9 +267,12 @@ function TutorialOverlay({
           </PopoverPrimitive.Portal>
         </PopoverPrimitive.Root>
       ) : (
-        // No Radix Popper here at all - there's no real or virtual anchor to
-        // position against for a welcome/overview-style step, so it's just a
-        // plain centered card (still inside the same top-layer scrim).
+        // No Radix Popper here: either this step has no target at all (a
+        // welcome/overview-style step), or it has one but we don't have its
+        // rect YET (still measuring, or it turned out not to exist and
+        // we're about to be skipped past). Either way, a plain centered
+        // card - never nothing - so there's no blank-looking pause while
+        // useTargetRect works out which case this is.
         <div
           ref={contentRef}
           className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${cardClassName}`}
@@ -278,6 +282,18 @@ function TutorialOverlay({
           {cardBody}
         </div>
       )}
+    </TopLayerOverlay>
+  );
+}
+
+// Shown only once a step transition has taken long enough to be worth
+// surfacing at all (see `showLoading` in TutorialRunner) - a dim scrim with
+// a spinner, no card, since the next step's content isn't ready to show yet.
+function TutorialLoadingOverlay() {
+  return (
+    <TopLayerOverlay className="fixed inset-0 flex items-center justify-center" style={{ pointerEvents: "auto" }} data-testid="tutorial-overlay-loading">
+      <div className="fixed inset-0 bg-black/70" />
+      <LoadingLogo className="h-8 w-8 relative" />
     </TopLayerOverlay>
   );
 }
@@ -319,24 +335,21 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
 
   const [index, setIndex] = useState(0);
   const [ready, setReady] = useState(false);
+  // Most step transitions settle in well under 100ms (just the two rAFs
+  // below) - showing a spinner for that would just be a flicker. Only a step
+  // whose onEnter does real async work (creating a throwaway demo character,
+  // say) takes long enough to be worth surfacing at all.
+  const [showLoading, setShowLoading] = useState(false);
   const step = steps[index];
 
   useEffect(() => {
-    let cancelled = false;
-    setReady(false);
-    (async () => {
-      if (step?.onEnter) {
-        await step.onEnter();
-      }
-      await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
-      if (!cancelled) setReady(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step?.id]);
+    if (ready) {
+      setShowLoading(false);
+      return;
+    }
+    const t = setTimeout(() => setShowLoading(true), 150);
+    return () => clearTimeout(t);
+  }, [ready, step?.id]);
 
   const finishCurrentSectionIfLast = useCallback(
     (i: number) => {
@@ -357,8 +370,48 @@ export function TutorialRunner({ sections, onFinish, onSkip, onSectionComplete }
 
   const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
 
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    (async () => {
+      if (step?.onEnter) {
+        await step.onEnter();
+      }
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      if (cancelled) return;
+      // A step whose target is ALREADY absent (a GM-only or conditional
+      // button that just isn't there for this user/device) skips right
+      // here, before ever painting - the alternative was showing a bare dim
+      // screen for the full useTargetRect timeout while it waited to
+      // confirm the obvious. A target that's genuinely just slow to mount
+      // still gets caught by that timeout (see TutorialOverlay).
+      if (step?.targetTestId && step.optional !== false) {
+        let selector = "";
+        try {
+          selector = `[data-testid="${CSS.escape(step.targetTestId)}"]`;
+        } catch {
+          // ignore - fall through to setReady, useTargetRect will sort it out
+        }
+        if (selector && !document.querySelector(selector)) {
+          advance();
+          return;
+        }
+      }
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately just step?.id: onEnter/optional/targetTestId are all
+    // properties of that same step object, and advance is stable enough
+    // within one step (it only changes with `index`, which changing IS a
+    // step change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step?.id]);
+
   if (!steps.length || !step) return null;
-  if (!ready) return null;
+  if (!ready) return showLoading ? <TutorialLoadingOverlay /> : null;
 
   const stepIndexInSection = steps.slice(0, index + 1).filter((s) => s.sectionId === step.sectionId).length - 1;
   const meta = sectionMeta.get(step.sectionId);

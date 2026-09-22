@@ -182,7 +182,8 @@ export interface IStorage {
   setMemberTrustedPlayer(campaignId: string, memberId: string, trusted: boolean): Promise<CampaignMember | undefined>;
   setMemberPinned(campaignId: string, memberId: string, pinned: boolean): Promise<CampaignMember | undefined>;
   updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined>;
-  updateMemberTutorialState(campaignId: string, userId: string, patch: { dismissed?: boolean; completedSections?: string[] }): Promise<CampaignMember | undefined>;
+  updateMemberTutorialState(campaignId: string, userId: string, patch: { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean }): Promise<CampaignMember | undefined>;
+  setLibraryTutorialSeen(userId: string, system: string, seen: boolean): Promise<User | undefined>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -1149,6 +1150,21 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  // My Library's guided tutorial, account-wide and keyed by system slug
+  // rather than per campaign - see users.libraryTutorialSeenSystems.
+  async setLibraryTutorialSeen(userId: string, system: string, seen: boolean): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    const current = new Set(user.libraryTutorialSeenSystems || []);
+    if (seen) current.add(system);
+    else current.delete(system);
+    const [updated] = await db.update(users)
+      .set({ libraryTutorialSeenSystems: Array.from(current) })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
   // Campaign operations
   async getCampaign(id: string): Promise<Campaign | undefined> {
     const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
@@ -1551,7 +1567,7 @@ export class DatabaseStorage implements IStorage {
   async updateMemberTutorialState(
     campaignId: string,
     userId: string,
-    patch: { dismissed?: boolean; completedSections?: string[] },
+    patch: { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean },
   ): Promise<CampaignMember | undefined> {
     const set: Partial<typeof campaignMembers.$inferInsert> = {};
     if (patch.dismissed !== undefined) {
@@ -1559,6 +1575,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (patch.completedSections !== undefined) {
       set.tutorialCompletedSections = patch.completedSections;
+    }
+    if (patch.workspaceDismissed !== undefined) {
+      set.tutorialWorkspaceDismissedAt = patch.workspaceDismissed ? new Date() : null;
     }
     const [member] = await db.update(campaignMembers)
       .set(set)

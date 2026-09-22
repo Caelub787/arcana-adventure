@@ -47,6 +47,7 @@ import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { TutorialRunner } from "@/components/tutorial/TutorialOverlay";
 import { TutorialPrompt } from "@/components/tutorial/TutorialPrompt";
 import { buildTutorialSections, type TutorialContext } from "@/components/tutorial/tutorialSteps";
+import { buildWorkspaceTutorialSections } from "@/components/tutorial/workspaceTutorialSteps";
 import type { TutorialSection } from "@/components/tutorial/tutorialTypes";
 import { TimelinePanel } from "@/components/notes/TimelinePanel";
 import { FloatingPanel, bringFloatingPanelToFront, TopLayerOverlay } from "@/components/ui/floating-panel";
@@ -7966,18 +7967,51 @@ export default function Campaign() {
   }, [myMembership, isNew, spectatorMode]);
 
   const tutorialMutation = useMutation({
-    mutationFn: (patch: { dismissed?: boolean; completedSections?: string[] }) =>
+    mutationFn: (patch: { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean }) =>
       api.updateTutorialState(effectiveCampaignId!, patch),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/members`] }),
   });
 
-  // The player's own character if they have one, otherwise whichever
-  // character is available - a GM with no PC of their own still gets a real
-  // character sheet to demo the CA walkthrough on rather than skipping it.
+  // The player's own character, if they have one. Many players (and most
+  // GMs) won't - see tutorialTempCharacterRef below for how the C.A. section
+  // still gets a real sheet to demo on.
   const tutorialDemoCharacter = useMemo(() => {
     const list = (characters as any[] | undefined) || [];
-    return list.find((c: any) => c.userId === user?.id) || list[0] || null;
+    return list.find((c: any) => c.userId === user?.id) || null;
   }, [characters, user?.id]);
+
+  // A throwaway character created on demand purely to demo the C.A. sheet on
+  // for whoever has none of their own - deleted again once that section is
+  // done with it (see cleanupTutorialTempCharacter). Never surfaces as a
+  // "real" character: not pinned, not assigned, nothing else in the app
+  // treats it specially - it's just a blank character like any other, that
+  // happens to only live as long as the tutorial needs it.
+  const tutorialTempCharacterRef = useRef<any>(null);
+
+  const ensureTutorialDemoCharacter = async (): Promise<any> => {
+    if (tutorialDemoCharacter) return tutorialDemoCharacter;
+    if (tutorialTempCharacterRef.current) return tutorialTempCharacterRef.current;
+    const created = await api.createCharacter(effectiveCampaignId!, {
+      name: "Tutorial Character",
+      hp: 1,
+      maxHp: 1,
+      energy: 0,
+      maxEnergy: 0,
+    } as any);
+    tutorialTempCharacterRef.current = created;
+    queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+    return created;
+  };
+
+  const cleanupTutorialTempCharacter = () => {
+    const temp = tutorialTempCharacterRef.current;
+    if (!temp) return;
+    tutorialTempCharacterRef.current = null;
+    closeCharacterSheet(temp.id);
+    api.deleteCharacter(temp.id).then(() => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+    }).catch(() => {});
+  };
 
   const openNotesForTutorial = () => {
     if (isMobile) setMobileNotesNav({ noteId: null });
@@ -7988,9 +8022,9 @@ export default function Campaign() {
     isMobile,
     isCA,
     isGm: role === 'gm',
-    hasDemoCharacter: !!tutorialDemoCharacter,
-    openDemoCharacterSheet: (tab?: string) => {
-      if (tutorialDemoCharacter) openCharacterSheet(tutorialDemoCharacter, tab || 'overview');
+    openDemoCharacterSheet: async (tab?: string) => {
+      const char = await ensureTutorialDemoCharacter();
+      openCharacterSheet(char, tab || 'overview');
     },
     openNotes: openNotesForTutorial,
   });
@@ -8017,15 +8051,59 @@ export default function Campaign() {
   };
 
   const handleTutorialSectionComplete = (sectionId: string) => {
+    // The demo character was only ever needed for this one section - gone
+    // the moment it's done with, whether or not the tour continues on to
+    // Notes/My Library afterward.
+    if (sectionId === 'ca-character-sheet') cleanupTutorialTempCharacter();
     if (tutorialRunCompletedSectionsRef.current.has(sectionId)) return;
     tutorialRunCompletedSectionsRef.current.add(sectionId);
     tutorialMutation.mutate({ completedSections: Array.from(tutorialRunCompletedSectionsRef.current) });
   };
 
   const endTutorialRun = () => {
+    // Covers Skip/X mid-section too, when onSectionComplete never fired for
+    // whatever section was showing at the time.
+    cleanupTutorialTempCharacter();
     const wasFullTour = tutorialRun?.isFullTour;
     setTutorialRun(null);
     if (wasFullTour) tutorialMutation.mutate({ dismissed: true });
+  };
+
+  // Notes Workspace mini-tutorial - separate from the main tour above, auto-
+  // shown the first time THIS member opens the workspace (not the campaign
+  // itself), decided once per mount the same way the main prompt is.
+  const workspaceTutorialDecidedRef = useRef(false);
+  const [workspaceTutorialPromptVisible, setWorkspaceTutorialPromptVisible] = useState(false);
+  const [workspaceTutorialRun, setWorkspaceTutorialRun] = useState<TutorialSection[] | null>(null);
+
+  useEffect(() => {
+    if (!notesWorkspaceOpen || workspaceTutorialDecidedRef.current || !myMembership) return;
+    workspaceTutorialDecidedRef.current = true;
+    if (!myMembership.tutorialWorkspaceDismissedAt) setWorkspaceTutorialPromptVisible(true);
+  }, [notesWorkspaceOpen, myMembership]);
+
+  const startWorkspaceTutorial = () => {
+    setWorkspaceTutorialPromptVisible(false);
+    setWorkspaceTutorialRun(buildWorkspaceTutorialSections());
+  };
+
+  const dismissWorkspaceTutorialPrompt = () => {
+    setWorkspaceTutorialPromptVisible(false);
+    tutorialMutation.mutate({ workspaceDismissed: true });
+  };
+
+  const endWorkspaceTutorialRun = () => {
+    setWorkspaceTutorialRun(null);
+    tutorialMutation.mutate({ workspaceDismissed: true });
+  };
+
+  // Exposed to Settings: opens the workspace (if it isn't already) and jumps
+  // straight into its tutorial, skipping the prompt - "Replay" should always
+  // just show the thing, not ask permission first.
+  const replayWorkspaceTutorial = () => {
+    setNotesWorkspaceOpen(true);
+    setWorkspaceTutorialPromptVisible(false);
+    setWorkspaceTutorialRun(buildWorkspaceTutorialSections());
   };
 
   // Who's currently shown live in the pinned-player bar, so the corner
@@ -14066,6 +14144,9 @@ export default function Campaign() {
                     onReplayTutorial={replayTutorial}
                     tutorialCompletedSections={myMembership?.tutorialCompletedSections || []}
                     tutorialHasCASection={isCA}
+                    onReplayWorkspaceTutorial={replayWorkspaceTutorial}
+                    tutorialWorkspaceSeen={!!myMembership?.tutorialWorkspaceDismissedAt}
+                    onReplayLibraryTutorial={() => setLocation(`/library?from=${encodeURIComponent(location)}&system=${encodeURIComponent(campaignSystemSlug || '')}&tutorial=replay`)}
                   />
                 </div>
               )}
@@ -15108,6 +15189,24 @@ export default function Campaign() {
           onFinish={endTutorialRun}
           onSkip={endTutorialRun}
           onSectionComplete={handleTutorialSectionComplete}
+        />
+      )}
+      {workspaceTutorialPromptVisible && (
+        <TutorialPrompt
+          onStart={startWorkspaceTutorial}
+          onSkip={dismissWorkspaceTutorialPrompt}
+          onClose={dismissWorkspaceTutorialPrompt}
+          title="New to the Workspace?"
+          body="Want a quick tour of opening and arranging notes here?"
+          testId="tutorial-prompt-workspace"
+        />
+      )}
+      {workspaceTutorialRun && (
+        <TutorialRunner
+          sections={workspaceTutorialRun}
+          onFinish={endWorkspaceTutorialRun}
+          onSkip={endWorkspaceTutorialRun}
+          onSectionComplete={() => {}}
         />
       )}
     </div>

@@ -14,10 +14,8 @@ export interface TutorialContext {
   isMobile: boolean;
   isCA: boolean;
   isGm: boolean;
-  /** Whether there's ANY character in the campaign to demo the CA sheet on - the player's own if they have one, otherwise the GM sees the walkthrough on whichever character is available so the section still has something real to point at. */
-  hasDemoCharacter: boolean;
-  /** Opens the demo character's sheet, optionally to a given CA tab (switches tabs if it's already open). */
-  openDemoCharacterSheet: (tab?: string) => void;
+  /** Opens the demo character's sheet, optionally to a given CA tab (switches tabs if it's already open). If the viewer has no character of their own, this creates a throwaway one first (and the caller deletes it again once the section is done) - so it may take a moment the first time. */
+  openDemoCharacterSheet: (tab?: string) => void | Promise<void>;
   /** Opens notes the way this device actually opens them - the side panel on desktop, the full-screen mobile nav on mobile. */
   openNotes: () => void;
 }
@@ -51,20 +49,17 @@ function buildGettingAroundSection(ctx: TutorialContext): TutorialSection {
         body: "Quick tour of the campaign screen - navigation, tools, your character sheet, and notes. Skip anytime, or come back to it later from Settings.",
       },
       {
+        // The corner panel-switcher row this used to preview here got its
+        // own dedicated pass right after Side Toolbar (see
+        // buildSidePanelSection) - previewing one of its buttons here too
+        // meant the tour visited the right side, then the left toolbar,
+        // then doubled back to the right side, which read as backtracking.
         id: "nav-search",
         sectionId: "getting-around",
         title: "Quick Search",
         body: "Jump straight to a character, item, or note by name from anywhere in the campaign.",
         targetTestId: "button-global-search",
         optional: true,
-      },
-      {
-        id: "nav-panel-row",
-        sectionId: "getting-around",
-        title: "Panel Switcher",
-        body: "These buttons in the corner switch between Chat, Characters, Notes, and the other panels - one open at a time. We'll go through each in a moment.",
-        targetTestId: "button-panel-chat",
-        placement: "left",
       },
     ],
   };
@@ -188,7 +183,7 @@ function buildSidePanelSection(ctx: TutorialContext): TutorialSection {
 }
 
 function buildCASheetSection(ctx: TutorialContext): TutorialSection | null {
-  if (!ctx.isCA || !ctx.hasDemoCharacter) return null;
+  if (!ctx.isCA) return null;
   return {
     id: "ca-character-sheet",
     label: "Character Sheet",

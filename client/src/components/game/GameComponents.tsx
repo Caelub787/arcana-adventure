@@ -11348,6 +11348,12 @@ interface CampaignMenuProps {
   tutorialCompletedSections?: string[];
   /** Whether this campaign's tutorial includes the CA character-sheet section, so its row can be listed. */
   tutorialHasCASection?: boolean;
+  /** Opens the Notes Workspace and starts its own separate mini-tutorial. */
+  onReplayWorkspaceTutorial?: () => void;
+  /** Whether the Workspace mini-tutorial has already been dismissed/finished once. */
+  tutorialWorkspaceSeen?: boolean;
+  /** Navigates to My Library (in this campaign's system) with its tutorial forced to show. */
+  onReplayLibraryTutorial?: () => void;
 }
 
 export type PinnedRollFeedEntry = {
@@ -12048,7 +12054,7 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
   );
 }
 
-const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false, onReplayTutorial, tutorialCompletedSections = [], tutorialHasCASection = false }: CampaignMenuProps) {
+const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false, onReplayTutorial, tutorialCompletedSections = [], tutorialHasCASection = false, onReplayWorkspaceTutorial, tutorialWorkspaceSeen = false, onReplayLibraryTutorial }: CampaignMenuProps) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const setChatOpen = onChatOpenChange || (() => {});
@@ -13512,6 +13518,41 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                   );
                 })}
               </div>
+              {(onReplayWorkspaceTutorial || onReplayLibraryTutorial) && (
+                <div className="space-y-1.5 pt-2 border-t border-stone-700">
+                  {onReplayWorkspaceTutorial && (
+                    <div className="flex items-center justify-between gap-2 text-sm" data-testid="row-tutorial-workspace">
+                      <span className="flex items-center gap-1.5 text-stone-300">
+                        {tutorialWorkspaceSeen && <Check className="h-3 w-3 text-green-500 shrink-0" />}
+                        Notes Workspace
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2 text-stone-400 hover:text-stone-200"
+                        onClick={onReplayWorkspaceTutorial}
+                        data-testid="button-replay-tutorial-workspace"
+                      >
+                        Replay
+                      </Button>
+                    </div>
+                  )}
+                  {onReplayLibraryTutorial && (
+                    <div className="flex items-center justify-between gap-2 text-sm" data-testid="row-tutorial-library">
+                      <span className="text-stone-300">My Library</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2 text-stone-400 hover:text-stone-200"
+                        onClick={onReplayLibraryTutorial}
+                        data-testid="button-replay-tutorial-library"
+                      >
+                        Replay
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {charactersOnly ? (

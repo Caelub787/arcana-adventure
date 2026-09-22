@@ -3466,15 +3466,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ error: "User not found" });
     }
     // Only send safe user fields (never send password hash to client)
-    res.json({ 
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        username: user.username, 
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
         name: user.name,
         theme: user.theme,
-        isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())
-      } 
+        isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase()),
+        libraryTutorialSeenSystems: user.libraryTutorialSeenSystems || []
+      }
     });
   });
 
@@ -7315,13 +7316,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { campaignId } = req.params;
       const userId = req.session.userId!;
-      const { dismissed, completedSections } = req.body as { dismissed?: boolean; completedSections?: string[] };
+      const { dismissed, completedSections, workspaceDismissed } = req.body as { dismissed?: boolean; completedSections?: string[]; workspaceDismissed?: boolean };
 
       if (dismissed !== undefined && typeof dismissed !== "boolean") {
         return res.status(400).json({ error: "dismissed must be a boolean" });
       }
       if (completedSections !== undefined && (!Array.isArray(completedSections) || completedSections.some((s) => typeof s !== "string"))) {
         return res.status(400).json({ error: "completedSections must be an array of strings" });
+      }
+      if (workspaceDismissed !== undefined && typeof workspaceDismissed !== "boolean") {
+        return res.status(400).json({ error: "workspaceDismissed must be a boolean" });
       }
 
       const membership = await storage.getCampaignMembership(userId, campaignId);
@@ -7330,11 +7334,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not a member of this campaign" });
       }
 
-      const updated = await storage.updateMemberTutorialState(campaignId, userId, { dismissed, completedSections });
+      const updated = await storage.updateMemberTutorialState(campaignId, userId, { dismissed, completedSections, workspaceDismissed });
       res.json(updated);
     } catch (err) {
       console.error('Error updating tutorial state:', err);
       res.status(500).json({ error: "Failed to update tutorial state" });
+    }
+  });
+
+  // My Library's guided tutorial - account-wide, keyed by system slug (see
+  // users.libraryTutorialSeenSystems), unlike the campaign tour above.
+  app.patch("/api/me/library-tutorial", requireAuth, async (req, res) => {
+    try {
+      const { system, seen } = req.body as { system?: string; seen?: boolean };
+      if (!system || typeof system !== "string") {
+        return res.status(400).json({ error: "system is required" });
+      }
+      if (typeof seen !== "boolean") {
+        return res.status(400).json({ error: "seen must be a boolean" });
+      }
+      const updated = await storage.setLibraryTutorialSeen(req.session.userId!, system, seen);
+      if (!updated) return res.status(404).json({ error: "User not found" });
+      res.json({ libraryTutorialSeenSystems: updated.libraryTutorialSeenSystems || [] });
+    } catch (err) {
+      console.error('Error updating library tutorial state:', err);
+      res.status(500).json({ error: "Failed to update library tutorial state" });
     }
   });
 

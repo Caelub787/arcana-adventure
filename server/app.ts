@@ -267,6 +267,10 @@ async function ensureKnowledgeSystemSchema() {
     // Guided tutorial dismissal/progress, per (campaign, user).
     `ALTER TABLE IF EXISTS campaign_members ADD COLUMN IF NOT EXISTS tutorial_dismissed_at timestamp`,
     `ALTER TABLE IF EXISTS campaign_members ADD COLUMN IF NOT EXISTS tutorial_completed_sections text[]`,
+    `ALTER TABLE IF EXISTS campaign_members ADD COLUMN IF NOT EXISTS tutorial_workspace_dismissed_at timestamp`,
+    // My Library's tutorial is account-wide (not per campaign), keyed by
+    // which system slugs it's already been seen for.
+    `ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS library_tutorial_seen_systems text[]`,
     // Books: a note that is an ordered list of other notes and characters.
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS book_live_sync boolean NOT NULL DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS book_chapters (
