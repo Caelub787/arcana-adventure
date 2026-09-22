@@ -8025,6 +8025,17 @@ export default function Campaign() {
     else setActiveSidePanel('notes');
   };
 
+  // Whatever full-screen surface launched this run - most often Settings,
+  // reached through the side panel (which is full-screen on mobile) - has
+  // to get out of the way first, or the tutorial's own overlay renders
+  // underneath it with nothing visible. Closing an open character sheet too
+  // covers the same problem for a run started from inside one.
+  const closeOverlaysForTutorial = () => {
+    setActiveSidePanel(null);
+    setOpenCharacterSheets([]);
+    setMobileNotesFor(null);
+  };
+
   const buildTutorialContext = (): TutorialContext => ({
     isMobile,
     isCA,
@@ -8042,6 +8053,11 @@ export default function Campaign() {
   const startFullTutorial = () => {
     tutorialRunCompletedSectionsRef.current = new Set(myMembership?.tutorialCompletedSections || []);
     setTutorialPromptVisible(false);
+    // Marked dismissed the moment the prompt is answered either way (here,
+    // not just on Skip) - the initial "want a tour?" ask should only ever
+    // happen once, even if the player refreshes mid-tour without finishing.
+    tutorialMutation.mutate({ dismissed: true });
+    closeOverlaysForTutorial();
     setTutorialRun({ sections: buildTutorialSections(buildTutorialContext()), isFullTour: true });
   };
 
@@ -8057,6 +8073,10 @@ export default function Campaign() {
     const sections = sectionId ? allSections.filter((s) => s.id === sectionId) : allSections;
     if (!sections.length) return;
     tutorialRunCompletedSectionsRef.current = new Set(myMembership?.tutorialCompletedSections || []);
+    // This is almost always triggered from inside Settings, which is a
+    // full-screen panel on mobile - close it (and anything else full-screen)
+    // first so the tour it's about to show isn't hidden behind it.
+    closeOverlaysForTutorial();
     setTutorialRun({ sections, isFullTour: !sectionId });
   };
 
@@ -8095,6 +8115,8 @@ export default function Campaign() {
 
   const startWorkspaceTutorial = () => {
     setWorkspaceTutorialPromptVisible(false);
+    tutorialMutation.mutate({ workspaceDismissed: true });
+    closeOverlaysForTutorial();
     setWorkspaceTutorialRun(buildWorkspaceTutorialSections());
   };
 
@@ -8112,6 +8134,9 @@ export default function Campaign() {
   // straight into its tutorial, skipping the prompt - "Replay" should always
   // just show the thing, not ask permission first.
   const replayWorkspaceTutorial = () => {
+    // Also triggered from inside Settings - close it first, same reasoning
+    // as replayTutorial above.
+    closeOverlaysForTutorial();
     setNotesWorkspaceOpen(true);
     setWorkspaceTutorialPromptVisible(false);
     setWorkspaceTutorialRun(buildWorkspaceTutorialSections());

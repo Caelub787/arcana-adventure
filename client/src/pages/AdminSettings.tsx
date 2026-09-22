@@ -325,6 +325,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
 
   const startLibraryTutorial = () => {
     setLibraryTutorialPromptVisible(false);
+    libraryTutorialMutation.mutate(true);
     setLibraryTutorialRun(buildLibraryTutorialSections(systemSlug));
   };
 

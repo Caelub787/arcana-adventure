@@ -81,6 +81,15 @@ function useTargetRect(testId: string | undefined, timeoutMs = 600) {
             if (trackedEl) applyRect(trackedEl.getBoundingClientRect());
           });
           ro.observe(el);
+          // A newly-tracked target might be scrolled out of view inside any
+          // ancestor - a character sheet tab, the notes rail, a long list on
+          // a small phone screen. scrollIntoView walks the whole scroll
+          // chain (not just the window) and is a no-op if it's already
+          // fully visible, so this is safe to call unconditionally every
+          // time the step's target changes, on any device.
+          if (typeof el.scrollIntoView === "function") {
+            el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+          }
         }
         applyRect(el.getBoundingClientRect());
       } else if (performance.now() - startedAt > timeoutMs) {
