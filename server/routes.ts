@@ -975,12 +975,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!room || room.size === 0) return;
 
     const messageString = JSON.stringify(message);
-    
+
     room.forEach((client) => {
       if (client.readyState === 1) { // OPEN
         client.send(messageString);
       }
     });
+  }
+
+  // Live-collaborative note edits (the "note_update" websocket handler
+  // below) persist straight to the DB and fan out only within that note's
+  // own room - anyone who never joined THIS note (a Book with it live-synced
+  // as a chapter source, the folder tree in someone else's tab) never learns
+  // the content changed, since that path never goes through the REST
+  // PUT /api/notes/:id route that normally broadcasts note_changed. This
+  // closes that gap with the same trailing-debounce idiom used for token
+  // moves above - the collab channel fires every ~150ms while someone is
+  // actively typing, so a raw broadcastToCampaign on every tick would spam
+  // every connected client's note queries; coalescing to one campaign-wide
+  // broadcast per note per second keeps it feeling instant without that.
+  const noteChangeBroadcastTimers = new Map<string, NodeJS.Timeout>();
+  const NOTE_CHANGE_BROADCAST_DEBOUNCE_MS = 1000;
+  function scheduleNoteChangedBroadcast(noteId: string, campaignId: string, userId: string): void {
+    const existing = noteChangeBroadcastTimers.get(noteId);
+    if (existing) clearTimeout(existing);
+    noteChangeBroadcastTimers.set(noteId, setTimeout(() => {
+      noteChangeBroadcastTimers.delete(noteId);
+      broadcastToCampaign(campaignId, { type: 'note_changed', noteId, campaignId, userId });
+    }, NOTE_CHANGE_BROADCAST_DEBOUNCE_MS));
   }
 
   /**
@@ -2862,6 +2884,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } catch (err) {
               console.error('[note_update] failed to persist live edit:', err);
               return;
+            }
+            // This path never goes through PUT /api/notes/:id, which is the
+            // only other place a note_changed broadcast fires - without this,
+            // nobody who hasn't joined THIS note's room (a live-synced Book
+            // reading it as a chapter source, chief among them) ever learns
+            // the content changed.
+            if (liveNote.campaignId) {
+              scheduleNoteChangedBroadcast(noteId, liveNote.campaignId, authenticatedUserId);
             }
           }
 
