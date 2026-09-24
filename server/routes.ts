@@ -15596,7 +15596,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Also skip auto-save when sourceTemplateId is set: the item came from an
         // existing library entry (even if linkToTemplate resolved false due to scope
         // mismatch), so publishing it again would create a campaign-local duplicate.
-        if (autoCampaignId && canSeedCampaignLibrary && !linkToTemplate && !sourceTemplateId && item.name) {
+        // And skip a still-default-named item ("Untitled Item" - see
+        // createBlankInventoryItem, GameComponents.tsx): that name only means the
+        // GM clicked "Create New Item" and hasn't actually authored anything yet.
+        // Auto-publishing it anyway used to seed a permanent, empty "Untitled Item"
+        // into the GM's shared library the moment they abandoned the dialog - and
+        // since the library lookup below matches by createdByUserId with no system
+        // filter, that one stray clone then showed up in the "Add from Library"
+        // picker of every campaign that GM runs, of any system.
+        if (autoCampaignId && canSeedCampaignLibrary && !linkToTemplate && !sourceTemplateId && item.name && item.name !== 'Untitled Item') {
           // Use the GM's userId so the duplicate check covers the same scope that
           // the library search uses (templates from all campaigns the GM owns, not
           // just the current campaign). This prevents re-seeding a template the GM

@@ -29688,8 +29688,9 @@ function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaign
   const filteredTemplates = sortItemsByNameThenRarity(allTemplates.filter((item: any) => {
     // A template row missing a name (a stale/orphaned entry left behind by a
     // since-deleted source item) has nothing sensible to show or add - drop
-    // it rather than rendering a blank, unusable row.
-    if (!item?.id || !item?.name) return false;
+    // it rather than rendering a blank, unusable row. Trimmed so a
+    // whitespace-only name doesn't slip through as an invisible entry.
+    if (!item?.id || !item?.name?.trim()) return false;
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
     const matchesRarity = templateRarityFilter === 'all' || item.rarity === templateRarityFilter;

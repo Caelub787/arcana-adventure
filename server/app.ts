@@ -574,6 +574,33 @@ async function ensureCaCraftingMaterials() {
   }
 }
 
+// One-time cleanup for a real bug now fixed at its source (see the auto-save
+// guard in server/routes.ts, POST /api/characters/:characterId/items):
+// clicking "Create New Item" on a character sheet used to immediately
+// publish a real "Untitled Item" into the campaign's SHARED template
+// library the moment it was created, before the GM had touched a single
+// field. Because that library lookup matches by createdByUserId with no
+// system filter, one abandoned clone then surfaced in the "Add from
+// Library" picker of every campaign that GM runs, of any system - looking
+// exactly like a stray blank item nobody could find to delete (My
+// Library/Admin only ever show campaign-less items, and this orphan
+// always has a campaignId). Removes only that orphaned LIBRARY clone
+// (campaignId set, no characterId) - never a still-untitled item sitting
+// in someone's own inventory, which they may still be mid-edit on. Safe
+// to run every boot: once no such rows remain, this is a no-op.
+async function ensureNoOrphanedUntitledTemplateItems() {
+  try {
+    const result = await dbPool.query(
+      `DELETE FROM items WHERE name = 'Untitled Item' AND is_template = true AND character_id IS NULL AND campaign_id IS NOT NULL`,
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      console.log(`[startup] Removed ${result.rowCount} orphaned "Untitled Item" campaign template(s)`);
+    }
+  } catch (err) {
+    console.error("Failed to clean up orphaned template items:", err);
+  }
+}
+
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
@@ -591,6 +618,7 @@ export default async function runApp(
   );
   await withDeadline("Test stamp asset seeding", 20_000, ensureTestStampAssets(), undefined);
   await withDeadline("C.A. crafting material seeding", 20_000, ensureCaCraftingMaterials(), undefined);
+  await withDeadline("Orphaned template item cleanup", 20_000, ensureNoOrphanedUntitledTemplateItems(), undefined);
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
