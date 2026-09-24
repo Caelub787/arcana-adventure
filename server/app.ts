@@ -532,15 +532,6 @@ async function ensureTestStampAssets() {
 // so a GM with existing CA items still gets this assortment exactly once.
 async function ensureCaCraftingMaterials() {
   try {
-    const existing = await dbPool.query(
-      `SELECT COUNT(*)::int AS count FROM items WHERE system = 'ca' AND is_template = true AND campaign_id IS NULL AND name = $1`,
-      ['Iron Ore'],
-    );
-    if ((existing.rows?.[0]?.count ?? 0) > 0) return;
-    const admin = await dbPool.query(`SELECT id FROM users WHERE is_admin = true ORDER BY created_at ASC LIMIT 1`);
-    const adminId = admin.rows?.[0]?.id;
-    if (!adminId) return; // nothing to attribute the seed to yet
-
     const materials: { name: string; description: string; weight: number }[] = [
       { name: 'Iron Ore', description: 'Raw ore, ready to be smelted into workable metal.', weight: 2 },
       { name: 'Refined Iron', description: 'Smelted and worked - ready to be shaped by a smith.', weight: 1 },
@@ -562,11 +553,32 @@ async function ensureCaCraftingMaterials() {
       { name: 'Alchemical Reagent', description: 'A stable compound used as a base for potions and elixirs.', weight: 0.3 },
     ];
 
+    // One-time backfill: an earlier version of this seed attributed these
+    // rows to one specific admin account (created_by_user_id set) instead of
+    // leaving them NULL like a real Admin-authored item. That hid them from
+    // every OTHER admin's "My Library" view (which only shows rows YOU
+    // created) and made them silently follow that one admin into their own
+    // campaigns as if it were their personal library item. Null it out
+    // unconditionally so they behave like genuine global admin items; safe
+    // to run every boot, becomes a no-op once corrected.
+    await dbPool.query(
+      `UPDATE items SET created_by_user_id = NULL
+       WHERE system = 'ca' AND is_template = true AND campaign_id IS NULL AND character_id IS NULL
+         AND created_by_user_id IS NOT NULL AND name = ANY($1::text[])`,
+      [materials.map(m => m.name)],
+    );
+
+    const existing = await dbPool.query(
+      `SELECT COUNT(*)::int AS count FROM items WHERE system = 'ca' AND is_template = true AND campaign_id IS NULL AND name = $1`,
+      ['Iron Ore'],
+    );
+    if ((existing.rows?.[0]?.count ?? 0) > 0) return;
+
     for (const m of materials) {
       await dbPool.query(
         `INSERT INTO items (name, description, item_type, system, item_weight, price, is_template, character_id, campaign_id, world_id, created_by_user_id)
-         VALUES ($1, $2, 'utility', 'ca', $3, 0, true, NULL, NULL, NULL, $4)`,
-        [m.name, m.description, m.weight, adminId],
+         VALUES ($1, $2, 'utility', 'ca', $3, 0, true, NULL, NULL, NULL, NULL)`,
+        [m.name, m.description, m.weight],
       );
     }
   } catch (err) {
