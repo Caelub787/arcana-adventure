@@ -989,7 +989,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, sn
       style={{
         left: displayX,
         top: displayY,
-        transform: 'translate(-50%, -100%)',
+        transform: 'translate(-50%, -50%)',
         zIndex: isRevealed ? 1000 : 100,
         cursor: isGM ? 'grab' : 'pointer',
         touchAction: 'none',
@@ -3139,11 +3139,19 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               const currentPan = panRef.current;
               const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
               const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
-              const pctX = (worldX / bgImageDimensions.width) * 100;
-              const pctY = (worldY / bgImageDimensions.height) * 100;
-              if (pctX >= 0 && pctX <= 100 && pctY >= 0 && pctY <= 100) {
-                onPinPlaced(pctX, pctY);
-              }
+              const effectiveGridSize = gridSize;
+              const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+              // Snap to the clicked grid cell's CENTER, same cell tokens land
+              // in - a pin is a single point icon (not a sized box like a
+              // token) so centering it just needs the cell's midpoint.
+              const cellX = gridEnabled ? Math.floor(worldX / effectiveGridSize) * effectiveGridSize + effectiveGridSize / 2 : worldX;
+              const cellY = gridEnabled ? Math.floor(worldY / effectiveGridSize) * effectiveGridSize + effectiveGridSize / 2 : worldY;
+              const pctX = (cellX / bgImageDimensions.width) * 100;
+              const pctY = (cellY / bgImageDimensions.height) * 100;
+              // Clamp instead of silently dropping the click - a click near
+              // the map edge should still place a pin at the edge, not
+              // silently do nothing.
+              onPinPlaced(Math.max(0, Math.min(100, pctX)), Math.max(0, Math.min(100, pctY)));
             }
           }
           if (placingCharacterId && onMapClickToPlace) {
@@ -3403,18 +3411,30 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         )}
 
         {/* Map Background - Positioned in the space, displays full image at natural aspect ratio */}
-        <img 
+        <img
           src={scene?.backgroundImage || backgroundImage || battleMapImage1}
           alt="Battle map background"
           className="absolute opacity-80 max-w-none"
-          loading="lazy"
           decoding="async"
-          style={{ 
+          style={{
             left: '9000px',
             top: '9000px',
             transformOrigin: 'top left',
           }}
           draggable={false}
+          ref={(img) => {
+            // Pin placement/rendering both gate on bgImageDimensions being
+            // populated. onLoad alone misses the case where the browser
+            // already had this image cached before this ref/handler
+            // attached (e.g. switching back to a previously-viewed scene) -
+            // the load event already fired and never fires again, leaving
+            // dimensions stuck at {0,0} and silently breaking pins.
+            if (img && img.complete && img.naturalWidth > 0) {
+              setBgImageDimensions(prev => (prev.width === img.naturalWidth && prev.height === img.naturalHeight)
+                ? prev
+                : { width: img.naturalWidth, height: img.naturalHeight });
+            }
+          }}
           onLoad={(e) => {
             const img = e.currentTarget;
             setBgImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });

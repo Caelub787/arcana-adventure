@@ -8593,6 +8593,9 @@ export default function Campaign() {
       setEditingPin(null);
       toast({ title: 'Pin created' });
     },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to create pin", variant: "destructive" });
+    },
   });
 
   const updatePinMutation = useMutation({
@@ -8604,6 +8607,9 @@ export default function Campaign() {
       setEditingPin(null);
       toast({ title: 'Pin updated' });
     },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to update pin", variant: "destructive" });
+    },
   });
 
   const deletePinMutation = useMutation({
@@ -8611,6 +8617,9 @@ export default function Campaign() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
       toast({ title: 'Pin deleted' });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to delete pin", variant: "destructive" });
     },
   });
 
