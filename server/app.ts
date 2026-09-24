@@ -524,6 +524,56 @@ async function ensureTestStampAssets() {
   }
 }
 
+// C.A.-only crafting materials: generic, blank raw components a GM can drop
+// straight into a crafter item's recipe as ingredients (craft_recipe_ingredients
+// matches by itemId, falling back to itemName). Gated on the first material's
+// own presence rather than "any C.A. item exists" - these are meant to sit
+// alongside whatever a GM has already authored themselves, not stand in for it,
+// so a GM with existing CA items still gets this assortment exactly once.
+async function ensureCaCraftingMaterials() {
+  try {
+    const existing = await dbPool.query(
+      `SELECT COUNT(*)::int AS count FROM items WHERE system = 'ca' AND is_template = true AND campaign_id IS NULL AND name = $1`,
+      ['Iron Ore'],
+    );
+    if ((existing.rows?.[0]?.count ?? 0) > 0) return;
+    const admin = await dbPool.query(`SELECT id FROM users WHERE is_admin = true ORDER BY created_at ASC LIMIT 1`);
+    const adminId = admin.rows?.[0]?.id;
+    if (!adminId) return; // nothing to attribute the seed to yet
+
+    const materials: { name: string; description: string; weight: number }[] = [
+      { name: 'Iron Ore', description: 'Raw ore, ready to be smelted into workable metal.', weight: 2 },
+      { name: 'Refined Iron', description: 'Smelted and worked - ready to be shaped by a smith.', weight: 1 },
+      { name: 'Copper Ore', description: 'Raw ore with a reddish sheen, conducts well for enchanting work.', weight: 2 },
+      { name: 'Silver Ore', description: 'Raw ore, prized for jewelry and wards against certain creatures.', weight: 2 },
+      { name: 'Hardwood Timber', description: 'A solid length of seasoned wood, ready for carving or building.', weight: 3 },
+      { name: 'Raw Hide', description: 'An untreated animal hide - needs tanning before it is usable.', weight: 2 },
+      { name: 'Tanned Leather', description: 'Cured and worked hide, supple enough for armor or straps.', weight: 1 },
+      { name: 'Spun Thread', description: 'A spool of thread, spun and ready for weaving or stitching.', weight: 0.5 },
+      { name: 'Woven Cloth', description: 'A bolt of plain cloth, woven and ready to be cut and sewn.', weight: 1 },
+      { name: 'Beast Fang', description: 'A sharp fang taken from a slain beast.', weight: 0.2 },
+      { name: 'Beast Claw', description: 'A curved claw taken from a slain beast.', weight: 0.2 },
+      { name: 'Monster Essence', description: 'A concentrated, faintly glowing residue drawn from a slain monster.', weight: 0.1 },
+      { name: 'Raw Gemstone', description: 'An uncut gemstone, its true value hidden until it is cut.', weight: 0.1 },
+      { name: 'Cut Gemstone', description: 'A gemstone cut and polished to reveal its full brilliance.', weight: 0.1 },
+      { name: 'Crystal Shard', description: 'A shard of crystal that hums faintly with latent energy.', weight: 0.2 },
+      { name: 'Bone Fragment', description: 'A fragment of bone, sturdy enough for carving or grinding into powder.', weight: 0.3 },
+      { name: 'Purified Water', description: 'Water cleansed of impurities, often called for in alchemy.', weight: 1 },
+      { name: 'Alchemical Reagent', description: 'A stable compound used as a base for potions and elixirs.', weight: 0.3 },
+    ];
+
+    for (const m of materials) {
+      await dbPool.query(
+        `INSERT INTO items (name, description, item_type, system, item_weight, price, is_template, character_id, campaign_id, world_id, created_by_user_id)
+         VALUES ($1, $2, 'utility', 'ca', $3, 0, true, NULL, NULL, NULL, $4)`,
+        [m.name, m.description, m.weight, adminId],
+      );
+    }
+  } catch (err) {
+    console.error("Failed to seed C.A. crafting materials:", err);
+  }
+}
+
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
@@ -540,6 +590,7 @@ export default async function runApp(
     [] as string[],
   );
   await withDeadline("Test stamp asset seeding", 20_000, ensureTestStampAssets(), undefined);
+  await withDeadline("C.A. crafting material seeding", 20_000, ensureCaCraftingMaterials(), undefined);
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
