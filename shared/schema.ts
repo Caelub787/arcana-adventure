@@ -802,7 +802,7 @@ export type CrafterTemplateLink = typeof crafterTemplateLinks.$inferSelect;
 // Recipes can also live on a Crafter Recipe Template (parentTemplateId)
 // instead of an item; recipes copied from a template carry
 // `fromTemplateRecipeId` provenance so template edits fan out.
-// All AA V2 only; non-AAv2 callers never read or write these tables.
+// Used by AA V2, AA V3, and C.A.; other systems never read or write these tables.
 export const craftRecipes = pgTable("craft_recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   parentItemId: varchar("parent_item_id").references(() => items.id, { onDelete: "cascade" }),

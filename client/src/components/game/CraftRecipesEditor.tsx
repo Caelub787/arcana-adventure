@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Trash2, ChevronDown, ChevronRight, Hammer, ArrowUp, ArrowDown, Search, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { CA_ATTRIBUTES } from '@shared/ca';
 
 interface Props {
   itemId?: string;
@@ -74,15 +75,19 @@ interface DraftRecipe {
   toolItems?: { itemId: string | null; name: string; consumed: boolean }[];
 }
 
-const ATTRIBUTES = ['none', 'might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+const AA_ATTRIBUTES = ['none', 'might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+const CA_RECIPE_ATTRIBUTES = ['none', ...CA_ATTRIBUTES.map(a => a.key)];
+function attributesForSystem(systemSlug: string): string[] {
+  return systemSlug === 'ca' ? CA_RECIPE_ATTRIBUTES : AA_ATTRIBUTES;
+}
 
-function newRecipe(): DraftRecipe {
+function newRecipe(systemSlug?: string): DraftRecipe {
   return {
     name: 'New Recipe',
     description: '',
     diceFormula: '1d20',
     mod: 0,
-    attribute: 'craft',
+    attribute: systemSlug === 'ca' ? 'might' : 'craft',
     noRoll: false,
     outputItemId: null,
     outputQuantity: 1,
@@ -178,7 +183,7 @@ export function CraftRecipesEditor({ itemId, templateId, systemSlug }: Props) {
     reorderMut.mutate({ id: b.id, sortOrder: aOrder });
   };
 
-  const handleAdd = () => createMut.mutate({ ...newRecipe(), noRoll: systemSlug === 'aa-v3' ? true : false, sortOrder: recipes.length });
+  const handleAdd = () => createMut.mutate({ ...newRecipe(systemSlug), noRoll: systemSlug === 'aa-v3' ? true : false, sortOrder: recipes.length });
 
   if (!isTemplateMode && !itemId) {
     return <p className="text-xs text-stone-500">Save the Crafter item first to add recipes.</p>;
@@ -414,7 +419,7 @@ function AddRecipeFromItem({ crafterItemId, systemSlug, onAdded }: {
   const { data: items = [] } = useQuery<any[]>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
-    enabled: (systemSlug === 'aa-v2' || systemSlug === 'aa-v3') && open,
+    enabled: (systemSlug === 'aa-v2' || systemSlug === 'aa-v3' || systemSlug === 'ca') && open,
   });
   const reset = () => { setSearch(''); setTypeFilter(null); setSelected(new Set()); };
   const addMut = useMutation({
@@ -762,7 +767,7 @@ function RecipeRow({
                 <Select value={draft.attribute} onValueChange={(v) => setDraft({ ...draft, attribute: v })}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 h-8"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ATTRIBUTES.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                    {attributesForSystem(systemSlug).map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

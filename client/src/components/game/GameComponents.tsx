@@ -25594,7 +25594,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       )}
                       <SelectItem value="consumable">Consumables</SelectItem>
                       <SelectItem value="container">Containers</SelectItem>
-                      {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
+                      {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
                         <SelectItem value="crafter">Crafter</SelectItem>
                       )}
                       <SelectItem value="currency">Currency</SelectItem>

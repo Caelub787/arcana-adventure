@@ -12436,11 +12436,11 @@ function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: stri
     },
   });
 
-  if (systemSlug !== 'aa-v2' && systemSlug !== 'aa-v3') {
+  if (systemSlug !== 'aa-v2' && systemSlug !== 'aa-v3' && systemSlug !== 'ca') {
     return (
       <Card className="bg-stone-900 border-stone-700">
         <CardContent className="py-12 text-center text-stone-400">
-          Crafter Recipe Templates are an A.A. V2 / V3 feature.
+          Crafter Recipe Templates are an A.A. V2 / A.A. V3 / C.A. feature.
         </CardContent>
       </Card>
     );
@@ -12591,7 +12591,7 @@ function ItemTypeFilterPicker({ value, onChange, systemSlug }: { value: string; 
     { value: 'spellbook', label: 'Spellbooks' },
     { value: 'scroll', label: 'Scrolls' },
     { value: 'rune', label: 'Runes' },
-    ...((systemSlug === 'aa-v2' || systemSlug === 'aa-v3') ? [{ value: 'crafter', label: 'Crafter' }] : []),
+    ...((systemSlug === 'aa-v2' || systemSlug === 'aa-v3' || systemSlug === 'ca') ? [{ value: 'crafter', label: 'Crafter' }] : []),
     { value: 'miscellaneous', label: 'Miscellaneous' },
   ];
   const current = options.find((o) => o.value === value) || options[0];

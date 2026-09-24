@@ -68,7 +68,7 @@ const opts = (values: readonly string[], blank?: string) => [
 const ITEM_TYPES_BASE = ["ammunition", "armor", "consumable", "container", "utility", "weapon"];
 function itemTypeOptions(systemSlug: string, current: string) {
   const list = [...ITEM_TYPES_BASE];
-  if (systemSlug === "aa-v2" || systemSlug === "aa-v3") list.push("crafter");
+  if (systemSlug === "aa-v2" || systemSlug === "aa-v3" || systemSlug === "ca") list.push("crafter");
   if (systemSlug === "aa-v3") list.push("miscellaneous", "spellbook");
   if (systemSlug === "ca") list.push("beast_orb");
   if (current && !list.includes(current)) list.push(current);

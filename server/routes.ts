@@ -10289,7 +10289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Library ACL helpers moved to server/lib/library-acl.ts (single source of
   // truth shared with the sync API). Imported here so existing references
   // continue to work unchanged.
-  const { getLibraryScope, enforceLibraryWrite, enforceLibraryRead, requireLibraryAaV2 } = await import("./lib/library-acl");
+  const { getLibraryScope, enforceLibraryWrite, enforceLibraryRead, requireLibraryAaV2, requireLibraryCraftingSystem } = await import("./lib/library-acl");
 
   // Helper to sanitize user object (exclude password)
   const sanitizeUserForAdmin = (user: any) => ({
@@ -10751,7 +10751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // inventory copy's own `system` may be stale/default (e.g.
         // 'arcana-adventure') and must not gate crafting below.
         if (campaign?.system) sourceSystem = campaign.system;
-        if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
+        if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3' && campaign.system !== 'ca') return res.status(400).json({ error: "Crafting is AA V2 / AA V3 / C.A. only" });
       } else {
         const me = await storage.getUser(userId);
         const isAdmin = !!me?.isAdmin;
@@ -10762,8 +10762,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         sourceId = item.id;
       }
-      if (sourceSystem && sourceSystem !== 'aa-v2' && sourceSystem !== 'aa-v3') {
-        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
+      if (sourceSystem && sourceSystem !== 'aa-v2' && sourceSystem !== 'aa-v3' && sourceSystem !== 'ca') {
+        return res.status(400).json({ error: "Crafting is AA V2 / AA V3 / C.A. only" });
       }
       // Reconcile any linked crafter-templates onto the source item so recipes
       // appear even if the original link-time copy never ran.
@@ -10799,7 +10799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = await storage.getItem(req.params.itemId);
       if (!item || !item.isTemplate) return res.status(404).json({ error: "Crafter item not found" });
       if (item.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
-      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, item.system)) return;
       if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       const { ingredients = [], outcomes = [], ...recipeBody } = req.body || {};
       const parsedRecipe = insertCraftRecipeSchema
@@ -10837,7 +10837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const item = await storage.getItem(req.params.itemId);
       if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
-      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, item.system)) return;
       if (!await enforceLibraryRead(req, res, item.createdByUserId)) return;
       const recipe = await storage.getItemBuildRecipe(item.id);
       res.json({ buildRecipe: recipe ?? null });
@@ -10852,7 +10852,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const item = await storage.getItem(req.params.itemId);
       if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
-      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, item.system)) return;
       if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       const outputQuantity = Math.max(1, Number((req.body || {}).outputQuantity) || 1);
       const ingredients = ((req.body || {}).ingredients || []).map((ing: unknown) =>
@@ -10872,7 +10872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const item = await storage.getItem(req.params.itemId);
       if (!item || !item.isTemplate) return res.status(404).json({ error: "Item not found" });
-      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, item.system)) return;
       if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       await storage.deleteItemBuildRecipe(item.id);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'craft-recipes' });
@@ -10888,7 +10888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/items-with-build-recipes", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      if (system !== 'aa-v2' && system !== 'aa-v3') return res.json([]);
+      if (system !== 'aa-v2' && system !== 'aa-v3' && system !== 'ca') return res.json([]);
       const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === '1';
       const ownerScope = (isA && !personal) ? undefined : [req.session.userId!];
@@ -10909,14 +10909,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (recipe.parentTemplateId) {
       const tpl = await storage.getCrafterRecipeTemplate(recipe.parentTemplateId);
       if (!tpl) { res.status(404).json({ error: "Parent template missing" }); return { ok: false as const }; }
-      if (!await requireLibraryAaV2(req, res, tpl.system)) return { ok: false as const };
+      if (!await requireLibraryCraftingSystem(req, res, tpl.system)) return { ok: false as const };
       if (!await enforceLibraryWrite(req, res, tpl.ownerUserId)) return { ok: false as const };
       return { ok: true as const, recipe, parentTemplateId: tpl.id };
     }
     if (!recipe.parentItemId) { res.status(400).json({ error: "Recipe has no parent" }); return { ok: false as const }; }
     const parent = await storage.getItem(recipe.parentItemId);
     if (!parent) { res.status(404).json({ error: "Parent item missing" }); return { ok: false as const }; }
-    if (!await requireLibraryAaV2(req, res, parent.system)) return { ok: false as const };
+    if (!await requireLibraryCraftingSystem(req, res, parent.system)) return { ok: false as const };
     if (!await enforceLibraryWrite(req, res, parent.createdByUserId)) return { ok: false as const };
     return { ok: true as const, recipe, parentTemplateId: null };
   }
@@ -11034,7 +11034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/crafter-recipe-templates", requireAuth, async (req, res) => {
     try {
       const system = (req.query.system as string) || 'aa-v2';
-      if (system !== 'aa-v2' && system !== 'aa-v3') return res.json([]);
+      if (system !== 'aa-v2' && system !== 'aa-v3' && system !== 'ca') return res.json([]);
       const isA = await isAdminUser(req.session.userId);
       const personal = req.query.personal === '1';
       const ownerScope = (isA && !personal) ? undefined : [req.session.userId!];
@@ -11062,9 +11062,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/crafter-recipe-templates", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, req.body.system)) return;
       const personal = req.body.personal === true;
-      const requestedCRTSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      const requestedCRTSystem = req.body.system === 'aa-v3' ? 'aa-v3' : req.body.system === 'ca' ? 'ca' : 'aa-v2';
       const { personal: _crtPersonal, ...crtBody } = req.body;
       const body = (isA && !personal) ? crtBody : { ...crtBody, system: requestedCRTSystem, ownerUserId: req.session.userId };
       const data = insertCrafterRecipeTemplateSchema.parse({ ...body, system: requestedCRTSystem });
@@ -11202,7 +11202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const crafter = await storage.getItem(req.params.itemId);
       if (!crafter || !crafter.isTemplate) return res.status(404).json({ error: "Crafter item not found" });
       if (crafter.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
-      if (!await requireLibraryAaV2(req, res, crafter.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, crafter.system)) return;
       if (!await enforceLibraryWrite(req, res, crafter.createdByUserId)) return;
       const sourceItemId = (req.body || {}).itemId as string;
       if (!sourceItemId) return res.status(400).json({ error: "itemId is required" });
@@ -11251,7 +11251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = await storage.getItem(req.params.itemId);
       if (!item) return res.status(404).json({ error: "Item not found" });
       if (item.itemType !== 'crafter') return res.status(400).json({ error: "Item is not a Crafter" });
-      if (!await requireLibraryAaV2(req, res, item.system)) return;
+      if (!await requireLibraryCraftingSystem(req, res, item.system)) return;
       if (!await enforceLibraryWrite(req, res, item.createdByUserId)) return;
       const incoming: string[] = Array.isArray(req.body?.templateIds) ? req.body.templateIds : [];
       const current = new Set(await storage.getCrafterTemplateLinks(item.id));
@@ -11317,13 +11317,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the character's owner can craft with their items" });
       }
 
-      // AA V2 only — derived from authoritative campaign, not request.
-      if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3') {
-        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
+      // AA V2 / AA V3 / C.A. only — derived from authoritative campaign, not request.
+      if (campaign && campaign.system !== 'aa-v2' && campaign.system !== 'aa-v3' && campaign.system !== 'ca') {
+        return res.status(400).json({ error: "Crafting is AA V2 / AA V3 / C.A. only" });
       }
       // For characters not bound to a campaign, fall back to the crafter's library system.
-      if (!campaign && crafter.system && crafter.system !== 'aa-v2' && crafter.system !== 'aa-v3') {
-        return res.status(400).json({ error: "Crafting is AA V2 / V3 only" });
+      if (!campaign && crafter.system && crafter.system !== 'aa-v2' && crafter.system !== 'aa-v3' && crafter.system !== 'ca') {
+        return res.status(400).json({ error: "Crafting is AA V2 / AA V3 / C.A. only" });
       }
       const campaignId = character.campaignId;
 
@@ -11453,6 +11453,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           presence: (c.presence as number) ?? 0,
           will: (c.will as number) ?? 0,
           craft: (c.craft as number) ?? 0,
+          constitution: (c.constitution as number) ?? 0,
+          anemos: (c.anemos as number) ?? 0,
+          intelligence: (c.intelligence as number) ?? 0,
         };
         return map[recipe.attribute] ?? 0;
       })();

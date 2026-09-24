@@ -112,3 +112,20 @@ export async function requireLibraryAaV2(
   }
   return true;
 }
+
+// Same shape as requireLibraryAaV2, scoped to the crafter/recipe write
+// routes specifically (which C.A. now supports too) rather than the
+// general personal-library policy those other routes (classes, feat trees,
+// spells, etc.) still enforce.
+export async function requireLibraryCraftingSystem(
+  req: any,
+  res: any,
+  system: string | undefined,
+): Promise<boolean> {
+  if (await isAdminUser(req.session?.userId)) return true;
+  if (system && system !== 'aa-v2' && system !== 'aa-v3' && system !== 'ca') {
+    res.status(400).json({ error: "Crafting recipes are only available for the AA V2, AA V3, and C.A. systems" });
+    return false;
+  }
+  return true;
+}
