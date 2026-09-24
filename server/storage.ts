@@ -270,8 +270,8 @@ export interface IStorage {
   getSystemItems(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
-  getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
-  getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
+  getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[]>;
+  getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
@@ -315,7 +315,7 @@ export interface IStorage {
   getItemBuildRecipe(itemId: string): Promise<(CraftRecipe & { ingredients: CraftRecipeIngredient[] }) | undefined>;
   saveItemBuildRecipe(itemId: string, outputQuantity: number, ingredients: Omit<InsertCraftRecipeIngredient, 'recipeId'>[], itemName: string): Promise<CraftRecipe & { ingredients: CraftRecipeIngredient[] }>;
   deleteItemBuildRecipe(itemId: string): Promise<void>;
-  getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>>;
+  getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; itemType: string }>>;
 
   // Crafter Recipe Templates
   listCrafterRecipeTemplates(opts: { system?: string; ownerScope?: string[] | null; personal?: boolean }): Promise<CrafterRecipeTemplate[]>;
@@ -906,28 +906,6 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Helper to convert legacy multi-currency price fields to new price/currency format
-  private convertLegacyItemPrice(item: Item): Item {
-    // If item already has price set, return as-is
-    if (item.price && item.price > 0) {
-      return item;
-    }
-    
-    // Convert from legacy fields (priceCopper, priceSilver, priceGold, pricePlatinum)
-    const legacyItem = item as any;
-    if (legacyItem.pricePlatinum && legacyItem.pricePlatinum > 0) {
-      return { ...item, price: legacyItem.pricePlatinum, currency: 'platinum' };
-    } else if (legacyItem.priceGold && legacyItem.priceGold > 0) {
-      return { ...item, price: legacyItem.priceGold, currency: 'gold' };
-    } else if (legacyItem.priceSilver && legacyItem.priceSilver > 0) {
-      return { ...item, price: legacyItem.priceSilver, currency: 'silver' };
-    } else if (legacyItem.priceCopper && legacyItem.priceCopper > 0) {
-      return { ...item, price: legacyItem.priceCopper, currency: 'copper' };
-    }
-    
-    return item;
-  }
-
   // Entity search for the notes reference picker. When campaignId is given
   // (the note-taking flow always provides one), results are scoped to
   // exactly what the user asked for - "within the campaign or admin": admin
@@ -2638,7 +2616,7 @@ export class DatabaseStorage implements IStorage {
       .from(items)
       .where(eq(items.characterId, characterId)) as Item[];
     
-    return result.map(item => this.convertLegacyItemPrice(item));
+    return result;
   }
 
   async createItem(item: InsertItem): Promise<Item> {
@@ -2677,7 +2655,7 @@ export class DatabaseStorage implements IStorage {
 
   async getItem(id: string): Promise<Item | undefined> {
     const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1) as Item[];
-    return item ? this.convertLegacyItemPrice(item) : undefined;
+    return item;
   }
 
   async getSystemItems(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Item[]> {
@@ -2708,7 +2686,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select()
       .from(items)
       .where(and(...conditions)) as Item[];
-    return result.map(item => this.convertLegacyItemPrice(item));
+    return result;
   }
 
   async getSystemItemTemplates(system?: string, ownerScope?: string[], personal?: boolean): Promise<Item[]> {
@@ -2729,7 +2707,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select()
       .from(items)
       .where(and(...conditions)) as Item[];
-    return result.map(item => this.convertLegacyItemPrice(item));
+    return result;
   }
 
   async getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]> {
@@ -2746,11 +2724,11 @@ export class DatabaseStorage implements IStorage {
             )
           : eq(items.campaignId, campaignId)
       )) as Item[];
-    return result.map(item => this.convertLegacyItemPrice(item));
+    return result;
   }
 
   // Lightweight summaries for faster item picker loading (no images to avoid Neon 507 response size limit)
-  async getSystemItemSummaries(system?: string, ownerScope?: string[], personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
+  async getSystemItemSummaries(system?: string, ownerScope?: string[], personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[]> {
     const conditions = [
       eq(items.isTemplate, true),
       eq(items.isLiveTemplate, false),
@@ -2773,13 +2751,12 @@ export class DatabaseStorage implements IStorage {
       rarity: items.rarity,
       weight: items.itemWeight,
       price: items.price,
-      currency: items.currency,
     })
       .from(items)
       .where(and(...conditions));
   }
 
-  async getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
+  async getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[]> {
     // Get items specific to this campaign OR created by this user (GM library items)
     return await db.select({
       id: items.id,
@@ -2788,7 +2765,6 @@ export class DatabaseStorage implements IStorage {
       rarity: items.rarity,
       weight: items.itemWeight,
       price: items.price,
-      currency: items.currency,
     })
       .from(items)
       .where(and(
@@ -2815,7 +2791,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select()
       .from(items)
       .where(eq(items.containerId, containerId)) as Item[];
-    return result.map(item => this.convertLegacyItemPrice(item));
+    return result;
   }
 
   // Spell operations
@@ -2889,9 +2865,7 @@ export class DatabaseStorage implements IStorage {
       'id', 'characterId', 'campaignId', 'worldId', 'createdByUserId',
       'containerId', 'isTemplate', 'isLiveTemplate', 'isEquipped', 'quantity',
       'isArchived', 'templateItemId', 'templatePriority', 'templateUseOwnOrder',
-      // Legacy price columns are normalized by convertLegacyItemPrice and may
-      // drift independently of the canonical price/currency; ignore them.
-      'priceCopper', 'priceSilver', 'priceGold', 'pricePlatinum', 'weight',
+      'weight',
     ]);
 
     const normalizeValue = (v: unknown): string => {
@@ -6488,13 +6462,12 @@ export class DatabaseStorage implements IStorage {
 
   // Items (in a given library scope) that have an authored build recipe, for
   // the "add an existing item-recipe into a group" picker.
-  async getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>> {
+  async getItemsWithBuildRecipes(system: string, ownerScope?: string[]): Promise<Array<{ id: string; name: string; image: string | null; price: number; itemType: string }>> {
     const rows = await db.select({
       id: items.id,
       name: items.name,
       image: items.image,
       price: items.price,
-      currency: items.currency,
       itemType: items.itemType,
       createdByUserId: items.createdByUserId,
     }).from(items)

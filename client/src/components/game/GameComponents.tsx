@@ -17053,34 +17053,18 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 </div>
                 {item.price > 0 && (() => {
                   if (isAAV3) {
-                    const adj = v3DurabilityAdjustedValue(item.price, item.currency, item.durability);
+                    const adj = v3DurabilityAdjustedValue(item.price, item.durability);
                     const adjStr = formatV3AdjustedValue(adj);
-                    const origStr = formatV3OriginalValue(item.price, item.currency);
+                    const origStr = formatV3OriginalValue(item.price);
                     return adj.isDiscounted ? (
                       <span className="text-amber-400 font-medium" title={`Base: ${origStr}`}>
                         {adjStr} <span className="line-through text-stone-500 text-[10px]">{origStr}</span>
                       </span>
                     ) : (
-                      <span className={
-                        item.currency === 'platinum' ? 'text-amber-400' :
-                        item.currency === 'gold' ? 'text-yellow-500' :
-                        item.currency === 'silver' ? 'text-gray-400' :
-                        'text-orange-600'
-                      }>
-                        {adjStr}
-                      </span>
+                      <span className="text-orange-600">{adjStr}</span>
                     );
                   }
-                  return (
-                    <span className={
-                      item.currency === 'platinum' ? 'text-amber-400' :
-                      item.currency === 'gold' ? 'text-yellow-500' :
-                      item.currency === 'silver' ? 'text-gray-400' :
-                      'text-orange-600'
-                    }>
-                      {item.price}{item.currency === 'platinum' ? 'p' : item.currency === 'gold' ? 'g' : item.currency === 'silver' ? 's' : 'c'}
-                    </span>
-                  );
+                  return <span className="text-orange-600">{item.price}</span>;
                 })()}
               </div>
               {/* AA V3 only: rune indicators for items with socketed runes */}
@@ -21834,18 +21818,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     return value >= 0 ? `+${value}` : `${value}`;
   };
 
-  // Helper functions for inventory
-  const convertCurrency = (copper: number, silver: number, gold: number, platinum: number) => {
-    let total = copper + (silver * 10) + (gold * 100) + (platinum * 1000);
-    const p = Math.floor(total / 1000);
-    total %= 1000;
-    const g = Math.floor(total / 100);
-    total %= 100;
-    const s = Math.floor(total / 10);
-    const c = total % 10;
-    return { platinum: p, gold: g, silver: s, copper: c };
-  };
-
   const stackItems = (items: any[]) => {
     const stacks = new Map<string, any>();
     for (const item of items) {
@@ -21867,7 +21839,6 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         weight: item.weight,
         itemWeight: item.itemWeight,
         price: item.price,
-        currency: item.currency,
         durability: item.durability,
         itemType: item.itemType,
         rarity: item.rarity,
@@ -21907,22 +21878,18 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   const carryCapacity = baseCarryWeight + equippedContainerBonus;
   const weightPercentage = (totalWeight / carryCapacity) * 100;
 
-  const totalCurrency = items.reduce((acc: any, item: any) => {
-    const price = (item.price || 0) * item.quantity;
-    const currency = item.currency || 'copper';
-    return {
-      copper: acc.copper + (currency === 'copper' ? price : 0),
-      silver: acc.silver + (currency === 'silver' ? price : 0),
-      gold: acc.gold + (currency === 'gold' ? price : 0),
-      platinum: acc.platinum + (currency === 'platinum' ? price : 0),
-    };
-  }, { copper: 0, silver: 0, gold: 0, platinum: 0 });
-
-  const displayCurrency = convertCurrency(
-    totalCurrency.copper,
-    totalCurrency.silver,
-    totalCurrency.gold,
-    totalCurrency.platinum
+  // Currency is just an item type now - only itemType === 'currency' items
+  // count toward the wallet, grouped by name (each GM-invented currency
+  // keeps its own stack) rather than a fixed copper/silver/gold/platinum set.
+  const currencyWallet: { name: string; quantity: number }[] = Object.values(
+    items
+      .filter((item: any) => item.itemType === 'currency')
+      .reduce((acc: Record<string, { name: string; quantity: number }>, item: any) => {
+        const name = item.name || 'Currency';
+        if (!acc[name]) acc[name] = { name, quantity: 0 };
+        acc[name].quantity += item.quantity || 0;
+        return acc;
+      }, {})
   );
 
   // Filter, search, and sort items
@@ -21950,13 +21917,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       case "weight-high":
         return b.itemWeight - a.itemWeight;
       case "price-low":
-        const aValueLow = (a.price || 0) * (a.currency === 'platinum' ? 1000 : a.currency === 'gold' ? 100 : a.currency === 'silver' ? 10 : 1);
-        const bValueLow = (b.price || 0) * (b.currency === 'platinum' ? 1000 : b.currency === 'gold' ? 100 : b.currency === 'silver' ? 10 : 1);
-        return aValueLow - bValueLow;
+        return (a.price || 0) - (b.price || 0);
       case "price-high":
-        const aValueHigh = (a.price || 0) * (a.currency === 'platinum' ? 1000 : a.currency === 'gold' ? 100 : a.currency === 'silver' ? 10 : 1);
-        const bValueHigh = (b.price || 0) * (b.currency === 'platinum' ? 1000 : b.currency === 'gold' ? 100 : b.currency === 'silver' ? 10 : 1);
-        return bValueHigh - aValueHigh;
+        return (b.price || 0) - (a.price || 0);
       case "rarity":
         const rarityOrder: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
         return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0);
@@ -25547,12 +25510,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   </div>
                   <div>
                     <Label className="text-xs text-stone-400">Currency</Label>
-                    <div className="text-sm text-stone-200 flex gap-2" data-testid="text-currency">
-                      {totalCurrency.platinum > 0 && <span className="text-amber-400">{totalCurrency.platinum}p</span>}
-                      {totalCurrency.gold > 0 && <span className="text-yellow-500">{totalCurrency.gold}g</span>}
-                      {totalCurrency.silver > 0 && <span className="text-gray-400">{totalCurrency.silver}s</span>}
-                      {totalCurrency.copper > 0 && <span className="text-orange-600">{totalCurrency.copper}c</span>}
-                      {totalCurrency.platinum === 0 && totalCurrency.gold === 0 && totalCurrency.silver === 0 && totalCurrency.copper === 0 && <span className="text-stone-500">No currency</span>}
+                    <div className="text-sm text-stone-200 flex flex-wrap gap-2" data-testid="text-currency">
+                      {currencyWallet.length === 0
+                        ? <span className="text-stone-500">No currency</span>
+                        : currencyWallet.map(c => <span key={c.name} className="text-amber-400">{c.quantity} {c.name}</span>)}
                     </div>
                   </div>
                 </div>
@@ -29750,7 +29711,6 @@ function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaign
         weight: template.weight || 'light',
         itemWeight: template.itemWeight || 0,
         price: template.price || 0,
-        currency: template.currency || 'copper',
         durability: template.durability || 10,
         isContainer: template.isContainer || false,
         carryCapacity: template.carryCapacity || 0,
@@ -29992,7 +29952,6 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
     weight: string;
     itemWeight: number | string;
     price: number | string;
-    currency: string;
     durability: number;
     ammunitionType: string;
     weaponCategory: string;
@@ -30009,7 +29968,6 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
     weight: 'light',
     itemWeight: '',
     price: '',
-    currency: 'copper',
     durability: 10,
     ammunitionType: '',
     weaponCategory: '',
@@ -30040,7 +29998,6 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
         range: optionalNum(data.range),
         itemWeight: optionalNum(data.itemWeight),
         price: optionalNum(data.price),
-        currency: data.currency || 'copper',
       };
       return api.createCampaignTemplateItem(campaignId!, cleanedData);
     },
@@ -30051,7 +30008,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
       setNewItem({
         name: '', description: '', itemType: 'utility', rarity: 'common',
         damage: '', damageType: '', mod: '', range: '', weight: 'light',
-        itemWeight: '', price: '', currency: 'copper', durability: 10,
+        itemWeight: '', price: '', durability: 10,
         ammunitionType: '', weaponCategory: '', breakChance: 10,
       });
       toast({ title: "Template Created", description: "Campaign item template created successfully" });
@@ -30273,26 +30230,10 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
                   </div>
                 )}
                 <div className="border-t border-stone-700 pt-4">
-                  <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Price</Label>
-                      <NumberInput min={0} value={typeof newItem.price === 'number' ? newItem.price : undefined} fallback={0} onChange={(v) => setNewItem({...newItem, price: v ?? ''})} className="bg-stone-800 border-stone-700" />
-                    </div>
-                    <div>
-                      <Label>Currency</Label>
-                      <Select value={newItem.currency} onValueChange={(v) => setNewItem({...newItem, currency: v})}>
-                        <SelectTrigger className="bg-stone-800 border-stone-700">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="copper">Copper</SelectItem>
-                          <SelectItem value="silver">Silver</SelectItem>
-                          <SelectItem value="gold">Gold</SelectItem>
-                          <SelectItem value="platinum">Platinum</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <h3 className="text-sm font-bold text-stone-300 mb-3">Value</h3>
+                  <div>
+                    <Label>Value</Label>
+                    <NumberInput min={0} value={typeof newItem.price === 'number' ? newItem.price : undefined} fallback={0} onChange={(v) => setNewItem({...newItem, price: v ?? ''})} className="bg-stone-800 border-stone-700" />
                   </div>
                 </div>
                 <div className="flex gap-2 pt-4">

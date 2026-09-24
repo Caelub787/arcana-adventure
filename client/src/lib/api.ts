@@ -1501,7 +1501,7 @@ class ApiClient {
   async deleteItemBuildRecipe(itemId: string): Promise<{ success: boolean }> {
     return this.request(`/admin/items/${itemId}/build-recipe`, { method: 'DELETE' });
   }
-  async getItemsWithBuildRecipes(system: string = 'aa-v2', personal?: boolean): Promise<Array<{ id: string; name: string; image: string | null; price: number; currency: string; itemType: string }>> {
+  async getItemsWithBuildRecipes(system: string = 'aa-v2', personal?: boolean): Promise<Array<{ id: string; name: string; image: string | null; price: number; itemType: string }>> {
     return this.request(`/admin/items-with-build-recipes?system=${encodeURIComponent(system)}${personal ? '&personal=1' : ''}`);
   }
   async addItemRecipeToTemplate(templateId: string, itemId: string): Promise<any> {
@@ -1741,7 +1741,7 @@ class ApiClient {
   }
 
   // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
-  async getSystemItemSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
+  async getSystemItemSummaries(system?: string, campaignId?: string, personal?: boolean): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[]> {
     const qs = new URLSearchParams();
     if (system) qs.set('system', system);
     if (campaignId) qs.set('campaignId', campaignId);
@@ -1750,7 +1750,7 @@ class ApiClient {
     return this.request(`/system-items/summary${s ? `?${s}` : ''}`);
   }
 
-  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[] }> {
+  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number }[] }> {
     return this.request(`/campaigns/${campaignId}/template-items/summary`);
   }
 
@@ -3329,7 +3329,7 @@ class ApiClient {
     });
   }
 
-  async sellToShop(pinId: string, data: { characterId: string; itemId: string; sellPercentage: number }): Promise<any> {
+  async sellToShop(pinId: string, data: { characterId: string; itemId: string; sellPercentage: number; currencyName: string }): Promise<any> {
     return this.request(`/campaign-map-pins/${pinId}/sell`, {
       method: 'POST',
       body: JSON.stringify(data),

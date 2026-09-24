@@ -5020,7 +5020,6 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                         <span className="flex items-center gap-1 text-amber-400" data-testid={`text-item-price-${item.id}`}>
                           <Coins className="h-3 w-3" />
                           <span>{item.price ?? 0}</span>
-                          <span className="capitalize">{item.currency || 'copper'}</span>
                         </span>
                       )}
                     </div>
@@ -12645,7 +12644,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
-  const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number; currency: string }>>({
+  const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
     enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
@@ -13025,7 +13024,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
     breakChance: number | string;
     itemWeight: number | string;
     price: number | string;
-    currency: string;
     durability: number | string;
     isContainer: boolean;
     carryCapacity: number | string;
@@ -13063,7 +13061,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
     breakChance: (initialData as any)?.breakChance ?? '',
     itemWeight: initialData?.itemWeight ?? '',
     price: initialData?.price ?? '',
-    currency: initialData?.currency || 'copper',
     durability: initialData?.durability ?? '',
     isContainer: initialData?.isContainer || false,
     carryCapacity: initialData?.carryCapacity ?? '',
@@ -13105,7 +13102,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
         breakChance: (initialData as any)?.breakChance ?? '',
         itemWeight: initialData?.itemWeight ?? '',
         price: initialData?.price ?? '',
-        currency: initialData?.currency || 'copper',
         durability: initialData?.durability ?? '',
         isContainer: initialData?.isContainer || false,
         carryCapacity: initialData?.carryCapacity ?? '',
@@ -13601,21 +13597,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-price"
                 />
-              </div>
-
-              <div>
-                <Label>Currency</Label>
-                <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-currency">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="copper">Copper</SelectItem>
-                    <SelectItem value="silver">Silver</SelectItem>
-                    <SelectItem value="gold">Gold</SelectItem>
-                    <SelectItem value="platinum">Platinum</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               {formData.itemType === 'container' && (

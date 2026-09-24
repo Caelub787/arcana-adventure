@@ -7107,9 +7107,10 @@ export default function Campaign() {
   const [shopTab, setShopTab] = useState<'buy' | 'sell'>('buy');
   const [haggleRoll, setHaggleRoll] = useState<number | null>(null);
   const [sellPercentage, setSellPercentage] = useState(80);
+  const [sellCurrencyName, setSellCurrencyName] = useState<string>('');
   const [shopCharacterId, setShopCharacterId] = useState<string>('');
   const [shopEditingPin, setShopEditingPin] = useState<any | null>(null);
-  const [shopItemForm, setShopItemForm] = useState({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+  const [shopItemForm, setShopItemForm] = useState({ name: '', description: '', price: 0, quantity: -1 });
   const [editingShopItemId, setEditingShopItemId] = useState<string | null>(null);
   const [shopEditorTab, setShopEditorTab] = useState<'inventory' | 'import' | 'rolls'>('inventory');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
@@ -8694,7 +8695,7 @@ export default function Campaign() {
     mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.createShopItem(pinId, data),
     onSuccess: () => {
       refetchShopItems();
-      setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+      setShopItemForm({ name: '', description: '', price: 0, quantity: -1 });
       setEditingShopItemId(null);
       toast({ title: 'Shop item added' });
     },
@@ -8705,7 +8706,7 @@ export default function Campaign() {
     onSuccess: () => {
       refetchShopItems();
       setEditingShopItemId(null);
-      setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+      setShopItemForm({ name: '', description: '', price: 0, quantity: -1 });
       toast({ title: 'Shop item updated' });
     },
   });
@@ -8735,14 +8736,14 @@ export default function Campaign() {
   });
 
   const sellItemMutation = useMutation({
-    mutationFn: ({ pinId, characterId, itemId, sellPercentage: sp }: { pinId: string; characterId: string; itemId: string; sellPercentage: number }) =>
-      api.sellToShop(pinId, { characterId, itemId, sellPercentage: sp }),
+    mutationFn: ({ pinId, characterId, itemId, sellPercentage: sp, currencyName }: { pinId: string; characterId: string; itemId: string; sellPercentage: number; currencyName: string }) =>
+      api.sellToShop(pinId, { characterId, itemId, sellPercentage: sp, currencyName }),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/characters`] });
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
       if (shopCharacterId) queryClient.invalidateQueries({ queryKey: ['items', shopCharacterId] });
       if (shopkeeperCharId) queryClient.invalidateQueries({ queryKey: ['items', shopkeeperCharId] });
-      toast({ title: 'Item sold!', description: data?.earnings ? `Earned ${data.earnings.amount} ${data.earnings.currency}` : 'Sale complete' });
+      toast({ title: 'Item sold!', description: data?.earnings ? `Earned ${data.earnings.paid}${data.earnings.cappedByBudget ? ' (shop is low on funds)' : ''}` : 'Sale complete' });
     },
     onError: (err: any) => {
       toast({ title: 'Sale failed', description: err?.message || 'Could not sell item', variant: 'destructive' });
@@ -8776,58 +8777,30 @@ export default function Campaign() {
     });
   };
 
-  const getCurrencySymbol = (curr: string) => {
-    const symbols: Record<string, string> = { copper: '🟤', silver: '⚪', gold: '🟡', platinum: '⬜' };
-    return symbols[curr] || '🪙';
-  };
-
-  const getCharacterCurrencyTotal = (charId: string) => {
+  // A character's wallet: every currency-typed item they hold, grouped by
+  // name (each GM-invented currency keeps its own stack), plus the flat
+  // total value across all of them. Shop affordability/payout further
+  // restrict this to just the shop's accepted currency names.
+  const getCharacterWallet = (charId: string): { items: { name: string; quantity: number; price: number }[]; totalValue: number } => {
     let itemsList: any[] | undefined;
     if (charId === shopCharacterId && shopCharacterItems) {
       itemsList = shopCharacterItems;
     } else if (charId === shopkeeperCharId && shopkeeperCharacterItems) {
       itemsList = shopkeeperCharacterItems;
-    } else if (charId === shopCharacterId) {
-      itemsList = shopCharacterItems;
     }
-    if (!itemsList) return { copper: 0, silver: 0, gold: 0, platinum: 0, totalCopper: 0 };
+    if (!itemsList) return { items: [], totalValue: 0 };
     const currencyItems = itemsList.filter((i: any) => i.itemType === 'currency');
-    let totalCopper = 0;
-    const breakdown = { copper: 0, silver: 0, gold: 0, platinum: 0 };
-    const currencyToCopper: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
-    for (const item of currencyItems) {
-      const qty = item.quantity || 1;
-      const curr = (item.currency || 'copper').toLowerCase();
-      const rate = currencyToCopper[curr] || 1;
-      const copperValue = qty * rate;
-      if (curr === 'copper') { breakdown.copper += qty; }
-      else if (curr === 'silver') { breakdown.silver += qty; }
-      else if (curr === 'gold') { breakdown.gold += qty; }
-      else if (curr === 'platinum') { breakdown.platinum += qty; }
-      totalCopper += copperValue;
-    }
-    return { ...breakdown, totalCopper };
+    const items = currencyItems.map((i: any) => ({ name: i.name, quantity: i.quantity || 1, price: i.price || 0 }));
+    const totalValue = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    return { items, totalValue };
   };
 
-  const convertCopperToDisplay = (copperAmount: number) => {
-    if (copperAmount <= 0) return '0 copper';
-    const plat = Math.floor(copperAmount / 1000);
-    let remainder = copperAmount % 1000;
-    const gold = Math.floor(remainder / 100);
-    remainder = remainder % 100;
-    const silver = Math.floor(remainder / 10);
-    const copper = remainder % 10;
-    const parts = [];
-    if (plat > 0) parts.push(`${plat} platinum`);
-    if (gold > 0) parts.push(`${gold} gold`);
-    if (silver > 0) parts.push(`${silver} silver`);
-    if (copper > 0) parts.push(`${copper} copper`);
-    return parts.join(', ') || '0 copper';
-  };
-
-  const getPriceInCopper = (price: number, currency: string) => {
-    const multipliers: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
-    return price * (multipliers[currency.toLowerCase()] || 1);
+  // Value held across only the currency names a shop is set up to accept.
+  const getAcceptedValue = (charId: string, acceptedCurrencies: { name: string; price: number }[]) => {
+    const acceptedNames = new Set(acceptedCurrencies.map(c => c.name));
+    return getCharacterWallet(charId).items
+      .filter(i => acceptedNames.has(i.name))
+      .reduce((sum, i) => sum + i.price * i.quantity, 0);
   };
 
   // Load scene folders for the campaign
@@ -12236,7 +12209,7 @@ export default function Campaign() {
       {shopEditingPin && role === 'gm' && (
         <FloatingPanel
           open={!!shopEditingPin}
-          onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); setSelectedTemplateIds(new Set()); setTemplateSearch(''); setShopEditorTab('inventory'); }}
+          onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, quantity: -1 }); setSelectedTemplateIds(new Set()); setTemplateSearch(''); setShopEditorTab('inventory'); }}
           title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopEditingPin.label || 'Shop'} - Manage</span>}
           panelKey="shop-editor"
           zIndex={floatingZIndicesRef.current['shop-editor'] || 10400}
@@ -12264,14 +12237,10 @@ export default function Campaign() {
                 ))}
               </select>
               {shopEditingPin.shopkeeperCharacterId && (() => {
-                const wallet = getCharacterCurrencyTotal(shopEditingPin.shopkeeperCharacterId);
+                const wallet = getCharacterWallet(shopEditingPin.shopkeeperCharacterId);
                 return (
-                  <span className="text-xs text-stone-400 shrink-0">
-                    {wallet.platinum > 0 && <span className="mr-1">⬜{wallet.platinum}</span>}
-                    {wallet.gold > 0 && <span className="mr-1">🟡{wallet.gold}</span>}
-                    {wallet.silver > 0 && <span className="mr-1">⚪{wallet.silver}</span>}
-                    {wallet.copper > 0 && <span>🟤{wallet.copper}</span>}
-                    {wallet.totalCopper === 0 && '0gp'}
+                  <span className="text-xs text-stone-400 shrink-0" data-testid="text-shopkeeper-wallet">
+                    {wallet.items.length === 0 ? 'No currency' : wallet.items.map(i => `${i.quantity} ${i.name}`).join(', ')}
                   </span>
                 );
               })()}
@@ -12293,6 +12262,55 @@ export default function Campaign() {
                 data-testid="input-default-sell-percentage"
               />
               <span className="text-xs text-stone-500">%</span>
+            </div>
+
+            <div className="px-3 pt-2 pb-2 border-b border-stone-700 flex items-center gap-2">
+              <Label className="text-xs text-stone-400 shrink-0">Buying Budget:</Label>
+              <Input
+                type="number"
+                min={0}
+                defaultValue={shopEditingPin.shopkeeperMoney ?? ''}
+                placeholder="Unlimited"
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  const val = raw === '' ? null : Math.max(0, parseInt(raw) || 0);
+                  setShopEditingPin((prev: any) => ({ ...prev, shopkeeperMoney: val }));
+                  updatePinSilentMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperMoney: val } });
+                }}
+                className="w-24 bg-stone-800 border-stone-700 h-7 text-xs"
+                data-testid="input-shopkeeper-budget"
+              />
+              <span className="text-xs text-stone-500">how much this shop can pay players who sell to it. Blank = unlimited.</span>
+            </div>
+
+            <div className="px-3 pt-2 pb-2 border-b border-stone-700">
+              <Label className="text-xs text-stone-400 block mb-1">Accepted Currencies</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {allTemplateItems.filter((t: any) => t.itemType === 'currency').map((t: any) => {
+                  const accepted: { name: string; price: number; image?: string | null }[] = shopEditingPin.acceptedCurrencies || [];
+                  const isOn = accepted.some(c => c.name === t.name);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        const next = isOn
+                          ? accepted.filter(c => c.name !== t.name)
+                          : [...accepted, { name: t.name, price: t.price || 0, image: t.image ?? null }];
+                        setShopEditingPin((prev: any) => ({ ...prev, acceptedCurrencies: next }));
+                        updatePinSilentMutation.mutate({ pinId: shopEditingPin.id, data: { acceptedCurrencies: next } });
+                      }}
+                      className={`px-2 py-1 rounded text-xs border ${isOn ? 'bg-amber-700/40 border-amber-600 text-amber-300' : 'bg-stone-800 border-stone-700 text-stone-400 hover:text-stone-200'}`}
+                      data-testid={`toggle-accepted-currency-${t.id}`}
+                    >
+                      {t.name} ({t.price || 0})
+                    </button>
+                  );
+                })}
+                {allTemplateItems.filter((t: any) => t.itemType === 'currency').length === 0 && (
+                  <p className="text-xs text-stone-500 italic">No currency items in your library yet - create one (Item Type: Currency) to set what this shop accepts.</p>
+                )}
+              </div>
             </div>
 
             <div className="flex border-b border-stone-700">
@@ -12398,20 +12416,6 @@ export default function Campaign() {
                               className="bg-stone-900 border-stone-700 h-7 text-xs"
                               data-testid={`input-price-${item.id}`}
                             />
-                          </div>
-                          <div className="w-24">
-                            <Label className="text-xs text-stone-500">Currency</Label>
-                            <select
-                              defaultValue={item.currency}
-                              onChange={(e) => updateShopItemMutation.mutate({ itemId: item.id, data: { currency: e.target.value } })}
-                              className="w-full bg-stone-900 border border-stone-700 text-stone-200 rounded px-1.5 py-1 text-xs h-7"
-                              data-testid={`select-currency-${item.id}`}
-                            >
-                              <option value="copper">Copper</option>
-                              <option value="silver">Silver</option>
-                              <option value="gold">Gold</option>
-                              <option value="platinum">Platinum</option>
-                            </select>
                           </div>
                           <div className="w-16">
                             <Label className="text-xs text-stone-500">Stock</Label>
@@ -12561,7 +12565,7 @@ export default function Campaign() {
                                 <span className="text-sm text-stone-200 truncate font-medium">{t.name}</span>
                                 <span className={`text-[10px] font-bold ${rarityColor}`} data-testid={`rarity-label-${t.id}`}>{rar}</span>
                               </div>
-                              <p className="text-xs text-stone-500 capitalize">{t.itemType || 'item'} • {getCurrencySymbol(t.currency || 'copper')} {t.price || 0} {t.currency || 'copper'}</p>
+                              <p className="text-xs text-stone-500 capitalize">{t.itemType || 'item'} • {t.price || 0}</p>
                             </div>
                           </div>
                         );
@@ -12625,7 +12629,6 @@ export default function Campaign() {
                                 description: t.description || '',
                                 image: t.image,
                                 price: t.price || 0,
-                                currency: t.currency || 'gold',
                                 quantity: -1,
                                 itemType: t.itemType,
                                 itemData,
@@ -12706,18 +12709,16 @@ export default function Campaign() {
               </div>
             )}
             {shopCharacterId && (() => {
-              const wallet = getCharacterCurrencyTotal(shopCharacterId);
+              const wallet = getCharacterWallet(shopCharacterId);
               const charName = characters?.find((c: any) => c.id === shopCharacterId)?.name || 'Character';
               return (
                 <div className="px-3 pt-2 pb-1 border-b border-stone-700 bg-stone-800/50">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-stone-400">{charName}'s Wallet</span>
                     <span className="text-xs text-stone-300">
-                      {wallet.platinum > 0 && <span className="mr-2">⬜ {wallet.platinum}</span>}
-                      {wallet.gold > 0 && <span className="mr-2">🟡 {wallet.gold}</span>}
-                      {wallet.silver > 0 && <span className="mr-2">⚪ {wallet.silver}</span>}
-                      {wallet.copper > 0 && <span>🟤 {wallet.copper}</span>}
-                      {wallet.totalCopper === 0 && <span className="text-stone-500">Empty</span>}
+                      {wallet.items.length === 0
+                        ? <span className="text-stone-500">Empty</span>
+                        : wallet.items.map(i => <span key={i.name} className="mr-2">{i.quantity} {i.name}</span>)}
                     </span>
                   </div>
                 </div>
@@ -12748,9 +12749,8 @@ export default function Campaign() {
                     <p className="text-center text-stone-500 text-sm py-4">This shop has no items for sale</p>
                   ) : (
                     shopItems.map((item: any) => {
-                      const costCopper = getPriceInCopper(item.price, item.currency);
-                      const wallet = getCharacterCurrencyTotal(shopCharacterId);
-                      const canAfford = wallet.totalCopper >= costCopper;
+                      const acceptedValue = getAcceptedValue(shopCharacterId, shopPin.acceptedCurrencies || []);
+                      const canAfford = acceptedValue >= item.price;
                       const outOfStock = item.quantity === 0;
                       return (
                         <div key={item.id} className="p-3 bg-stone-800 rounded border border-stone-700" data-testid={`shop-buy-item-${item.id}`}>
@@ -12758,7 +12758,7 @@ export default function Campaign() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm text-stone-200 font-medium">{item.name}</p>
                               {item.description && <p className="text-xs text-stone-400 mt-0.5">{item.description}</p>}
-                              <p className="text-xs text-amber-400 mt-1">{getCurrencySymbol(item.currency)} {item.price} {item.currency}</p>
+                              <p className="text-xs text-amber-400 mt-1">{item.price}</p>
                               {item.quantity >= 0 && <p className="text-xs text-stone-500">In stock: {item.quantity}</p>}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -12815,44 +12815,60 @@ export default function Campaign() {
                     </div>
                   </div>
 
+                  {(shopPin.acceptedCurrencies || []).length > 0 && (
+                    <div className="flex items-center gap-2 p-2 bg-stone-800 rounded border border-stone-700">
+                      <Label className="text-xs text-stone-400 shrink-0">Get paid in:</Label>
+                      <select
+                        value={sellCurrencyName || shopPin.acceptedCurrencies[0]?.name}
+                        onChange={(e) => setSellCurrencyName(e.target.value)}
+                        className="flex-1 bg-stone-900 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
+                        data-testid="select-sell-currency"
+                      >
+                        {shopPin.acceptedCurrencies.map((c: { name: string; price: number }) => (
+                          <option key={c.name} value={c.name}>{c.name} ({c.price}/ea)</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   {shopCharacterId && (() => {
                     const sellableItems = (shopCharacterItems || []).filter((i: any) => i.itemType !== 'currency' && !i.isArchived);
                     if (sellableItems.length === 0) {
                       return <p className="text-center text-stone-500 text-sm py-4">No items to sell</p>;
                     }
+                    const noCurrencySetUp = (shopPin.acceptedCurrencies || []).length === 0;
                     return (
                       <div className="space-y-2">
                         {sellableItems.map((item: any) => {
                           const isV3Campaign = campaign?.system === 'aa-v3';
-                          const rawPriceCopper = getPriceInCopper(item.price || 0, item.currency || 'copper');
                           const durabilityAdj = isV3Campaign
-                            ? v3DurabilityAdjustedValue(item.price || 0, item.currency || 'copper', item.durability)
+                            ? v3DurabilityAdjustedValue(item.price || 0, item.durability)
                             : null;
-                          const itemPriceCopper = (isV3Campaign && durabilityAdj) ? durabilityAdj.adjustedCopper : rawPriceCopper;
-                          const sellValueCopper = Math.floor(itemPriceCopper * (sellPercentage / 100));
-                          const sellDisplay = convertCopperToDisplay(sellValueCopper);
+                          const itemValue = (isV3Campaign && durabilityAdj) ? durabilityAdj.adjustedValue : (item.price || 0);
+                          const sellValue = Math.floor(itemValue * (sellPercentage / 100));
                           const isDurabilityDiscounted = !!(durabilityAdj?.isDiscounted);
+                          const chosenCurrency = sellCurrencyName || shopPin.acceptedCurrencies?.[0]?.name;
                           return (
                             <div key={item.id} className="p-3 bg-stone-800 rounded border border-stone-700" data-testid={`shop-sell-item-${item.id}`}>
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-stone-200 font-medium">{item.name}</p>
                                   <p className="text-xs text-stone-500">
-                                    Base: {getCurrencySymbol(item.currency || 'copper')} {item.price || 0} {item.currency || 'copper'}
+                                    Base: {item.price || 0}
                                     {isDurabilityDiscounted && (
-                                      <span className="text-amber-500 ml-1">(effective: {convertCopperToDisplay(itemPriceCopper)})</span>
+                                      <span className="text-amber-500 ml-1">(effective: {itemValue})</span>
                                     )}
                                   </p>
-                                  <p className="text-xs text-green-400 mt-0.5">Sell for: {sellDisplay}</p>
+                                  <p className="text-xs text-green-400 mt-0.5">Sell for: {sellValue}</p>
                                 </div>
                                 <Button
                                   size="sm"
                                   className="bg-amber-700 hover:bg-amber-600 h-8 text-xs shrink-0"
-                                  disabled={sellPercentage <= 0 || sellItemMutation.isPending}
-                                  onClick={() => sellItemMutation.mutate({ pinId: shopPin.id, characterId: shopCharacterId, itemId: item.id, sellPercentage })}
+                                  disabled={sellPercentage <= 0 || noCurrencySetUp || sellItemMutation.isPending}
+                                  onClick={() => sellItemMutation.mutate({ pinId: shopPin.id, characterId: shopCharacterId, itemId: item.id, sellPercentage, currencyName: chosenCurrency })}
                                   data-testid={`button-sell-${item.id}`}
                                 >
-                                  {sellItemMutation.isPending ? '...' : sellPercentage <= 0 ? 'Cannot Sell' : 'Sell'}
+                                  {sellItemMutation.isPending ? '...' : noCurrencySetUp ? 'Shop has no currency' : sellPercentage <= 0 ? 'Cannot Sell' : 'Sell'}
                                 </Button>
                               </div>
                             </div>
@@ -12892,7 +12908,7 @@ export default function Campaign() {
               {viewingShopItem.description && <p className="text-sm text-stone-400 mt-1">{viewingShopItem.description}</p>}
             </div>
             <div className="flex items-center gap-3 text-sm">
-              <span className="text-amber-400 font-medium">{getCurrencySymbol(viewingShopItem.currency)} {viewingShopItem.price} {viewingShopItem.currency}</span>
+              <span className="text-amber-400 font-medium">{viewingShopItem.price}</span>
               {viewingShopItem.quantity >= 0 && <span className="text-stone-500">Stock: {viewingShopItem.quantity}</span>}
             </div>
             {(() => {

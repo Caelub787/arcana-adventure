@@ -2,11 +2,11 @@
  * Draft-mode ItemBuildRecipeEditor.
  *
  * Lets an author define the "build recipe" for ANY item: the ingredients
- * needed to craft it (plus an output quantity). It also recommends a price
- * by summing the ingredient costs (respecting currency conversion), adding
- * 20%, rounding UP to a clean denomination, and AUTO-FILLING the item's
- * Price/Currency by default (the admin can still override; an explicit
- * "Apply" button re-applies the recommendation after a manual override).
+ * needed to craft it (plus an output quantity). It also recommends a flat
+ * value by summing the ingredient costs, adding 20%, rounding UP to a clean
+ * number, and AUTO-FILLING the item's Value by default (the admin can still
+ * override; an explicit "Apply" button re-applies the recommendation after
+ * a manual override).
  *
  * Build recipes are AA V2 / V3 only. The parent dialog bundles this draft
  * into its save payload under `buildRecipe`; persistence is handled by the
@@ -32,47 +32,29 @@ export type BuildRecipeDraft = {
   ingredients: BuildRecipeIngredientDraft[];
 };
 
-type PickerItem = { id: string; name: string; price: number; currency: string; rarity: string; itemType: string };
+type PickerItem = { id: string; name: string; price: number; rarity: string; itemType: string };
 
-// Copper-equivalent value of one unit of each currency.
-export const CURRENCY_RATE: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
-
-// Flat cost (in copper) added per item based on its rarity. Applied per
-// ingredient (times its quantity) and once per crafted output item.
-//   common 2s, uncommon 5s, rare 1g, epic 3g, legendary 5g
+// Flat value added per item based on its rarity. Applied per ingredient
+// (times its quantity) and once per crafted output item.
 export const RARITY_SURCHARGE: Record<string, number> = {
-  common: 20,
-  uncommon: 50,
-  rare: 100,
-  epic: 300,
-  legendary: 500,
+  common: 2,
+  uncommon: 5,
+  rare: 10,
+  epic: 30,
+  legendary: 50,
 };
 export const raritySurcharge = (rarity?: string | null): number =>
   RARITY_SURCHARGE[(rarity ?? "common").toLowerCase()] ?? 0;
 
-// Express an EXACT copper amount as the largest single denomination.
-export function denominate(copper: number): { price: number; currency: string } {
-  if (copper <= 0) return { price: 0, currency: "copper" };
-  if (copper % 1000 === 0) return { price: copper / 1000, currency: "platinum" };
-  if (copper % 100 === 0) return { price: copper / 100, currency: "gold" };
-  if (copper % 10 === 0) return { price: copper / 10, currency: "silver" };
-  return { price: copper, currency: "copper" };
-}
-
 /**
- * Round a copper amount UP to a clean denomination, then express it as the
- * largest single denomination. Rounds up to a whole number of the largest
- * denomination tier that is <= the amount, e.g. 96 copper -> 100 copper -> 1 gold.
- * Rounding up guarantees the price always exceeds cost + markup.
+ * Round a value UP to a clean whole number, scaled to its own magnitude
+ * (e.g. 23 -> 25, 96 -> 100, 340 -> 350). Rounding up guarantees the
+ * recommendation always exceeds cost + markup.
  */
-export function recommendFromCopper(copper: number): { price: number; currency: string } {
-  if (copper <= 0) return { price: 0, currency: "copper" };
-  let tier = 1;
-  for (const rate of [1000, 100, 10, 1]) {
-    if (rate <= copper) { tier = rate; break; }
-  }
-  const rounded = Math.ceil(copper / tier) * tier;
-  return denominate(rounded);
+export function recommendPrice(value: number): number {
+  if (value <= 0) return 0;
+  const step = value < 10 ? 1 : value < 100 ? 5 : value < 1000 ? 10 : 50;
+  return Math.ceil(value / step) * step;
 }
 
 /**
@@ -205,8 +187,8 @@ export interface ItemBuildRecipeEditorProps {
   value: BuildRecipeDraft;
   onChange: (next: BuildRecipeDraft) => void;
   host: HostAdapter;
-  /** Apply the recommended price/currency onto the parent item draft. */
-  onApplyPrice: (price: number, currency: string) => void;
+  /** Apply the recommended price onto the parent item draft. */
+  onApplyPrice: (price: number) => void;
   /** Rarity of the item being made; adds a per-output rarity surcharge to the price. */
   outputRarity?: string | null;
   /** AA V3 uses an inline searchable popover to pick ingredients; V2 keeps the dropdown. */
@@ -224,7 +206,6 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
           id: it.id,
           name: it.name,
           price: typeof it.price === "number" ? it.price : 0,
-          currency: it.currency ?? "copper",
           rarity: it.rarity ?? "common",
           itemType: it.itemType ?? "",
         })));
@@ -236,33 +217,32 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
   const ingredients = value.ingredients ?? [];
   const outputQuantity = value.outputQuantity ?? 1;
 
-  // Each ingredient costs its base price plus a flat rarity surcharge, per unit.
+  // Each ingredient costs its base value plus a flat rarity surcharge, per unit.
   // The crafted item adds its own rarity surcharge once per output item.
-  // Recommended per-unit price = round-up( (ingredientsCost + madeRarity*qty) * 1.2 / outputQty ).
-  const totalIngredientCopper = ingredients.reduce((sum, ing) => {
+  // Recommended per-unit value = round-up( (ingredientsCost + madeRarity*qty) * 1.2 / outputQty ).
+  const totalIngredientValue = ingredients.reduce((sum, ing) => {
     const found = items.find(it => it.id === ing.itemId);
     if (!found) return sum;
-    const rate = CURRENCY_RATE[found.currency] ?? 1;
-    const perUnit = found.price * rate + raritySurcharge(found.rarity);
+    const perUnit = found.price + raritySurcharge(found.rarity);
     return sum + perUnit * (ing.quantity || 0);
   }, 0);
-  const madeItemRarityCopper = raritySurcharge(outputRarity) * Math.max(1, outputQuantity);
-  const totalCostCopper = totalIngredientCopper + madeItemRarityCopper;
-  const perUnitCopper = ingredients.length > 0
-    ? Math.ceil((totalCostCopper * 1.2) / Math.max(1, outputQuantity))
+  const madeItemRarityValue = raritySurcharge(outputRarity) * Math.max(1, outputQuantity);
+  const totalCostValue = totalIngredientValue + madeItemRarityValue;
+  const perUnitValue = ingredients.length > 0
+    ? Math.ceil((totalCostValue * 1.2) / Math.max(1, outputQuantity))
     : 0;
-  const recommended = recommendFromCopper(perUnitCopper);
+  const recommended = recommendPrice(perUnitValue);
   const hasUnpriced = ingredients.some(ing => ing.itemId && !items.find(it => it.id === ing.itemId));
 
-  // Auto-fill the price/currency by default whenever the user changes the
-  // recipe. We only apply after a real user edit (tracked via the ref) so we
-  // never clobber a saved price on initial load or while the picker is loading.
+  // Auto-fill the value by default whenever the user changes the recipe. We
+  // only apply after a real user edit (tracked via the ref) so we never
+  // clobber a saved value on initial load or while the picker is loading.
   const userEditedRef = React.useRef(false);
   React.useEffect(() => {
     if (!userEditedRef.current) return;
-    if (perUnitCopper <= 0) return;
-    onApplyPrice(recommended.price, recommended.currency);
-  }, [perUnitCopper, recommended.price, recommended.currency]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (perUnitValue <= 0) return;
+    onApplyPrice(recommended);
+  }, [perUnitValue, recommended]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setIngredients = (next: BuildRecipeIngredientDraft[]) => {
     userEditedRef.current = true;
@@ -280,8 +260,8 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
   return (
     <Stack data-testid="build-recipe-editor">
       <div className="ld-subtle">
-        Define what this item is built from. Costs are summed (10 copper = 1 silver, 10 silver = 1 gold,
-        10 gold = 1 platinum), +20% markup, rounded up to a clean price — auto-filled into Price below (you can change it).
+        Define what this item is built from. Ingredient values are summed, +20% markup,
+        rounded up to a clean number — auto-filled into Value below (you can change it).
       </div>
 
       <div style={{ maxWidth: 200 }}>
@@ -334,13 +314,13 @@ export const ItemBuildRecipeEditor: React.FC<ItemBuildRecipeEditorProps> = ({ va
       {ingredients.length > 0 && (
         <Row style={{ justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <span className="ld-label" style={{ margin: 0 }}>Recommended price (auto-filled)</span>
+            <span className="ld-label" style={{ margin: 0 }}>Recommended value (auto-filled)</span>
             <div style={{ color: "var(--ld-accent, #d97706)", fontWeight: 600 }} data-testid="text-recommended-price">
-              {recommended.price} {recommended.currency}
+              {recommended}
               {hasUnpriced && <span className="ld-subtle" style={{ marginLeft: 8, fontWeight: 400 }}>(some ingredients unpriced)</span>}
             </div>
           </div>
-          <Button size="sm" variant="primary" onClick={() => onApplyPrice(recommended.price, recommended.currency)} data-testid="button-apply-recommended-price">Re-apply</Button>
+          <Button size="sm" variant="primary" onClick={() => onApplyPrice(recommended)} data-testid="button-apply-recommended-price">Re-apply</Button>
         </Row>
       )}
     </Stack>

@@ -14,10 +14,8 @@
  * form where most of it is inert. There is no "advanced" button hiding the
  * rest: a setting you cannot find is a setting you do not have.
  *
- * Two things are deliberately absent, neither of them authoring:
- * `socketedRunes` is what has been socketed into this item during play, and
- * the legacy per-coin price columns were superseded by the price/currency
- * pair above.
+ * One thing is deliberately absent, not authoring: `socketedRunes` is what
+ * has been socketed into this item during play.
  */
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -75,7 +73,6 @@ function itemTypeOptions(systemSlug: string, current: string) {
   return opts(list.sort());
 }
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
-const CURRENCIES = ["copper", "silver", "gold", "platinum"];
 const WEIGHT_CLASSES = ["light", "medium", "heavy"];
 const ATTRIBUTES = ["might", "finesse", "wit", "presence", "will", "craft"];
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"];
@@ -407,8 +404,7 @@ export function LibraryItemSheet({
             <CaFieldGrid>
               <CaInlineField edit={edit} field="quantity" label="Quantity" value={item?.quantity ?? 1} kind="number" min={0} testId="library-item-quantity" />
               <CaInlineField edit={edit} field="itemWeight" label="Weight" value={item?.itemWeight ?? 0} kind="number" min={0} suffix="lb" testId="library-item-weight" />
-              <CaInlineField edit={edit} field="price" label="Price" value={item?.price ?? 0} kind="number" min={0} testId="library-item-price" />
-              <CaInlineField edit={edit} field="currency" label="Currency" value={item?.currency} kind="select" options={opts(CURRENCIES)} testId="library-item-currency" />
+              <CaInlineField edit={edit} field="price" label="Value" value={item?.price ?? 0} kind="number" min={0} testId="library-item-price" />
               <CaInlineField edit={edit} field="durability" label="Durability" value={item?.durability ?? 10} kind="number" min={0} testId="library-item-durability" />
               <CaInlineField edit={edit} field="maxDurability" label="Max durability" value={item?.maxDurability ?? 10} kind="number" min={0} testId="library-item-max-durability" />
               <CaInlineField edit={edit} field="weight" label="Weight class" value={item?.weight} kind="select" options={opts(WEIGHT_CLASSES)} testId="library-item-weight-class" />

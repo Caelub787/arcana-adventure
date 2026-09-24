@@ -616,8 +616,12 @@ export const items = pgTable("items", {
   // the type the item IS; on a weapon it's the type the weapon USES (a non-null
   // value marks the weapon as ranged / ammo-requiring). No DB FK (mirrors advancedItemTypeId).
   ammunitionTypeId: varchar("ammunition_type_id"),
-  price: integer("price").default(0).notNull(), // Price value
-  currency: text("currency").default("copper").notNull(), // copper, silver, gold, platinum
+  // Flat whole-number monetary value of this item. For an itemType:'currency'
+  // item this IS its per-unit worth (e.g. a "Gold Coin" item has price: 100);
+  // for any other item it's simply what it's worth, used by shops to compute
+  // buy/sell cost. There is no denomination/currency multiplier anymore -
+  // value is a single unified number across every currency a GM invents.
+  price: integer("price").default(0).notNull(),
   itemWeight: real("item_weight").default(0).notNull(), // In pounds
   quantity: integer("quantity").default(1).notNull(),
   durability: integer("durability").default(10).notNull(), // 0-10
@@ -653,11 +657,6 @@ export const items = pgTable("items", {
   // attribute key or V3 skill key. Equipping the armor adds the amount to that
   // attribute/skill. V3 armor uses this instead of armorBonus/damageReduction.
   v3ArmorBoosts: jsonb("v3_armor_boosts").$type<{ target: string; amount: number }[]>().default(sql`'[]'::jsonb`),
-  // Legacy price fields (kept for backward compatibility)
-  priceCopper: integer("price_copper").default(0).notNull(),
-  priceSilver: integer("price_silver").default(0).notNull(),
-  priceGold: integer("price_gold").default(0).notNull(),
-  pricePlatinum: integer("price_platinum").default(0).notNull(),
   weight: text("weight").default("light"), // Legacy field
   // Ration servings for consumables (used for rest mechanics)
   // null or 0 means not a ration, positive values indicate how many rations this item provides
@@ -2492,9 +2491,22 @@ export const campaignMapPins = pgTable("campaign_map_pins", {
   textContent: text("text_content"),
   targetSceneId: varchar("target_scene_id"),
   isShop: boolean("is_shop").default(false),
+  // The shop's running budget for BUYING items from players (paid out on a
+  // sell-to-shop transaction), in the same flat whole-number monetary unit as
+  // item `price`. A sale pays out of this and it goes down; the GM tops it
+  // back up by editing it directly. <= 0 or null means unlimited (no cap) -
+  // this covers every pre-existing shop, whose value defaulted to 0 back when
+  // this column was unused dead weight.
   shopkeeperMoney: integer("shopkeeper_money").default(0),
   shopkeeperCharacterId: varchar("shopkeeper_character_id"),
   defaultSellPercentage: integer("default_sell_percentage").default(80),
+  // Snapshot of the currency items (from admin/My Library) this shop accepts
+  // as payment and pays out with, captured at pick-time like `shopItems.itemData`
+  // so a later edit/delete of the source item never breaks an existing shop.
+  // Buying requires the player's held total across ONLY these names to cover
+  // the cost; selling pays out in whichever of these the player chooses,
+  // falling back across the rest of the list to cover what one alone can't.
+  acceptedCurrencies: jsonb("accepted_currencies").$type<{ name: string; price: number; image?: string | null }[]>().default(sql`'[]'::jsonb`).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2515,8 +2527,7 @@ export const shopItems = pgTable("shop_items", {
   name: text("name").notNull(),
   description: text("description"),
   image: text("image"),
-  price: integer("price").notNull().default(0),
-  currency: text("currency").notNull().default("gold"),
+  price: integer("price").notNull().default(0), // Flat whole-number monetary value
   itemType: text("item_type"),
   quantity: integer("quantity").notNull().default(-1),
   itemData: jsonb("item_data"),

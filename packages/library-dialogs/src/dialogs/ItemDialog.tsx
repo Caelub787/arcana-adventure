@@ -61,7 +61,6 @@ const V3_RUNE_STAT_TARGET_OPTIONS: { value: string; label: string }[] = [
   { value: "itemWeight", label: "Weight (lb)" },
 ];
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"] as const;
-const CURRENCIES = ["copper", "silver", "gold", "platinum"] as const;
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"] as const;
 // AA V3 uses a fixed 4-slot armor model (mirrors V3_ARMOR_SLOTS in shared/v3.ts —
 // inlined because this package has no shared imports).
@@ -210,7 +209,6 @@ export interface ItemDraft {
   weaponCategory?: string | null;
   breakChance?: number;
   price?: number;
-  currency?: string;
   itemWeight?: number;
   quantity?: number;
   durability?: number;
@@ -278,7 +276,6 @@ const FRESH: ItemDraft = {
   isHeavy: false,
   breakChance: 10,
   price: 0,
-  currency: "copper",
   itemWeight: 0,
   quantity: 1,
   durability: 10,
@@ -521,13 +518,8 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 <NumberInput min={0} max={10} value={draft.durability ?? 10} fallback={10} onChange={(v) => set({ durability: v ?? 10 })} />
               </div>
               )}
-              <div><Label>Price</Label>
+              <div><Label>Value</Label>
                 <NumberInput value={draft.price ?? 0} onChange={(v) => set({ price: v ?? 0 })} />
-              </div>
-              <div><Label>Currency</Label>
-                <Select value={draft.currency ?? "copper"} onValueChange={v => set({ currency: v })}>
-                  {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </Select>
               </div>
               <Row><Checkbox checked={!!draft.isContainer} onCheckedChange={v => set({ isContainer: v })} /><Label>Is container</Label></Row>
               {draft.isContainer && (
@@ -1282,7 +1274,7 @@ export const ItemDialog: React.FC<DialogProps<ItemDraft>> = ({
                 value={draft.buildRecipe ?? { outputQuantity: 1, ingredients: [] }}
                 onChange={(buildRecipe) => set({ buildRecipe })}
                 host={host}
-                onApplyPrice={(price, currency) => set({ price, currency })}
+                onApplyPrice={(price) => set({ price })}
                 outputRarity={draft.rarity}
                 isV3={aav3}
               />

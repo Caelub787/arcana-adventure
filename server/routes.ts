@@ -22866,81 +22866,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (shopItem.quantity === 0) return res.status(400).json({ error: "Item is out of stock" });
 
-      const currencyToCopper: Record<string, number> = { platinum: 1000, gold: 100, silver: 10, copper: 1 };
-      const totalCostCopper = shopItem.price * (currencyToCopper[shopItem.currency] || 1);
+      // Flat monetary value - no currency denomination multiplier. Only the
+      // currency items this shop was set up to accept (a name+value snapshot
+      // taken when the GM picked them) count toward affordability.
+      const cost = shopItem.price;
+      const acceptedNames = new Set((pin.acceptedCurrencies || []).map(c => c.name));
 
       const characterItems = await storage.getItemsByCharacter(characterId);
-      const currencyItems = characterItems.filter(i => i.itemType === 'currency');
+      const payableCurrency = characterItems.filter(i => i.itemType === 'currency' && acceptedNames.has(i.name));
 
-      let totalCopperHeld = 0;
-      for (const ci of currencyItems) {
-        const rate = currencyToCopper[ci.currency] || 1;
-        totalCopperHeld += ci.quantity * rate;
+      const totalHeld = payableCurrency.reduce((sum, ci) => sum + ci.price * ci.quantity, 0);
+      if (totalHeld < cost) {
+        return res.status(400).json({ error: "Insufficient funds in a currency this shop accepts", required: cost, available: totalHeld });
       }
 
-      if (totalCopperHeld < totalCostCopper) {
-        return res.status(400).json({ error: "Insufficient funds", required: totalCostCopper, available: totalCopperHeld });
-      }
-
-      let remaining = totalCostCopper;
-      const sortOrder = ['copper', 'silver', 'gold', 'platinum'];
-      const sortedCurrency = [...currencyItems].sort((a, b) => sortOrder.indexOf(a.currency) - sortOrder.indexOf(b.currency));
-
+      // Consume smallest-value stacks first (preserve large bills for later
+      // purchases). No change is minted back - if the last stack consumed
+      // overshoots the cost, that overshoot is simply spent, same as handing
+      // over a bill you don't have exact change for.
+      let remaining = cost;
+      const sortedCurrency = [...payableCurrency].sort((a, b) => a.price - b.price);
       for (const ci of sortedCurrency) {
         if (remaining <= 0) break;
-        const rate = currencyToCopper[ci.currency] || 1;
-        const itemValueCopper = ci.quantity * rate;
-
-        if (itemValueCopper <= remaining) {
-          remaining -= itemValueCopper;
+        const stackValue = ci.price * ci.quantity;
+        if (stackValue <= remaining) {
+          remaining -= stackValue;
           await storage.deleteItem(ci.id);
         } else {
-          const unitsNeeded = Math.ceil(remaining / rate);
-          const changeCopper = (unitsNeeded * rate) - remaining;
+          const unitsNeeded = Math.ceil(remaining / ci.price);
           remaining = 0;
-
           if (ci.quantity - unitsNeeded > 0) {
             await storage.updateItem(ci.id, { quantity: ci.quantity - unitsNeeded });
           } else {
             await storage.deleteItem(ci.id);
-          }
-
-          if (changeCopper > 0) {
-            let changeCopperLeft = changeCopper;
-            for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
-              const denomRate = currencyToCopper[denom];
-              if (changeCopperLeft >= denomRate) {
-                const count = Math.floor(changeCopperLeft / denomRate);
-                changeCopperLeft -= count * denomRate;
-                await storage.createItem({
-                  characterId,
-                  name: denom.charAt(0).toUpperCase() + denom.slice(1),
-                  itemType: 'currency',
-                  currency: denom,
-                  quantity: count,
-                  price: 1,
-                  rarity: 'common',
-                  durability: 10,
-                  isEquipped: false,
-                  isContainer: false,
-                  isHeavy: false,
-                  rulesVisible: true,
-                  breakChance: 0,
-                  itemWeight: 0,
-                  priceCopper: 0,
-                  priceSilver: 0,
-                  priceGold: 0,
-                  pricePlatinum: 0,
-                  isArchived: false,
-                  isDamaging: false,
-                  isDetonatable: false,
-                  canApplyEffects: false,
-                  grantsDcBonus: false,
-                  dcBonusValue: 0,
-                  isTemplate: false,
-                } as any);
-              }
-            }
           }
         }
       }
@@ -22954,7 +22912,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         itemType: itemData.itemType || shopItem.itemType || 'utility',
         quantity: 1,
         price: shopItem.price,
-        currency: shopItem.currency,
         rarity: itemData.rarity || 'common',
         durability: itemData.durability ?? 10,
         damage: itemData.damage,
@@ -22975,10 +22932,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rulesVisible: true,
         breakChance: itemData.breakChance ?? 10,
         itemWeight: itemData.itemWeight ?? 0,
-        priceCopper: 0,
-        priceSilver: 0,
-        priceGold: 0,
-        pricePlatinum: 0,
         isArchived: false,
         isDamaging: itemData.isDamaging ?? false,
         isDetonatable: itemData.isDetonatable ?? false,
@@ -23008,25 +22961,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateShopItem(shopItemId, { quantity: shopItem.quantity - 1 });
       }
 
-      if (pin.shopkeeperCharacterId) {
-        let copperToAdd = totalCostCopper;
-        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
-          const denomRate = currencyToCopper[denom];
-          if (copperToAdd >= denomRate) {
-            const count = Math.floor(copperToAdd / denomRate);
-            copperToAdd -= count * denomRate;
-            await storage.createItem({
-              characterId: pin.shopkeeperCharacterId,
-              name: denom.charAt(0).toUpperCase() + denom.slice(1),
-              itemType: 'currency', currency: denom, quantity: count, price: 1,
-              rarity: 'common', durability: 10, isEquipped: false, isContainer: false,
-              isHeavy: false, rulesVisible: true, breakChance: 0, itemWeight: 0,
-              priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0,
-              isArchived: false, isDamaging: false, isDetonatable: false,
-              canApplyEffects: false, grantsDcBonus: false, dcBonusValue: 0, isTemplate: false,
-            } as any);
-          }
-        }
+      // A configured (positive) budget earns back what buyers pay in, funding
+      // future sell-to-shop payouts. Unlimited/untracked shops (<= 0 or null)
+      // don't bother - there's nothing to accumulate toward.
+      if (pin.shopkeeperMoney && pin.shopkeeperMoney > 0) {
+        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: pin.shopkeeperMoney + cost });
       }
 
       res.json({ success: true, item: newItem });
@@ -23038,7 +22977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/campaign-map-pins/:pinId/sell", requireAuth, async (req, res) => {
     try {
-      const { characterId, itemId, sellPercentage } = req.body;
+      const { characterId, itemId, sellPercentage, currencyName } = req.body;
       if (!characterId || !itemId || sellPercentage == null) {
         return res.status(400).json({ error: "characterId, itemId, and sellPercentage are required" });
       }
@@ -23065,15 +23004,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found in character inventory" });
       }
 
-      const currencyToCopper: Record<string, number> = { platinum: 1000, gold: 100, silver: 10, copper: 1 };
-      const rawItemValueCopper = item.price * (currencyToCopper[item.currency] || 1);
+      const acceptedCurrencies = pin.acceptedCurrencies || [];
+      if (acceptedCurrencies.length === 0) {
+        return res.status(400).json({ error: "This shop has no currencies set up to pay with" });
+      }
+      const chosen = acceptedCurrencies.find(c => c.name === currencyName);
+      if (!chosen) {
+        return res.status(400).json({ error: "Pick a currency this shop pays out in" });
+      }
+
       // AA V3: effective value scales with durability (each point = 10% of base value,
       // baseline 10). Items without durability (null/undefined) are unaffected.
-      let itemValueCopper = rawItemValueCopper;
+      const rawItemValue = item.price;
+      let itemValue = rawItemValue;
       if (campaign.system === 'aa-v3' && item.durability !== null && item.durability !== undefined) {
-        itemValueCopper = Math.floor(rawItemValueCopper * Math.min(item.durability, 10) / 10);
+        itemValue = Math.floor(rawItemValue * Math.min(item.durability, 10) / 10);
       }
-      const sellValueCopper = Math.floor(itemValueCopper * (sellPercentage / 100));
+      const sellValue = Math.floor(itemValue * (sellPercentage / 100));
 
       if (item.quantity > 1) {
         await storage.updateItem(itemId, { quantity: item.quantity - 1 });
@@ -23081,107 +23028,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteItem(itemId);
       }
 
-      let bestCurrency = 'copper';
-      let bestAmount = sellValueCopper;
+      // The shop's running buying budget caps what it actually pays out this
+      // sale - the player still hands over the item regardless, same as a
+      // pawn shop that's simply out of cash today. <= 0 or null means
+      // unlimited (untracked).
+      const hasBudgetCap = pin.shopkeeperMoney !== null && pin.shopkeeperMoney !== undefined && pin.shopkeeperMoney > 0;
+      const payoutTarget = hasBudgetCap ? Math.min(sellValue, pin.shopkeeperMoney as number) : sellValue;
 
-      if (sellValueCopper > 0) {
-        let copperLeft = sellValueCopper;
-        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
-          const denomRate = currencyToCopper[denom];
-          if (copperLeft >= denomRate) {
-            const count = Math.floor(copperLeft / denomRate);
-            copperLeft -= count * denomRate;
-            await storage.createItem({
-              characterId,
-              name: denom.charAt(0).toUpperCase() + denom.slice(1),
-              itemType: 'currency',
-              currency: denom,
-              quantity: count,
-              price: 1,
-              rarity: 'common',
-              durability: 10,
-              isEquipped: false,
-              isContainer: false,
-              isHeavy: false,
-              rulesVisible: true,
-              breakChance: 0,
-              itemWeight: 0,
-              priceCopper: 0,
-              priceSilver: 0,
-              priceGold: 0,
-              pricePlatinum: 0,
-              isArchived: false,
-              isDamaging: false,
-              isDetonatable: false,
-              canApplyEffects: false,
-              grantsDcBonus: false,
-              dcBonusValue: 0,
-              isTemplate: false,
-            } as any);
-          }
-        }
+      // Pay out the chosen currency first, then fall back across the rest of
+      // the shop's accepted currencies (largest value first) to close
+      // whatever gap the chosen one's denomination can't cover exactly. Any
+      // final remainder smaller than the smallest accepted unit is forfeited.
+      const payoutOrder = [chosen, ...acceptedCurrencies.filter(c => c.name !== chosen.name).sort((a, b) => b.price - a.price)];
+      const breakdown: { name: string; quantity: number }[] = [];
+      let remainingPayout = payoutTarget;
+      for (const currency of payoutOrder) {
+        if (remainingPayout <= 0 || currency.price <= 0) continue;
+        const units = Math.floor(remainingPayout / currency.price);
+        if (units <= 0) continue;
+        remainingPayout -= units * currency.price;
+        breakdown.push({ name: currency.name, quantity: units });
+        await storage.createItem({
+          characterId,
+          name: currency.name,
+          image: currency.image ?? undefined,
+          itemType: 'currency',
+          quantity: units,
+          price: currency.price,
+          rarity: 'common',
+          durability: 10,
+          isEquipped: false,
+          isContainer: false,
+          isHeavy: false,
+          rulesVisible: true,
+          breakChance: 0,
+          itemWeight: 0,
+          isArchived: false,
+          isDamaging: false,
+          isDetonatable: false,
+          canApplyEffects: false,
+          grantsDcBonus: false,
+          dcBonusValue: 0,
+          isTemplate: false,
+        } as any);
+      }
+      const actualPaid = payoutTarget - remainingPayout;
 
-        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
-          const denomRate = currencyToCopper[denom];
-          if (sellValueCopper >= denomRate && sellValueCopper % denomRate === 0) {
-            bestCurrency = denom;
-            bestAmount = sellValueCopper / denomRate;
-            break;
-          }
-        }
+      if (hasBudgetCap) {
+        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: (pin.shopkeeperMoney as number) - actualPaid });
       }
 
-      if (pin.shopkeeperCharacterId && sellValueCopper > 0) {
-        const shopkeeperItems = await storage.getItemsByCharacter(pin.shopkeeperCharacterId);
-        const shopkeeperCurrency = shopkeeperItems.filter(i => i.itemType === 'currency');
-        let remaining = sellValueCopper;
-        const sortOrder = ['platinum', 'gold', 'silver', 'copper'];
-        const sortedCurrency = [...shopkeeperCurrency].sort((a, b) => sortOrder.indexOf(a.currency) - sortOrder.indexOf(b.currency));
-
-        for (const ci of sortedCurrency) {
-          if (remaining <= 0) break;
-          const rate = currencyToCopper[ci.currency] || 1;
-          const itemValueCopper = ci.quantity * rate;
-
-          if (itemValueCopper <= remaining) {
-            remaining -= itemValueCopper;
-            await storage.deleteItem(ci.id);
-          } else {
-            const unitsNeeded = Math.ceil(remaining / rate);
-            const changeCopper = (unitsNeeded * rate) - remaining;
-            remaining = 0;
-
-            if (ci.quantity - unitsNeeded > 0) {
-              await storage.updateItem(ci.id, { quantity: ci.quantity - unitsNeeded });
-            } else {
-              await storage.deleteItem(ci.id);
-            }
-
-            if (changeCopper > 0) {
-              let changeCopperLeft = changeCopper;
-              for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
-                const denomRate = currencyToCopper[denom];
-                if (changeCopperLeft >= denomRate) {
-                  const count = Math.floor(changeCopperLeft / denomRate);
-                  changeCopperLeft -= count * denomRate;
-                  await storage.createItem({
-                    characterId: pin.shopkeeperCharacterId!,
-                    name: denom.charAt(0).toUpperCase() + denom.slice(1),
-                    itemType: 'currency', currency: denom, quantity: count, price: 1,
-                    rarity: 'common', durability: 10, isEquipped: false, isContainer: false,
-                    isHeavy: false, rulesVisible: true, breakChance: 0, itemWeight: 0,
-                    priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0,
-                    isArchived: false, isDamaging: false, isDetonatable: false,
-                    canApplyEffects: false, grantsDcBonus: false, dcBonusValue: 0, isTemplate: false,
-                  } as any);
-                }
-              }
-            }
-          }
-        }
-      }
-
-      res.json({ success: true, earnings: { amount: bestAmount, currency: bestCurrency } });
+      res.json({ success: true, earnings: { paid: actualPaid, sellValue, breakdown, cappedByBudget: hasBudgetCap && sellValue > (pin.shopkeeperMoney as number) } });
     } catch (err) {
       console.error("Failed to sell item:", err);
       res.status(500).json({ error: "Failed to sell item" });
